@@ -62,38 +62,50 @@ let __activeCharSeq = 0;
 
 
 
-// Единый конфиг параметров интерфейса
-// metaKey  — имя поля в STORY.meta
-// cssVar   — CSS-переменная, которую будем менять из JS
-// default  — значение по умолчанию, если параметр не задан в story.js
-// unit     — единица измерения для CSS
-const UI_STYLE_CONFIG = {
-  topSpacing: {
-    cssVar: '--topSpacing',
-    default: 500,
-    unit: 'px'
-  },
-  bottomSpacing: {
-    cssVar: '--bottomSpacing',
-    default: 800,
-    unit: 'px'
-  },
-  blurStrength: {
-    cssVar: '--blurStrength',
-    default: 50,
-    unit: 'px'
-  },
-  blurBrightness: {
-    cssVar: '--blurBrightness',
-    default: 0.9,
-    unit: ''
-  },
-  blurOpacity: {
-    cssVar: '--blurOpacity',
-    default: 0.95,
-    unit: ''
-  }
-};
+  // Единый конфиг параметров интерфейса
+  // cssVar   — CSS-переменная
+  // default  — значение по умолчанию
+  // unit     — единица измерения
+  // type     — ожидаемый тип
+  // validate — дополнительная проверка значения
+  const UI_STYLE_CONFIG = {
+    topSpacing: {
+      cssVar: '--topSpacing',
+      default: 500,
+      unit: 'px',
+      type: 'int',
+      min: 0
+    },
+    bottomSpacing: {
+      cssVar: '--bottomSpacing',
+      default: 800,
+      unit: 'px',
+      type: 'int',
+      min: 0
+    },
+    blurStrength: {
+      cssVar: '--blurStrength',
+      default: 50,
+      unit: 'px',
+      type: 'float',
+      min: 0
+    },
+    blurBrightness: {
+      cssVar: '--blurBrightness',
+      default: 0.9,
+      unit: '',
+      type: 'float',
+      min: 0
+    },
+    blurOpacity: {
+      cssVar: '--blurOpacity',
+      default: 0.95,
+      unit: '',
+      type: 'float',
+      min: 0,
+      max: 1
+    }
+  };
 
 
   // ---------- DOM ----------
@@ -2681,18 +2693,20 @@ function dotEscape(s) {
       .replace(/'/g, "&#039;");
   }
 
-  // Применяет все интерфейсные настройки из STORY.meta в CSS variables
+  // Применяет интерфейсные параметры в CSS variables.
+  // Приоритет уже должен быть собран заранее в meta.
   function applyUIStyleVariables(meta) {
     var root = document.documentElement;
 
     Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
       var config = UI_STYLE_CONFIG[metaKey];
+      var value = config.default;
 
-      // Если значение есть в story.meta — берём его,
-      // иначе используем значение по умолчанию
-      var value = (meta && meta[metaKey] !== undefined && meta[metaKey] !== null)
-        ? meta[metaKey]
-        : config.default;
+      if (meta && meta[metaKey] !== undefined && meta[metaKey] !== null) {
+        if (isValidUIConfigValue(meta[metaKey], config)) {
+          value = meta[metaKey];
+        }
+      }
 
       root.style.setProperty(
         config.cssVar,
@@ -2701,20 +2715,251 @@ function dotEscape(s) {
     });
   }
 
+  // Безопасный парсинг чисел из строки.
+  // Если значение кривое, возвращаем null.
+  function parseUIParamValue(rawValue, type) {
+    console.log('[parseUIParamValue] raw=', rawValue, 'type=', type);
+    if (rawValue === null || rawValue === undefined) return null;
+
+    var value = String(rawValue).trim();
+    if (value === '') return null;
+
+    if (type === 'int') {
+      if (!/^-?\d+$/.test(value)) {
+        console.log('[parseUIParamValue] invalid int =', value);
+        return null;
+      }
+      var intValue = parseInt(value, 10);
+      console.log('[parseUIParamValue] intValue =', intValue);
+      return isNaN(intValue) ? null : intValue;
+    }
+
+    if (type === 'float') {
+      if (!/^-?\d+(\.\d+)?$/.test(value)) {
+        console.log('[parseUIParamValue] invalid float =', value);
+        return null;
+      }
+      var floatValue = parseFloat(value);
+      console.log('[parseUIParamValue] floatValue =', floatValue);
+      return isNaN(floatValue) ? null : floatValue;
+    }
+
+    return null;
+  }
+
+  // Читает параметры интерфейса из URL без учета регистра ключей.
+  // topSpacing, TOPSPACING, topspacing, TopSpacing — всё работает одинаково.
+  // Некорректные значения игнорируются.
+  function getUIOverridesFromQuery() {
+    var params = new URLSearchParams(window.location.search);
+    console.log('[URL] search raw =', window.location.search);
+    var overrides = {};
+    var normalized = {};
+
+    // Нормализуем все ключи в нижний регистр
+    params.forEach(function(value, key) {
+      normalized[String(key).toLowerCase()] = value;
+    });
+
+    console.log('[URL] normalized =', JSON.stringify(normalized));
+
+    Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
+      var config = UI_STYLE_CONFIG[metaKey];
+      var queryKey = metaKey.toLowerCase();
+      console.log('[URL] check metaKey=' + metaKey + ', queryKey=' + queryKey + ', raw=' + normalized[queryKey]);
+
+      console.log('[URL] checking key:', {
+        metaKey: metaKey,
+        queryKey: queryKey,
+        hasParam: Object.prototype.hasOwnProperty.call(normalized, queryKey),
+        rawValue: normalized[queryKey]
+      });
+
+      if (!Object.prototype.hasOwnProperty.call(normalized, queryKey)) {
+        return;
+      }
+
+      var parsedValue = parseUIParamValue(normalized[queryKey], config.type);
+      console.log('[URL] parsed value for', metaKey, '=', parsedValue);
+      if (parsedValue === null) {
+        return;
+      }
+
+      if (!isValidUIConfigValue(parsedValue, config)) {
+        return;
+      }
+
+      // Явно записываем в правильное имя поля meta
+      if (metaKey === 'topSpacing') {
+        overrides.topSpacing = parsedValue;
+      }
+
+      if (metaKey === 'bottomSpacing') {
+        overrides.bottomSpacing = parsedValue;
+      }
+    });
+
+    return overrides;
+  }
+
+  // Проверка диапазонов из конфига
+  function isValidUIConfigValue(value, config) {
+    if (value === null || value === undefined) return false;
+    if (typeof value !== 'number' || isNaN(value)) return false;
+
+    if (typeof config.min === 'number' && value < config.min) return false;
+    if (typeof config.max === 'number' && value > config.max) return false;
+
+    return true;
+  }
+
+  // Проверяет, допустимо ли значение по правилам конфига
+  function isValidUIConfigValue(value, config) {
+    if (value === null || value === undefined) {
+      return false;
+    }
+
+    if (typeof config.validate === 'function') {
+      return !!config.validate(value);
+    }
+
+    return true;
+  }
+
+  // Читает параметры интерфейса из адресной строки.
+  // Параметры не зависят от регистра.
+  // Некорректные значения игнорируются.
+  function getUIOverridesFromQuery() {
+    var params = new URLSearchParams(window.location.search);
+    console.log('[URL] window.location.search =', window.location.search);
+    var overrides = {};
+    var normalized = {};
+
+    // Нормализуем ключи: topSpacing, TOPSPACING, topspacing -> topspacing
+    params.forEach(function(value, key) {
+      normalized[String(key).toLowerCase()] = value;
+    });
+    console.log('[URL] normalized params =', normalized);
+
+    // Проходим по конфигу и ищем соответствующие параметры в URL
+    Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
+      var config = UI_STYLE_CONFIG[metaKey];
+      var normalizedKey = metaKey.toLowerCase();
+
+      if (!normalized.hasOwnProperty(normalizedKey)) {
+        return;
+      }
+
+      var parsedValue = parseUIParamValue(normalized[normalizedKey], config.type);
+
+      // Если значение не распарсилось — просто игнорируем
+      if (parsedValue === null) {
+        return;
+      }
+
+      // Если значение не прошло validate — тоже игнорируем
+      if (!isValidUIConfigValue(parsedValue, config)) {
+        return;
+      }
+
+      console.log('[URL] apply override:', metaKey, '=', parsedValue);
+      overrides[metaKey] = parsedValue;
+    });
+
+    console.log('[URL] final overrides =', overrides);
+    return overrides;
+  }
+
+ 
+  function getUIOverridesFromQuery() {
+    var params = new URLSearchParams(window.location.search);
+    var overrides = {};
+
+    // topSpacing
+    if (params.has('topSpacing')) {
+      var topSpacing = parseInt(params.get('topSpacing'), 10);
+      if (!isNaN(topSpacing)) {
+        overrides.topSpacing = topSpacing;
+      }
+    }
+
+    // bottomSpacing
+    if (params.has('bottomSpacing')) {
+      var bottomSpacing = parseInt(params.get('bottomSpacing'), 10);
+      if (!isNaN(bottomSpacing)) {
+        overrides.bottomSpacing = bottomSpacing;
+      }
+    }
+
+    return overrides;
+  }
+
   function applySpacingSettings() {
-    var meta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
+    var storyMeta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
+    
 
-    // 1. Автоматически пробрасываем все числовые параметры интерфейса в CSS
-    applyUIStyleVariables(meta);
+    var queryOverrides = {};
+    var urlParams = new URLSearchParams(window.location.search);
+    var normalizedUrlParams = {};
 
-    // 2. Отдельно обрабатываем логический параметр показа размытого фона
-    var blurBackground = (typeof meta.blurBackground === 'boolean')
-      ? meta.blurBackground
+    urlParams.forEach(function(value, key) {
+      normalizedUrlParams[String(key).toLowerCase()] = value;
+    });
+
+    if (Object.prototype.hasOwnProperty.call(normalizedUrlParams, 'topspacing')) {
+      var topSpacingRaw = normalizedUrlParams.topspacing;
+      
+
+      if (/^\d+$/.test(String(topSpacingRaw).trim())) {
+        queryOverrides.topSpacing = parseInt(topSpacingRaw, 10);
+      } else {
+        console.log('[URL DIRECT] ignored invalid topSpacing =', topSpacingRaw);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(normalizedUrlParams, 'bottomspacing')) {
+      var bottomSpacingRaw = normalizedUrlParams.bottomspacing;
+
+      if (/^\d+$/.test(String(bottomSpacingRaw).trim())) {
+        queryOverrides.bottomSpacing = parseInt(bottomSpacingRaw, 10);
+      } else {
+        console.log('[URL DIRECT] ignored invalid bottomSpacing =', bottomSpacingRaw);
+      }
+    }
+
+    // URL имеет приоритет над story.js
+    var finalMeta = Object.assign({}, storyMeta, queryOverrides);
+
+    // Важно: записываем финальные значения обратно в STORY.meta,
+    // чтобы их использовали все остальные расчёты движка
+    if (window.STORY && window.STORY.meta) {
+      if (finalMeta.topSpacing !== undefined) {
+        window.STORY.meta.topSpacing = finalMeta.topSpacing;
+      }
+      if (finalMeta.bottomSpacing !== undefined) {
+        window.STORY.meta.bottomSpacing = finalMeta.bottomSpacing;
+      }
+    }
+
+    applyUIStyleVariables(finalMeta);
+
+    // blur_background — отдельный логический флаг
+    var blurBackground = (typeof finalMeta.blurBackground === 'boolean')
+      ? finalMeta.blurBackground
       : true;
 
     if (elBlurBgLayer) {
       elBlurBgLayer.style.display = blurBackground ? 'block' : 'none';
     }
+
+    console.log('[Engine] UI settings applied:', {
+      storyMeta: storyMeta,
+      queryOverrides: queryOverrides,
+      finalTopSpacing: getComputedStyle(document.documentElement).getPropertyValue('--topSpacing').trim(),
+      finalBottomSpacing: getComputedStyle(document.documentElement).getPropertyValue('--bottomSpacing').trim()
+    });
+
+    adjustCharacterScale();
   }
 
   // Управление размытым фоном
