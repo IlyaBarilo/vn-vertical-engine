@@ -2645,20 +2645,35 @@ function dotEscape(s) {
       .replace(/'/g, "&#039;");
   }
 
-// Применение настроек отступов
-function applySpacingSettings() {
-  if (!STORY.meta) return;
-  
-  const topSpacing = STORY.meta.topSpacing || 0;
-  const bottomSpacing = STORY.meta.bottomSpacing || 0;
-  
-  document.documentElement.style.setProperty('--topSpacing', topSpacing + 'px');
-  document.documentElement.style.setProperty('--bottomSpacing', bottomSpacing + 'px');
-  
-  console.log(`[Engine] Отступы: сверху ${topSpacing}px, снизу ${bottomSpacing}px`);
+  function applySpacingSettings() {
 
-  adjustCharacterScale(); // пересчитываем размер персонажа с debounce
-}
+    var root = document.documentElement;
+    var meta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
+
+    // значения по умолчанию
+    var topSpacing = (typeof meta.topSpacing === 'number') ? meta.topSpacing : 500;
+    var bottomSpacing = (typeof meta.bottomSpacing === 'number') ? meta.bottomSpacing : 800;
+
+    var blurBackground = (typeof meta.blurBackground === 'boolean') ? meta.blurBackground : true;
+    var blurStrength = (typeof meta.blurStrength === 'number') ? meta.blurStrength : 50;
+    var blurBrightness = (typeof meta.blurBrightness === 'number') ? meta.blurBrightness : 0.9;
+    var blurOpacity = (typeof meta.blurOpacity === 'number') ? meta.blurOpacity : 0.95;
+
+    // отступы интерфейса
+    root.style.setProperty('--topSpacing', topSpacing + 'px');
+    root.style.setProperty('--bottomSpacing', bottomSpacing + 'px');
+
+    // параметры размытия
+    root.style.setProperty('--blurStrength', blurStrength + 'px');
+    root.style.setProperty('--blurBrightness', blurBrightness);
+    root.style.setProperty('--blurOpacity', blurOpacity);
+
+    // включение / выключение размытого фона
+    if (elBlurBgLayer) {
+      elBlurBgLayer.style.display = blurBackground ? 'block' : 'none';
+    }
+
+  }
 
   // Управление размытым фоном
   function updateBlurBackground(src) {

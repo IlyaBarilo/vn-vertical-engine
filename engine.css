@@ -26,6 +26,16 @@ body {
      4) Если мелкие варианты выбора — правьте --choices-* и --choice-*.
   */
 
+  /* Настройки из story.js */
+
+  --topSpacing: 500px;
+  --bottomSpacing: 800px;
+
+  --blurStrength: 50px;
+  --blurBrightness: 0.9;
+  --blurOpacity: 0.95;
+
+
   /* Технические переменные сцены: задаются JS и/или сценарием */
   --uiBottomOffset: calc(14px + env(safe-area-inset-bottom, 0px));
   --topSpacing: 0px;
@@ -567,8 +577,8 @@ body {
   height: 100%;
   object-fit: cover; /* растягиваем на всю высоту */
   object-position: center;
-  filter: blur(50px) brightness(0.9);
-  opacity: 0.95;
+  filter: blur(var(--blurStrength)) brightness(var(--blurBrightness));
+  opacity: var(--blurOpacity);
   transform: scale(1.2); /* увеличиваем чтобы скрыть края */
 }
 

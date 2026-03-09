@@ -252,6 +252,21 @@
         story.meta.blurBackground = value === 'true' || value === '1';
         console.log('[Loader] blur_background =', story.meta.blurBackground, 'raw value:', value);
       }
+
+      if (key === 'blur_strength') {
+        var v = parseFloat(value);
+        if (!isNaN(v)) story.meta.blurStrength = v;
+      }
+
+      if (key === 'blur_brightness') {
+        var v = parseFloat(value);
+        if (!isNaN(v)) story.meta.blurBrightness = v;
+      }
+
+      if (key === 'blur_opacity') {
+        var v = parseFloat(value);
+        if (!isNaN(v)) story.meta.blurOpacity = v;
+      }
     }
   }
 
