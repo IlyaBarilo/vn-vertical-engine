@@ -27,6 +27,37 @@
   console.log('[Loader] Запуск парсера...');
 
 
+  // Конфиг параметров интерфейса, которые можно задавать в story.js
+  // key        — как параметр называется в story.js
+  // target     — как он будет храниться в story.meta
+  // type       — тип значения для преобразования
+  const UI_META_CONFIG = {
+    top_spacing: {
+      target: 'topSpacing',
+      type: 'int'
+    },
+    bottom_spacing: {
+      target: 'bottomSpacing',
+      type: 'int'
+    },
+    blur_background: {
+      target: 'blurBackground',
+      type: 'bool'
+    },
+    blur_strength: {
+      target: 'blurStrength',
+      type: 'float'
+    },
+    blur_brightness: {
+      target: 'blurBrightness',
+      type: 'float'
+    },
+    blur_opacity: {
+      target: 'blurOpacity',
+      type: 'float'
+    }
+  };
+
 
 
   // Проверяем наличие текста
@@ -220,52 +251,58 @@
     }
   }
 
+
+  // Универсально преобразует строку из story.js в нужный тип
+  function parseMetaValueByType(value, type) {
+    if (type === 'int') {
+      var intValue = parseInt(value, 10);
+      return isNaN(intValue) ? null : intValue;
+    }
+
+    if (type === 'float') {
+      var floatValue = parseFloat(value);
+      return isNaN(floatValue) ? null : floatValue;
+    }
+
+    if (type === 'bool') {
+      return value === 'true' || value === '1';
+    }
+
+    // Если тип неизвестен — возвращаем строку как есть
+    return value;
+  }
+
   // Парсинг метаданных
   function parseMetaLine(line, story) {
-    // Удаляем комментарии (всё что после #)
+    // Удаляем комментарий после #
     line = line.split('#')[0].trim();
-    if (!line) return; // если после удаления комментария строка пустая
-    
-    if (line.includes(':')) {
-      const parts = line.split(':');
-      const key = parts[0].trim();
-      let value = parts.slice(1).join(':').trim();
-      
-      // Удаляем лишние пробелы и кавычки
-      value = value.trim();
-      
-      if (key === 'title') {
-        story.meta.title = value;
-      }
-      if (key === 'start_scene') {
-        story.meta.start = value;
-      }
-      // Новые настройки отступов
-      if (key === 'top_spacing') {
-        story.meta.topSpacing = parseInt(value) || 0;
-      }
-      if (key === 'bottom_spacing') {
-        story.meta.bottomSpacing = parseInt(value) || 0;
-      }
-      // Настройка размытого фона
-      if (key === 'blur_background') {
-        story.meta.blurBackground = value === 'true' || value === '1';
-        console.log('[Loader] blur_background =', story.meta.blurBackground, 'raw value:', value);
-      }
+    if (!line) return;
 
-      if (key === 'blur_strength') {
-        var v = parseFloat(value);
-        if (!isNaN(v)) story.meta.blurStrength = v;
-      }
+    if (!line.includes(':')) return;
 
-      if (key === 'blur_brightness') {
-        var v = parseFloat(value);
-        if (!isNaN(v)) story.meta.blurBrightness = v;
-      }
+    const parts = line.split(':');
+    const key = parts[0].trim();
+    let value = parts.slice(1).join(':').trim();
 
-      if (key === 'blur_opacity') {
-        var v = parseFloat(value);
-        if (!isNaN(v)) story.meta.blurOpacity = v;
+    // Базовые служебные параметры истории
+    if (key === 'title') {
+      story.meta.title = value;
+      return;
+    }
+
+    if (key === 'start_scene') {
+      story.meta.start = value;
+      return;
+    }
+
+    // Универсальная обработка параметров интерфейса по конфигу
+    if (UI_META_CONFIG[key]) {
+      var config = UI_META_CONFIG[key];
+      var parsedValue = parseMetaValueByType(value, config.type);
+
+      // null означает, что число не удалось распарсить
+      if (parsedValue !== null) {
+        story.meta[config.target] = parsedValue;
       }
     }
   }

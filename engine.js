@@ -60,6 +60,42 @@ profiler.mark('Скрипт начал загрузку');
 let __charSeq = 0;
 let __activeCharSeq = 0;
 
+
+
+// Единый конфиг параметров интерфейса
+// metaKey  — имя поля в STORY.meta
+// cssVar   — CSS-переменная, которую будем менять из JS
+// default  — значение по умолчанию, если параметр не задан в story.js
+// unit     — единица измерения для CSS
+const UI_STYLE_CONFIG = {
+  topSpacing: {
+    cssVar: '--topSpacing',
+    default: 500,
+    unit: 'px'
+  },
+  bottomSpacing: {
+    cssVar: '--bottomSpacing',
+    default: 800,
+    unit: 'px'
+  },
+  blurStrength: {
+    cssVar: '--blurStrength',
+    default: 50,
+    unit: 'px'
+  },
+  blurBrightness: {
+    cssVar: '--blurBrightness',
+    default: 0.9,
+    unit: ''
+  },
+  blurOpacity: {
+    cssVar: '--blurOpacity',
+    default: 0.95,
+    unit: ''
+  }
+};
+
+
   // ---------- DOM ----------
   var elTitle = document.getElementById("title");
   var elBg = document.getElementById("bgLayer");
@@ -2645,34 +2681,40 @@ function dotEscape(s) {
       .replace(/'/g, "&#039;");
   }
 
-  function applySpacingSettings() {
-
+  // Применяет все интерфейсные настройки из STORY.meta в CSS variables
+  function applyUIStyleVariables(meta) {
     var root = document.documentElement;
+
+    Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
+      var config = UI_STYLE_CONFIG[metaKey];
+
+      // Если значение есть в story.meta — берём его,
+      // иначе используем значение по умолчанию
+      var value = (meta && meta[metaKey] !== undefined && meta[metaKey] !== null)
+        ? meta[metaKey]
+        : config.default;
+
+      root.style.setProperty(
+        config.cssVar,
+        String(value) + (config.unit || '')
+      );
+    });
+  }
+
+  function applySpacingSettings() {
     var meta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
 
-    // значения по умолчанию
-    var topSpacing = (typeof meta.topSpacing === 'number') ? meta.topSpacing : 500;
-    var bottomSpacing = (typeof meta.bottomSpacing === 'number') ? meta.bottomSpacing : 800;
+    // 1. Автоматически пробрасываем все числовые параметры интерфейса в CSS
+    applyUIStyleVariables(meta);
 
-    var blurBackground = (typeof meta.blurBackground === 'boolean') ? meta.blurBackground : true;
-    var blurStrength = (typeof meta.blurStrength === 'number') ? meta.blurStrength : 50;
-    var blurBrightness = (typeof meta.blurBrightness === 'number') ? meta.blurBrightness : 0.9;
-    var blurOpacity = (typeof meta.blurOpacity === 'number') ? meta.blurOpacity : 0.95;
+    // 2. Отдельно обрабатываем логический параметр показа размытого фона
+    var blurBackground = (typeof meta.blurBackground === 'boolean')
+      ? meta.blurBackground
+      : true;
 
-    // отступы интерфейса
-    root.style.setProperty('--topSpacing', topSpacing + 'px');
-    root.style.setProperty('--bottomSpacing', bottomSpacing + 'px');
-
-    // параметры размытия
-    root.style.setProperty('--blurStrength', blurStrength + 'px');
-    root.style.setProperty('--blurBrightness', blurBrightness);
-    root.style.setProperty('--blurOpacity', blurOpacity);
-
-    // включение / выключение размытого фона
     if (elBlurBgLayer) {
       elBlurBgLayer.style.display = blurBackground ? 'block' : 'none';
     }
-
   }
 
   // Управление размытым фоном
