@@ -83,7 +83,8 @@
     const story = {
       meta: {
         title: "Без названия",
-        start: null
+        start: null,
+        blurBackground: true
       },
       assets: {
         backgrounds: {},
