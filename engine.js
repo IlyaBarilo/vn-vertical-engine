@@ -71,14 +71,14 @@ let __activeCharSeq = 0;
   const UI_STYLE_CONFIG = {
     topSpacing: {
       cssVar: '--topSpacing',
-      default: 500,
+      default: 0,
       unit: 'px',
       type: 'int',
       min: 0
     },
     bottomSpacing: {
       cssVar: '--bottomSpacing',
-      default: 800,
+      default: 0,
       unit: 'px',
       type: 'int',
       min: 0
