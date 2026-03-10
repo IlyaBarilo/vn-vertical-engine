@@ -32,27 +32,27 @@
   // target     — как он будет храниться в story.meta
   // type       — тип значения для преобразования
   const UI_META_CONFIG = {
-    top_spacing: {
+    topSpacing: {
       target: 'topSpacing',
       type: 'int'
     },
-    bottom_spacing: {
+    bottomSpacing: {
       target: 'bottomSpacing',
       type: 'int'
     },
-    blur_background: {
+    blurBackground: {
       target: 'blurBackground',
       type: 'bool'
     },
-    blur_strength: {
+    blurStrength: {
       target: 'blurStrength',
       type: 'float'
     },
-    blur_brightness: {
+    blurBrightness: {
       target: 'blurBrightness',
       type: 'float'
     },
-    blur_opacity: {
+    blurOpacity: {
       target: 'blurOpacity',
       type: 'float'
     }
@@ -291,7 +291,7 @@
       return;
     }
 
-    if (key === 'start_scene') {
+    if (key === 'startScene') {
       story.meta.start = value;
       return;
     }
