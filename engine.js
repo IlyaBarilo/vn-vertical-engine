@@ -1629,11 +1629,12 @@ window.addEventListener("resize", adjustCharacterScale);
       } else {
         for (var i = 0; i < stats.usedCharactersDetailed.length; i++) {
           var item = stats.usedCharactersDetailed[i];
-          var emotionsText = item.emotions && item.emotions.length
-            ? item.emotions.join(", ")
+          var emotionsText = item.emotionsDisplay && item.emotionsDisplay.length
+            ? item.emotionsDisplay.join(", ")
             : "-";
 
-          text += item.name + " [" + item.id + "] (" + emotionsText + ")\n";
+          var nameText = item.used ? item.name : (item.name + "*");
+          text += nameText + " [" + item.id + "] (" + emotionsText + ")\n";
         }
         text += "\n";
       }
@@ -2560,13 +2561,11 @@ function dotEscape(s) {
   }
 
   // Подсчёт статистики.
-  // Важно: считаем “уникальность” по алиасам @bg.xxx и @ch.xxx.
-  // Это устойчиво к file:// путям и совпадениям хвостов строк.
   function computeStoryStats(story) {
     var scenes = story.scenes || [];
 
-    var usedBg = {};      // id -> true
-    var usedCh = {};      // id -> true
+    var usedBg = {};                 // bgId -> true
+    var usedCh = {};                 // charId -> true
     var usedCharacterEmotions = {};  // charId -> { emotion: true }
 
     var sayCount = 0;
@@ -2577,6 +2576,7 @@ function dotEscape(s) {
 
     for (var s = 0; s < scenes.length; s++) {
       var actions = scenes[s].actions || [];
+
       for (var a = 0; a < actions.length; a++) {
         var act = actions[a];
         if (!act || !act.type) continue;
@@ -2607,22 +2607,46 @@ function dotEscape(s) {
         if (act.type === "sfx") sfxActions++;
       }
     }
-    var usedCharacterIds = Object.keys(usedCh).sort();
+
     var usedBackgroundIds = Object.keys(usedBg).sort();
 
-    var usedCharactersDetailed = [];
     var charactersMap = (story.assets && story.assets.characters) ? story.assets.characters : {};
+    var allCharacterIds = Object.keys(charactersMap).sort();
 
-    for (var i = 0; i < usedCharacterIds.length; i++) {
-      var charId = usedCharacterIds[i];
-      var emotions = Object.keys(usedCharacterEmotions[charId] || {}).sort();
-      var charData = charactersMap[charId] || {};
-      var displayName = charData.name || charId;
+    var usedCharacterIds = [];
+    var unusedCharacterIds = [];
+
+    for (var i = 0; i < allCharacterIds.length; i++) {
+      var charId = allCharacterIds[i];
+      if (usedCh[charId]) usedCharacterIds.push(charId);
+      else unusedCharacterIds.push(charId);
+    }
+
+    var orderedCharacterIds = usedCharacterIds.concat(unusedCharacterIds);
+
+    var usedCharactersDetailed = [];
+
+    for (var j = 0; j < orderedCharacterIds.length; j++) {
+      var currentCharId = orderedCharacterIds[j];
+      var charData = charactersMap[currentCharId] || {};
+      var displayName = charData.name || currentCharId;
+      var allEmotions = charData.images ? Object.keys(charData.images).sort() : [];
+      var usedEmotionsMap = usedCharacterEmotions[currentCharId] || {};
+
+      var usedEmotions = [];
+      var unusedEmotions = [];
+
+      for (var k = 0; k < allEmotions.length; k++) {
+        var emotion = allEmotions[k];
+        if (usedEmotionsMap[emotion]) usedEmotions.push(emotion);
+        else unusedEmotions.push(emotion + "*");
+      }
 
       usedCharactersDetailed.push({
-        id: charId,
+        id: currentCharId,
         name: displayName,
-        emotions: emotions
+        used: !!usedCh[currentCharId],
+        emotionsDisplay: usedEmotions.concat(unusedEmotions)
       });
     }
 
@@ -2630,6 +2654,7 @@ function dotEscape(s) {
       sceneCount: scenes.length,
       usedBackgroundIds: usedBackgroundIds,
       usedCharacterIds: usedCharacterIds,
+      unusedCharacterIds: unusedCharacterIds,
       usedCharactersDetailed: usedCharactersDetailed,
       sayCount: sayCount,
       textCount: textCount,

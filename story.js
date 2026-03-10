@@ -20,8 +20,13 @@ anna image neutral = assets/ch_anna_neutral.png
 anna name = "Анна"
 anna color = #0F0
 igor image smile = assets/ch_igor_smile.png
+igor image neutral = assets/ch_igor_neutral.png
 igor name = "Игорь"
 igor color = #F00
+ivan image neutral = assets/ch_ivan_smile.png
+ivan name = "Иван"
+ivan color = #060
+
 
 [audio]
 bgmDay = assets/bgm_campus_day.mp3
