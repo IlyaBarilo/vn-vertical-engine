@@ -38,7 +38,11 @@ sfxClick = assets/sfx_button_click.mp3
 scene intro_01
 
 bg campusHall
-bgm bgmDay
+bgm bgmDay loop
+
+# bgm bgmDay - музыка без повтора
+# bgm bgmDay loop - музыка с повтором
+# bgm stop - остановить музыку
 
 show anna neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
@@ -68,7 +72,7 @@ hide all
 "Позже, в библиотеке. Экран светится мягко, словно зовёт к новой истории…"
 "Страницы шуршат, где-то вдалеке щёлкает клавиатура. Идея почти готова."
 
-bgm bgmMystery
+# bgm bgmMystery
 
 show anna neutral
 anna: "Есть вопрос: куда ведём посетителя дальше, чтобы он почувствовал атмосферу вуза?"

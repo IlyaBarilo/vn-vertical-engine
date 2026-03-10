@@ -429,13 +429,29 @@
       return;
     }
     
-    // bgm [имя]
+    // bgm [имя] [loop]
+    // Примеры:
+    //   bgm bgmDay
+    //   bgm bgmDay loop
+    //   bgm stop
     if (cleanLine.startsWith('bgm ')) {
-      const bgmName = cleanLine.substring(4).trim();
+      const bgmArgs = cleanLine.substring(4).trim().split(/\s+/);
+      const bgmName = bgmArgs[0];
+      const hasLoop = bgmArgs.includes('loop');
+
+      if (bgmName === 'stop') {
+        actions.push({
+          type: 'bgm',
+          src: null,
+          loop: false
+        });
+        return;
+      }
+
       actions.push({
         type: 'bgm',
         src: `@audio.${bgmName}`,
-        loop: true,
+        loop: hasLoop,
         volume: 0.7,
         fadeMs: 400
       });

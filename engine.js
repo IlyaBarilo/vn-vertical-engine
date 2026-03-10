@@ -350,6 +350,33 @@ function markFirstScreenReady(reason) {
 
   // Чтобы музыка не включалась слишком громко при старте
   audio.bgm.loop = true;
+
+  audio.bgm.addEventListener('play', function () {
+    console.log('[AUDIO EVENT] bgm play');
+    logAudioState('event: play');
+  });
+
+  audio.bgm.addEventListener('pause', function () {
+    console.log('[AUDIO EVENT] bgm pause');
+    logAudioState('event: pause');
+  });
+
+  audio.bgm.addEventListener('ended', function () {
+    console.log('[AUDIO EVENT] bgm ended');
+    logAudioState('event: ended');
+  });
+
+  audio.bgm.addEventListener('error', function () {
+    console.log('[AUDIO EVENT] bgm error', audio.bgm.error);
+    logAudioState('event: error');
+  });
+
+  audio.bgm.addEventListener('canplay', function () {
+    console.log('[AUDIO EVENT] bgm canplay');
+    logAudioState('event: canplay');
+  });
+
+
   setAudioFromStoryDefaults();
   profiler.mark('Аудио настроено');
 
@@ -403,16 +430,38 @@ function markFirstScreenReady(reason) {
   });
 
   btnMute.addEventListener("click", function () {
+    var wasMuted = audio.muted;
+
+    console.log('[AUDIO] btnMute click before toggle');
+    logAudioState('btnMute before toggle');
+
     audio.muted = !audio.muted;
+
     applyAudioSettings();
     updateMuteIcon();
+
+    console.log('[AUDIO] btnMute click after toggle');
+    logAudioState('btnMute after toggle');
+
+    if (wasMuted && !audio.muted) {
+      resumeBgmIfNeeded('btnMute unmute');
+    }
   });
 
   sliderVolume.addEventListener("input", function () {
     var v = parseInt(sliderVolume.value, 10);
     if (isNaN(v)) v = 20;
+
+    console.log('[AUDIO] slider input raw value =', sliderVolume.value);
+
     audio.masterVolume = clamp(v / 100, 0, 1);
     applyAudioSettings();
+
+    logAudioState('slider after apply');
+
+    if (!audio.muted && audio.masterVolume > 0) {
+      resumeBgmIfNeeded('slider input');
+    }
   });
 
   btnCloseGame.addEventListener("click", function () {
@@ -1214,17 +1263,106 @@ function markFirstScreenReady(reason) {
     // Но чтобы не усложнять, мы держим "currentBgmVolume" отдельно.
     audio.bgm.volume = clamp((audio.currentBgmVolume != null ? audio.currentBgmVolume : 0.7) * v, 0, 1);
     audio.sfx.volume = clamp((audio.currentSfxVolume != null ? audio.currentSfxVolume : 1) * v, 0, 1);
+
+    logAudioState('applyAudioSettings');
   }
 
+  function logAudioState(label) {
+    console.log('[AUDIO STATE]', label, {
+      muted: audio.muted,
+      masterVolume: audio.masterVolume,
+      currentBgmVolume: audio.currentBgmVolume,
+      bgmVolume: audio.bgm ? audio.bgm.volume : null,
+      bgmSrc: audio.bgm ? audio.bgm.src : null,
+      bgmPaused: audio.bgm ? audio.bgm.paused : null,
+      bgmEnded: audio.bgm ? audio.bgm.ended : null,
+      bgmCurrentTime: audio.bgm ? audio.bgm.currentTime : null,
+      bgmReadyState: audio.bgm ? audio.bgm.readyState : null,
+      bgmNetworkState: audio.bgm ? audio.bgm.networkState : null
+    });
+  }
+
+  function resumeBgmIfNeeded(reason) {
+    logAudioState('before resumeBgmIfNeeded: ' + reason);
+
+    if (!audio || !audio.bgm) {
+      console.log('[AUDIO] resume skipped: no audio.bgm');
+      return;
+    }
+    if (audio.muted) {
+      console.log('[AUDIO] resume skipped: muted');
+      return;
+    }
+    if (!audio.bgm.src) {
+      console.log('[AUDIO] resume skipped: no src');
+      return;
+    }
+
+    try {
+      var p = audio.bgm.play();
+      console.log('[AUDIO] resume play() called, reason =', reason);
+
+      if (p && typeof p.then === "function") {
+        p.then(function () {
+          console.log('[AUDIO] resume play() success, reason =', reason);
+          logAudioState('after resume success: ' + reason);
+        }).catch(function (err) {
+          console.log('[AUDIO] resume play() blocked/failed, reason =', reason, err);
+          logAudioState('after resume fail: ' + reason);
+        });
+      }
+    } catch (e) {
+      console.log('[AUDIO] resume play() exception, reason =', reason, e);
+    }
+  }
+
+  function resumeBgmIfNeeded() {
+    if (!audio || !audio.bgm) return;
+    if (audio.muted) return;
+    if (!audio.bgm.src) return;
+
+    try {
+      var p = audio.bgm.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(function (err) {
+          console.log("[AUDIO] resumeBgmIfNeeded blocked:", err);
+        });
+      }
+    } catch (e) {
+      console.log("[AUDIO] resumeBgmIfNeeded exception:", e);
+    }
+  }
+
+  const DEFAULT_BGM_VOLUME = 0.2;
+  
   function playBgm(src, loop, vol, fadeMs) {
+
+    console.log('[AUDIO] playBgm called', {
+      src: src,
+      loop: loop,
+      vol: vol,
+      fadeMs: fadeMs
+    });
+    logAudioState('playBgm start');
+
     if (!src) return;
 
     audio.bgm.loop = loop !== false; // по умолчанию true
-    audio.currentBgmVolume = clamp(vol, 0, 1);
+    audio.currentBgmVolume = clamp((typeof vol === "number" ? vol : DEFAULT_BGM_VOLUME), 0, 1);
+    console.log('[AUDIO] playBgm currentBgmVolume set to', audio.currentBgmVolume);
 
     // Если тот же трек — просто обновим громкость/loop
     if (audio.bgm.src && endsWith(audio.bgm.src, src)) {
+      console.log('[AUDIO] playBgm same track detected');
       applyAudioSettings();
+
+
+      // Если это тот же трек, но он по какой-то причине не играет,
+      // пробуем возобновить воспроизведение.
+      if (!audio.muted && audio.bgm.paused) {
+        resumeBgmIfNeeded('playBgm same track');
+      }
+
       return;
     }
 
@@ -1242,9 +1380,19 @@ function markFirstScreenReady(reason) {
       applyAudioSettings();
       // В некоторых окружениях автозапуск может быть заблокирован до первого клика.
       // Но на интерактивном экране обычно пользователь кликает — после клика заведётся.
-      audio.bgm.play().catch(function () {
-        // молча игнорируем (безопасно для киоска)
-      });
+      var p = audio.bgm.play();
+      console.log('[AUDIO] playBgm quick play() called');
+
+      if (p && typeof p.then === "function") {
+        p.then(function () {
+          console.log('[AUDIO] playBgm quick play() success');
+          logAudioState('playBgm quick success');
+        }).catch(function (err) {
+          console.log('[AUDIO] playBgm quick play() blocked/failed', err);
+          logAudioState('playBgm quick fail');
+        });
+      }
+
     } catch (e) {
       // игнор
     }
