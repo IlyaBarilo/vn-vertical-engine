@@ -2603,9 +2603,15 @@ function dotEscape(s) {
         }
 
         if (act.type === "char") {
-          // char может быть null -> скрыть
-          var chId = extractAliasId(act.src, "ch");
-          if (chId) usedCh[chId] = true;
+          // Новый формат: { type: "char", charId: "anna", emotion: "neutral" }
+          if (act.charId) {
+            usedCh[act.charId] = true;
+          } else {
+            // Старый формат: { type: "char", src: "@ch.anna" }
+            // char может быть null -> скрыть
+            var chId = extractAliasId(act.src, "ch");
+            if (chId) usedCh[chId] = true;
+          }
         }
 
         if (act.type === "say") sayCount++;
