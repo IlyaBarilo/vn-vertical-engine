@@ -1111,22 +1111,45 @@ function markFirstScreenReady(reason) {
     // choices: [{ text, goto, set:{...}, sfx:"@audio.xxx" }, ...]
     if (!choices || !choices.length) return;
 
+    // Настройка: показывать номера вариантов или нет.
+    // Чтобы отключить номера, замените true на false.
+    var SHOW_CHOICE_NUMBERS = true;
+
     // Убираем предыдущее сообщение, чтобы не мешало выбору
     showDialog(null, "");
-
-    // Скрываем подсказку "нажмите" (не обязательно)
-    // (оставим как есть)
 
     elChoices.innerHTML = "";
     elDialog.classList.add("hiddenByChoices");
     elChoices.classList.remove("hidden");
 
+    var panel = document.createElement("div");
+    panel.className = "choicePanel";
+
+    var title = document.createElement("div");
+    title.className = "choiceTitle";
+    title.textContent = "Выберите действие";
+    panel.appendChild(title);
+
+    var list = document.createElement("div");
+    list.className = "choiceList";
+
     for (var i = 0; i < choices.length; i++) {
-      (function (choice) {
+      (function (choice, index) {
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "choiceBtn";
-        btn.textContent = choice.text || ("Выбор " + (i + 1));
+
+        if (SHOW_CHOICE_NUMBERS) {
+          var num = document.createElement("span");
+          num.className = "choiceNum";
+          num.textContent = (index + 1) + ".";
+          btn.appendChild(num);
+        }
+
+        var text = document.createElement("span");
+        text.className = "choiceLabel";
+        text.textContent = choice.text || ("Выбор " + (index + 1));
+        btn.appendChild(text);
 
         btn.addEventListener("click", function () {
           // звук на кнопку (если задан)
@@ -1155,9 +1178,12 @@ function markFirstScreenReady(reason) {
           runCurrent();
         });
 
-        elChoices.appendChild(btn);
-      })(choices[i]);
+        list.appendChild(btn);
+      })(choices[i], i);
     }
+
+    panel.appendChild(list);
+    elChoices.appendChild(panel);
   }
 
   function hideChoices() {

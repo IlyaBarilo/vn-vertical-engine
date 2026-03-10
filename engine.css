@@ -375,35 +375,89 @@ body {
   margin-top: var(--dialog-hint-gap);
 }
 
-/* Выбор */
+/* =========================================================
+   ВЫБОР: панель, заголовок и кнопки
+   ========================================================= */
+
 .choices {
   position: absolute;
   left: var(--choices-side-offset);
   right: var(--choices-side-offset);
-  top: var(--choices-top-offset);
-  bottom: calc(var(--uiBottomOffset) + var(--bottomSpacing) + var(--dialog-bottom-gap));
+  bottom: calc(var(--bottomSpacing) + var(--dialog-bottom-gap));
+  z-index: 30;
+}
 
+.choicePanel {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: var(--choices-gap);
-  font-size: var(--dialog-font-size);
+  padding: 0.95em;
+  border-radius: calc(var(--choice-radius) + 0.2em);
+  background: rgba(0,0,0,0.40);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
 
-  z-index: 11;
+.choiceTitle {
+  text-align: center;
+  font-size: 0.92em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.92;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--choices-gap);
 }
 
 .choiceBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
   width: 100%;
   min-height: var(--choice-min-height);
-  text-align: left;
   padding: var(--choice-padding-y) var(--choice-padding-x);
-  border-radius: var(--choice-radius);
-  background: rgba(0,0,0,0.55);
-  border: var(--ui-border-width) solid rgba(255,255,255,0.18);
-  color: #fff;
+
+  font: inherit;
   font-size: var(--choice-font-size);
-  line-height: 1.3;
+  line-height: 1.35;
+  text-align: left;
+  color: #fff;
+
+  background: rgba(0,0,0,0.40);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: var(--choice-radius);
+
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
+
+.choiceBtn:hover,
+.choiceBtn:focus-visible {
+  background: rgba(0,0,0,0.40);
+  border-color: rgba(255,255,255,0.32);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.choiceNum {
+  flex: 0 0 auto;
+  min-width: 1.8em;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.choiceLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 
 /* Модалка мини-игры */
 .gameModal {
