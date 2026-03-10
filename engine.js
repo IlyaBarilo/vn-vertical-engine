@@ -35,6 +35,32 @@ var profiler = {
         var totalTime = Date.now() - profiler.startTime;
         report += "\n  Общее время: " + totalTime + "ms (" + (totalTime/1000).toFixed(2) + "с)\n";
         
+
+
+
+
+        if (this.marks['Первый экран готов'] !== undefined) {
+            report += "  До первого экрана: " + this.marks['Первый экран готов'] + "ms (" +
+              (this.marks['Первый экран готов']/1000).toFixed(2) + "с)\n";
+        }
+
+        if (window.LOADER_STATS && window.LOADER_STATS.startTime) {
+            var totalFromLoaderStart = Date.now() - window.LOADER_STATS.startTime;
+            report += "  От старта загрузчика до открытия статистики: " + totalFromLoaderStart + "ms (" +
+              (totalFromLoaderStart/1000).toFixed(2) + "с)\n";
+
+            if (this.marks['Первый экран готов'] !== undefined) {
+                var firstScreenFromLoaderStart =
+                  (profiler.startTime - window.LOADER_STATS.startTime) + this.marks['Первый экран готов'];
+
+                report += "  От старта загрузчика до первого экрана: " + firstScreenFromLoaderStart + "ms (" +
+                  (firstScreenFromLoaderStart/1000).toFixed(2) + "с)\n";
+            }
+        }
+
+
+        
+
         // Оценка сложности сценария
         if (window.STORY) {
             var sceneCount = window.STORY.scenes ? window.STORY.scenes.length : 0;
@@ -59,6 +85,31 @@ profiler.mark('Скрипт начал загрузку');
 
 let __charSeq = 0;
 let __activeCharSeq = 0;
+
+
+
+
+var firstScreenMetrics = {
+  waitingForCharacter: false,
+  firstScreenShown: false
+};
+
+function markFirstScreenReady(reason) {
+  if (firstScreenMetrics.firstScreenShown) return;
+
+  firstScreenMetrics.firstScreenShown = true;
+  profiler.mark('Первый экран готов');
+
+  console.log('[FIRST SCREEN]', {
+    reason: reason,
+    totalFromEngineStart: Date.now() - profiler.startTime,
+    loaderStartExists: !!window.LOADER_STATS,
+    totalFromLoaderStart: window.LOADER_STATS
+      ? (Date.now() - window.LOADER_STATS.startTime)
+      : null
+  });
+}
+
 
 
 
@@ -422,8 +473,10 @@ let __activeCharSeq = 0;
       }
     }
 
+    firstScreenMetrics.waitingForCharacter = false;
+    firstScreenMetrics.firstScreenShown = false;
+
     runCurrent();
-    profiler.mark('Первый запуск выполнен');
   }
 
   function runCurrent() {
@@ -614,6 +667,10 @@ let __activeCharSeq = 0;
           return false;
         }
 
+        if (!firstScreenMetrics.firstScreenShown) {
+          firstScreenMetrics.waitingForCharacter = true;
+        }
+
         setCharacter(src, action.pos, action.charId, function() {
           console.log('[FLOW] char(new):done callback start', {
             sceneId: state.sceneId,
@@ -621,6 +678,8 @@ let __activeCharSeq = 0;
             waitingNextBefore: state.waitingNext,
             nextLockedBefore: state.nextLocked
           });
+
+          firstScreenMetrics.waitingForCharacter = false;
 
           state.nextLocked = false;
           state.waitingNext = false;
@@ -676,6 +735,10 @@ let __activeCharSeq = 0;
         } else {
           console.log('[Engine] STORY.assets.characters missing, using charVar as name');
           showDialog(action.charVar, action.text);
+        }
+
+        if (!firstScreenMetrics.firstScreenShown && !firstScreenMetrics.waitingForCharacter) {
+          markFirstScreenReady('say');
         }
 
         return true;
@@ -1686,6 +1749,26 @@ window.addEventListener("resize", adjustCharacterScale);
       text += profilerInfo;
       text += "\n";
 
+        text += "=== ЗАГРУЗКА НОВЕЛЛЫ ===\n";
+
+        if (profiler.marks['Первый экран готов'] !== undefined) {
+          text += "  До первого экрана: " +
+            profiler.marks['Первый экран готов'] + "ms (" +
+            (profiler.marks['Первый экран готов'] / 1000).toFixed(2) + "с)\n";
+        } else {
+          text += "  До первого экрана: ещё не измерено\n";
+        }
+
+        if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['Первый экран готов'] !== undefined) {
+          var firstScreenFromLoaderStart =
+            (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['Первый экран готов'];
+
+          text += "  От старта загрузчика до первого экрана: " +
+            firstScreenFromLoaderStart + "ms (" +
+            (firstScreenFromLoaderStart / 1000).toFixed(2) + "с)\n";
+        }
+
+
       // ========== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ==========
       text += "=== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ===\n\n";
       
@@ -1794,24 +1877,6 @@ window.addEventListener("resize", adjustCharacterScale);
           }
 
           text += "\n";
-
-          console.log({
-            timePerSay,
-            timePerChoice,
-            timePerBg,
-            timePerBgm
-          });
-
-          text += "Оценка времени выполнения сценарных действий движком для новеллы среднего размера:\n";
-          text += "  500 фраз + 50 меню:\n";
-          var mediumNovelTime = (timePerSay * 500) + (timePerChoice * 50);
-          text += "  ~" + Math.round(mediumNovelTime) + "ms (" + (mediumNovelTime/1000).toFixed(1) + "с)\n\n";
-
-          text += "Оценка времени выполнения сценарных действий движком для большой новеллы:\n";
-          text += "  2000 фраз + 200 меню + 100 фонов + 50 музыки:\n";
-          var largeNovelTime = (timePerSay * 2000) + (timePerChoice * 200) + (timePerBg * 100) + (timePerBgm * 50);
-          text += "  ~" + Math.round(largeNovelTime) + "ms (" + (largeNovelTime/1000).toFixed(1) + "с)\n\n";
-
 
 
       } else {
