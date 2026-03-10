@@ -112,6 +112,12 @@ function markFirstScreenReady(reason) {
 
 
 
+  // Для получения версии из GitHub. Заменяется только первый найденный __VERSION__
+  window.APP_VERSION = "__VERSION__";
+
+  if (window.APP_VERSION === "__VERSION__") {
+      window.APP_VERSION = "0.0.0.0dev";
+  }
 
   // Единый конфиг параметров интерфейса
   // cssVar   — CSS-переменная
@@ -1784,7 +1790,7 @@ window.addEventListener("resize", adjustCharacterScale);
 
       var text = "";
 
-      text += "Версия программы: __VERSION__\n\n";
+      text += `Версия программы: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
 
       text += "=== СТАТИСТИКА СЦЕНАРИЯ ===\n\n";
       text += "Название: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
