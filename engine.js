@@ -1619,8 +1619,24 @@ window.addEventListener("resize", adjustCharacterScale);
       text += "=== ИСПОЛЬЗОВАННЫЕ ФОНЫ ===\n";
       text += stats.usedBackgroundIds.join("\n") + "\n\n";
 
+
+
       text += "=== ИСПОЛЬЗОВАННЫЕ ПЕРСОНАЖИ ===\n";
-      text += stats.usedCharacterIds.join("\n") + "\n\n";
+
+      if (!stats.usedCharactersDetailed || !stats.usedCharactersDetailed.length) {
+        text += "(нет)\n\n";
+      } else {
+        for (var i = 0; i < stats.usedCharactersDetailed.length; i++) {
+          var item = stats.usedCharactersDetailed[i];
+          var emotionsText = item.emotions && item.emotions.length
+            ? item.emotions.join(", ")
+            : "-";
+
+          text += item.id + " (" + emotionsText + ")\n";
+        }
+        text += "\n";
+      }
+
 
 
       text += "=== ПРОВЕРКА СЦЕНАРИЯ ===\n";
@@ -2549,6 +2565,7 @@ function dotEscape(s) {
 
     var usedBg = {};      // id -> true
     var usedCh = {};      // id -> true
+    var usedCharacterEmotions = {};  // charId -> { emotion: true }
 
     var sayCount = 0;
     var textCount = 0;
@@ -2570,6 +2587,14 @@ function dotEscape(s) {
         if (act.type === "char") {
           if (act.charId) {
             usedCh[act.charId] = true;
+
+            if (!usedCharacterEmotions[act.charId]) {
+              usedCharacterEmotions[act.charId] = {};
+            }
+
+            if (act.emotion) {
+              usedCharacterEmotions[act.charId][act.emotion] = true;
+            }
           }
         }
 
@@ -2578,51 +2603,35 @@ function dotEscape(s) {
         if (act.type === "choice") choiceCount++;
         if (act.type === "bgm") bgmActions++;
         if (act.type === "sfx") sfxActions++;
-        
       }
     }
+    var usedCharacterIds = Object.keys(usedCh).sort();
+    var usedBackgroundIds = Object.keys(usedBg).sort();
 
-    // Количество персонажей и их изображений:
-    // - uniqueCharacters: сколько “id” реально использовано в сценарии (@ch.xxx)
-    // - characterImageCount: сколько всего картинок персонажей в assets.characters (на случай эмоций/вариаций)
-    var characterImageCount = 0;
-    if (story.assets && story.assets.characters) {
-      for (var k in story.assets.characters) {
-        if (Object.prototype.hasOwnProperty.call(story.assets.characters, k)) characterImageCount++;
-      }
-    }
+    var usedCharactersDetailed = [];
+    for (var i = 0; i < usedCharacterIds.length; i++) {
+      var charId = usedCharacterIds[i];
+      var emotions = Object.keys(usedCharacterEmotions[charId] || {}).sort();
 
-    var backgroundAssetCount = 0;
-    if (story.assets && story.assets.backgrounds) {
-      for (var b in story.assets.backgrounds) {
-        if (Object.prototype.hasOwnProperty.call(story.assets.backgrounds, b)) backgroundAssetCount++;
-      }
+      usedCharactersDetailed.push({
+        id: charId,
+        emotions: emotions
+      });
     }
 
     return {
       sceneCount: scenes.length,
-      choiceCount: choiceCount,
-
-      // “уникальные фоны” — по факту использования в сценарии
-      uniqueBackgrounds: countKeys(usedBg),
-      usedBackgroundIds: keysSorted(usedBg),
-
-      // “уникальные персонажи” — по факту использования в сценарии
-      uniqueCharacters: countKeys(usedCh),
-      usedCharacterIds: keysSorted(usedCh),
-
-      // “общее количество изображений персонажей” — по assets.characters
-      characterImageCount: characterImageCount,
-
-      // (на будущее) сколько фонов всего заявлено в assets
-      backgroundImageCount: backgroundAssetCount,
-
+      usedBackgroundIds: usedBackgroundIds,
+      usedCharacterIds: usedCharacterIds,
+      usedCharactersDetailed: usedCharactersDetailed,
       sayCount: sayCount,
       textCount: textCount,
+      choiceCount: choiceCount,
       bgmActions: bgmActions,
       sfxActions: sfxActions
     };
   }
+
 
   function extractAliasId(ref, group) {
     // ref вида "@bg.campusHall" или "@ch.annaNeutral"
