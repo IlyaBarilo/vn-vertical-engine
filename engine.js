@@ -1616,8 +1616,21 @@ window.addEventListener("resize", adjustCharacterScale);
       text += "Всего слов: " + textInfo.words + "\n\n";
 
 
+      
+
+
       text += "=== ИСПОЛЬЗОВАННЫЕ ФОНЫ ===\n";
-      text += stats.usedBackgroundIds.join("\n") + "\n\n";
+
+      if (!stats.backgroundsDetailed || !stats.backgroundsDetailed.length) {
+        text += "(нет)\n\n";
+      } else {
+        for (var i = 0; i < stats.backgroundsDetailed.length; i++) {
+          var bgItem = stats.backgroundsDetailed[i];
+          text += bgItem.used ? bgItem.id + "\n" : bgItem.id + "*\n";
+        }
+        text += "\n";
+      }
+
 
 
 
@@ -1733,8 +1746,8 @@ window.addEventListener("resize", adjustCharacterScale);
           var sayCount = stats.sayCount || 0;        // фразы персонажей
           var textCount = stats.textCount || 0;      // авторский текст
           var choiceCount = stats.choiceCount || 0;  // меню выбора
-          var bgmCount = stats.bgmActions || 0;      // смены музыки
-          var bgCount = stats.uniqueBackgrounds || 0; // смены фонов
+          var bgmCount = stats.bgmActions || 0;                 // смены музыки
+          var bgCount = (stats.usedBackgroundIds || []).length; // используемые фоны
 
           var totalDialogActions = sayCount + textCount;
           var totalInteractiveActions = choiceCount;
@@ -1782,16 +1795,24 @@ window.addEventListener("resize", adjustCharacterScale);
 
           text += "\n";
 
-          // Прогноз для типичной новеллы
-          text += "Прогноз для новеллы среднего размера:\n";
+          console.log({
+            timePerSay,
+            timePerChoice,
+            timePerBg,
+            timePerBgm
+          });
+
+          text += "Оценка времени выполнения сценарных действий движком для новеллы среднего размера:\n";
           text += "  500 фраз + 50 меню:\n";
           var mediumNovelTime = (timePerSay * 500) + (timePerChoice * 50);
           text += "  ~" + Math.round(mediumNovelTime) + "ms (" + (mediumNovelTime/1000).toFixed(1) + "с)\n\n";
 
-          text += "Прогноз для большой новеллы:\n";
+          text += "Оценка времени выполнения сценарных действий движком для большой новеллы:\n";
           text += "  2000 фраз + 200 меню + 100 фонов + 50 музыки:\n";
           var largeNovelTime = (timePerSay * 2000) + (timePerChoice * 200) + (timePerBg * 100) + (timePerBgm * 50);
           text += "  ~" + Math.round(largeNovelTime) + "ms (" + (largeNovelTime/1000).toFixed(1) + "с)\n\n";
+
+
 
       } else {
           text += "Данные загрузчика недоступны\n\n";
@@ -2608,7 +2629,39 @@ function dotEscape(s) {
       }
     }
 
-    var usedBackgroundIds = Object.keys(usedBg).sort();
+    
+
+
+    var backgroundsMap = (story.assets && story.assets.backgrounds) ? story.assets.backgrounds : {};
+    var allBackgroundIds = Object.keys(backgroundsMap).sort();
+
+    var usedBackgroundIds = [];
+    var unusedBackgroundIds = [];
+
+    for (var i = 0; i < allBackgroundIds.length; i++) {
+      var bgId = allBackgroundIds[i];
+      if (usedBg[bgId]) usedBackgroundIds.push(bgId);
+      else unusedBackgroundIds.push(bgId);
+    }
+
+    var backgroundsDetailed = [];
+
+    for (var j = 0; j < usedBackgroundIds.length; j++) {
+      backgroundsDetailed.push({
+        id: usedBackgroundIds[j],
+        used: true
+      });
+    }
+
+    for (var k = 0; k < unusedBackgroundIds.length; k++) {
+      backgroundsDetailed.push({
+        id: unusedBackgroundIds[k],
+        used: false
+      });
+    }
+
+
+
 
     var charactersMap = (story.assets && story.assets.characters) ? story.assets.characters : {};
     var allCharacterIds = Object.keys(charactersMap).sort();
@@ -2653,6 +2706,8 @@ function dotEscape(s) {
     return {
       sceneCount: scenes.length,
       usedBackgroundIds: usedBackgroundIds,
+      unusedBackgroundIds: unusedBackgroundIds,
+      backgroundsDetailed: backgroundsDetailed,
       usedCharacterIds: usedCharacterIds,
       unusedCharacterIds: unusedCharacterIds,
       usedCharactersDetailed: usedCharactersDetailed,

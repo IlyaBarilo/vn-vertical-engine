@@ -14,6 +14,7 @@ libraryEvening = assets/bg_library_evening.jpg
 branchCafe = assets/bg_campus_cafe.jpg
 branchLab = assets/bg_it_lab.jpg
 branchYard = assets/bg_uni_yard_night.jpg
+branchYardTest = assets/bg_uni_yard_night.jpg
 
 [char]
 anna image neutral = assets/ch_anna_neutral.png
