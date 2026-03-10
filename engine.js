@@ -1621,6 +1621,7 @@ window.addEventListener("resize", adjustCharacterScale);
 
 
 
+
       text += "=== ИСПОЛЬЗОВАННЫЕ ПЕРСОНАЖИ ===\n";
 
       if (!stats.usedCharactersDetailed || !stats.usedCharactersDetailed.length) {
@@ -1632,10 +1633,11 @@ window.addEventListener("resize", adjustCharacterScale);
             ? item.emotions.join(", ")
             : "-";
 
-          text += item.id + " (" + emotionsText + ")\n";
+          text += item.name + " [" + item.id + "] (" + emotionsText + ")\n";
         }
         text += "\n";
       }
+
 
 
 
@@ -2609,12 +2611,17 @@ function dotEscape(s) {
     var usedBackgroundIds = Object.keys(usedBg).sort();
 
     var usedCharactersDetailed = [];
+    var charactersMap = (story.assets && story.assets.characters) ? story.assets.characters : {};
+
     for (var i = 0; i < usedCharacterIds.length; i++) {
       var charId = usedCharacterIds[i];
       var emotions = Object.keys(usedCharacterEmotions[charId] || {}).sort();
+      var charData = charactersMap[charId] || {};
+      var displayName = charData.name || charId;
 
       usedCharactersDetailed.push({
         id: charId,
+        name: displayName,
         emotions: emotions
       });
     }
