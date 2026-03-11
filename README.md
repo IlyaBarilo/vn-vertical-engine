@@ -31,12 +31,16 @@
 ### Демонстрационная версия новеллы
 
 <p align="center">
-<img src="docs/demo/images/anna-first-screen.jpg" width="300"> <img src="docs/demo/images/igor-second-screen.jpg" width="300">
-<img src="docs/demo/images/menu.jpg" width="300"> <img src="docs/demo/images/bg-cafe.jpg" width="300">
+<img src="docs/demo/images/anna-first-screen.jpg" width="300"> <img src="docs/demo/images/igor-second-screen.jpg" width="300"> <img src="docs/demo/images/menu.jpg" width="300"> <img src="docs/demo/images/bg-cafe.jpg" width="300">
+</p>
+
+Может работать горизонтально.
+
+<p align="center">
 <img src="docs/demo/images/wide-first-screen.jpg" width="600">
 </p>
 
-### Возможности для анализа разработаываемой новеллы
+### Возможности для анализа разрабатываемой новеллы
 
 Проверка на ошибки и построение текста графа в формате dot.
 
