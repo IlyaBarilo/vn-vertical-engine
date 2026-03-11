@@ -2617,6 +2617,7 @@ function collectEnvironmentInfo() {
       if (!scene || !scene.id) continue;
 
       var actions = scene.actions || [];
+      console.log('[DOT scene start]', scene.id, actions);
 
       // --- метрики вершины ---
       var charSet = {};
@@ -2632,8 +2633,16 @@ function collectEnvironmentInfo() {
         if (!act || !act.type) continue;
 
         if (act.type === "char") {
-          var chId = extractAliasId(act.src, "ch");
-          if (chId) charSet[chId] = true;
+          console.log('[DOT char action]', {
+            sceneId: scene.id,
+            act: act,
+            charId: act.charId
+          });
+
+          if (act.charId) {
+            charSet[act.charId] = true;
+            console.log('[DOT char added]', scene.id, Object.keys(charSet));
+          }
         }
 
         if (act.type === "say") sayCount++;
@@ -2684,11 +2693,24 @@ function collectEnvironmentInfo() {
     for (var n = 0; n < nodes.length; n++) {
       var node = nodes[n];
       var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
+
+      console.log('[DOT node chars]', {
+        nodeId: node.id,
+        characters: node.characters,
+        charsText: chars
+      });
+
       var label =
         node.id + "\\n" +
         "Персонажи: " + chars + "\\n" +
         "Фраз: " + node.phraseCount + "\\n" +
         "Музыка: " + node.bgmCount;
+
+      console.log('[DOT final label]', {
+        nodeId: node.id,
+        chars: chars,
+        label: label
+      });
 
       var nodeAttrs = 'label="' + dotEscape(label) + '"';
       // Стартовая сцена
