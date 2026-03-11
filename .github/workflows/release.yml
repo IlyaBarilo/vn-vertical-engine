@@ -51,6 +51,9 @@ jobs:
 
           mkdir -p "build/$APP_NAME"
           mkdir -p "build/$APP_NAME/assets"
+          mkdir -p "build/$APP_NAME/assets/backgrounds"
+          mkdir -p "build/$APP_NAME/assets/characters"
+          mkdir -p "build/$APP_NAME/assets/audio"
 
           # Копируем основные файлы проекта
           [ -f engine.css ] && cp engine.css "build/$APP_NAME/"
@@ -58,16 +61,36 @@ jobs:
           [ -f index.html ] && cp index.html "build/$APP_NAME/"
           [ -f story.js ] && cp story.js "build/$APP_NAME/"
           [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
+          [ -f README.md ] && cp README.md "build/$APP_NAME/"
 
-          # Копируем медиафайлы из assets
-          if [ -d assets ]; then
+          # Копируем медиафайлы из assets/backgrounds
+          if [ -d assets/backgrounds ]; then
+            find assets -type f \( \
+              -iname "*.jpg" -o \
+              -iname "*.jpeg" -o \
+              -iname "*.png" -o \
+            \) -exec cp {} "build/$APP_NAME/assets/backgrounds" \;
+          fi
+
+          # Копируем медиафайлы из assets/characters
+          if [ -d assets/characters ]; then
             find assets -type f \( \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
               -iname "*.png" -o \
               -iname "*.mp3" \
-            \) -exec cp {} "build/$APP_NAME/assets/" \;
+            \) -exec cp {} "build/$APP_NAME/assets/characters" \;
           fi
+
+          # Копируем медиафайлы из assets/audio
+          if [ -d assets/audio ]; then
+            find assets -type f \( \
+              -iname "*.mp3" \
+              -iname "*.wav" \
+            \) -exec cp {} "build/$APP_NAME/assets/audio" \;
+          fi
+
+
 
           # Подставляем номер версии в engine.js
           if [ -f "build/$APP_NAME/engine.js" ]; then
