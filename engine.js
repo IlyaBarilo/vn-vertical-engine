@@ -112,7 +112,7 @@ function markFirstScreenReady(reason) {
 
 
 
-  // Для получения версии из GitHub. Заменяется только первый найденный __VERSION__
+  // Для получения версии из GitHub. Заменяется только первая найденная метка версии (см. ниже)
   window.APP_VERSION = "__VERSION__";
 
   if (window.APP_VERSION === "__VERSION__") {

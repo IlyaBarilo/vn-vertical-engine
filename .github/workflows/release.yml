@@ -71,8 +71,7 @@ jobs:
 
           # Подставляем номер версии в engine.js
           if [ -f "build/$APP_NAME/engine.js" ]; then
-            sed -i "0,/__VERSION__/s/__VERSION__/$VERSION/" "build/$APP_NAME/engine.js" # замена только первого найденного фрагмента
-            # sed -i "s/__VERSION__/$VERSION/g" "build/$APP_NAME/engine.js"             # замена всех найденных фрагментов
+            sed -i "0,|__VERSION__|s|__VERSION__|$VERSION|" "build/$APP_NAME/engine.js" # замена только первого найденного фрагмента
           fi
 
       - name: Create ZIP archive
