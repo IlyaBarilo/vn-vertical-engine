@@ -9,30 +9,30 @@ startScene: intro_01
 
 # РЕСУРСЫ
 [bg]
-campusHall = assets/bg_campus_hall.jpg
-libraryEvening = assets/bg_library_evening.jpg
-branchCafe = assets/bg_campus_cafe.jpg
-branchLab = assets/bg_it_lab.jpg
-branchYard = assets/bg_uni_yard_night.jpg
-branchYardTest = assets/bg_uni_yard_night.jpg
+campusHall = assets/backgrounds/bg_campus_hall.jpg
+libraryEvening = assets/backgrounds/bg_library_evening.jpg
+branchCafe = assets/backgrounds/bg_campus_cafe.jpg
+branchLab = assets/backgrounds/bg_it_lab.jpg
+branchYard = assets/backgrounds/bg_uni_yard_night.jpg
+branchYardTest = assets/backgrounds/bg_uni_yard_night.jpg
 
 [char]
-anna image neutral = assets/ch_anna_neutral.png
+anna image neutral = assets/characters/ch_anna_neutral.png
 anna name = "Анна"
 anna color = #0F0
-igor image smile = assets/ch_igor_smile.png
-igor image neutral = assets/ch_igor_neutral.png
+igor image smile = assets/characters/ch_igor_smile.png
+igor image neutral = assets/characters/ch_igor_neutralTest.png
 igor name = "Игорь"
 igor color = #F00
-ivan image neutral = assets/ch_ivan_smile.png
+ivan image neutral = assets/characters/ch_ivan_smileTest.png
 ivan name = "Иван"
 ivan color = #060
 
 
 [audio]
-bgmDay = assets/bgm_campus_day.mp3
-bgmMystery = assets/bgm_library_mystery.mp3
-sfxClick = assets/sfx_button_click.mp3
+bgmDay = assets/audio/bgm_campus_day.mp3
+# bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
+# sfxClickTest = assets/audio/sfx_button_click.mp3
 
 # СЦЕНЫ
 scene intro_01
