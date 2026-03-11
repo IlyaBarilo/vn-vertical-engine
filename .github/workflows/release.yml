@@ -63,31 +63,32 @@ jobs:
           [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
 
+
+
           # Копируем медиафайлы из assets/backgrounds
           if [ -d assets/backgrounds ]; then
-            find assets -type f \( \
+            find assets/backgrounds -type f \( \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-            \) -exec cp {} "build/$APP_NAME/assets/backgrounds" \;
+              -iname "*.png" \
+            \) -exec cp {} "build/$APP_NAME/assets/backgrounds/" \;
           fi
 
           # Копируем медиафайлы из assets/characters
           if [ -d assets/characters ]; then
-            find assets -type f \( \
+            find assets/characters -type f \( \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-              -iname "*.mp3" \
-            \) -exec cp {} "build/$APP_NAME/assets/characters" \;
+              -iname "*.png" \
+            \) -exec cp {} "build/$APP_NAME/assets/characters/" \;
           fi
 
           # Копируем медиафайлы из assets/audio
           if [ -d assets/audio ]; then
-            find assets -type f \( \
-              -iname "*.mp3" \
+            find assets/audio -type f \( \
+              -iname "*.mp3" -o \
               -iname "*.wav" \
-            \) -exec cp {} "build/$APP_NAME/assets/audio" \;
+            \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
           fi
 
 
