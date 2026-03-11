@@ -48,14 +48,11 @@
 <img src="docs/stat/stat-check.jpg" width="300"> <img src="docs/stat/stat-dot.jpg" width="300">
 </p>
 
-Построение графа в онлайн-сервисе graphviz-online и контроль сценария и возможных ошибок (отмечены красным)
+Построение графа в онлайн-сервисе graphviz-online и контроль сценария и возможных ошибок (отмечены красным).
 
 <p align="center">
 <img src="docs/stat/graphviz-online-dot.jpg" width="auto">
 </p>
-
-#### Проверка на ошибки
-
 
 ---
 
