@@ -26,7 +26,34 @@
 
 ---
 
+## 📷 Демонстрация
 
+### Демонстрационная версия новеллы
+
+<p align="center">
+<img src="docs/demo/images/anna-first-screen.jpg" width="300"> <img src="docs/demo/images/igor-second-screen.jpg" width="300">
+<img src="docs/demo/images/menu.jpg" width="300"> <img src="docs/demo/images/bg-cafe.jpg" width="300">
+<img src="docs/demo/images/wide-first-screen.jpg" width="600">
+</p>
+
+### Возможности для анализа разработаываемой новеллы
+
+Проверка на ошибки и построение текста графа в формате dot.
+
+<p align="center">
+<img src="docs/stat/stat-check.jpg" width="300"> <img src="docs/stat/stat-dot.jpg" width="300">
+</p>
+
+Построение графа в онлайн-сервисе graphviz-online и контроль сценария и возможных ошибок (отмечены красным)
+
+<p align="center">
+<img src="docs/stat/graphviz-online-dot.jpg" width="auto">
+</p>
+
+#### Проверка на ошибки
+
+
+---
 
 ## 🧩 Где можно использовать
 
@@ -220,18 +247,6 @@ bgm stop
 - анимации
 - дополнительные команды сценария
 
----
 
-## 📷 Скриншоты
 
-Рекомендуется добавить изображения в папку
 
-```
-docs/images
-```
-
-и вставить их в README:
-
-```
-![Dialogue](docs/images/dialogue.png)
-```
