@@ -492,6 +492,9 @@ function markFirstScreenReady(reason) {
   // =========================================================
 
   function restart() {
+    // Сбрасываем ошибки парсинга
+    window.PARSE_ERRORS = [];
+
     // Никаких сохранений: просто сбрасываем переменные и идём в start.
     state.vars = {};
     state.inGame = false;
@@ -1995,6 +1998,9 @@ window.addEventListener("resize", adjustCharacterScale);
       var reach = findUnreachableScenes(STORY);
       var cycles = findCyclesSCC(STORY);
 
+      // Получаем ошибки парсинга
+      var parseErrors = window.PARSE_ERRORS || [];
+
       var text = "";
 
       text += `Версия программы: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
@@ -2003,6 +2009,21 @@ window.addEventListener("resize", adjustCharacterScale);
       text += "Название: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
       text += "Сцен: " + stats.sceneCount + "\n";
       text += "Меню выбора: " + stats.choiceCount + "\n\n";
+
+
+       // ===== ОШИБКИ ПАРСИНГА =====
+      text += "=== ОШИБКИ ПАРСИНГА ===\n\n";
+      
+      if (parseErrors.length === 0) {
+        text += "✅ Ошибок парсинга не найдено\n\n";
+      } else {
+        text += `❌ Найдено ошибок: ${parseErrors.length}\n\n`;
+        parseErrors.forEach((error, index) => {
+          text += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+          text += `   "${error.line}"\n\n`;
+        });
+      }
+
 
       text += "=== ПРОВЕРКА ФАЙЛОВ ===\n\n";
         

@@ -27,6 +27,29 @@
   console.log('[Loader] Запуск парсера...');
 
 
+
+
+
+  // Массив для сбора ошибок парсинга
+  window.PARSE_ERRORS = [];
+  
+  function addParseError(lineNumber, line, message) {
+    const error = {
+      lineNumber: lineNumber,
+      line: line,
+      message: message,
+      timestamp: Date.now()
+    };
+    window.PARSE_ERRORS.push(error);
+    console.error(`[PARSE ERROR] Строка ${lineNumber}: ${message} - "${line}"`);
+  }
+
+
+
+
+
+
+
   // Конфиг параметров интерфейса, которые можно задавать в story.js
   // key        — как параметр называется в story.js
   // target     — как он будет храниться в story.meta
@@ -175,6 +198,49 @@
       story.meta.start = story.scenes[0].id;
     }
     
+
+
+
+
+    // ===== ПРОВЕРКА СТАРТОВОЙ СЦЕНЫ =====
+    if (story.meta.start) {
+      const sceneIds = new Set();
+      story.scenes.forEach(scene => {
+        if (scene.id) sceneIds.add(scene.id);
+      });
+      
+      if (!sceneIds.has(story.meta.start)) {
+        addParseError(
+          0, 
+          "Метаданные", 
+          `Стартовая сцена "${story.meta.start}" не существует`
+        );
+        
+        // Автоматически исправляем на первую сцену
+        if (story.scenes.length > 0) {
+          const oldStart = story.meta.start;
+          story.meta.start = story.scenes[0].id;
+          console.log(`[Loader] Стартовая сцена "${oldStart}" не найдена, исправлено на "${story.meta.start}"`);
+        }
+      } else {
+        console.log('[Loader] Стартовая сцена существует:', story.meta.start);
+      }
+    } else {
+      addParseError(0, "Метаданные", "Не задана стартовая сцена (startScene)");
+      if (story.scenes.length > 0) {
+        story.meta.start = story.scenes[0].id;
+        console.log('[Loader] Установлена первая сцена как стартовая:', story.meta.start);
+      }
+    }
+
+
+
+
+
+
+    // ===== ВАЖНО: проверяем ссылки на сцены =====
+    validateSceneReferences(story);
+
     loaderMark('Парсинг завершен');
     console.log('[Loader] Парсинг завершён!');
     console.log('[Loader] Найдено сцен:', story.scenes.length);
@@ -404,8 +470,11 @@
       }
       
       const sceneId = cleanLine.substring(6).trim();
+      if (!sceneId) {
+      addParseError(lineNumber, originalLine, "ID сцены не может быть пустым");
+      }
       currentScene = {
-        id: sceneId,
+        id: sceneId || "unknown_" + lineNumber,
         actions: []
       };
       setCurrentScene(currentScene);
@@ -422,9 +491,12 @@
     // bg [имя]
     if (cleanLine.startsWith('bg ')) {
       const bgName = cleanLine.substring(3).trim();
+      if (!bgName) {
+        addParseError(lineNumber, originalLine, "Не указано имя фона после bg");
+      }
       actions.push({
         type: 'bg',
-        src: `@bg.${bgName}`
+        src: `@bg.${bgName || "unknown"}`
       });
       return;
     }
@@ -437,7 +509,10 @@
     if (cleanLine.startsWith('bgm ')) {
       const bgmArgs = cleanLine.substring(4).trim().split(/\s+/);
       const bgmName = bgmArgs[0];
-      const hasLoop = bgmArgs.includes('loop');
+
+      if (!bgmName) {
+        addParseError(lineNumber, originalLine, "Не указано имя музыки после bgm");
+      }
 
       if (bgmName === 'stop') {
         actions.push({
@@ -448,9 +523,11 @@
         return;
       }
 
+      const hasLoop = bgmArgs.includes('loop');
+
       actions.push({
         type: 'bgm',
-        src: `@audio.${bgmName}`,
+        src: `@audio.${bgmName || "unknown"}`,
         loop: hasLoop,
         volume: 0.7,
         fadeMs: 400
@@ -462,11 +539,21 @@
     if (cleanLine.startsWith('show ')) {
       const parts = cleanLine.substring(5).trim().split(' ');
       const charId = parts[0]; // anna, igor
+
+      if (!charId) {
+        addParseError(lineNumber, originalLine, "Не указано имя персонажа после show");
+      }
+      
       const emotion = parts[1] || 'neutral'; // neutral, smile и т.д.
       
+      // Проверяем, существует ли персонаж в ассетах
+      if (charId && story.assets && story.assets.characters && !story.assets.characters[charId]) {
+        addParseError(lineNumber, originalLine, `Персонаж "${charId}" не определен в секции [char]`);
+      }
+
       actions.push({
         type: 'char',
-        charId: charId,
+        charId: charId || "unknown",
         emotion: emotion,
         src: null, // будет заполнено в executeAction через resolveAsset
         pos: 'center'
@@ -491,9 +578,12 @@
     // goto [сцена]
     if (cleanLine.startsWith('goto ')) {
       const target = cleanLine.substring(5).trim();
+      if (!target) {
+        addParseError(lineNumber, originalLine, "Не указана целевая сцена после goto");
+      }
       actions.push({
         type: 'goto',
-        target: target
+        target: target || "unknown"
       });
       return;
     }
@@ -504,6 +594,11 @@
       const charVar = dialogMatch[1].trim(); // anna, igor
       let text = dialogMatch[2].trim();
       
+      // Проверяем, существует ли персонаж в ассетах
+      if (charVar && story.assets && story.assets.characters && !story.assets.characters[charVar]) {
+        addParseError(lineNumber, originalLine, `Персонаж "${charVar}" не определен в секции [char]`);
+      }
+
       // Экранируем спецсимволы в тексте
       text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
       
@@ -521,6 +616,13 @@
       const text = choiceMatch[1].trim();
       const target = choiceMatch[2].trim();
       
+      if (!text) {
+        addParseError(lineNumber, originalLine, "Пустой текст в пункте меню");
+      }
+      if (!target) {
+        addParseError(lineNumber, originalLine, "Не указана целевая сцена в пункте меню");
+      }
+
       // Ищем последний action типа choice
       let choiceAction = null;
       for (let i = actions.length - 1; i >= 0; i--) {
@@ -540,8 +642,8 @@
       }
       
       choiceAction.choices.push({
-        text: text,
-        goto: target
+        text: text || "Выбор",
+        goto: target || "unknown"
       });
       return;
     }
@@ -550,20 +652,88 @@
     const textMatch = cleanLine.match(/^"(.+)"$/);
     if (textMatch) {
       let text = textMatch[1].trim();
+      if (!text) {
+        addParseError(lineNumber, originalLine, "Пустой текст в кавычках");
+      }
       // Экранируем спецсимволы
       text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
       
       actions.push({
         type: 'text',
-        text: text
+        text: text || "..."
       });
       return;
     }
     
     // Если ничего не подошло и это не комментарий
     if (cleanLine && !cleanLine.startsWith('#')) {
-      console.warn(`[Loader] Неизвестный формат строки ${lineNumber}: ${cleanLine}`);
+      addParseError(lineNumber, originalLine, "Неизвестный формат строки");
     }
+  }
+
+  // Проверка всех ссылок на сцены (goto и choice)
+  function validateSceneReferences(story) {
+    console.log('[Loader] Проверка ссылок на сцены...');
+    
+    // Собираем все существующие ID сцен
+    const sceneIds = new Set();
+    story.scenes.forEach(scene => {
+      if (scene.id) {
+        sceneIds.add(scene.id);
+      } else {
+        addParseError(0, "Сцена без ID", "Обнаружена сцена без идентификатора");
+      }
+    });
+    
+    console.log('[Loader] Найдено сцен:', sceneIds.size);
+    console.log('[Loader] ID сцен:', Array.from(sceneIds).join(', '));
+    
+    // Проверяем каждый переход
+    let linkCount = 0;
+    let errorCount = 0;
+    
+    story.scenes.forEach(scene => {
+      scene.actions.forEach((action, actionIndex) => {
+        // Проверка goto
+        if (action.type === 'goto' && action.target) {
+          linkCount++;
+          if (!sceneIds.has(action.target)) {
+            errorCount++;
+            addParseError(
+              0, 
+              `Сцена ${scene.id}`, 
+              `Переход в несуществующую сцену "${action.target}"`
+            );
+          }
+        }
+        
+        // Проверка choice
+        if (action.type === 'choice' && action.choices) {
+          action.choices.forEach((choice, choiceIndex) => {
+            if (choice.goto) {
+              linkCount++;
+              if (!sceneIds.has(choice.goto)) {
+                errorCount++;
+                addParseError(
+                  0, 
+                  `Сцена ${scene.id}`, 
+                  `Пункт меню "${choice.text || 'без текста'}" ведёт в несуществующую сцену "${choice.goto}"`
+                );
+              }
+            }
+          });
+        }
+      });
+    });
+    
+    console.log('[Loader] Проверено ссылок:', linkCount);
+    if (errorCount > 0) {
+      console.warn('[Loader] Найдено ошибок в ссылках:', errorCount);
+    } else {
+      console.log('[Loader] Все ссылки на сцены корректны');
+    }
+    
+    return { linkCount, errorCount };
   }
 
   // Создание заглушки при ошибке
