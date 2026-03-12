@@ -32,16 +32,28 @@
 
   // Массив для сбора ошибок парсинга
   window.PARSE_ERRORS = [];
-  
-  function addParseError(lineNumber, line, message) {
+
+  // Флаг для остановки парсинга при ошибке
+  window.PARSE_ERROR_STOP = false;
+
+
+  // ЗАМЕНИТЬ существующую функцию addParseError на эту:
+  function addParseError(lineNumber, line, message, isCritical = true) {
     const error = {
       lineNumber: lineNumber,
       line: line,
       message: message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isCritical: isCritical
     };
     window.PARSE_ERRORS.push(error);
     console.error(`[PARSE ERROR] Строка ${lineNumber}: ${message} - "${line}"`);
+    
+    // Устанавливаем флаг остановки для критических ошибок
+    if (isCritical) {
+      window.PARSE_ERROR_STOP = true;
+      console.error('[PARSE ERROR] Критическая ошибка - парсинг остановлен');
+    }
   }
 
 
@@ -132,6 +144,12 @@
       lineNumber = i + 1;
       let line = lines[i].trim();
       
+      // Проверяем, не было ли критической ошибки
+      if (window.PARSE_ERROR_STOP) {
+        console.log('[Loader] Парсинг остановлен из-за критической ошибки');
+        break;
+      }
+
       // Пропускаем пустые строки
       if (line === '') continue;
       
@@ -251,6 +269,20 @@
 
 
 
+    // Проверяем, были ли критические ошибки
+    if (window.PARSE_ERRORS.length > 0) {
+      console.error('[Loader] Обнаружены ошибки парсинга:', window.PARSE_ERRORS.length);
+      
+      // Вместо нормального сценария создаём сцену с ошибкой
+      showParseError();
+      return; // Выходим из функции, не сохраняя обычный сценарий
+    }
+
+
+
+
+
+
 
     // Сохраняем статистику сценария ТОЛЬКО ПОСЛЕ ПОЛНОГО ПАРСИНГА
     window.LOADER_STATS.scenesCount = story.scenes.length;
@@ -359,6 +391,12 @@
 
     if (key === 'startScene') {
       story.meta.start = value;
+
+      // Проверяем, что startScene не пустой
+      if (!value || value.trim() === '') {
+        addParseError(lineNumber, line, "startScene не может быть пустым", true);
+      }
+      
       return;
     }
 
@@ -471,7 +509,7 @@
       
       const sceneId = cleanLine.substring(6).trim();
       if (!sceneId) {
-      addParseError(lineNumber, originalLine, "ID сцены не может быть пустым");
+        addParseError(lineNumber, line, "ID сцены не может быть пустым", true);
       }
       currentScene = {
         id: sceneId || "unknown_" + lineNumber,
@@ -492,7 +530,7 @@
     if (cleanLine.startsWith('bg ')) {
       const bgName = cleanLine.substring(3).trim();
       if (!bgName) {
-        addParseError(lineNumber, originalLine, "Не указано имя фона после bg");
+        addParseError(lineNumber, line, "Не указано имя фона после bg", true);
       }
       actions.push({
         type: 'bg',
@@ -511,7 +549,7 @@
       const bgmName = bgmArgs[0];
 
       if (!bgmName) {
-        addParseError(lineNumber, originalLine, "Не указано имя музыки после bgm");
+        addParseError(lineNumber, line, "Не указано имя музыки после bgm", true);
       }
 
       if (bgmName === 'stop') {
@@ -541,14 +579,14 @@
       const charId = parts[0]; // anna, igor
 
       if (!charId) {
-        addParseError(lineNumber, originalLine, "Не указано имя персонажа после show");
+        addParseError(lineNumber, line, "Не указано имя персонажа после show", true);
       }
       
       const emotion = parts[1] || 'neutral'; // neutral, smile и т.д.
       
       // Проверяем, существует ли персонаж в ассетах
       if (charId && story.assets && story.assets.characters && !story.assets.characters[charId]) {
-        addParseError(lineNumber, originalLine, `Персонаж "${charId}" не определен в секции [char]`);
+        addParseError(lineNumber, line, `Персонаж "${charId}" не определен в секции [char]`, true);
       }
 
       actions.push({
@@ -579,7 +617,7 @@
     if (cleanLine.startsWith('goto ')) {
       const target = cleanLine.substring(5).trim();
       if (!target) {
-        addParseError(lineNumber, originalLine, "Не указана целевая сцена после goto");
+        addParseError(lineNumber, line, "Не указана целевая сцена после goto", true);
       }
       actions.push({
         type: 'goto',
@@ -596,7 +634,7 @@
       
       // Проверяем, существует ли персонаж в ассетах
       if (charVar && story.assets && story.assets.characters && !story.assets.characters[charVar]) {
-        addParseError(lineNumber, originalLine, `Персонаж "${charVar}" не определен в секции [char]`);
+        addParseError(lineNumber, line, `Персонаж "${charVar}" не определен в секции [char]`, true);
       }
 
       // Экранируем спецсимволы в тексте
@@ -617,10 +655,10 @@
       const target = choiceMatch[2].trim();
       
       if (!text) {
-        addParseError(lineNumber, originalLine, "Пустой текст в пункте меню");
+        addParseError(lineNumber, line, "Пустой текст в пункте меню", true);
       }
       if (!target) {
-        addParseError(lineNumber, originalLine, "Не указана целевая сцена в пункте меню");
+        addParseError(lineNumber, line, "Не указана целевая сцена в пункте меню", true);
       }
 
       // Ищем последний action типа choice
@@ -653,7 +691,7 @@
     if (textMatch) {
       let text = textMatch[1].trim();
       if (!text) {
-        addParseError(lineNumber, originalLine, "Пустой текст в кавычках");
+        addParseError(lineNumber, line, "Пустой текст в кавычках", true);
       }
       // Экранируем спецсимволы
       text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
@@ -667,7 +705,7 @@
     
     // Если ничего не подошло и это не комментарий
     if (cleanLine && !cleanLine.startsWith('#')) {
-      addParseError(lineNumber, originalLine, "Неизвестный формат строки");
+      addParseError(lineNumber, line, "Неизвестный формат строки", true);
     }
   }
 
@@ -681,7 +719,7 @@
       if (scene.id) {
         sceneIds.add(scene.id);
       } else {
-        addParseError(0, "Сцена без ID", "Обнаружена сцена без идентификатора");
+        addParseError(0, "Сцена без ID", "Обнаружена сцена без идентификатора", true);
       }
     });
     
@@ -702,7 +740,7 @@
             addParseError(
               0, 
               `Сцена ${scene.id}`, 
-              `Переход в несуществующую сцену "${action.target}"`
+              `Переход в несуществующую сцену "${action.target}"`, true
             );
           }
         }
@@ -717,7 +755,7 @@
                 addParseError(
                   0, 
                   `Сцена ${scene.id}`, 
-                  `Пункт меню "${choice.text || 'без текста'}" ведёт в несуществующую сцену "${choice.goto}"`
+                  `Пункт меню "${choice.text || 'без текста'}" ведёт в несуществующую сцену "${choice.goto}"`, true
                 );
               }
             }
@@ -769,4 +807,48 @@
       window.__onStoryLoaded(window.STORY);
     }
   }
+
+
+  function showParseError() {
+    console.log('[Loader] Показываю ошибку парсинга');
+    
+    // Формируем текст ошибки
+    let errorText = "❌ ОШИБКА ПАРСИНГА СЦЕНАРИЯ:\n\n";
+    
+    window.PARSE_ERRORS.forEach((error, index) => {
+      errorText += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+      errorText += `   "${error.line}"\n\n`;
+    });
+    
+    errorText += "\nПожалуйста, исправьте ошибки в файле story.js";
+    
+    // Находим элементы интерфейса
+    const dialog = document.getElementById('dialog');
+    const nameBox = document.getElementById('nameBox');
+    const textBox = document.getElementById('textBox');
+    const choices = document.getElementById('choices');
+    const topbar = document.querySelector('.topbar');
+    
+    if (dialog && textBox) {
+      // Прячем всё лишнее
+      if (nameBox) nameBox.classList.add('hidden');
+      if (choices) choices.classList.add('hidden');
+      if (topbar) topbar.style.opacity = '0.5';
+      
+      // Показываем ошибку
+      dialog.classList.remove('hiddenByChoices', 'has-name', 'no-name');
+      dialog.classList.add('no-hint');
+      textBox.textContent = errorText;
+      textBox.style.whiteSpace = 'pre-wrap';
+      textBox.style.fontFamily = 'monospace';
+      textBox.style.fontSize = '14px';
+      textBox.style.color = '#ff6b6b';
+      
+      // Убираем подсказку
+      const hint = document.querySelector('.hint');
+      if (hint) hint.style.display = 'none';
+    }
+  }
+
+
 })();

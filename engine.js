@@ -244,6 +244,47 @@ function markFirstScreenReady(reason) {
   profiler.mark('DOM загружен');
 
 
+
+
+
+
+  // Проверяем, есть ли ошибки парсинга
+  if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
+    console.log('[Engine] Обнаружены ошибки парсинга, движок не запускается');
+    
+    // Показываем ошибку сразу после загрузки DOM
+    setTimeout(function() {
+      const dialog = document.getElementById('dialog');
+      const textBox = document.getElementById('textBox');
+      const nameBox = document.getElementById('nameBox');
+      const choices = document.getElementById('choices');
+      
+      if (dialog && textBox) {
+        nameBox?.classList.add('hidden');
+        choices?.classList.add('hidden');
+        dialog.classList.remove('hiddenByChoices', 'has-name', 'no-name');
+        
+        let errorText = "❌ ОШИБКА ПАРСИНГА СЦЕНАРИЯ:\n\n";
+        window.PARSE_ERRORS.forEach((error, index) => {
+          errorText += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+          errorText += `   "${error.line}"\n\n`;
+        });
+        
+        textBox.textContent = errorText;
+        textBox.style.whiteSpace = 'pre-wrap';
+        textBox.style.fontFamily = 'monospace';
+        textBox.style.color = '#ff6b6b';
+        
+        const hint = document.querySelector('.hint');
+        if (hint) hint.style.display = 'none';
+      }
+    }, 100);
+    
+    return; // Останавливаем выполнение движка
+  }
+
+
+
   // ---------- Проверка story ----------
   if (!window.STORY) {
     console.log('[Engine] Ожидание window.STORY...');
@@ -510,7 +551,12 @@ function markFirstScreenReady(reason) {
     }
 
 
-
+    // Проверяем наличие ошибок парсинга
+    if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
+      console.log('[Engine] Обнаружены ошибки парсинга, показываем сообщение');
+      // Здесь ничего не делаем, так как story-loader.js уже создал сцену с ошибкой
+      // Просто продолжаем выполнение - движок покажет сцену с ошибкой
+    }
 
     if (elName) {
       elName.textContent = "";
