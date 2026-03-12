@@ -9,6 +9,8 @@ startScene: intro_01
 
 # РЕСУРСЫ
 [bg]
+# Формат описания для фона:
+# имя_фона = путь_и_название_файла
 campusHall = assets/backgrounds/bg_campus_hall.jpg
 libraryEvening = assets/backgrounds/bg_library_evening.jpg
 branchCafe = assets/backgrounds/bg_campus_cafe.jpg
@@ -17,6 +19,12 @@ branchYard = assets/backgrounds/bg_uni_yard_night.jpg
 branchYardTest = assets/backgrounds/bg_uni_yard_night.jpg
 
 [char]
+# Формат описания для персонажа:
+# имя_персонажа тип = значение
+# типы:
+# - image - изображение персонажа
+# - name - имя персонажа
+# - color - цвет подсветки имени персонажа
 anna image neutral = assets/characters/ch_anna_neutral.png
 anna name = "Анна"
 anna color = #0F0
@@ -28,21 +36,32 @@ ivan image neutral = assets/characters/ch_ivan_smileTest.png
 ivan name = "Иван"
 ivan color = #060
 
-
 [audio]
+# Формат описания для музыки:
+# название_музыки = путь_и_название_файла
 bgmDay = assets/audio/bgm_campus_day.mp3
 # bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
 # sfxClickTest = assets/audio/sfx_button_click.mp3
 
 # СЦЕНЫ
+# Формат описания сцен:
+# scene название_сцены
 scene intro_01
 
+# Показ фона:
+# bg название_фона
 bg campusHall
-bgm bgmDay loop
 
+# Проигрывание музыки:
+# bgm название_музыки
+# bgm название_музыки loop
+# Примечание: loop для постоянного проигрывания с повтором
+# Примеры:
 # bgm bgmDay - музыка без повтора
 # bgm bgmDay loop - музыка с повтором
 # bgm stop - остановить музыку
+
+bgm bgmDay loop
 
 show anna neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
