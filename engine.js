@@ -418,6 +418,7 @@ function markFirstScreenReady(reason) {
       "actionIndex:", state.actionIndex
     );
 
+    e.stopPropagation();
     onNext(e);
 
   });
@@ -509,6 +510,21 @@ function markFirstScreenReady(reason) {
       dialogElement.classList.remove('no-hint', 'has-hint', 'has-name', 'no-name');
     }
 
+
+
+
+    if (elName) {
+      elName.textContent = "";
+      elName.classList.add("hidden");
+    }
+    if (elText) {
+      elText.textContent = "";
+    }
+  
+
+
+
+
     // сброс к стартовой сцене
     state.sceneId = STORY.meta && STORY.meta.start ? STORY.meta.start : null;
     state.actionIndex = 0;
@@ -565,18 +581,15 @@ function markFirstScreenReady(reason) {
       // если открыта игра — не продолжаем
       if (state.inGame) return;
 
-      // если дошли до конца сцены — по умолчанию перезапуск
+
+      // если дошли до конца сцены — останавливаемся
       if (state.actionIndex >= scene.actions.length) {
-        // для публичного экрана удобно возвращать в начало
-        state.sceneId = STORY.meta && STORY.meta.start ? STORY.meta.start : state.sceneId;
-        state.actionIndex = 0;
-        scene = state.sceneMap[state.sceneId];
-        if (!scene) {
-          showError("Не найдена сцена: " + state.sceneId);
-          return;
-        }
-        continue;
+        console.log('[VN] Достигнут конец сцены', state.sceneId);
+        state.waitingNext = false;
+        state.nextLocked = true; // Блокируем дальнейшие клики
+        return;
       }
+
 
       var action = scene.actions[state.actionIndex];
       console.log('[FLOW] runCurrent:action picked', {
@@ -675,6 +688,13 @@ function markFirstScreenReady(reason) {
       case "char":
         console.log('[Engine CHAR] Processing char action:', action);
 
+        // Проверяем, это команда hide all?
+        if (!action.charId && action.src === null) {
+          console.log('[Engine CHAR] Hide all command');
+          setCharacter(null, null, null);
+          return false;
+        }
+
         // Только новый формат:
         // { type: "char", charId: "anna", emotion: "neutral", pos: "center" }
         console.log('[Engine CHAR] New format - charId:', action.charId, 'emotion:', action.emotion);
@@ -710,15 +730,15 @@ function markFirstScreenReady(reason) {
           charId: action.charId
         });
 
-        // Если картинка не найдена — просто скрываем персонажа
+        // Если картинка не найдена — не показываем, но и не скрываем
         if (!src) {
-          console.log('[SCRIPT FLOW] char action(new) -> hide immediately', {
+          console.log('[SCRIPT FLOW] char action(new) -> no image found, skipping', {
             sceneId: state.sceneId,
             actionIndex: state.actionIndex - 1,
             action: action
           });
 
-          setCharacter(null, action.pos, action.charId);
+          // Просто пропускаем, не меняем видимость
           return false;
         }
 
@@ -763,6 +783,18 @@ function markFirstScreenReady(reason) {
           nextLocked: state.nextLocked
         });
 
+        // Проверяем, нужно ли ждать асинхронно
+        const currentSrc = elChar.getAttribute('src');
+        const isHidden = elChar.classList.contains('hidden');
+        
+        // Если персонаж уже видим с той же эмоцией - не ждём
+        if (currentSrc === src && !isHidden) {
+          console.log('[Engine CHAR] Character already visible, continuing');
+          return false;
+        }
+        
+        // Иначе ждём загрузки
+        console.log('[SCRIPT FLOW] char action(new) paused until image load');
         return "async";
 
       case "say":
@@ -775,22 +807,21 @@ function markFirstScreenReady(reason) {
           return true;
         }
 
+
+        // Получаем данные персонажа из assets
+        let displayName = action.charVar; // по умолчанию используем ID
+        let nameColor = null;
+        
         if (STORY.assets && STORY.assets.characters) {
           const char = STORY.assets.characters[action.charVar];
-          console.log('[Engine] say charVar:', action.charVar);
-          console.log('[Engine] char data:', char);
-
-          if (char && char.name) {
-            console.log('[Engine] showDialog with color:', char.color);
-            showDialog(char.name, action.text, char.color);
-          } else {
-            console.log('[Engine] showDialog without color, using charVar as name');
-            showDialog(action.charVar, action.text);
+          if (char) {
+            if (char.name) displayName = char.name;
+            if (char.color) nameColor = char.color;
           }
-        } else {
-          console.log('[Engine] STORY.assets.characters missing, using charVar as name');
-          showDialog(action.charVar, action.text);
         }
+        
+        // Показываем диалог с именем (даже если персонаж не на экране)
+        showDialog(displayName, action.text, nameColor);
 
         if (!firstScreenMetrics.firstScreenShown && !firstScreenMetrics.waitingForCharacter) {
           markFirstScreenReady('say');
@@ -908,6 +939,7 @@ function markFirstScreenReady(reason) {
   function gotoScene(sceneId) {
     console.log("[VN] goto scene ->", sceneId);
     if (!sceneId) return;
+    
     state.sceneId = sceneId;
     state.actionIndex = 0;
   }
@@ -961,11 +993,13 @@ function markFirstScreenReady(reason) {
           console.log('[Engine setCharacter] No src, hiding character');
           elChar.classList.add("hidden");
           elChar.src = "";
+          elChar.removeAttribute('data-char-id'); // очищаем ID персонажа
 
           if (done) done();
           return;
       }
 
+      // Это команда show - показываем персонажа
       // Позиционирование можно применить заранее
       if (pos === "left") {
           elChar.style.left = "35%";
@@ -978,11 +1012,56 @@ function markFirstScreenReady(reason) {
           elChar.style.transform = "translateX(-50%)";
       }
 
+      
+      
+      
+      // ===== проверка на уже видимого персонажа =====
+      const currentSrc = elChar.getAttribute('src');
+      const currentCharId = elChar.dataset.charId;
+
+      // Если это тот же персонаж с той же эмоцией и он уже видим
+      if (currentSrc === src && !elChar.classList.contains('hidden')) {
+        console.log('[Engine setCharacter] Same image already visible, skipping');
+        if (done) done();
+        return;
+      }
+
+      // Если это тот же персонаж, но с другой эмоцией - показываем новую эмоцию без перезагрузки
+      if (currentCharId === charId && currentSrc !== src && !elChar.classList.contains('hidden')) {
+        console.log('[Engine setCharacter] Same character, changing emotion');
+        
+        // Просто меняем src, не скрывая персонажа
+        elChar.onload = function() {
+          console.log('[Engine setCharacter] Emotion changed successfully:', src);
+          adjustCharacterScale();
+          if (done) done();
+        };
+        
+        elChar.onerror = function() {
+          console.log('[Engine setCharacter] Failed to load new emotion:', src);
+          console.log('[Engine setCharacter] Full URL:', elChar.src);
+          console.log('[Engine setCharacter] Error event:', arguments);
+          if (done) done();
+        };
+        
+        elChar.src = src;
+        return; // Не продолжаем в основной код, так как уже обработали
+      }
+      // ===== =====
+
+
+
+
+
+
+
+
+
       if (charId) {
           elChar.dataset.charId = charId;
       }
 
-      // Скрываем до полной подготовки
+      // Скрываем до полной подготовки (только для нового персонажа)
       elChar.classList.add("hidden");
       elChar.style.height = "0px";
       elChar.style.maxHeight = "none";
@@ -1002,6 +1081,15 @@ function markFirstScreenReady(reason) {
             heightBeforeScale: elChar.style.height
           });
 
+          // Проверяем, не устарел ли этот load
+          if (seq !== __activeCharSeq) {
+            console.warn('[CHAR FLOW] stale onload ignored', {
+              seq,
+              activeSeq: __activeCharSeq,
+              src
+            });
+            return;
+          }
 
           // Сначала показываем, чтобы adjustCharacterScale не вышел по hidden
           elChar.classList.remove("hidden");
@@ -1018,6 +1106,10 @@ function markFirstScreenReady(reason) {
 
       elChar.onerror = function() {
           console.log('[Engine setCharacter] Image failed to load:', src);
+          console.log('[Engine setCharacter] Full URL:', elChar.src);
+          console.log('[Engine setCharacter] Error event:', arguments);
+          
+          console.log('[Engine setCharacter] Image failed to load:', src);
 
           console.log('[CHAR FLOW] onerror', {
             seq,
@@ -1025,6 +1117,16 @@ function markFirstScreenReady(reason) {
             src,
             domSrc: elChar.currentSrc || elChar.src
           });
+
+          if (seq !== __activeCharSeq) {
+            return;
+          }
+          
+           // В случае ошибки всё равно пытаемся показать (может быть битая ссылка)
+          elChar.classList.remove("hidden");
+          adjustCharacterScale();
+          if (done) done();
+          
       };
 
       if (seq !== __activeCharSeq) {
@@ -1045,9 +1147,17 @@ function markFirstScreenReady(reason) {
       name ? name : "(text)",
       text
     );
+    console.log("[VN] dialog display check:", { 
+      name: name, 
+      text: text, 
+      isFirstDialog: isFirstDialog,
+      elNameHidden: elName.classList.contains('hidden'),
+      elTextContent: elText.textContent
+    });
 
     var dialogElement = document.getElementById('dialog');
 
+    // Имя показываем ВСЕГДА, если оно есть
     if (name && String(name).trim() !== "") {
       elName.textContent = name;
       elName.classList.remove("hidden");
@@ -1075,7 +1185,6 @@ function markFirstScreenReady(reason) {
 
     // Управление подсказкой и классом диалога
     var hintElement = document.querySelector('.hint');
-    var dialogElement = document.getElementById('dialog');
     
     if (hintElement && dialogElement) {
       if (isFirstDialog) {
