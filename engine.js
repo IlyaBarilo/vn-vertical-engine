@@ -201,7 +201,9 @@ function markFirstScreenReady(reason) {
   // Новые DOM-элементы
   var elBlurBgLayer = document.getElementById("blurBgLayer");
   var elBlurBgImage = document.getElementById("blurBgImage");
-  
+
+  // Глобальный наблюдатель за именем
+  var nameObserver = null;
 
   // Для отладки
   console.log('[Engine] blurBgLayer:', elBlurBgLayer);
@@ -236,15 +238,7 @@ function markFirstScreenReady(reason) {
     onNext();
   });
 
-  // (опционально) клик по всему приложению, если у вас stage не перекрывает всё
-  var elApp = document.getElementById("app");
-  elApp.addEventListener("click", function (e) {
-    if (!elChoices.classList.contains("hidden")) return;
-    if (isUiClick(e.target)) return;
-    // если клик был по диалогу, он и так обработается — но дубль не страшен,
-    // onNext сам проверяет waitingNext
-    onNext();
-  });
+  
 
 
   profiler.mark('DOM загружен');
@@ -400,14 +394,7 @@ function markFirstScreenReady(reason) {
   }
 
   // ---------- UI события ----------
-  // Блокируем всплытие события (защита от двойных кликов оболочки)
-  elDialog.addEventListener("pointerup", function(e){
-    if (e && typeof e.stopPropagation === "function") {
-      e.stopPropagation();
-    }
-  }, true);
-
-  // основной обработчик перехода
+  // основной обработчик перехода (один!)
   elDialog.addEventListener("pointerup", function(e){
 
     console.log(
@@ -418,7 +405,16 @@ function markFirstScreenReady(reason) {
       "actionIndex:", state.actionIndex
     );
 
+    // Защита от всплытия
     e.stopPropagation();
+    e.preventDefault();
+
+    // Защита от двойных кликов
+    if (e.detail > 1) {
+      console.log("[VN] двойной клик проигнорирован");
+      return;
+    }
+
     onNext(e);
 
   });
@@ -551,6 +547,7 @@ function markFirstScreenReady(reason) {
   }
 
   function runCurrent() {
+    console.log("[VN] runCurrent ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
     console.log(
       "[VN] runCurrent",
       "scene:", state.sceneId,
@@ -564,10 +561,6 @@ function markFirstScreenReady(reason) {
       nextLocked: state.nextLocked,
       inGame: state.inGame
     });
-
-    // Запускаем выполнение action'ов, пока не дойдём до "say/text/choice/game", где нужно ждать.
-    state.waitingNext = false;
-    state.nextLocked = false;
 
     // безопасность: если сцены нет
     var scene = state.sceneMap[state.sceneId];
@@ -650,10 +643,53 @@ function markFirstScreenReady(reason) {
     }
   }
 
+
+  // Добавьте в начало файла переменную
+  var lastNextTime = 0;
+  var NEXT_COOLDOWN = 300; // миллисекунд
+
   function onNext(e) {
+    console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
+    console.trace(); // <-- Добавьте это! Покажет стек вызовов
+
+    // Защита от двойных кликов
+    var now = Date.now();
+    if (now - lastNextTime < NEXT_COOLDOWN) {
+      console.log("[VN] onNext проигнорирован (защита от двойного клика)");
+      return;
+    }
+    lastNextTime = now;
+
+    console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
+    console.log("[VN] onNext состояние:", {
+      waitingNext: state.waitingNext,
+      nextLocked: state.nextLocked,
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      choicesHidden: elChoices.classList.contains("hidden"),
+      inGame: state.inGame
+    });
+
+    // Защита от всплытия
+    if (e && typeof e.stopPropagation === "function") {
+      e.stopPropagation();
+    }
+    
     if (!elChoices.classList.contains("hidden")) return;
     if (state.inGame) return;
-    if (!state.waitingNext) return;
+  
+    // ВАЖНО: проверяем, ждём ли мы следующего действия
+    if (!state.waitingNext) {
+      console.log('[VN] onNext ignored - not waiting for next');
+      return;
+    }
+  
+    // Проверяем, не дошли ли мы до конца сценария
+    var scene = state.sceneMap[state.sceneId];
+    if (state.actionIndex >= scene.actions.length) {
+      console.log('[VN] Достигнут конец сценария, игнорируем клик');
+      return;
+    }
 
     // Разрешаем только один "next" до следующего say/text
     if (state.nextLocked) return;
@@ -663,6 +699,17 @@ function markFirstScreenReady(reason) {
     if (e && typeof e.preventDefault === "function") e.preventDefault();
 
     state.waitingNext = false;
+
+    // ВАЖНО: добавляем принудительный сброс nextLocked через небольшой таймаут
+    // чтобы гарантировать, что следующий диалог сможет быть обработан
+    setTimeout(function() {
+      if (!state.waitingNext) {
+        state.nextLocked = false;
+      }
+    }, 100);
+
+    console.log("[VN] onNext ВЫПОЛНЯЕТСЯ, запускаем runCurrent()");
+
     runCurrent();
   }
 
@@ -831,6 +878,13 @@ function markFirstScreenReady(reason) {
 
       case "text":
         showDialog(null, action.text);
+
+        // ВАЖНО: принудительно устанавливаем ожидание
+        state.waitingNext = true;
+        state.nextLocked = false;
+
+        console.log('[VN] text action - waitingNext установлен в true');
+
         return true;
 
       case "choice":
@@ -1155,12 +1209,29 @@ function markFirstScreenReady(reason) {
       elTextContent: elText.textContent
     });
 
+    // ДОБАВЛЯЕМ ВРЕМЕННУЮ МЕТКУ
+    console.log("[VN] TIMESTAMP:", Date.now(), "ms - Показ диалога:", text.substring(0, 30) + "...");
+
     var dialogElement = document.getElementById('dialog');
 
     // Имя показываем ВСЕГДА, если оно есть
     if (name && String(name).trim() !== "") {
+      console.log('[showDialog] ПОКАЗЫВАЕМ ИМЯ:', name);
+      console.log('[showDialog] До применения классов:', elName.classList.toString());
+
+      
+
+
+
       elName.textContent = name;
       elName.classList.remove("hidden");
+
+      // Добавляем защиту от скрытия
+      elName.setAttribute('data-protected', 'true');
+
+      console.log('[showDialog] После применения классов:', elName.classList.toString());
+      console.log('[showDialog] display CSS:', window.getComputedStyle(elName).display);
+
       dialogElement.classList.add('has-name');
       dialogElement.classList.remove('no-name');
 
@@ -1175,9 +1246,33 @@ function markFirstScreenReady(reason) {
         elName.style.background = ""; // Сброс на фон из CSS
         elName.style.textShadow = ""; // Сброс тени
       }
+
+
+      // Создаём наблюдатель только один раз
+      if (!nameObserver) {
+        nameObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'class') {
+              console.log('[showDialog] КЛАСС ИЗМЕНИЛСЯ НА:', elName.className);
+              
+              // Если имя должно быть видимо, но его скрыли - восстанавливаем
+              if (elName.hasAttribute('data-protected') && elName.classList.contains('hidden')) {
+                console.log('[showDialog] ВОССТАНАВЛИВАЕМ имя от скрытия!');
+                elName.classList.remove('hidden');
+                elName.style.display = 'inline-block';
+              }
+            }
+          });
+        });
+        
+        nameObserver.observe(elName, { attributes: true });
+      }
+
+
     } else {
       elName.textContent = "";
       elName.classList.add("hidden");
+      elName.removeAttribute('data-protected');
       dialogElement.classList.remove('has-name');
       dialogElement.classList.add('no-name');
     }
@@ -1230,10 +1325,13 @@ function markFirstScreenReady(reason) {
     // Чтобы отключить номера, замените true на false.
     var SHOW_CHOICE_NUMBERS = true;
 
-    // Убираем предыдущее сообщение, чтобы не мешало выбору
-    showDialog(null, "");
+    // НЕ очищаем диалог полностью, а только текст
+    elText.textContent = ""; // Очищаем только текст, имя оставляем
 
-    elChoices.innerHTML = "";
+    // Убираем предыдущее сообщение, чтобы не мешало выбору
+    // showDialog(null, "");
+
+    // elChoices.innerHTML = "";
     elDialog.classList.add("hiddenByChoices");
     elChoices.classList.remove("hidden");
 
