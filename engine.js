@@ -796,15 +796,37 @@ function markFirstScreenReady(reason) {
           firstScreenMetrics.waitingForCharacter = true;
         }
 
+        // Сохраняем индекс перед асинхронной загрузкой
+        var currentActionIndex = state.actionIndex - 1; // потому что мы уже увеличили индекс
+
+        // Проверяем, нужно ли реально загружать изображение
+        const currentSrc = elChar.getAttribute('src');
+        const currentCharId = elChar.dataset.charId;
+        const isHidden = elChar.classList.contains('hidden');
+
+        // Если персонаж уже видим с той же эмоцией - не нужно асинхронно ждать
+        if (currentSrc === src && !isHidden) {
+          console.log('[Engine CHAR] Character already visible, continuing');
+          return false;
+        }
+
         setCharacter(src, action.pos, action.charId, function() {
           console.log('[FLOW] char(new):done callback start', {
             sceneId: state.sceneId,
             actionIndex: state.actionIndex,
+            savedIndex: currentActionIndex,
             waitingNextBefore: state.waitingNext,
             nextLockedBefore: state.nextLocked
           });
 
           firstScreenMetrics.waitingForCharacter = false;
+
+          // Восстанавливаем индекс только если это был первый показ
+          // и мы не в состоянии ожидания
+          if (state.actionIndex === currentActionIndex + 1 && !state.waitingNext) {
+            console.log('[FLOW] Восстанавливаем индекс до', currentActionIndex);
+            state.actionIndex = currentActionIndex;
+          }
 
           state.nextLocked = false;
           state.waitingNext = false;
@@ -825,26 +847,6 @@ function markFirstScreenReady(reason) {
           action: action
         });
 
-        console.log('[FLOW] char:return async', {
-          sceneId: state.sceneId,
-          actionIndex: state.actionIndex,
-          action: action,
-          waitingNext: state.waitingNext,
-          nextLocked: state.nextLocked
-        });
-
-        // Проверяем, нужно ли ждать асинхронно
-        const currentSrc = elChar.getAttribute('src');
-        const isHidden = elChar.classList.contains('hidden');
-        
-        // Если персонаж уже видим с той же эмоцией - не ждём
-        if (currentSrc === src && !isHidden) {
-          console.log('[Engine CHAR] Character already visible, continuing');
-          return false;
-        }
-        
-        // Иначе ждём загрузки
-        console.log('[SCRIPT FLOW] char action(new) paused until image load');
         return "async";
 
       case "say":
