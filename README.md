@@ -125,7 +125,7 @@ title: Demo Story
 startScene: intro
 
 [bg]
-hall = assets/bg\_hall.jpg
+hall = assets/bg_hall.jpg
 
 [char]
 anna image neutral = assets/ch_anna_neutral.png

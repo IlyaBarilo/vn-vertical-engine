@@ -601,9 +601,13 @@
     
     // hide all
     if (cleanLine === 'hide all') {
+      console.log('[Loader PARSER] hide all command found at line', lineNumber);
       actions.push({
         type: 'char',
-        src: null
+        charId: null,  // Явно указываем null
+        src: null,
+        emotion: null,
+        pos: null
       });
       return;
     }

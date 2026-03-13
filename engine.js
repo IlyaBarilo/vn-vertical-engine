@@ -245,8 +245,72 @@ function markFirstScreenReady(reason) {
 
 
 
+  // Функция для скрытия всех персонажей
+  function hideAllCharacters() {
+    console.log('[Engine] hideAllCharacters START ==========');
+    console.log('[Engine] hideAllCharacters - DOM элемент elChar:', elChar);
+    
+    if (elChar) {
+      // Логируем состояние ДО
+      console.log('[Engine] hideAllCharacters - ДО скрытия:', {
+        классы: elChar.classList.toString(),
+        src: elChar.src,
+        'data-char-id': elChar.dataset.charId,
+        стиль: {
+          display: elChar.style.display,
+          opacity: elChar.style.opacity,
+          visibility: elChar.style.visibility,
+          height: elChar.style.height
+        },
+        offsetHeight: elChar.offsetHeight,
+        видим_ли: !elChar.classList.contains('hidden')
+      });
 
-
+      // Принудительное скрытие
+      elChar.classList.add("hidden");
+      elChar.src = "";
+      elChar.removeAttribute('data-char-id');
+      elChar.style.height = "0px";
+      
+      // Логируем состояние ПОСЛЕ
+      console.log('[Engine] hideAllCharacters - ПОСЛЕ скрытия:', {
+        классы: elChar.classList.toString(),
+        src: elChar.src,
+        'data-char-id': elChar.dataset.charId,
+        стиль: {
+          display: elChar.style.display,
+          opacity: elChar.style.opacity,
+          visibility: elChar.style.visibility,
+          height: elChar.style.height
+        },
+        offsetHeight: elChar.offsetHeight,
+        скрыт_ли: elChar.classList.contains('hidden')
+      });
+      
+      // Проверяем через 100мс, что персонаж действительно скрыт
+      setTimeout(() => {
+        console.log('[Engine] hideAllCharacters - ПРОВЕРКА через 100мс:', {
+          классы: elChar.classList.toString(),
+          src: elChar.src,
+          'data-char-id': elChar.dataset.charId,
+          стиль: {
+            display: elChar.style.display,
+            height: elChar.style.height
+          },
+          offsetHeight: elChar.offsetHeight,
+          скрыт_ли: elChar.classList.contains('hidden'),
+          computedStyle: {
+            display: window.getComputedStyle(elChar).display,
+            opacity: window.getComputedStyle(elChar).opacity,
+            visibility: window.getComputedStyle(elChar).visibility
+          }
+        });
+      }, 100);
+    } else {
+      console.log('[Engine] hideAllCharacters - ОШИБКА: elChar не найден!');
+    }
+    console.log('[Engine] hideAllCharacters END ==========');
+  }
 
   // Проверяем, есть ли ошибки парсинга
   if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
@@ -603,6 +667,17 @@ function markFirstScreenReady(reason) {
       "index:", state.actionIndex
     );
 
+    console.log("[DEBUG] runCurrent - сцена:", state.sceneId, "индекс:", state.actionIndex);
+  if (state.sceneId === 'scene_02') {
+    const scene = state.sceneMap[state.sceneId];
+    if (scene && scene.actions) {
+      console.log("[DEBUG] scene_02 actions:", scene.actions.map(a => a.type).join(', '));
+      if (scene.actions[0]) console.log("[DEBUG] action 0:", scene.actions[0]);
+      if (scene.actions[1]) console.log("[DEBUG] action 1:", scene.actions[1]);
+      if (scene.actions[2]) console.log("[DEBUG] action 2:", scene.actions[2]);
+    }
+  }
+
     console.log('[FLOW] runCurrent:start', {
       sceneId: state.sceneId,
       actionIndex: state.actionIndex,
@@ -783,14 +858,15 @@ function markFirstScreenReady(reason) {
 
       case "char":
         console.log('[Engine CHAR] Processing char action:', action);
-
-        // Проверяем, это команда hide all?
-        if (!action.charId && action.src === null) {
-          console.log('[Engine CHAR] Hide all command');
-          setCharacter(null, null, null);
+        console.log('[Engine executeAction] CHAR action received:', JSON.stringify(action));
+  
+        // Любая команда без charId и без src - это скрытие
+        if ((!action.charId || action.charId === null) && action.src === null) {
+          console.log('[Engine CHAR] Hide command');
+          hideAllCharacters();
           return false;
         }
-
+        
         // Только новый формат:
         // { type: "char", charId: "anna", emotion: "neutral", pos: "center" }
         console.log('[Engine CHAR] New format - charId:', action.charId, 'emotion:', action.emotion);
@@ -1043,11 +1119,36 @@ function markFirstScreenReady(reason) {
 
   function gotoScene(sceneId) {
     console.log("[VN] goto scene ->", sceneId);
+    
+    // ДОБАВЬТЕ ЭТОТ БЛОК
+    console.log("[DEBUG] ДО перехода - состояние:", {
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      waitingNext: state.waitingNext,
+      nextLocked: state.nextLocked
+    });
+    
     if (!sceneId) return;
     
+    // ПОВЫШАЕМ СЧЁТЧИК, чтобы отменить все ожидающие загрузки
+    __activeCharSeq++;
+
     state.sceneId = sceneId;
     state.actionIndex = 0;
+    state.waitingNext = false;
+    state.nextLocked = false;  // ← ВАЖНО!
+    
+    // Скрываем персонажа по умолчанию при смене сцены
+    hideAllCharacters();
+
+    console.log("[DEBUG] ПОСЛЕ перехода - состояние:", {
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      waitingNext: state.waitingNext,
+      nextLocked: state.nextLocked
+    });
   }
+
 
   // =========================================================
   //                   ВИЗУАЛ
@@ -1068,6 +1169,28 @@ function markFirstScreenReady(reason) {
 
   function setCharacter(src, pos, charId, done) {
     
+      console.log('[Engine setCharacter] START - src:', src, 'charId:', charId);
+
+      console.log('[Engine setCharacter] START ==========');
+      console.log('[Engine setCharacter] Параметры:', { src, pos, charId });
+      console.log('[Engine setCharacter] elChar ДО:', {
+        классы: elChar.classList.toString(),
+        src: elChar.src,
+        'data-char-id': elChar.dataset.charId,
+        скрыт: elChar.classList.contains('hidden')
+      });
+
+
+      // Если это команда скрыть
+      if (src === null || src === "" || src === undefined) {
+        console.log('[Engine setCharacter] HIDE command received');
+        hideAllCharacters();
+        if (done) done();
+        console.log('[Engine setCharacter] END ==========');
+        return;
+      }
+
+
       console.log('[Engine setCharacter] Called with:', { src, pos, charId });
       console.log('[Engine setCharacter] elChar element:', elChar);
 
