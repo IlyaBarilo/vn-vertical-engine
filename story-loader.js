@@ -568,6 +568,21 @@
       if (!sceneId) {
         addParseError(lineNumber, line, "ID сцены не может быть пустым", true);
       }
+
+      // ========== ПРОВЕРКА: запрещаем пробелы в ID сцен ==========
+      if (sceneId.includes(' ')) {
+        addParseError(
+          lineNumber, 
+          line, 
+          `ID сцены "${sceneId}" содержит пробелы. ID сцен не могут содержать пробелы. Используйте camelCase (intro_01, scene02) или дефисы (intro-01).`, 
+          true
+        );
+        // Всё равно создаём сцену с очищенным ID, но с ошибкой
+        sceneId = sceneId.replace(/\s+/g, '_'); // заменяем пробелы на подчёркивания
+      }
+      // ====================
+
+
       currentScene = {
         id: sceneId || "unknown_" + lineNumber,
         actions: []
@@ -684,6 +699,19 @@
       if (!target) {
         addParseError(lineNumber, line, "Не указана целевая сцена после goto", true);
       }
+
+      // ========== НОВАЯ ПРОВЕРКА ==========
+      if (target.includes(' ')) {
+        addParseError(
+          lineNumber, 
+          line, 
+          `Целевая сцена "${target}" содержит пробелы. ID сцен не могут содержать пробелы.`, 
+          true
+        );
+        return;
+      }
+      // ====================
+
       actions.push({
         type: 'goto',
         target: target || "unknown"
@@ -727,6 +755,18 @@
       if (!target) {
         addParseError(lineNumber, line, "Не указана целевая сцена в пункте меню", true);
       }
+
+      // ========== НОВАЯ ПРОВЕРКА ==========
+      if (target.includes(' ')) {
+        addParseError(
+          lineNumber, 
+          line, 
+          `Целевая сцена "${target}" в пункте меню содержит пробелы. ID сцен не могут содержать пробелы.`, 
+          true
+        );
+        return;
+      }
+      // ====================
 
       // Ищем последний action типа choice
       let choiceAction = null;
