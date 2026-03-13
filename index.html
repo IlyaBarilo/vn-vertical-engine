@@ -19,14 +19,33 @@
   -->
   <div id="app" class="app">
 
-    <!-- НОВОЕ: панель статистики (со скроллом) -->
     <div id="statsPanel" class="statsPanel hidden" aria-label="Statistics">
       <div class="statsCard">
         <div class="statsHeader">
           <div class="statsTitle">Статистика сценария</div>
-          <button id="btnCloseStats" class="btn" type="button" aria-label="Close stats">✕</button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button id="btnToggleGraph" class="btn" type="button" title="Показать/скрыть граф">📊 Граф</button>
+            <button id="btnCloseStats" class="btn" type="button" aria-label="Close stats">✕</button>
+          </div>
         </div>
-        <textarea id="statsBody" class="statsBody"></textarea>
+        
+        <!-- Добавляем контейнер для переключения между текстом и графиком -->
+        <div class="statsViewContainer">
+          <!-- Текстовое поле статистики -->
+          <textarea id="statsBody" class="statsBody"></textarea>
+          
+          <!-- Область для отображения графика Mermaid (изначально скрыта) -->
+          <div id="graphContainer" class="graphContainer hidden">
+            <div id="mermaidGraph" class="mermaid"></div>
+          </div>
+        </div>
+        
+        <!-- Панель управления графиком (изначально скрыта) -->
+        <div id="graphControls" class="graphControls hidden">
+          <button id="btnCopyMermaid" class="btn" type="button">📋 Копировать код</button>
+          <a href="https://mermaid.live/" target="_blank" class="btn" style="text-decoration: none;">🔗 Mermaid Live</a>
+          <button id="btnRefreshGraph" class="btn" type="button">🔄 Обновить</button>
+        </div>
       </div>
     </div>
 

@@ -673,3 +673,103 @@ body {
 .dialog.no-name {
   padding-top: var(--dialog-no-name-padding-top);
 }
+
+
+
+
+
+
+
+/* Добавьте в engine.css */
+
+.statsViewContainer {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: rgba(0,0,0,0.6);
+}
+
+.statsBody, .graphContainer {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: auto;
+  transition: opacity 0.3s ease;
+}
+
+.graphContainer {
+  background: #1a1a1a;
+  padding: 1rem;
+}
+
+.graphContainer .mermaid {
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  background: #1a1a1a;
+}
+
+.graphControls {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem var(--modal-padding) var(--modal-padding);
+  border-top: var(--ui-border-width) solid rgba(255,255,255,0.12);
+  justify-content: flex-end;
+}
+
+/* Стили для Mermaid в темной теме */
+.mermaid .label {
+  color: #333 !important;
+}
+
+.mermaid .label text {
+  fill: #333 !important;
+}
+
+.mermaid .edgeLabel {
+  background-color: #fff !important;
+  border: 1px solid #666;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #333 !important;
+}
+
+.mermaid .edgeLabel span {
+  color: #333 !important;
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 600px) {
+  .graphControls {
+    flex-wrap: wrap;
+  }
+  
+  .graphControls .btn {
+    flex: 1 1 auto;
+  }
+}
+
+
+/* График на белом фоне */
+.graphContainer .mermaid {
+  background: #ffffff !important;
+  padding: 1rem;
+}
+
+/* Текст в графике - черный */
+.graphContainer .mermaid .label {
+  color: #000000 !important;
+}
+
+.graphContainer .mermaid .label text {
+  fill: #000000 !important;
+}
+
+.graphContainer .mermaid .edgeLabel {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #cccccc;
+}
+

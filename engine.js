@@ -112,6 +112,25 @@ function markFirstScreenReady(reason) {
 
 
 
+
+
+// Инициализация Mermaid с белым фоном
+if (window.mermaid) {
+  window.mermaid.initialize({
+    theme: 'default',  // используем стандартную тему
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+      curve: 'basis'
+    },
+    securityLevel: 'loose',
+    startOnLoad: false
+  });
+}
+
+
+
+
   // Для получения версии из GitHub. Заменяется только первая найденная метка версии (см. ниже)
   window.APP_VERSION = "__VERSION__";
 
@@ -245,6 +264,133 @@ function markFirstScreenReady(reason) {
 
 
   profiler.mark('DOM загружен');
+
+
+
+
+
+
+
+
+
+
+// Добавьте в engine.js после объявления переменных
+
+// Элементы управления графиком
+var btnToggleGraph = document.getElementById("btnToggleGraph");
+var graphContainer = document.getElementById("graphContainer");
+var graphControls = document.getElementById("graphControls");
+var btnCopyMermaid = document.getElementById("btnCopyMermaid");
+var btnRefreshGraph = document.getElementById("btnRefreshGraph");
+var mermaidGraph = document.getElementById("mermaidGraph");
+
+// Состояние отображения (текст или график)
+var showingGraph = false;
+
+// Переменная для хранения текущего кода графа
+var currentMermaidCode = "";
+
+// Обработчик кнопки переключения
+if (btnToggleGraph) {
+  btnToggleGraph.addEventListener("click", function() {
+    toggleGraphView();
+  });
+}
+
+// Обработчик кнопки копирования
+if (btnCopyMermaid) {
+  btnCopyMermaid.addEventListener("click", function() {
+    if (currentMermaidCode) {
+      navigator.clipboard.writeText(currentMermaidCode).then(function() {
+        // Временная индикация успеха
+        var originalText = btnCopyMermaid.textContent;
+        btnCopyMermaid.textContent = "✅ Скопировано!";
+        setTimeout(function() {
+          btnCopyMermaid.textContent = originalText;
+        }, 2000);
+      }).catch(function(err) {
+        console.error("Ошибка копирования:", err);
+        alert("Не удалось скопировать код");
+      });
+    }
+  });
+}
+
+// Обработчик кнопки обновления
+if (btnRefreshGraph) {
+  btnRefreshGraph.addEventListener("click", function() {
+    if (showingGraph) {
+      renderMermaidGraph();
+    }
+  });
+}
+
+// Функция переключения между текстом и графиком
+function toggleGraphView() {
+  var statsBody = document.getElementById("statsBody");
+  
+  if (!showingGraph) {
+    // Переключаемся на график
+    statsBody.classList.add("hidden");
+    graphContainer.classList.remove("hidden");
+    graphControls.classList.remove("hidden");
+    btnToggleGraph.textContent = "📄 Текст";
+    btnToggleGraph.title = "Показать текстовую статистику";
+    showingGraph = true;
+    
+    // Генерируем и отображаем граф
+    renderMermaidGraph();
+  } else {
+    // Переключаемся на текст
+    statsBody.classList.remove("hidden");
+    graphContainer.classList.add("hidden");
+    graphControls.classList.add("hidden");
+    btnToggleGraph.textContent = "📊 Граф";
+    btnToggleGraph.title = "Показать граф сценария";
+    showingGraph = false;
+  }
+}
+
+// Функция рендеринга графа Mermaid
+function renderMermaidGraph() {
+  if (!window.STORY) return;
+  
+  // Получаем данные о недостижимых сценах
+  var reach = findUnreachableScenes(window.STORY);
+  
+  // Генерируем код Mermaid
+  currentMermaidCode = buildMermaidGraph(window.STORY, reach.unreachable);
+  
+  // Вставляем код в контейнер
+  if (mermaidGraph) {
+    mermaidGraph.innerHTML = currentMermaidCode;
+    
+    // Инициализируем Mermaid
+    if (window.mermaid) {
+      try {
+        // Очищаем предыдущую инициализацию
+        mermaidGraph.removeAttribute('data-processed');
+        window.mermaid.init(undefined, mermaidGraph);
+      } catch (e) {
+        console.error("Ошибка инициализации Mermaid:", e);
+        mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
+      }
+    } else {
+      mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">Библиотека Mermaid не загружена</div>';
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2181,6 +2327,19 @@ window.addEventListener("resize", adjustCharacterScale);
   }
 
   function showStatsPanel() {
+    // Сбрасываем состояние на текстовое при каждом открытии
+    if (showingGraph) {
+      // Если был показан график, переключаем обратно на текст
+      var statsBody = document.getElementById("statsBody");
+      if (statsBody) {
+        statsBody.classList.remove("hidden");
+        graphContainer.classList.add("hidden");
+        graphControls.classList.add("hidden");
+        btnToggleGraph.textContent = "📊 Граф";
+        btnToggleGraph.title = "Показать граф сценария";
+        showingGraph = false;
+      }
+    }
     // если открыта игра — не мешаем, можно запретить или просто показывать
     // здесь оставим показывать (по вашему желанию можно блокировать)
     renderStats();
@@ -2528,10 +2687,34 @@ window.addEventListener("resize", adjustCharacterScale);
       text += "\n\n=== MERMAID GRAPH ===\n\n";
       text += buildMermaidGraph(STORY, reach.unreachable);
 
+
+
       elStatsBody.value = text;
       elStatsBody.scrollTop = 0;
+
+
+      // Модифицируем существующую функцию renderStats для обновления графа при переключении
+      // Добавьте ЭТИ строки в конец функции renderStats:
+      // Если сейчас показывается граф, обновляем его
+      if (showingGraph && window.STORY) {
+        // Небольшая задержка, чтобы дать время обновиться DOM
+        setTimeout(function() {
+          renderMermaidGraph();
+        }, 100);
+      }
+
     });
+
   }
+
+  // Также добавьте обработчик изменения размера для адаптации графа
+  window.addEventListener("resize", function() {
+    if (showingGraph && window.mermaid) {
+      // Перерисовываем граф при изменении размера окна
+      setTimeout(renderMermaidGraph, 100);
+    }
+  });
+
 
 
 // Новая функция для сбора информации об окружении
