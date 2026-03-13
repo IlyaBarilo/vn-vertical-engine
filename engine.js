@@ -114,14 +114,15 @@ function markFirstScreenReady(reason) {
 
 
 
-// Инициализация Mermaid с белым фоном
+// Инициализация Mermaid с правильными настройками для текста над линиями
+// Упрощенная инициализация Mermaid
 if (window.mermaid) {
   window.mermaid.initialize({
-    theme: 'default',  // используем стандартную тему
+    theme: 'default',
     flowchart: {
       useMaxWidth: true,
       htmlLabels: true,
-      curve: 'basis'
+      curve: 'linear'
     },
     securityLevel: 'loose',
     startOnLoad: false
