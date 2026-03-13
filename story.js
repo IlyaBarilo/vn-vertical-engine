@@ -1,7 +1,7 @@
 // story-content.js
 // Содержит текст сценария в виде строки
 
-window.STORY_TEXT = `# МЕТАДАННЫЕ
+window.STORY_TEXT = `[meta]
 title: Вуз: демо-новелла с выбором
 startScene: intro_01
 # topSpacing: 500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
@@ -36,14 +36,14 @@ ivan image neutral = assets/characters/ch_ivan_smileTest.png
 ivan name = "Иван"
 ivan color = #060
 
-[audio]
+[audio] 
 # Формат описания для музыки:
 # название_музыки = путь_и_название_файла
 bgmDay = assets/audio/bgm_campus_day.mp3
 # bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
 # sfxClickTest = assets/audio/sfx_button_click.mp3
 
-# СЦЕНЫ
+[scene]
 # Формат описания сцен:
 # scene название_сцены
 scene intro_01

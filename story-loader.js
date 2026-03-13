@@ -136,7 +136,7 @@
     };
 
     let currentScene = null;
-    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'scenes'
+    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'scene'
     let lineNumber = 0;
 
     const lines = text.split(/\r?\n/);
@@ -156,28 +156,42 @@
       if (line === '') continue;
       
       // Определяем секции
-      if (line.startsWith('# МЕТАДАННЫЕ')) {
+
+      //Подсказка про устаревшее название
+      if (/^\s*#\s*МЕТАДАННЫЕ\s*$/i.test(line)) {
+        currentSection = 'meta';
+        continue;
+        //addParseError(0, "Раздел Метаданные", "Замените #МЕТАДАННЫЕ на [meta]");
+      }
+
+      if (/^\s*\[meta\]\s*$/i.test(line)) {
         currentSection = 'meta';
         continue;
       }
-      
-      if (line.startsWith('[bg]')) {
+
+      if (/^\s*\[bg\]\s*$/i.test(line)) {
         currentSection = 'bg';
         continue;
       }
       
-      if (line.startsWith('[char]')) {
+      if (/^\s*\[char\]\s*$/i.test(line)) {
         currentSection = 'char';
         continue;
       }
       
-      if (line.startsWith('[audio]')) {
+      if (/^\s*\[audio\]\s*$/i.test(line)) {
         currentSection = 'audio';
         continue;
       }
-      
-      if (line.startsWith('# СЦЕНЫ')) {
-        currentSection = 'scenes';
+
+      //Подсказка про устаревшее название
+      if (/^\s*#\s*СЦЕНЫ\s*$/i.test(line)) {
+        currentSection = 'scene';
+        // addParseError(line, "Раздел Сцены", "Замените #СЦЕНЫ на [scene]");
+      }
+
+      if (/^\s*\[scene\]\s*$/i.test(line)) {
+        currentSection = 'scene';
         continue;
       }
       
@@ -196,13 +210,13 @@
         case 'audio':
           parseAssetLine(line, 'audio', story);
           break;
-        case 'scenes':
+        case 'scene':
           parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
           break;
         default:
           // Если секция не определена, но строка начинается с 'scene'
           if (line.startsWith('scene ')) {
-            currentSection = 'scenes';
+            currentSection = 'scene';
             parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
           }
       }
