@@ -3030,7 +3030,7 @@ function collectEnvironmentInfo() {
   }
 
 
-  // engine.js - замените функцию buildMermaidGraph на эту улучшенную версию
+// engine.js - обновленная функция buildMermaidGraph
 
 function buildMermaidGraph(story, unreachableList) {
     var scenes = story.scenes || [];
@@ -3053,6 +3053,8 @@ function buildMermaidGraph(story, unreachableList) {
     // Сбор информации о вершинах и рёбрах
     var nodes = [];
     var edges = [];
+    var incomingEdges = {}; // Словарь для подсчета входящих связей
+    var outgoingEdges = {}; // Словарь для подсчета исходящих связей
     
     for (var s = 0; s < scenes.length; s++) {
         var scene = scenes[s];
@@ -3065,7 +3067,10 @@ function buildMermaidGraph(story, unreachableList) {
         var sayCount = 0;
         var textCount = 0;
         var bgmCount = 0;
-        var outEdgeCount = 0;
+        
+        // Инициализируем счетчики связей
+        if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
+        if (!outgoingEdges[scene.id]) outgoingEdges[scene.id] = 0;
         
         for (var a = 0; a < actions.length; a++) {
             var act = actions[a];
@@ -3082,7 +3087,10 @@ function buildMermaidGraph(story, unreachableList) {
             // goto -> ребро
             if (act.type === "goto" && act.target) {
                 edges.push({ from: scene.id, to: act.target, label: "" });
-                outEdgeCount++;
+                outgoingEdges[scene.id]++;
+                
+                if (!incomingEdges[act.target]) incomingEdges[act.target] = 0;
+                incomingEdges[act.target]++;
             }
             
             // choice -> ребро с текстом пункта меню
@@ -3095,15 +3103,13 @@ function buildMermaidGraph(story, unreachableList) {
                             to: ch.goto, 
                             label: String(ch.text || "").substring(0, 40) + (ch.text.length > 40 ? "..." : "")
                         });
-                        outEdgeCount++;
+                        outgoingEdges[scene.id]++;
+                        
+                        if (!incomingEdges[ch.goto]) incomingEdges[ch.goto] = 0;
+                        incomingEdges[ch.goto]++;
                     }
                 }
             }
-        }
-        
-        // Если исходящих нет — добавим "end" в старт
-        if (outEdgeCount === 0 && startId && scene.id !== startId) {
-            edges.push({ from: scene.id, to: startId, label: "end" });
         }
         
         nodes.push({
@@ -3120,25 +3126,25 @@ function buildMermaidGraph(story, unreachableList) {
     // Добавляем заголовок
     mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
     
-    // Стили для узлов (аналог node [shape=box, style=rounded] в DOT)
+    // Стили для узлов
     mermaid += "%% Определение стилей\n";
     mermaid += "classDef default fill:#fff3e0,stroke:#666,color:#000,stroke-width:1px,r:10px;\n";
-    mermaid += "classDef start fill:#e1f5e1,stroke:#00ff00,color:#000,stroke-width:2px,r:10px;\n";
-    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:10px;\n\n";
+    mermaid += "classDef start fill:#e1f5e1,stroke:#50ac50,color:#000,stroke-width:2px,r:10px;\n";
+    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:10px;\n";
+    mermaid += "classDef final fill:#5eb9ff,stroke:#3c698c,color:#000,stroke-width:2px,r:10px;\n\n";
     
-    // Создаем узлы с многострочными метками (как в DOT)
+    // Создаем узлы с многострочными метками
     for (var n = 0; n < nodes.length; n++) {
         var node = nodes[n];
         var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
         
-        // Формируем многострочную метку точно как в DOT
+        // Формируем многострочную метку
         var label = 
             node.id + "<br/>" +
             "Персонажи: " + chars + "<br/>" +
             "Фраз: " + node.phraseCount + "<br/>" +
             "Музыка: " + node.bgmCount;
         
-        // В Mermaid HTML сущности для многострочности
         mermaid += '    ' + node.id + '["' + label + '"]\n';
     }
     
@@ -3150,11 +3156,23 @@ function buildMermaidGraph(story, unreachableList) {
         var node = nodes[n];
         var classes = [];
         
+        // Проверяем, является ли сцена стартовой
         if (node.id === startId) {
             classes.push("start");
         }
+        
+        // Проверяем, является ли сцена недостижимой
         if (unreachableSet[node.id]) {
             classes.push("unreachable");
+        }
+        
+        // Проверяем, является ли сцена финальной (есть входящие, нет исходящих)
+        // И при этом не стартовая и не недостижимая
+        if (!unreachableSet[node.id] && 
+            node.id !== startId && 
+            incomingEdges[node.id] > 0 && 
+            (!outgoingEdges[node.id] || outgoingEdges[node.id] === 0)) {
+            classes.push("final");
         }
         
         if (classes.length > 0) {
@@ -3164,7 +3182,7 @@ function buildMermaidGraph(story, unreachableList) {
     
     mermaid += "\n%% Связи\n";
     
-    // Создаем связи с подписями
+    // Создаем связи с подписями (только реальные связи из сценария)
     for (var e = 0; e < edges.length; e++) {
         var ed = edges[e];
         if (ed.label && ed.label.trim() !== "") {
