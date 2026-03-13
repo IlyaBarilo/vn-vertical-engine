@@ -3324,10 +3324,14 @@ function buildMermaidGraph(story, unreachableList) {
         
         // Формируем многострочную метку
         var label = 
-            node.id + "<br/>" +
-            "Персонажи: " + chars + "<br/>" +
-            "Фраз: " + node.phraseCount + "<br/>" +
-            "Музыка: " + node.bgmCount;
+            node.id + "<br/>";
+
+            if (chars != '(нет)')
+              { label+= "👤" + chars + "<br/>"; }
+            if (node.phraseCount != 0)
+              { label+= " 💬" + node.phraseCount; }
+            if (node.bgmCount != 0)
+              { label+= " 🎵" + node.bgmCount; }
         
         mermaid += '    ' + node.id + '["' + label + '"]\n';
     }
