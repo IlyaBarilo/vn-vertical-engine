@@ -201,14 +201,14 @@
           parseMetaLine(line, story);
           break;
         case 'bg':
-          parseAssetLine(line, 'backgrounds', story);
+          parseAssetLine(lineNumber, line, 'backgrounds', story);
           break;
         case 'char':
           console.log('[Loader CHAR] Processing line:', line);
-          parseAssetLine(line, 'characters', story);
+          parseAssetLine(lineNumber, line, 'characters', story);
           break;
         case 'audio':
-          parseAssetLine(line, 'audio', story);
+          parseAssetLine(lineNumber, line, 'audio', story);
           break;
         case 'scene':
           parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
@@ -429,7 +429,7 @@
   }
 
   // Парсинг ресурсов (bg, char, audio)
-  function parseAssetLine(line, category, story) {
+  function parseAssetLine(lineNumber, line, category, story) {
     console.log('[Loader] parseAssetLine:', line, 'category:', category);
     
     // Удаляем комментарии
@@ -454,6 +454,44 @@
       let value = match[2].trim();
       console.log('[Loader] key:', key, 'value:', value);
       
+
+
+
+
+
+    // ========== запрещаем пробелы в ключах для bg и audio ==========
+    if (category === 'backgrounds' || category === 'audio') {
+      // Проверяем, есть ли пробелы в ключе
+      if (key.includes(' ')) {
+        addParseError(
+          lineNumber, 
+          line, 
+          `Имя ключа "${key}" содержит пробелы. В секции [${category === 'backgrounds' ? 'bg' : 'audio'}] имена не могут содержать пробелы. Используйте camelCase (bgDay) или дефисы (bg-day).`, 
+          true
+        );
+        return; // Прерываем обработку этой строки
+      }
+      
+      // Дополнительная проверка на пустой ключ
+      if (key.length === 0) {
+        addParseError(
+          lineNumber, 
+          line, 
+          `Пустое имя ключа в секции [${category === 'backgrounds' ? 'bg' : 'audio'}]`, 
+          true
+        );
+        return;
+      }
+    }
+    // ====================
+
+
+
+
+
+
+
+
       // Убираем кавычки из значений, если они есть
       if (value.startsWith('"') && value.endsWith('"')) {
         value = value.slice(1, -1);
