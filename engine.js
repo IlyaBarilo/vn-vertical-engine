@@ -205,6 +205,9 @@ function markFirstScreenReady(reason) {
   // Глобальный наблюдатель за именем
   var nameObserver = null;
 
+  // В начале файла, после других переменных:
+  let currentSceneId = null;
+
   // Для отладки
   console.log('[Engine] blurBgLayer:', elBlurBgLayer);
   console.log('[Engine] blurBgImage:', elBlurBgImage);
@@ -247,6 +250,12 @@ function markFirstScreenReady(reason) {
 
   // Функция для скрытия всех персонажей
   function hideAllCharacters() {
+    console.log('[Engine] hideAllCharacters START ==========');
+  
+    // Увеличиваем счётчик, чтобы отменить все старые загрузки
+    __activeCharSeq++;
+
+
     console.log('[Engine] hideAllCharacters START ==========');
     console.log('[Engine] hideAllCharacters - DOM элемент elChar:', elChar);
     
@@ -636,6 +645,7 @@ function markFirstScreenReady(reason) {
 
     // сброс к стартовой сцене
     state.sceneId = STORY.meta && STORY.meta.start ? STORY.meta.start : null;
+    currentSceneId = state.sceneId;
     state.actionIndex = 0;
     state.waitingNext = false;
 
@@ -782,6 +792,8 @@ function markFirstScreenReady(reason) {
       console.log("[VN] onNext проигнорирован (защита от двойного клика)");
       return;
     }
+    console.log('[TIMING] Время между кликами:', now - lastNextTime, 'ms');
+    
     lastNextTime = now;
 
     console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
@@ -857,13 +869,17 @@ function markFirstScreenReady(reason) {
         return false;
 
       case "char":
+        console.log('[ENGINE] ПОЛУЧЕН CHAR ACTION:', JSON.stringify(action));
+        console.log('[ENGINE] Текущая сцена:', state.sceneId, 'индекс:', state.actionIndex-1);
+
         console.log('[Engine CHAR] Processing char action:', action);
         console.log('[Engine executeAction] CHAR action received:', JSON.stringify(action));
   
         // Любая команда без charId и без src - это скрытие
         if ((!action.charId || action.charId === null) && action.src === null) {
-          console.log('[Engine CHAR] Hide command');
+          console.log('[ENGINE] ВЫПОЛНЯЕТСЯ HIDE ALL!');
           hideAllCharacters();
+          console.log('[ENGINE] HIDE ALL ВЫПОЛНЕН, возвращаем false');
           return false;
         }
         
@@ -945,10 +961,10 @@ function markFirstScreenReady(reason) {
 
           // Восстанавливаем индекс только если это был первый показ
           // и мы не в состоянии ожидания
-          if (state.actionIndex === currentActionIndex + 1 && !state.waitingNext) {
-            console.log('[FLOW] Восстанавливаем индекс до', currentActionIndex);
-            state.actionIndex = currentActionIndex;
-          }
+          //if (state.actionIndex === currentActionIndex + 1 && !state.waitingNext) {
+          //  console.log('[FLOW] Восстанавливаем индекс до', currentActionIndex);
+          //  state.actionIndex = currentActionIndex;
+          //}
 
           state.nextLocked = false;
           state.waitingNext = false;
@@ -972,6 +988,7 @@ function markFirstScreenReady(reason) {
         return "async";
 
       case "say":
+        console.log('[ENGINE SAY] Показываю диалог, возвращаю true');
         // Только новый формат:
         // { type: "say", charVar: "anna", text: "..." }
 
@@ -1004,6 +1021,7 @@ function markFirstScreenReady(reason) {
         return true;
 
       case "text":
+        console.log('[ENGINE TEXT] Показываю текст, возвращаю true');
         showDialog(null, action.text);
 
         // ВАЖНО: принудительно устанавливаем ожидание
@@ -1019,6 +1037,7 @@ function markFirstScreenReady(reason) {
         return true;
 
       case "goto":
+        console.log('[ENGINE GOTO] Переход, возвращаю false');
         gotoScene(action.target);
         return false;
 
@@ -1134,10 +1153,14 @@ function markFirstScreenReady(reason) {
     __activeCharSeq++;
 
     state.sceneId = sceneId;
+    currentSceneId = sceneId;
     state.actionIndex = 0;
     state.waitingNext = false;
     state.nextLocked = false;  // ← ВАЖНО!
     
+    // В функции gotoScene, после установки state.sceneId:
+    currentSceneId = sceneId;
+
     // Скрываем персонажа по умолчанию при смене сцены
     hideAllCharacters();
 
@@ -1169,6 +1192,9 @@ function markFirstScreenReady(reason) {
 
   function setCharacter(src, pos, charId, done) {
     
+      // В функции setCharacter, в самом начале добавьте:
+      console.log('[setCharacter] ТЕКУЩИЙ ИНДЕКС В НАЧАЛЕ:', state.actionIndex);
+
       console.log('[Engine setCharacter] START - src:', src, 'charId:', charId);
 
       console.log('[Engine setCharacter] START ==========');
@@ -1260,9 +1286,15 @@ function markFirstScreenReady(reason) {
         
         // Просто меняем src, не скрывая персонажа
         elChar.onload = function() {
+
           console.log('[Engine setCharacter] Emotion changed successfully:', src);
+          console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
           adjustCharacterScale();
-          if (done) done();
+          if (done) {
+            console.log('[setCharacter] onload - ВЫЗЫВАЕМ done callback');
+            done();
+            console.log('[setCharacter] onload - ИНДЕКС ПОСЛЕ callback:', state.actionIndex);
+          }
         };
         
         elChar.onerror = function() {
@@ -1319,6 +1351,15 @@ function markFirstScreenReady(reason) {
             return;
           }
 
+
+          // Проверяем, не переключилась ли сцена
+          if (state.sceneId !== currentSceneId) {
+              console.log('[setCharacter] Сцена изменилась с', currentSceneId, 'на', state.sceneId, '- не восстанавливаем индекс');
+              if (done) done();
+              return;
+          }
+
+
           // Сначала показываем, чтобы adjustCharacterScale не вышел по hidden
           elChar.classList.remove("hidden");
 
@@ -1370,6 +1411,7 @@ function markFirstScreenReady(reason) {
   }
 
   function showDialog(name, text, color) {
+    console.log('[showDialog] НАЧАЛО - waitingNext ДО:', state.waitingNext);
     console.log(
       "[VN] dialog",
       name ? name : "(text)",
@@ -1467,6 +1509,7 @@ function markFirstScreenReady(reason) {
         dialogElement.classList.add('no-hint');
       }
     }
+    console.log('[showDialog] КОНЕЦ - waitingNext ПОСЛЕ:', state.waitingNext);
   }
 
 

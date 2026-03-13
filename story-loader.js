@@ -112,6 +112,8 @@
 
   function parseStory(text) {
     console.log('[Loader] Начинаем парсинг, длина:', text.length);
+    console.log('[Loader] ПЕРВЫЕ 500 символов текста:');
+    console.log(text.substring(0, 500));
     loaderMark('Начало парсинга');
 
     // Структура для результата
@@ -500,6 +502,9 @@
     
     // Используем cleanLine для парсинга, но line для вывода ошибок
 
+    // Логируем ВСЕ строки
+    console.log(`[PARSER LINE ${lineNumber}] Clean:`, JSON.stringify(cleanLine));
+
     // Новая сцена
     if (cleanLine.startsWith('scene ')) {
       // Сохраняем предыдущую сцену
@@ -601,7 +606,8 @@
     
     // hide all
     if (cleanLine === 'hide all') {
-      console.log('[Loader PARSER] hide all command found at line', lineNumber);
+      console.log('[PARSER] НАЙДЕНА КОМАНДА hide all на строке', lineNumber);
+      console.log('[PARSER] Текущая сцена:', currentScene?.id);
       actions.push({
         type: 'char',
         charId: null,  // Явно указываем null
@@ -609,6 +615,9 @@
         emotion: null,
         pos: null
       });
+  
+      console.log('[PARSER] hide all action добавлен. Теперь в сцене', 
+        currentScene.id, 'actions:', actions.map(a => a.type).join(', '));
       return;
     }
     
@@ -633,6 +642,7 @@
     // Диалог: переменная: "текст"
     const dialogMatch = cleanLine.match(/^([a-zA-Z0-9_]+):\s*"(.+)"$/);
     if (dialogMatch) {
+      console.log(`[PARSER LINE ${lineNumber}] MATCH: dialog`);
       const charVar = dialogMatch[1].trim(); // anna, igor
       let text = dialogMatch[2].trim();
       
@@ -655,6 +665,7 @@
     // Выбор: Текст -> сцена
     const choiceMatch = cleanLine.match(/^"(.+)"\s*->\s*(.+)$/);
     if (choiceMatch) {
+      console.log(`[PARSER LINE ${lineNumber}] MATCH: choice`);
       const text = choiceMatch[1].trim();
       const target = choiceMatch[2].trim();
       
@@ -693,6 +704,7 @@
      // Текст в кавычках (авторский)
     const textMatch = cleanLine.match(/^"(.+)"$/);
     if (textMatch) {
+      console.log(`[PARSER LINE ${lineNumber}] MATCH: text`);
       let text = textMatch[1].trim();
       if (!text) {
         addParseError(lineNumber, line, "Пустой текст в кавычках", true);
@@ -709,7 +721,9 @@
     
     // Если ничего не подошло и это не комментарий
     if (cleanLine && !cleanLine.startsWith('#')) {
+      console.log(`[PARSER LINE ${lineNumber}] UNKNOWN FORMAT - добавляем ошибку`);
       addParseError(lineNumber, line, "Неизвестный формат строки", true);
+      return false;
     }
   }
 
