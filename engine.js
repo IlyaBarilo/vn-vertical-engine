@@ -2525,8 +2525,8 @@ window.addEventListener("resize", adjustCharacterScale);
       }
 
 
-      text += "\n\n=== DOT (GraphViz) ===\n\n";
-      text += buildDotGraph(STORY, reach.unreachable);
+      text += "\n\n=== MERMAID GRAPH ===\n\n";
+      text += buildMermaidGraph(STORY, reach.unreachable);
 
       elStatsBody.value = text;
       elStatsBody.scrollTop = 0;
@@ -3030,175 +3030,159 @@ function collectEnvironmentInfo() {
   }
 
 
+  // engine.js - замените функцию buildMermaidGraph на эту улучшенную версию
 
-
-  function buildDotGraph(story, unreachableList) {
+function buildMermaidGraph(story, unreachableList) {
     var scenes = story.scenes || [];
     var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
-
+    
     // Набор недостижимых сцен для подсветки
     var unreachableSet = {};
     if (unreachableList && unreachableList.length) {
-      for (var ui = 0; ui < unreachableList.length; ui++) {
-        unreachableSet[unreachableList[ui]] = true;
-      }
+        for (var ui = 0; ui < unreachableList.length; ui++) {
+            unreachableSet[unreachableList[ui]] = true;
+        }
     }
-
+    
     // Карта сцен для проверки существования
     var sceneMap = {};
     for (var i = 0; i < scenes.length; i++) {
-      if (scenes[i] && scenes[i].id) sceneMap[scenes[i].id] = scenes[i];
+        if (scenes[i] && scenes[i].id) sceneMap[scenes[i].id] = scenes[i];
     }
-
+    
     // Сбор информации о вершинах и рёбрах
-    var nodes = []; // { id, characters[], sayCount, bgmCount }
-    var edges = []; // { from, to, label }
-
+    var nodes = [];
+    var edges = [];
+    
     for (var s = 0; s < scenes.length; s++) {
-      var scene = scenes[s];
-      if (!scene || !scene.id) continue;
-
-      var actions = scene.actions || [];
-      console.log('[DOT scene start]', scene.id, actions);
-
-      // --- метрики вершины ---
-      var charSet = {};
-      var sayCount = 0;
-      var textCount = 0;
-      var bgmCount = 0;
-
-      // --- исходящие рёбра ---
-      var outEdgeCount = 0;
-
-      for (var a = 0; a < actions.length; a++) {
-        var act = actions[a];
-        if (!act || !act.type) continue;
-
-        if (act.type === "char") {
-          console.log('[DOT char action]', {
-            sceneId: scene.id,
-            act: act,
-            charId: act.charId
-          });
-
-          if (act.charId) {
-            charSet[act.charId] = true;
-            console.log('[DOT char added]', scene.id, Object.keys(charSet));
-          }
-        }
-
-        if (act.type === "say") sayCount++;
-        if (act.type === "text") textCount++;
-        if (act.type === "bgm") bgmCount++;
-
-        // goto -> ребро
-        if (act.type === "goto" && act.target) {
-          edges.push({ from: scene.id, to: act.target, label: "" });
-          outEdgeCount++;
-        }
-
-        // choice -> ребро с текстом пункта меню
-        if (act.type === "choice" && act.choices && act.choices.length) {
-          for (var c = 0; c < act.choices.length; c++) {
-            var ch = act.choices[c];
-            if (ch && ch.goto) {
-              edges.push({ from: scene.id, to: ch.goto, label: String(ch.text || "") });
-              outEdgeCount++;
+        var scene = scenes[s];
+        if (!scene || !scene.id) continue;
+        
+        var actions = scene.actions || [];
+        
+        // --- метрики вершины ---
+        var charSet = {};
+        var sayCount = 0;
+        var textCount = 0;
+        var bgmCount = 0;
+        var outEdgeCount = 0;
+        
+        for (var a = 0; a < actions.length; a++) {
+            var act = actions[a];
+            if (!act || !act.type) continue;
+            
+            if (act.type === "char" && act.charId) {
+                charSet[act.charId] = true;
             }
-          }
+            
+            if (act.type === "say") sayCount++;
+            if (act.type === "text") textCount++;
+            if (act.type === "bgm") bgmCount++;
+            
+            // goto -> ребро
+            if (act.type === "goto" && act.target) {
+                edges.push({ from: scene.id, to: act.target, label: "" });
+                outEdgeCount++;
+            }
+            
+            // choice -> ребро с текстом пункта меню
+            if (act.type === "choice" && act.choices && act.choices.length) {
+                for (var c = 0; c < act.choices.length; c++) {
+                    var ch = act.choices[c];
+                    if (ch && ch.goto) {
+                        edges.push({ 
+                            from: scene.id, 
+                            to: ch.goto, 
+                            label: String(ch.text || "").substring(0, 40) + (ch.text.length > 40 ? "..." : "")
+                        });
+                        outEdgeCount++;
+                    }
+                }
+            }
         }
-      }
-
-      // Если исходящих нет — добавим "end" в старт (удобно для киоска/демо)
-      if (outEdgeCount === 0 && startId && scene.id !== startId) {
-        edges.push({ from: scene.id, to: startId, label: "end" });
-      }
-
-      nodes.push({
-        id: scene.id,
-        characters: keysSorted(charSet),
-        phraseCount: (sayCount + textCount),
-        bgmCount: bgmCount
-      });
+        
+        // Если исходящих нет — добавим "end" в старт
+        if (outEdgeCount === 0 && startId && scene.id !== startId) {
+            edges.push({ from: scene.id, to: startId, label: "end" });
+        }
+        
+        nodes.push({
+            id: scene.id,
+            characters: keysSorted(charSet),
+            phraseCount: (sayCount + textCount),
+            bgmCount: bgmCount
+        });
     }
-
-    // Формируем DOT
-    var dot = "";
-    dot += "digraph VN {\n";
-    dot += "  rankdir=LR;\n";
-    dot += "  labelloc=\"t\";\n";
-    dot += "  label=\"" + dotEscape((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\";\n";
-    dot += "  node [shape=box, style=\"rounded\", fontsize=10];\n";
-    dot += "  edge [fontsize=9];\n\n";
-
-    // Узлы
+    
+    // Формируем Mermaid граф
+    var mermaid = "graph LR;\n";  // LR = Left to Right (как в DOT)
+    
+    // Добавляем заголовок
+    mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
+    
+    // Стили для узлов (аналог node [shape=box, style=rounded] в DOT)
+    mermaid += "%% Определение стилей\n";
+    mermaid += "classDef default fill:#fff3e0,stroke:#666,color:#000,stroke-width:1px,r:10px;\n";
+    mermaid += "classDef start fill:#e1f5e1,stroke:#00ff00,color:#000,stroke-width:2px,r:10px;\n";
+    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:10px;\n\n";
+    
+    // Создаем узлы с многострочными метками (как в DOT)
     for (var n = 0; n < nodes.length; n++) {
-      var node = nodes[n];
-      var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
-
-      console.log('[DOT node chars]', {
-        nodeId: node.id,
-        characters: node.characters,
-        charsText: chars
-      });
-
-      var label =
-        node.id + "\\n" +
-        "Персонажи: " + chars + "\\n" +
-        "Фраз: " + node.phraseCount + "\\n" +
-        "Музыка: " + node.bgmCount;
-
-      console.log('[DOT final label]', {
-        nodeId: node.id,
-        chars: chars,
-        label: label
-      });
-
-      var nodeAttrs = 'label="' + dotEscape(label) + '"';
-      // Стартовая сцена
-      if (node.id === startId) {
-        nodeAttrs += ', shape=doubleoctagon, color="green", fontcolor="green", penwidth=2';
-      }
-      // Недостижимая сцена
-      if (unreachableSet[node.id]) {
-        nodeAttrs += ', color="red", fontcolor="red", style="rounded,dashed", penwidth=2';
-      }
-      dot += '  "' + dotEscape(node.id) + '" [' + nodeAttrs + '];\n';
-
+        var node = nodes[n];
+        var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
+        
+        // Формируем многострочную метку точно как в DOT
+        var label = 
+            node.id + "<br/>" +
+            "Персонажи: " + chars + "<br/>" +
+            "Фраз: " + node.phraseCount + "<br/>" +
+            "Музыка: " + node.bgmCount;
+        
+        // В Mermaid HTML сущности для многострочности
+        mermaid += '    ' + node.id + '["' + label + '"]\n';
     }
-
-    dot += "\n";
-
-    // Рёбра (показываем даже если target неизвестен — так увидите ошибку в графе)
+    
+    mermaid += "\n";
+    
+    // Применяем классы
+    mermaid += "%% Применение стилей\n";
+    for (var n = 0; n < nodes.length; n++) {
+        var node = nodes[n];
+        var classes = [];
+        
+        if (node.id === startId) {
+            classes.push("start");
+        }
+        if (unreachableSet[node.id]) {
+            classes.push("unreachable");
+        }
+        
+        if (classes.length > 0) {
+            mermaid += '    class ' + node.id + ' ' + classes.join(',') + ';\n';
+        }
+    }
+    
+    mermaid += "\n%% Связи\n";
+    
+    // Создаем связи с подписями
     for (var e = 0; e < edges.length; e++) {
-      var ed = edges[e];
-      var fromId = ed.from;
-      var toId = ed.to;
-
-      var attrs = "";
-      if (ed.label && ed.label.trim() !== "") {
-        attrs = " [label=\"" + dotEscape(ed.label) + "\"]";
-      }
-
-      dot += "  \"" + dotEscape(fromId) + "\" -> \"" + dotEscape(toId) + "\"" + attrs + ";\n";
+        var ed = edges[e];
+        if (ed.label && ed.label.trim() !== "") {
+            // Экранируем кавычки и спецсимволы в метках
+            var label = ed.label.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            mermaid += '    ' + ed.from + ' -->|"' + label + '"| ' + ed.to + ';\n';
+        } else {
+            mermaid += '    ' + ed.from + ' --> ' + ed.to + ';\n';
+        }
     }
-
-    dot += "}\n";
-    return dot;
-  }
-
-function dotEscape(s) {
-  // Экранируем для DOT-строк:
-  // - обратный слэш
-  // - кавычки
-  // - переводы строк (на всякий)
-  s = String(s);
-  // s = s.replace(/\\/g, "\\\\");
-  s = s.replace(/"/g, "\\\"");
-  // s = s.replace(/\r?\n/g, "\n");
-  return s;
+    
+    return mermaid;
 }
-
+      
+      // Стили для узлов
+  //    mermaid += "classDef default fill:fff3e0,stroke:#666,color:#000;\n";
+  //    mermaid += "classDef start fill:#e1f5e1,stroke:#00ff00,color:#000,stroke-width:2px;\n";
+  //    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray: 5 5;\n\n";
 
 
 
