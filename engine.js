@@ -3251,6 +3251,8 @@ function buildMermaidGraph(story, unreachableList) {
         var sayCount = 0;
         var textCount = 0;
         var bgmCount = 0;
+        var bgCount = 0; // СЧЕТЧИК ФОНОВ
+        var uniqueBgs = {}; // Для подсчета уникальных фонов
         
         // Инициализируем счетчики связей
         if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
@@ -3268,6 +3270,16 @@ function buildMermaidGraph(story, unreachableList) {
             if (act.type === "text") textCount++;
             if (act.type === "bgm") bgmCount++;
             
+            // ПОДСЧЕТ ФОНОВ
+            if (act.type === "bg" && act.src) {
+                bgCount++;
+                // Извлекаем ID фона из src (@bg.xxx)
+                var bgId = extractAliasId(act.src, "bg");
+                if (bgId) {
+                    uniqueBgs[bgId] = true;
+                }
+            }
+
             // goto -> ребро
             if (act.type === "goto" && act.target) {
                 edges.push({ from: scene.id, to: act.target, label: "" });
@@ -3300,7 +3312,9 @@ function buildMermaidGraph(story, unreachableList) {
             id: scene.id,
             characters: keysSorted(charSet),
             phraseCount: (sayCount + textCount),
-            bgmCount: bgmCount
+            bgmCount: bgmCount,
+            bgCount: bgCount, // ДОБАВЛЕНО: общее количество смен фонов
+            uniqueBgCount: Object.keys(uniqueBgs).length // ДОБАВЛЕНО: количество уникальных фонов
         });
     }
     
@@ -3328,6 +3342,9 @@ function buildMermaidGraph(story, unreachableList) {
 
             if (chars != '(нет)')
               { label+= "👤" + chars + "<br/>"; }
+            if (node.bgCount != 0) {
+              label += " 🖼️" + node.uniqueBgCount; //node.bgCount;
+            }
             if (node.phraseCount != 0)
               { label+= " 💬" + node.phraseCount; }
             if (node.bgmCount != 0)
