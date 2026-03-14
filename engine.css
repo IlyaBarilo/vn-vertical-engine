@@ -157,6 +157,51 @@ body {
   --compact-choice-padding-y: 0.55em;
   --compact-choice-padding-x: 0.65em;
   --compact-choice-font-size: 0.88em;
+
+  /* =========================================================
+     НАСТРОЙКИ ГРАФА MERMAID
+     ========================================================= */
+  --graph-bg: #ffffff;
+  --graph-padding: 1rem;
+  --graph-label-color: #000000;
+  --graph-label-font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  
+  /* Настройки для текста над линиями */
+  --graph-edgeLabel-bg: #ffffff;
+  --graph-edgeLabel-border: 1px solid #999;
+  --graph-edgeLabel-radius: 8px;  /* Увеличено для скругления */
+  --graph-edgeLabel-padding: 4px 10px;  /* Увеличено для лучшего вида */
+  --graph-edgeLabel-font-size: 11px;
+  --graph-edgeLabel-color: #000000;
+  
+  /* Настройки для узлов (общие) */
+  --graph-node-fill: #fff3e0;
+  --graph-node-stroke: #666;
+  --graph-node-stroke-width: 1px;
+  --graph-node-radius: 12px;  /* ДОБАВЛЕНО: скругление углов узлов */
+  
+  /* Настройки для стартовых узлов */
+  --graph-node-start-fill: #e1f5e1;
+  --graph-node-start-stroke: #00ff00;
+  --graph-node-start-stroke-width: 2px;
+  --graph-node-start-radius: 15px;  /* ДОБАВЛЕНО: скругление для стартовых */
+  
+  /* Настройки для недостижимых узлов */
+  --graph-node-unreachable-fill: #ffebee;
+  --graph-node-unreachable-stroke: #ff0000;
+  --graph-node-unreachable-stroke-dasharray: 5 5;
+  --graph-node-unreachable-stroke-width: 2px;
+  --graph-node-unreachable-radius: 12px;  /* ДОБАВЛЕНО: скругление для недостижимых */
+  
+  /* Настройки для финальных узлов */
+  --graph-node-final-fill: #f3e5f5;
+  --graph-node-final-stroke: #9c27b0;
+  --graph-node-final-stroke-width: 2px;
+  --graph-node-final-radius: 14px;  /* ДОБАВЛЕНО: скругление для финальных */
+  
+  /* Фон контейнера графа */
+  --graph-container-bg: #1a1a1a;
+
 }
 
 /* Контейнер приложения */
@@ -730,34 +775,35 @@ body {
 
 /* График на белом фоне */
 .graphContainer .mermaid {
-  background: #ffffff !important;
-  padding: 1rem;
+  background: var(--graph-bg) !important;
+  padding: var(--graph-padding);
 }
 
 /* Базовые стили для всех элементов */
 .graphContainer .mermaid .label {
-  color: #000000 !important;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
+  color: var(--graph-label-color) !important;
+  font-family: var(--graph-label-font) !important;
 }
 
 .graphContainer .mermaid .label text {
-  fill: #000000 !important;
+  fill: var(--graph-label-color) !important;
 }
 
-/* Стили для текста над линиями - ИСПРАВЛЕНО */
+/* Стили для текста над линиями */
 .graphContainer .mermaid .edgeLabel {
-  background: #ffffff !important;
-  border-radius: 4px !important;
-  padding: 2px 6px !important;
-  font-size: 12px !important;
-  color: #000000 !important;
+  background: var(--graph-edgeLabel-bg) !important;
+  
+  border-radius: var(--graph-edgeLabel-radius) !important;
+  padding: var(--graph-edgeLabel-padding) !important;
+  font-size: var(--graph-edgeLabel-font-size) !important;
+  color: var(--graph-edgeLabel-color) !important;
   font-weight: normal !important;
   box-shadow: none !important;
   line-height: 1.2 !important;
 }
 
 .graphContainer .mermaid .edgeLabel span {
-  color: #000000 !important;
+  color: var(--graph-edgeLabel-color) !important;
   background: transparent !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -765,7 +811,7 @@ body {
 
 /* Убираем лишние фоновые элементы */
 .graphContainer .mermaid .edgeLabel rect {
-  fill: #ffffff !important;
+  fill: var(--graph-edgeLabel-bg) !important;
   stroke: #999 !important;
   stroke-width: 1px !important;
 }
@@ -774,32 +820,49 @@ body {
   overflow: visible !important;
 }
 
-/* Стили для узлов */
+/* Стили для узлов (общие) */
 .graphContainer .mermaid .node rect,
 .graphContainer .mermaid .node circle,
 .graphContainer .mermaid .node polygon {
-  fill: #fff3e0 !important;
-  stroke: #666 !important;
-  stroke-width: 1px !important;
+  fill: var(--graph-node-fill) !important;
+  stroke: var(--graph-node-stroke) !important;
+  stroke-width: var(--graph-node-stroke-width) !important;
+  rx: var(--graph-node-radius) !important;  /* ДОБАВЛЕНО: скругление по горизонтали */
+  ry: var(--graph-node-radius) !important;  /* ДОБАВЛЕНО: скругление по вертикали */
 }
 
+/* Стартовые узлы */
 .graphContainer .mermaid .node.start rect {
-  fill: #e1f5e1 !important;
-  stroke: #00ff00 !important;
-  stroke-width: 2px !important;
+  fill: var(--graph-node-start-fill) !important;
+  stroke: var(--graph-node-start-stroke) !important;
+  stroke-width: var(--graph-node-start-stroke-width) !important;
+  rx: var(--graph-node-start-radius) !important;
+  ry: var(--graph-node-start-radius) !important;
 }
 
+/* Недостижимые узлы */
 .graphContainer .mermaid .node.unreachable rect {
-  fill: #ffebee !important;
-  stroke: #ff0000 !important;
-  stroke-dasharray: 5 5 !important;
-  stroke-width: 2px !important;
+  fill: var(--graph-node-unreachable-fill) !important;
+  stroke: var(--graph-node-unreachable-stroke) !important;
+  stroke-dasharray: var(--graph-node-unreachable-stroke-dasharray) !important;
+  stroke-width: var(--graph-node-unreachable-stroke-width) !important;
+  rx: var(--graph-node-unreachable-radius) !important;
+  ry: var(--graph-node-unreachable-radius) !important;
 }
 
+/* Финальные узлы */
 .graphContainer .mermaid .node.final rect {
-  fill: #f3e5f5 !important;
-  stroke: #9c27b0 !important;
-  stroke-width: 2px !important;
+  fill: var(--graph-node-final-fill) !important;
+  stroke: var(--graph-node-final-stroke) !important;
+  stroke-width: var(--graph-node-final-stroke-width) !important;
+  rx: var(--graph-node-final-radius) !important;
+  ry: var(--graph-node-final-radius) !important;
+}
+
+/* Фон контейнера графа */
+.graphContainer {
+  background: var(--graph-container-bg);
+  padding: var(--graph-padding);
 }
 
 
