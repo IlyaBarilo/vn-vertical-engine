@@ -122,7 +122,11 @@ if (window.mermaid) {
     flowchart: {
       useMaxWidth: true,
       htmlLabels: true,
-      curve: 'linear'
+      curve: 'basis',
+      padding: 4,           // Внутренние отступы в узлах (было 15)
+      nodeSpacing: 30,       // Расстояние между узлами (было 50)
+      rankSpacing: 40,       // Расстояние между уровнями (было 50)
+      borderRadius: 10
     },
     securityLevel: 'loose',
     startOnLoad: false
@@ -3251,8 +3255,10 @@ function buildMermaidGraph(story, unreachableList) {
         var sayCount = 0;
         var textCount = 0;
         var bgmCount = 0;
-        var bgCount = 0; // СЧЕТЧИК ФОНОВ
-        var uniqueBgs = {}; // Для подсчета уникальных фонов
+        var bgCount = 0;        // СЧЕТЧИК ФОНОВ
+        var uniqueBgs = {};     // Для подсчета уникальных фонов
+        var firstBgSrc = null;  // Для первого фона
+        var firstBgId = null;   // ID первого фона
         
         // Инициализируем счетчики связей
         if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
@@ -3270,13 +3276,21 @@ function buildMermaidGraph(story, unreachableList) {
             if (act.type === "text") textCount++;
             if (act.type === "bgm") bgmCount++;
             
-            // ПОДСЧЕТ ФОНОВ
+            // ПОДСЧЕТ ФОНОВ И СОХРАНЕНИЕ ПЕРВОГО
             if (act.type === "bg" && act.src) {
                 bgCount++;
-                // Извлекаем ID фона из src (@bg.xxx)
                 var bgId = extractAliasId(act.src, "bg");
                 if (bgId) {
                     uniqueBgs[bgId] = true;
+                    
+                    // Сохраняем первый фон
+                    if (firstBgId === null) {
+                        firstBgId = bgId;
+                        // Получаем реальный путь к изображению
+                        if (story.assets && story.assets.backgrounds) {
+                            firstBgSrc = story.assets.backgrounds[bgId];
+                        }
+                    }
                 }
             }
 
@@ -3313,8 +3327,10 @@ function buildMermaidGraph(story, unreachableList) {
             characters: keysSorted(charSet),
             phraseCount: (sayCount + textCount),
             bgmCount: bgmCount,
-            bgCount: bgCount, // ДОБАВЛЕНО: общее количество смен фонов
-            uniqueBgCount: Object.keys(uniqueBgs).length // ДОБАВЛЕНО: количество уникальных фонов
+            bgCount: bgCount, // Общее количество смен фонов
+            uniqueBgCount: Object.keys(uniqueBgs).length, // Количество уникальных фонов
+            firstBgSrc: firstBgSrc,  // Путь к первому фону
+            firstBgId: firstBgId      // ID первого фона
         });
     }
     
@@ -3324,12 +3340,12 @@ function buildMermaidGraph(story, unreachableList) {
     // Добавляем заголовок
     mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
     
-    // Стили для узлов
+    // Стили для узлов. Основные настройки производятся в CSS
     mermaid += "%% Определение стилей\n";
-    mermaid += "classDef default fill:#fff3e0,stroke:#666,color:#000,stroke-width:1px,r:10px;\n";
-    mermaid += "classDef start fill:#e1f5e1,stroke:#50ac50,color:#000,stroke-width:2px,r:10px;\n";
-    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:10px;\n";
-    mermaid += "classDef final fill:#5eb9ff,stroke:#3c698c,color:#000,stroke-width:2px,r:10px;\n\n";
+    mermaid += "classDef default fill:#fff3e0,stroke:#e6d6bc,color:#000,stroke-width:1px,r:12px;\n";
+    mermaid += "classDef start fill:#e1f5e1,stroke:#b6deb6,color:#000,stroke-width:2px,r:15px;\n";
+    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
+    mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
     
     // Создаем узлы с многострочными метками
     for (var n = 0; n < nodes.length; n++) {
@@ -3339,6 +3355,13 @@ function buildMermaidGraph(story, unreachableList) {
         // Формируем многострочную метку
         var label = 
             node.id + "<br/>";
+
+            // Добавляем маленькое изображение фона, если оно есть
+            if (node.firstBgSrc) {
+                // Экранируем спецсимволы в пути
+                var imgSrc = node.firstBgSrc.replace(/"/g, '&quot;');
+                label += '<img src="' + imgSrc + '" width="40" height="40" style="object-fit: cover; border-radius: 0px; margin: 2px;" /> ';
+            }
 
             if (chars != '(нет)')
               { label+= "👤" + chars + "<br/>"; }
@@ -3402,13 +3425,6 @@ function buildMermaidGraph(story, unreachableList) {
     return mermaid;
 }
       
-      // Стили для узлов
-  //    mermaid += "classDef default fill:fff3e0,stroke:#666,color:#000;\n";
-  //    mermaid += "classDef start fill:#e1f5e1,stroke:#00ff00,color:#000,stroke-width:2px;\n";
-  //    mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray: 5 5;\n\n";
-
-
-
 
 
 
