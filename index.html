@@ -36,7 +36,22 @@
           
           <!-- Область для отображения графика Mermaid (изначально скрыта) -->
           <div id="graphContainer" class="graphContainer hidden">
-            <div id="mermaidGraph" class="mermaid"></div>
+             <!-- Wrapper для panzoom -->
+              <div id="panzoomWrapper" class="panzoom-wrapper">
+                <div id="panzoomContent" class="panzoom-content">
+                  <div id="mermaidWrapper" class="mermaid-wrapper">
+                    <div id="mermaidGraph" class="mermaid"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Панель управления масштабом -->
+              <div class="graph-zoom-controls">
+                <span id="zoomLevel" class="graph-zoom-level">100%</span>
+                <button id="zoomOutBtn" class="graph-zoom-btn" title="Уменьшить">−</button>
+                <button id="zoomInBtn" class="graph-zoom-btn" title="Увеличить">+</button>
+                <button id="zoomResetBtn" class="graph-zoom-btn graph-zoom-reset" title="Сбросить масштаб">⟲</button>
+              </div>
           </div>
         </div>
         
