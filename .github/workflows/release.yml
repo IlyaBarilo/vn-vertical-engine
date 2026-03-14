@@ -54,7 +54,7 @@ jobs:
           mkdir -p "build/$APP_NAME/assets/backgrounds"
           mkdir -p "build/$APP_NAME/assets/characters"
           mkdir -p "build/$APP_NAME/assets/audio"
-          mkdir -p "build/$APP_NAME/js"
+          mkdir -p "build/$APP_NAME/lib"
 
           # Копируем основные файлы проекта
           [ -f engine.css ] && cp engine.css "build/$APP_NAME/"
@@ -64,8 +64,8 @@ jobs:
           [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
-          [ -f mermaid.min.js ] && cp mermaid.min.js "build/$APP_NAME/js/"
-          [ -f mermaid-editor.html ] && cp mermaid-editor.html "build/$APP_NAME/js/"
+          [ -f lib/mermaid.min.js ] && cp mermaid.min.js "build/$APP_NAME/lib/"
+          # [ -f mermaid-editor.html ] && cp mermaid-editor.html "build/$APP_NAME/js/"
 
           # Копируем медиафайлы из assets/backgrounds
           if [ -d assets/backgrounds ]; then
