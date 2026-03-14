@@ -346,14 +346,14 @@ function toggleGraphView() {
         // Генерируем и отображаем граф
         renderMermaidGraph();
         
-        // Принудительный пересчет после появления
-        setTimeout(function() {
-            if (mermaidGraph) {
-                forceRedraw(mermaidGraph);
-            }
-            resetPanzoom();
-        }, 300);
+        // Сбрасываем масштаб при входе в граф
+        // ВАЖНО: сбрасываем масштаб дважды с разными задержками
+        setTimeout(resetPanzoom, 200);
         
+        setTimeout(function() {
+            resetPanzoom();
+        }, 500);
+
     } else {
         // Переключаемся на текст
         statsBody.classList.remove("hidden");
@@ -385,6 +385,13 @@ function renderMermaidGraph() {
         // Очищаем предыдущую инициализацию
         mermaidGraph.removeAttribute('data-processed');
         window.mermaid.init(undefined, mermaidGraph);
+
+        // ВАЖНО: сбрасываем масштаб ПОСЛЕ полной отрисовки
+        setTimeout(function() {
+            resetPanzoom();
+            console.log('[Panzoom] Сброс после рендера');
+        }, 300);
+
       } catch (e) {
         console.error("Ошибка инициализации Mermaid:", e);
         mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
@@ -2354,6 +2361,10 @@ window.addEventListener("resize", adjustCharacterScale);
         showingGraph = false;
       }
     }
+
+    // Принудительно сбрасываем panzoom состояние
+    resetPanzoom();
+    
     // если открыта игра — не мешаем, можно запретить или просто показывать
     // здесь оставим показывать (по вашему желанию можно блокировать)
     renderStats();
@@ -4059,7 +4070,20 @@ function resetPanzoom() {
     panzoomState.scale = 1;
     panzoomState.translateX = 0;
     panzoomState.translateY = 0;
-    updatePanzoomTransform();
+    panzoomState.isPanning = false;
+    panzoomState.panMode = 'none';
+    
+    // Принудительно применяем трансформацию
+    if (panzoomContent) {
+        panzoomContent.style.transform = 'translate(0px, 0px) scale(1)';
+    }
+    
+    // Обновляем отображение масштаба
+    if (zoomLevelSpan) {
+        zoomLevelSpan.textContent = '100%';
+    }
+    
+    console.log('[Panzoom] Сброшен до 100%'); // для отладки
 }
 
 // Функция зумирования
