@@ -346,8 +346,14 @@ function toggleGraphView() {
         // Генерируем и отображаем граф
         renderMermaidGraph();
         
-        // Сбрасываем масштаб
-        setTimeout(resetPanzoom, 200);
+        // Принудительный пересчет после появления
+        setTimeout(function() {
+            if (mermaidGraph) {
+                forceRedraw(mermaidGraph);
+            }
+            resetPanzoom();
+        }, 300);
+        
     } else {
         // Переключаемся на текст
         statsBody.classList.remove("hidden");
@@ -2715,13 +2721,24 @@ window.addEventListener("resize", adjustCharacterScale);
 
   }
 
-  // Также добавьте обработчик изменения размера для адаптации графа
-  window.addEventListener("resize", function() {
+// Также добавьте обработчик изменения размера для адаптации графа
+window.addEventListener("resize", function() {
     if (showingGraph && window.mermaid) {
-      // Перерисовываем граф при изменении размера окна
-      setTimeout(renderMermaidGraph, 100);
+        // При изменении размера окна перерисовываем с задержкой
+        setTimeout(function() {
+            if (mermaidGraph) {
+                // Не переинициализируем полностью, только обновляем размеры
+                var svg = mermaidGraph.querySelector('svg');
+                if (svg) {
+                    var bbox = svg.getBBox();
+                    svg.setAttribute('width', bbox.width + 50);
+                    svg.setAttribute('height', bbox.height + 50);
+                    svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
+                }
+            }
+        }, 100);
     }
-  });
+});
 
 
 
@@ -4010,7 +4027,7 @@ var zoomResetBtn = document.getElementById("zoomResetBtn");
 var panzoomState = {
     scale: 1,
     minScale: 0.5,      // Минимальный масштаб до 50%
-    maxScale: 50,       // Максимальный масштаб до 5000% (10x)
+    maxScale: 500,       // Максимальный масштаб до 50000% (500x)
     translateX: 0,
     translateY: 0,
     isPanning: false,
@@ -4241,26 +4258,84 @@ function renderMermaidGraph() {
     
     // Вставляем код в контейнер
     if (mermaidGraph) {
-        mermaidGraph.innerHTML = currentMermaidCode;
-        
-        // Инициализируем Mermaid
-        if (window.mermaid) {
-            try {
-                // Очищаем предыдущую инициализацию
-                mermaidGraph.removeAttribute('data-processed');
-                window.mermaid.init(undefined, mermaidGraph);
-                
-                // Сбрасываем масштаб после загрузки нового графа
-                setTimeout(function() {
-                    resetPanzoom();
-                }, 100);
-            } catch (e) {
-                console.error("Ошибка инициализации Mermaid:", e);
-                mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
-            }
-        } else {
-            mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">Библиотека Mermaid не загружена</div>';
+        // ПОЛНАЯ ОЧИСТКА: удаляем все дочерние элементы
+        while (mermaidGraph.firstChild) {
+            mermaidGraph.removeChild(mermaidGraph.firstChild);
         }
+        
+        // Удаляем все возможные атрибуты Mermaid
+        mermaidGraph.removeAttribute('data-processed');
+        mermaidGraph.removeAttribute('data-mermaid-svg');
+        mermaidGraph.removeAttribute('data-mermaid-type');
+        
+        // Вставляем новый код как текст (не как HTML)
+        mermaidGraph.textContent = currentMermaidCode;
+        
+        // Принудительно запускаем Mermaid с задержкой для полной очистки
+        setTimeout(function() {
+            if (window.mermaid) {
+                try {
+                    // Явно указываем контейнер для инициализации
+                    window.mermaid.init({
+                        theme: 'default',
+                        flowchart: {
+                            useMaxWidth: true,
+                            htmlLabels: true,
+                            curve: 'basis',
+                            padding: 4,
+                            nodeSpacing: 30,
+                            rankSpacing: 40,
+                            borderRadius: 10
+                        },
+                        securityLevel: 'loose',
+                        startOnLoad: false
+                    }, mermaidGraph);
+                    
+                    // Принудительно перерисовываем после загрузки шрифтов
+                    setTimeout(function() {
+                        // Получаем SVG элемент
+                        var svg = mermaidGraph.querySelector('svg');
+                        if (svg) {
+                            // Принудительно обновляем размеры
+                            var bbox = svg.getBBox();
+                            svg.setAttribute('width', bbox.width + 50);
+                            svg.setAttribute('height', bbox.height + 50);
+                            svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
+                        }
+                        
+                        // Сбрасываем масштаб
+                        resetPanzoom();
+                    }, 100);
+                    
+                } catch (e) {
+                    console.error("Ошибка инициализации Mermaid:", e);
+                    mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
+                }
+            } else {
+                mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">Библиотека Mermaid не загружена</div>';
+            }
+        }, 50);
+    }
+}
+
+// Добавьте эту функцию для принудительного пересчета при переключении вкладок
+
+function forceRedraw(element) {
+    if (!element) return;
+    
+    // Принудительный пересчет стилей
+    var display = element.style.display;
+    element.style.display = 'none';
+    element.offsetHeight; // форсируем reflow
+    element.style.display = display;
+    
+    // Находим SVG и обновляем его
+    var svg = element.querySelector('svg');
+    if (svg) {
+        var bbox = svg.getBBox();
+        svg.setAttribute('width', bbox.width + 50);
+        svg.setAttribute('height', bbox.height + 50);
+        svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
     }
 }
 
