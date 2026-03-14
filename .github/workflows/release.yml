@@ -64,8 +64,8 @@ jobs:
           [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
-          [ -f lib/mermaid.min.js ] && cp mermaid.min.js "build/$APP_NAME/lib/"
-          # [ -f mermaid-editor.html ] && cp mermaid-editor.html "build/$APP_NAME/js/"
+          [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
+          # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
           # Копируем медиафайлы из assets/backgrounds
           if [ -d assets/backgrounds ]; then
