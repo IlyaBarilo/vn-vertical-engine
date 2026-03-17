@@ -557,15 +557,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--modal-padding);
+  /* padding: var(--modal-padding); */
   z-index: 50;
 }
 
 .statsCard {
-  width: 100%;
-  height: 100%;
-  max-width: var(--modal-frame-max-width);
-  max-height: var(--modal-frame-max-height);
+  width: calc(100% - 4rem);  /* Отступы 2rem с каждой стороны */
+  height: calc(100% - 4rem); /* Отступы 2rem сверху и снизу */
+  /* max-width: var(--modal-frame-max-width); */  /* Закомментируйте или удалите */
+  /* max-height: var(--modal-frame-max-height); */ /* Закомментируйте или удалите */
   border-radius: calc(var(--modal-radius) + 0.1rem);
   background: rgba(0,0,0,0.70);
   border: var(--ui-border-width) solid rgba(255,255,255,0.18);
@@ -767,9 +767,12 @@ body {
   .graphControls .btn {
     flex: 1 1 auto;
   }
+
+  .statsCard {
+    width: calc(100% - 2rem);  /* Отступы 1rem с каждой стороны */
+    height: calc(100% - 2rem); /* Отступы 1rem сверху и снизу */
+  } 
 }
-
-
 
 /* Замените существующие стили для Mermaid на эти */
 
@@ -955,5 +958,125 @@ body {
   background: rgba(255,255,255,0.1);
   border-radius: 40px;
   margin-right: 5px;
+}
+
+
+
+/* Улучшенные стили для изображений в графе Mermaid */
+
+/* Контейнер для изображений в узле */
+.graphContainer .mermaid .node div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  margin: 2px 0;
+  overflow: visible !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+
+/* Принудительное выравнивание изображений в узлах Mermaid в одну строку */
+.graphContainer .mermaid .node div {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  flex-direction: row !important;  /* Явно указываем горизонтальное направление */
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 2px !important;
+  margin: 4px 0 2px 0 !important;
+  width: 100% !important;
+}
+
+/* Сами изображения */
+.graphContainer .mermaid .node img {
+  display: inline-block !important;  /* Вместо block, чтобы быть в строке */
+  width: 80px !important;
+  height: 120px !important;
+  object-fit: cover !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 4px !important;
+  border: 1px solid #ccc !important;
+  transition: transform 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  margin: 0 !important;  /* Убираем отступы */
+  vertical-align: middle !important; /* Выравнивание по вертикали */
+  position: relative !important;  /* Для правильного наложения */
+  z-index: 1 !important;
+  cursor: zoom-in !important;
+
+  /* Убираем любые ограничения */
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.graphContainer .mermaid .node img:hover {
+  transform: scale(3) !important;
+  z-index: 1000 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+}
+
+/* Статистика узла */
+.graphContainer .mermaid .node-stats {
+  line-height: 1.4 !important;
+  margin-top: 2px !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+/* Контейнер узла Mermaid - должен допускать перекрытие */
+.graphContainer .mermaid .node {
+  overflow: visible !important;  /* Разрешаем выход за границы */
+  z-index: auto !important;
+}
+
+/* Увеличенное состояние */
+.graphContainer .mermaid .node img.zoomed {
+  transform: scale(3) !important;
+  z-index: 9999 !important;  /* Очень высокий z-index, чтобы быть поверх всего */
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  position: relative !important;
+  cursor: zoom-out !important;
+}
+
+/* Все возможные обертки внутри узла */
+.graphContainer .mermaid .node * {
+  overflow: visible !important;
+}
+
+/* Контейнер для изображений в узле - переопределяем все возможные уровни */
+.graphContainer .mermaid .node div,
+.graphContainer .mermaid .node div[style*="display"],
+.graphContainer .mermaid .node td,
+.graphContainer .mermaid .node span,
+.graphContainer .mermaid .node foreignObject,
+.graphContainer .mermaid .node > * {
+  overflow: visible !important;
+  position: relative !important;
+  z-index: auto !important;
+}
+
+/* Увеличенное состояние - перекрывает всё */
+.graphContainer .mermaid .node img.zoomed,
+.graphContainer .mermaid .node img:hover {
+  transform: scale(3) !important;
+  
+  
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  position: relative !important;
+  cursor: zoom-out !important;
+  
+  /* Убираем возможные ограничения родителя */
+  isolation: isolate !important;
+}
+
+/* Специально для Mermaid foreignObject */
+.graphContainer .mermaid foreignObject {
+  overflow: visible !important;
+}
+
+.graphContainer .mermaid foreignObject * {
+  overflow: visible !important;
 }
 

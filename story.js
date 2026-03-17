@@ -15,6 +15,8 @@ startScene: intro_01
 campusHall = assets/backgrounds/bg_campus_hall.jpg
 libraryEvening = assets/backgrounds/bg_library_evening.jpg
 branchCafe = assets/backgrounds/bg_campus_cafe.jpg
+branchCafe2 = assets/backgrounds/bg_campus_cafe2.jpg
+branchCafe3 = assets/backgrounds/bg_campus_cafe3.jpg
 branchLab = assets/backgrounds/bg_it_lab.jpg
 branchYard = assets/backgrounds/bg_uni_yard_night.jpg
 branchYardTest = assets/backgrounds/bg_uni_yard_night.jpg
@@ -116,9 +118,13 @@ hide all
 "Кафе шумит: кружки звенят, кто-то обсуждает проекты и дедлайны, кто-то — мемы недели."
 "В воздухе пахнет кофе и свежими идеями. Кажется, отсюда начинаются лучшие командные истории."
 
+bg branchCafe2
+
 # Диалоги персонажей без показа на экране
 anna: "Кофе здесь просто божественный! Особенно тот латте с карамелью."
 igor: "Зато какие мемы рождаются после трёх чашек! Помнишь тот с котом-программистом?"
+
+bg branchCafe3
 anna: "Ой, не напоминай! Мы потом неделю смеялись."
 
 goto finale_01

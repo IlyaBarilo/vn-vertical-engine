@@ -3291,6 +3291,9 @@ function buildMermaidGraph(story, unreachableList) {
         var firstBgSrc = null;  // Для первого фона
         var firstBgId = null;   // ID первого фона
         
+        // массив для хранения ВСЕХ фонов в сцене (в порядке появления)
+        var allBgImages = [];   // Массив объектов {src, id, order}
+
         // Инициализируем счетчики связей
         if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
         if (!outgoingEdges[scene.id]) outgoingEdges[scene.id] = 0;
@@ -3307,20 +3310,44 @@ function buildMermaidGraph(story, unreachableList) {
             if (act.type === "text") textCount++;
             if (act.type === "bgm") bgmCount++;
             
-            // ПОДСЧЕТ ФОНОВ И СОХРАНЕНИЕ ПЕРВОГО
+            // ПОДСЧЕТ ФОНОВ И СОХРАНЕНИЕ ВСЕХ ИЗОБРАЖЕНИЙ
             if (act.type === "bg" && act.src) {
                 bgCount++;
                 var bgId = extractAliasId(act.src, "bg");
                 if (bgId) {
                     uniqueBgs[bgId] = true;
                     
-                    // Сохраняем первый фон
+                    // Получаем реальный путь к изображению
+                    var bgSrc = null;
+                    if (story.assets && story.assets.backgrounds) {
+                        bgSrc = story.assets.backgrounds[bgId];
+                    }
+                    
+                    // ИСПРАВЛЕНО: проверяем, есть ли уже такой фон в массиве
+                    if (bgSrc) {
+                        // Проверяем, не добавлен ли уже такой же фон
+                        var isDuplicate = false;
+                        for (var i = 0; i < allBgImages.length; i++) {
+                            if (allBgImages[i].id === bgId) {
+                                isDuplicate = true;
+                                break;
+                            }
+                        }
+                        
+                        // Если не дубликат, добавляем
+                        if (!isDuplicate) {
+                            allBgImages.push({
+                                src: bgSrc,
+                                id: bgId,
+                                order: a  // сохраняем порядковый номер для сортировки
+                            });
+                        }
+                    }
+                    
+                    // Сохраняем первый фон (для обратной совместимости)
                     if (firstBgId === null) {
                         firstBgId = bgId;
-                        // Получаем реальный путь к изображению
-                        if (story.assets && story.assets.backgrounds) {
-                            firstBgSrc = story.assets.backgrounds[bgId];
-                        }
+                        firstBgSrc = bgSrc;
                     }
                 }
             }
@@ -3353,6 +3380,11 @@ function buildMermaidGraph(story, unreachableList) {
             }
         }
         
+        // СОРТИРУЕМ фоны по порядку появления (на всякий случай)
+        allBgImages.sort(function(a, b) {
+            return a.order - b.order;
+        });
+
         nodes.push({
             id: scene.id,
             characters: keysSorted(charSet),
@@ -3361,7 +3393,8 @@ function buildMermaidGraph(story, unreachableList) {
             bgCount: bgCount, // Общее количество смен фонов
             uniqueBgCount: Object.keys(uniqueBgs).length, // Количество уникальных фонов
             firstBgSrc: firstBgSrc,  // Путь к первому фону
-            firstBgId: firstBgId      // ID первого фона
+            firstBgId: firstBgId,    // ID первого фона
+            allBgImages: allBgImages // добавляем массив всех фонов
         });
     }
     
@@ -3378,35 +3411,93 @@ function buildMermaidGraph(story, unreachableList) {
     mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
     mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
     
+
     // Создаем узлы с многострочными метками
     for (var n = 0; n < nodes.length; n++) {
         var node = nodes[n];
         var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
         
-        // Формируем многострочную метку
-        var label = 
-            node.id + "<br/>";
+        // Формируем многострочную метку - ВАЖНО: порядок элементов
+        var label = node.id + "<br/>";
 
-            // Добавляем маленькое изображение фона, если оно есть
-            if (node.firstBgSrc) {
-                // Экранируем спецсимволы в пути
-                var imgSrc = node.firstBgSrc.replace(/"/g, '&quot;');
-                label += '<img src="' + imgSrc + '" width="40" height="40" style="object-fit: cover; border-radius: 0px; margin: 2px;" /> ';
-            }
+        // Параметры настройки (можно менять)
+        // Параметры настройки
+        var imageSize = 40;
+        var hoverScale = 3.5;
 
-            if (chars != '(нет)')
-              { label+= "👤" + chars + "<br/>"; }
-            if (node.bgCount != 0) {
-              label += " 🖼️" + node.uniqueBgCount; //node.bgCount;
+        // ОТЛАДКА: посмотрим, что в массиве
+        console.log('[DEBUG] Node', node.id, 'has', node.allBgImages ? node.allBgImages.length : 0, 'images');
+
+        if (node.allBgImages && node.allBgImages.length > 0) {
+            // Добавляем div-контейнер для изображений
+            label += '<div style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin: 4px 0;">';
+            
+            // Добавляем каждое изображение с явным индексом для отладки
+            for (var b = 0; b < node.allBgImages.length; b++) {
+                var bg = node.allBgImages[b];
+                var imgSrc = bg.src.replace(/"/g, '&quot;');
+                
+                // Добавляем data-index для отладки
+                label += '<img src="' + imgSrc + '" ' +
+                        'data-index="' + b + '" ' +
+                        'data-id="' + bg.id + '" ' +
+                        'style="width: ' + imageSize + 'px; height: ' + imageSize + 'px; ' +
+                        'object-fit: cover; ' +
+                        'background-color: #f0f0f0; ' +
+                        'border-radius: 4px; ' +
+                        'border: 1px solid #ccc; ' +
+                        'margin: 0 1px; ' +
+                        'vertical-align: middle;" ' +
+                        'title="' + b + ': ' + bg.id + '" /> ';
             }
-            if (node.phraseCount != 0)
-              { label+= " 💬" + node.phraseCount; }
-            if (node.bgmCount != 0)
-              { label+= " 🎵" + node.bgmCount; }
+            
+            label += '</div>';
+            
+            console.log('[DEBUG] Added', node.allBgImages.length, 'images for node', node.id);
+        } else if (node.firstBgSrc) {
+            // Если нет массива, но есть первый фон
+            var imgSrc = node.firstBgSrc.replace(/"/g, '&quot;');
+            label += '<div style="display: flex; justify-content: center; margin: 4px 0;">' +
+                    '<img src="' + imgSrc + '" ' +
+                    'style="width: ' + imageSize + 'px; height: ' + imageSize + 'px; ' +
+                    'object-fit: cover; ' +
+                    'background-color: #f0f0f0; ' +
+                    'border-radius: 4px; ' +
+                    'border: 1px solid #ccc; ' +
+                    'margin: 0 1px; ' +
+                    'vertical-align: middle;" ' +
+                    'title="' + node.firstBgId + '" />' +
+                    '</div>';
+        }
+        
+        // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
+        var statsParts = [];
+        
+        if (chars != '(нет)') {
+            statsParts.push("👤" + chars + "\n");
+        }
+        
+        // Добавляем счетчики
+        var counters = [];
+        if (node.bgCount != 0) {
+            counters.push("🖼️" + node.uniqueBgCount + (node.bgCount > node.uniqueBgCount ? "(" + node.bgCount + ")" : ""));
+        }
+        if (node.phraseCount != 0) {
+            counters.push("💬" + node.phraseCount);
+        }
+        if (node.bgmCount != 0) {
+            counters.push("🎵" + node.bgmCount);
+        }
+        
+        // Объединяем статистику в одну строку
+        var allStats = statsParts.concat(counters).join(" ");
+        if (allStats.length > 0) {
+            label += "<div style='line-height: 1.4; margin-top: 2px;'>" + allStats + "</div>";
+        }
         
         mermaid += '    ' + node.id + '["' + label + '"]\n';
     }
-    
+        
     mermaid += "\n";
     
     // Применяем классы
@@ -3453,6 +3544,13 @@ function buildMermaidGraph(story, unreachableList) {
         }
     }
     
+    console.log('[DEBUG] Mermaid graph generated for nodes:');
+    nodes.forEach(function(node) {
+        if (node.allBgImages && node.allBgImages.length > 0) {
+            console.log('  Node', node.id, 'images:', node.allBgImages.map(function(bg) { return bg.id; }).join(', '));
+        }
+    });
+
     return mermaid;
 }
       
