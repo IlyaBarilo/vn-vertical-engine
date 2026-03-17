@@ -3405,15 +3405,25 @@ function buildMermaidGraph(story, unreachableList) {
     mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
     
     // Стили для узлов. Основные настройки производятся в CSS
-    mermaid += "%% Определение стилей\n";
-    mermaid += "classDef default fill:#fff3e0,stroke:#e6d6bc,color:#000,stroke-width:1px,r:12px;\n";
+    mermaid += "%% Определение стилей для сцен\n";
+    mermaid += "classDef scene fill:#fff3e0,stroke:#e6d6bc,color:#000,stroke-width:1px,r:12px;\n";
     mermaid += "classDef start fill:#e1f5e1,stroke:#b6deb6,color:#000,stroke-width:2px,r:15px;\n";
     mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
     mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
+
+    // Стили для специальных узлов (серые тона)
+    mermaid += "%% Определение стилей для специальных узлов\n";
+    mermaid += "classDef characters-group fill:#e0e0e0,stroke:#808080,color:#333,stroke-width:2px,r:12px;\n";
+    mermaid += "classDef character-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
+    mermaid += "classDef backgrounds-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n\n";
     
     // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
     var charGraphData = buildCharactersGraph(story);
     mermaid += charGraphData.mermaid;
+    mermaid += "\n";
+
+    // ДОБАВЛЯЕМ УЗЕЛ "ФОНЫ"
+    mermaid += buildBackgroundsGraph(story);
     mermaid += "\n";
 
     // Создаем узлы с многострочными метками
@@ -3474,6 +3484,7 @@ function buildMermaidGraph(story, unreachableList) {
         }
         
         mermaid += '    ' + node.id + '["' + label + '"]\n';
+        mermaid += '    class ' + node.id + ' scene;\n';  // Добавляем класс scene
     }
         
     mermaid += "\n";
@@ -3546,8 +3557,8 @@ function buildCharactersGraph(story) {
     var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
     
     // Создаем узел "Персонажи"
-    mermaid += '    characters["<b>👥 ПЕРСОНАЖИ</b>"]\n';
-    mermaid += '    style characters fill:#e6f3ff,stroke:#333,stroke-width:2px;\n';
+    mermaid += '    characters["<b>👥 Персонажи</b>"]\n';
+    mermaid += '    characters:::characters-group\n';  // Применяем CSS-класс
     
     // Создаем узлы для каждого персонажа
     var charNodes = [];
@@ -3595,7 +3606,7 @@ function buildCharactersGraph(story) {
         // Добавляем узел персонажа
         var nodeId = 'char_' + charId;
         mermaid += '    ' + nodeId + '["' + label + '"]\n';
-        mermaid += '    style ' + nodeId + ' fill:#fff0d9,stroke:#666,stroke-width:1px;\n';
+        mermaid += '    ' + nodeId + ':::character-node\n';  // Применяем CSS-класс
         
         charNodes.push({
             id: nodeId,
@@ -3620,6 +3631,63 @@ function buildCharactersGraph(story) {
     };
 }
 
+// Функция для создания элемента "Фоны" со всеми уникальными фонами
+function buildBackgroundsGraph(story) {
+    var mermaid = "";
+    var backgrounds = story.assets.backgrounds || {};
+    var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+    
+    // Собираем все уникальные фоны из всех сцен
+    var allUniqueBgs = {};
+    var scenes = story.scenes || [];
+    
+    for (var s = 0; s < scenes.length; s++) {
+        var scene = scenes[s];
+        if (!scene || !scene.actions) continue;
+        
+        var actions = scene.actions;
+        for (var a = 0; a < actions.length; a++) {
+            var act = actions[a];
+            if (act.type === "bg" && act.src) {
+                var bgId = extractAliasId(act.src, "bg");
+                if (bgId && backgrounds[bgId]) {
+                    allUniqueBgs[bgId] = backgrounds[bgId];
+                }
+            }
+        }
+    }
+    
+    // Формируем HTML для изображений фонов
+    var bgImagesHtml = '<div class="bg-images-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; padding: 4px;">';
+    
+    var bgIds = Object.keys(allUniqueBgs).sort();
+    for (var i = 0; i < bgIds.length; i++) {
+        var bgId = bgIds[i];
+        var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
+        
+        bgImagesHtml += '<img src="' + imgSrc + '" ' +
+                        'class="bg-thumbnail large" ' +  // Добавим класс large для фонов
+                        'title="' + bgId + '" alt="" /> ';
+    }
+    
+    bgImagesHtml += '</div>';
+    
+    // Подсчитываем количество фонов
+    var bgCount = bgIds.length;
+    
+    // Формируем метку элемента
+    var label = '<b>🖼️ Фоны (' + bgCount + ')</b><br/>' + bgImagesHtml;
+    
+    // Добавляем узел "Фоны" с серым фоном
+    mermaid += '    backgrounds["' + label + '"]\n';
+    mermaid += '    backgrounds:::backgrounds-group\n';  // Исправлено: используем :::
+
+    // Добавляем пунктирную связь с первой главой
+    mermaid += '\n    %% Связь фонов с первой главой\n';
+    mermaid += '    backgrounds -.-> ' + startId + ';\n';
+    
+    return mermaid;
+}
 
 
   function computeTextInfo(story) {

@@ -1158,3 +1158,152 @@ body {
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
   cursor: zoom-out !important;
 }
+
+
+
+/* Увеличенные миниатюры для фонов */
+.bg-thumbnail.large {
+  width: 50px !important;
+  height: 50px !important;
+}
+
+
+
+
+
+
+
+/* =========================================================
+   УНИФИЦИРОВАННЫЕ СЕРЫЕ ТОНА ДЛЯ ГРАФА
+   Светло-серый для фона, темно-серый для контура
+   ========================================================= */
+
+/* Общий класс для группы персонажей */
+.characters-group > rect {
+  fill: #e0e0e0 !important;        /* Светло-серый фон */
+  stroke: #808080 !important;       /* Темно-серый контур */
+  stroke-width: 2px !important;
+}
+
+.characters-group .label {
+  color: #333333 !important;        /* Темно-серый текст */
+}
+
+/* Класс для узлов персонажей */
+.character-node > rect {
+  fill: #d0d0d0 !important;        /* Светло-серый фон (чуть темнее группы) */
+  stroke: #808080 !important;       /* Темно-серый контур */
+  stroke-width: 1px !important;
+}
+
+.character-node .label {
+  color: #333333 !important;        /* Темно-серый текст */
+}
+
+/* Класс для группы фонов */
+.backgrounds-group > rect {
+  fill: #c0c0c0 !important;        /* Средне-серый фон */
+  stroke: #606060 !important;       /* Темно-серый контур */
+  stroke-width: 2px !important;
+}
+
+.backgrounds-group .label {
+  color: #333333 !important;        /* Темно-серый текст */
+}
+
+/* Контейнер для эмоций персонажа */
+.char-emotions-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-top: 6px !important;
+  padding: 4px !important;
+  background-color: rgba(200,200,200,0.2) !important;
+  border-radius: 8px !important;
+}
+
+/* Миниатюры эмоций */
+.char-emotion-thumbnail {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: contain !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 6px !important;
+  border: 1px solid #a0a0a0 !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+  cursor: zoom-in !important;
+}
+
+.char-emotion-thumbnail:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  border: 1px solid #606060 !important;
+  cursor: zoom-out !important;
+}
+
+/* Контейнер для фонов */
+.bg-images-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin: 6px auto !important;
+  padding: 6px !important;
+  background-color: rgba(220,220,220,0.3) !important;
+  border-radius: 8px !important;
+}
+
+/* Миниатюры фонов (обычные) */
+.bg-thumbnail {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: cover !important;
+  background-color: #e8e8e8 !important;
+  border-radius: 6px !important;
+  border: 1px solid #a0a0a0 !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+  cursor: zoom-in !important;
+}
+
+/* Увеличенные миниатюры для фонов */
+.bg-thumbnail.large {
+  width: 50px !important;
+  height: 50px !important;
+}
+
+.bg-thumbnail:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  border: 1px solid #606060 !important;
+  cursor: zoom-out !important;
+}
+
+/* Стили для текста в узлах */
+.characters-group .label span,
+.character-node .label span,
+.backgrounds-group .label span {
+  color: #333333 !important;
+  font-weight: 500 !important;
+}
+
+.characters-group .label b,
+.character-node .label b,
+.backgrounds-group .label b {
+  color: #222222 !important;
+  font-weight: 700 !important;
+}
+
+.characters-group .label i,
+.character-node .label i,
+.backgrounds-group .label i {
+  color: #444444 !important;
+  font-style: italic !important;
+}
+
