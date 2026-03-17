@@ -3420,54 +3420,28 @@ function buildMermaidGraph(story, unreachableList) {
         // Формируем многострочную метку - ВАЖНО: порядок элементов
         var label = node.id + "<br/>";
 
-        // Параметры настройки (можно менять)
         // Параметры настройки
-        var imageSize = 40;
-        var hoverScale = 3.5;
-
-        // ОТЛАДКА: посмотрим, что в массиве
-        console.log('[DEBUG] Node', node.id, 'has', node.allBgImages ? node.allBgImages.length : 0, 'images');
+        var imageSize = 40;           // Размер миниатюр
+        var imageGap = 2;             // Расстояние между миниатюрами
+        var containerPadding = 8;     // Внутренние отступы контейнера
 
         if (node.allBgImages && node.allBgImages.length > 0) {
-            // Добавляем div-контейнер для изображений
-            label += '<div style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin: 4px 0;">';
-            
-            // Добавляем каждое изображение с явным индексом для отладки
-            for (var b = 0; b < node.allBgImages.length; b++) {
-                var bg = node.allBgImages[b];
-                var imgSrc = bg.src.replace(/"/g, '&quot;');
-                
-                // Добавляем data-index для отладки
-                label += '<img src="' + imgSrc + '" ' +
-                        'data-index="' + b + '" ' +
-                        'data-id="' + bg.id + '" ' +
-                        'style="width: ' + imageSize + 'px; height: ' + imageSize + 'px; ' +
-                        'object-fit: cover; ' +
-                        'background-color: #f0f0f0; ' +
-                        'border-radius: 4px; ' +
-                        'border: 1px solid #ccc; ' +
-                        'margin: 0 1px; ' +
-                        'vertical-align: middle;" ' +
-                        'title="' + b + ': ' + bg.id + '" /> ';
-            }
-            
-            label += '</div>';
-            
-            console.log('[DEBUG] Added', node.allBgImages.length, 'images for node', node.id);
-        } else if (node.firstBgSrc) {
-            // Если нет массива, но есть первый фон
-            var imgSrc = node.firstBgSrc.replace(/"/g, '&quot;');
-            label += '<div style="display: flex; justify-content: center; margin: 4px 0;">' +
-                    '<img src="' + imgSrc + '" ' +
-                    'style="width: ' + imageSize + 'px; height: ' + imageSize + 'px; ' +
-                    'object-fit: cover; ' +
-                    'background-color: #f0f0f0; ' +
-                    'border-radius: 4px; ' +
-                    'border: 1px solid #ccc; ' +
-                    'margin: 0 1px; ' +
-                    'vertical-align: middle;" ' +
-                    'title="' + node.firstBgId + '" />' +
-                    '</div>';
+              // Простой контейнер без сложных расчетов ширины
+              label += '<div class="bg-images-container" style="padding: 4px;">';
+              
+              for (var b = 0; b < node.allBgImages.length; b++) {
+                  var bg = node.allBgImages[b];
+                  var imgSrc = bg.src.replace(/"/g, '&quot;');
+                  
+                  label += '<img src="' + imgSrc + '" ' +
+                          'class="bg-thumbnail" ' +
+                          'data-id="' + bg.id + '" ' +
+                          'data-index="' + b + '" ' +
+                          'title="' + bg.id + '" ' +
+                          'alt="" /> ';
+              }
+              
+              label += '</div>';
         }
         
         // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ

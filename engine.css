@@ -964,29 +964,9 @@ body {
 
 /* Улучшенные стили для изображений в графе Mermaid */
 
-/* Контейнер для изображений в узле */
 .graphContainer .mermaid .node div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 2px;
-  margin: 2px 0;
   overflow: visible !important;
   position: relative !important;
-  z-index: 1 !important;
-}
-
-
-/* Принудительное выравнивание изображений в узлах Mermaid в одну строку */
-.graphContainer .mermaid .node div {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  flex-direction: row !important;  /* Явно указываем горизонтальное направление */
-  justify-content: center !important;
-  align-items: center !important;
-  gap: 2px !important;
-  margin: 4px 0 2px 0 !important;
-  width: 100% !important;
 }
 
 /* Сами изображения */
@@ -1046,8 +1026,6 @@ body {
 }
 
 /* Контейнер для изображений в узле - переопределяем все возможные уровни */
-.graphContainer .mermaid .node div,
-.graphContainer .mermaid .node div[style*="display"],
 .graphContainer .mermaid .node td,
 .graphContainer .mermaid .node span,
 .graphContainer .mermaid .node foreignObject,
@@ -1080,3 +1058,68 @@ body {
   overflow: visible !important;
 }
 
+/* Для мобильных устройств уменьшаем количество колонок */
+@media (max-width: 600px) {
+  .bg-images-container {
+    grid-template-columns: repeat(3, minmax(40px, 1fr));
+  }
+}
+
+/* Контейнер для изображений - только один раз! */
+.bg-images-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 2px !important;
+  margin: 4px auto !important;
+  background-color: rgba(255,255,255,0.3) !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+}
+
+/* Миниатюры - только один раз! */
+.bg-thumbnail {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: cover !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 4px !important;
+  border: 1px solid #ccc !important;
+  transition: transform 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  cursor: zoom-in !important;
+  flex-shrink: 0 !important;
+}
+
+.bg-thumbnail:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  cursor: zoom-out !important;
+}
+
+/* Отключаем конфликтующие стили для изображений в узлах */
+.graphContainer .mermaid .node img {
+  all: unset !important; /* Сбрасываем все предыдущие стили */
+  display: inline-block !important;
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: cover !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 4px !important;
+  border: 1px solid #ccc !important;
+  transition: transform 0.2s ease !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  margin: 0 1px !important;
+  vertical-align: middle !important;
+  cursor: zoom-in !important;
+}
+
+.graphContainer .mermaid .node img:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  cursor: zoom-out !important;
+}
