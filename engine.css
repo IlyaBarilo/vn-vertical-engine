@@ -1120,3 +1120,41 @@ body {
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
   cursor: zoom-out !important;
 }
+
+
+
+
+
+/* Контейнер для эмоций персонажа */
+.char-emotions-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 2px !important;
+  margin-top: 4px !important;
+  background-color: transparent !important;
+  border-radius: 8px !important;
+  padding: 2px !important;
+}
+
+/* Миниатюры эмоций */
+.char-emotion-thumbnail {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: contain !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 8px !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transition: transform 0.2s ease !important;
+  cursor: zoom-in !important;
+  flex-shrink: 0 !important;
+}
+
+.char-emotion-thumbnail:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  cursor: zoom-out !important;
+}

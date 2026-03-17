@@ -3411,6 +3411,10 @@ function buildMermaidGraph(story, unreachableList) {
     mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
     mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
     
+    // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
+    var charGraphData = buildCharactersGraph(story);
+    mermaid += charGraphData.mermaid;
+    mermaid += "\n";
 
     // Создаем узлы с многострочными метками
     for (var n = 0; n < nodes.length; n++) {
@@ -3525,9 +3529,96 @@ function buildMermaidGraph(story, unreachableList) {
         }
     });
 
+    // ВАЖНО: Добавляем пунктирную связь от узла "Персонажи" к первой сцене
+    var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
+    mermaid += '\n    %% Связь персонажей с первой главой\n';
+    mermaid += '    characters -.-> ' + startId + ';\n';
+
     return mermaid;
 }
       
+
+// Добавьте после функции buildMermaidGraph или в любое место перед ее вызовом
+
+function buildCharactersGraph(story) {
+    var mermaid = "";
+    var characters = story.assets.characters || {};
+    var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+    
+    // Создаем узел "Персонажи"
+    mermaid += '    characters["<b>👥 ПЕРСОНАЖИ</b>"]\n';
+    mermaid += '    style characters fill:#e6f3ff,stroke:#333,stroke-width:2px;\n';
+    
+    // Создаем узлы для каждого персонажа
+    var charNodes = [];
+    var charIds = Object.keys(characters).sort();
+    
+    for (var i = 0; i < charIds.length; i++) {
+        var charId = charIds[i];
+        var char = characters[charId];
+        var displayName = char.name || charId;
+        
+        // Формируем HTML для изображений эмоций
+        var emotionsHtml = '';
+        if (char.images) {
+            var emotionIds = Object.keys(char.images).sort();
+            
+            emotionsHtml = '<div class="char-emotions-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin-top: 4px;">';
+            
+            for (var e = 0; e < emotionIds.length; e++) {
+                var emotion = emotionIds[e];
+                var imgSrc = char.images[emotion].replace(/"/g, '&quot;');
+                
+                // ВАЖНО: экранируем кавычки в обработчиках событий
+                emotionsHtml += '<img src="' + imgSrc + '" ' +
+                                'class="char-emotion-thumbnail" ' +
+                                'style="width: 40px; height: 40px; object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
+                                'onmouseover="this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;" ' +
+                                'onmouseout="this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;" ' +
+                                'title="' + emotion + '" alt="" /> ';
+            }
+            
+            emotionsHtml += '</div>';
+        }
+        
+        // Экранируем кавычки в displayName
+        var escapedDisplayName = displayName.replace(/"/g, '&quot;');
+
+        // Формируем метку персонажа с правильным экранированием - ИСПРАВЛЕНО
+        var label = '<b>' + charId + '</b><br/>';
+        if (displayName !== charId) {
+            // Используем &quot; вместо кавычек
+            label += '<i>&quot;' + escapedDisplayName + '&quot;</i>';
+        }
+        label += emotionsHtml;
+        
+        // Добавляем узел персонажа
+        var nodeId = 'char_' + charId;
+        mermaid += '    ' + nodeId + '["' + label + '"]\n';
+        mermaid += '    style ' + nodeId + ' fill:#fff0d9,stroke:#666,stroke-width:1px;\n';
+        
+        charNodes.push({
+            id: nodeId,
+            charId: charId
+        });
+    }
+    
+    // Добавляем связи пунктирной линией
+    mermaid += '\n    %% Связи персонажей с первой главой\n';
+    
+    // Связь от "Персонажи" к первому узлу (опционально)
+    // mermaid += '    characters -.-> ' + startId + ';\n';
+    
+    // Связи от персонажей к "Персонажи"
+    for (var j = 0; j < charNodes.length; j++) {
+        mermaid += '    ' + charNodes[j].id + ' -.-> characters;\n';
+    }
+    
+    return {
+        mermaid: mermaid,
+        charNodes: charNodes
+    };
+}
 
 
 
