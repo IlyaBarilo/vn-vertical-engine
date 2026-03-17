@@ -1077,6 +1077,7 @@ body {
   border-radius: 6px !important;
   padding: 8px !important;
   box-sizing: border-box !important;
+  border: none !important;            /* Убираем контур */
 }
 
 /* Миниатюры - только один раз! */
@@ -1085,20 +1086,16 @@ body {
   height: 40px !important;
   object-fit: cover !important;
   background-color: #f0f0f0 !important;
-  border-radius: 4px !important;
-  border: 1px solid #ccc !important;
+  border-radius: 8px !important;     /* Увеличено скругление углов */
+  border: none !important;            /* Убираем серый контур */
   transition: transform 0.2s ease !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
   cursor: zoom-in !important;
   flex-shrink: 0 !important;
+  padding: 2px !important;           /* Добавляем внутренний отступ */
+  box-sizing: border-box !important;  /* Чтобы padding не увеличивал размер */
 }
 
-.bg-thumbnail:hover {
-  transform: scale(3.5) !important;
-  z-index: 9999 !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-  cursor: zoom-out !important;
-}
 
 /* Отключаем конфликтующие стили для изображений в узлах */
 .graphContainer .mermaid .node img {
@@ -1108,8 +1105,8 @@ body {
   height: 40px !important;
   object-fit: cover !important;
   background-color: #f0f0f0 !important;
-  border-radius: 4px !important;
-  border: 1px solid #ccc !important;
+  border-radius: 8px !important;     /* Увеличено скругление углов */
+  border: none !important;            /* Убираем серый контур */
   transition: transform 0.2s ease !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
   margin: 0 1px !important;
