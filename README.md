@@ -2,7 +2,7 @@
 
 [![GitHub
 stars](https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=social)](https://github.com/IlyaBarilo/vn-vertical-engine)
-[![License](https://img.shields.io/github/license/IlyaBarilo/vn-vertical-engine)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-available-brightgreen)](https://github.com/IlyaBarilo/vn-vertical-engine)
 
 A lightweight visual novel engine built with **HTML, CSS, and
