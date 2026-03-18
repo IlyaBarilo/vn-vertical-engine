@@ -31,12 +31,12 @@
     <img src="https://img.shields.io/github/repo-size/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Repo Size">
   </a>
   <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
-  <img src="https://img.shields.io/badge/demo-available-brightgreen?style=for-the-badge" alt="Demo">
+  <img src="https://img.shields.io/badge/live-demo-brightgreen?style=for-the-badge" alt="Demo">
 </a>
 </p>
 
 
- lightweight **offline visual novel engine** built with HTML, CSS, and JavaScript.
+A lightweight **offline visual novel engine** built with HTML, CSS, and JavaScript.
 
 Designed for **vertical screens**, **portrait displays**, and **real-world installations** — from kiosks to 4K TVs.
 
