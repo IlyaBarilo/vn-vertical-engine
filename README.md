@@ -290,9 +290,9 @@ See the full license text in the [LICENSE](LICENSE).
 
 ## 📦 Content (Demo Assets)
 
-All media files located in the `assets/` folder --- including character
+All media files located in the `assets/` folder - including character
 images, backgrounds, videos, audio files, and other materials used in
-the demo novel --- are **NOT covered by the MIT License**.
+the demo novel - are **NOT covered by the MIT License**.
 
 These files are provided **for demonstration purposes only**. You **are
 not allowed** to use them in your own projects (commercial or
