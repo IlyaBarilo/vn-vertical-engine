@@ -1,20 +1,40 @@
-# 🎮 Visual Novel Vertical Engine (HTML/CSS/JS)
+# 🎮 Visual Novel Vertical Engine
 
-[![GitHub
-stars](https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=social)](https://github.com/IlyaBarilo/vn-vertical-engine)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Demo](https://img.shields.io/badge/demo-available-brightgreen)](https://github.com/IlyaBarilo/vn-vertical-engine)
+<p align="center">
+  <strong>Lightweight HTML/CSS/JS visual novel engine built for vertical screens.</strong>
+</p>
 
-A lightweight visual novel engine built with **HTML, CSS, and
-JavaScript**, designed specifically for **vertical screens** and
-**portrait displays**, including **4K TVs mounted vertically**.
+<p align="center">
+  Offline • No build tools • Portrait-first • 4K vertical display ready
+</p>
 
-The engine works **fully offline** and does not require any build tools
-or backend. Simply open `index.html` in a browser.
+<p align="center">
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/stargazers">
+    <img src="https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Stars">
+  </a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
+  </a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
+    <img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Release">
+  </a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/commits/main">
+    <img src="https://img.shields.io/github/last-commit/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Last Commit">
+  </a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
+    <img src="https://img.shields.io/github/repo-size/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Repo Size">
+  </a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine">
+  <img src="https://img.shields.io/badge/demo-available-brightgreen?style=for-the-badge" alt="Demo">
+</a>
+</p>
 
-The project is inspired by visual novel scripting systems (such as
-Ren'Py), but implemented as a **minimalistic browser-based solution**,
-suitable for demos and educational use.
+
+ lightweight **offline visual novel engine** built with HTML, CSS, and JavaScript.
+
+Designed for **vertical screens**, **portrait displays**, and **real-world installations** — from kiosks to 4K TVs.
+
+No setup. No dependencies. Just open `index.html` and start.
 
 ---
 
