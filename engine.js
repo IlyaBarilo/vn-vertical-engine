@@ -2431,14 +2431,15 @@ window.addEventListener("resize", adjustCharacterScale);
           
         // Отсутствующие файлы - проверяем ВСЕГДА, независимо от наличия звука
         if (fileStats.missing.length > 0) {
-          text += "❌ ОТСУТСТВУЮТ ФАЙЛЫ:\n";
-          fileStats.missing.forEach(item => {
-            text += `  ${item.path}\n`;
-            if (item.refs) {
-              item.refs.forEach(ref => text += `    используется в: ${ref}\n`);
-            }
+          text += "❌ ОТСУТСТВУЮТ ФАЙЛЫ:\n\n";
+          fileStats.missing.forEach(function(item, index) {
+            text += (index + 1) + ". " + item.path + "\n";
+            text += "   Где используется:\n";
+            item.refs.forEach(function(ref) {
+              text += "   - " + ref + "\n";
+            });
+            text += "\n";
           });
-          text += "\n";
         } else {
           text += "✅ Все файлы найдены\n\n";
         }
@@ -2919,12 +2920,20 @@ function collectEnvironmentInfo() {
         // Аудио
         if (STORY.assets.audio) {
           Object.entries(STORY.assets.audio).forEach(([id, path]) => {
-            allFiles.push({ 
-              id: id, 
-              path: path, 
-              type: 'audio', 
-              category: 'audio', 
-              ref: id 
+            if (typeof path !== "string" || path.trim() === "") {
+              result.missing.push({
+                path: `[некорректный путь: ${String(path)}]`,
+                refs: [`audio: ${id}`]
+              });
+              return;
+            }
+
+            allFiles.push({
+              id: id,
+              path: path.trim(),
+              type: 'audio',
+              category: 'audio',
+              ref: id
             });
           });
         }
