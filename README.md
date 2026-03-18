@@ -31,7 +31,7 @@
     <img src="https://img.shields.io/github/repo-size/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Repo Size">
   </a>
   <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
-  <img src="https://img.shields.io/badge/live-demo-brightgreen?style=for-the-badge" alt="Demo">
+  <img src="https://img.shields.io/badge/demo-brightgreen?style=for-the-badge" alt="Demo">
 </a>
 </p>
 
