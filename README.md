@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
+    <img src="https://img.shields.io/badge/▶-Try%20it%20now-brightgreen?style=for-the-badge" alt="Try it now">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/stargazers">
     <img src="https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Stars">
   </a>
@@ -24,7 +30,7 @@
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
     <img src="https://img.shields.io/github/repo-size/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Repo Size">
   </a>
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine">
+  <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
   <img src="https://img.shields.io/badge/demo-available-brightgreen?style=for-the-badge" alt="Demo">
 </a>
 </p>
