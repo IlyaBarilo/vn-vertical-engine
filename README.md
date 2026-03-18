@@ -121,7 +121,7 @@ project/
 ```javascript
 window.STORY_TEXT = `
 
-# МЕТАДАННЫЕ
+[meta]
 title: Demo Story
 startScene: intro
 
@@ -136,6 +136,7 @@ anna color = #0F0
 [audio]
 bgmDay = assets/bgm_day.mp3
 
+[scene]
 scene intro
 
 bg hall
