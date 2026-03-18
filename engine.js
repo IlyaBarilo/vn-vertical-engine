@@ -2381,6 +2381,7 @@ window.addEventListener("resize", adjustCharacterScale);
 
     // Показываем индикатор загрузки
     elStatsBody.value = "Сбор информации...";
+    console.log("[STATS] renderStats:start");
 
     // Сначала собираем информацию об окружении
     var envInfo = collectEnvironmentInfo();
@@ -2389,346 +2390,364 @@ window.addEventListener("resize", adjustCharacterScale);
     var profilerInfo = profiler.getReport();
     
     // Асинхронно проверяем файлы
-    checkAssetsFiles().then(fileStats => {
-      var stats = computeStoryStats(STORY);
-      var errors = validateStory(STORY);
-      var textInfo = computeTextInfo(STORY);
-      var reach = findUnreachableScenes(STORY);
-      var cycles = findCyclesSCC(STORY);
-
-      // Получаем ошибки парсинга
-      var parseErrors = window.PARSE_ERRORS || [];
-
-      var text = "";
-
-      text += `Версия программы: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
-
-      text += "=== СТАТИСТИКА СЦЕНАРИЯ ===\n\n";
-      text += "Название: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
-      text += "Сцен: " + stats.sceneCount + "\n";
-      text += "Меню выбора: " + stats.choiceCount + "\n\n";
-
-
-       // ===== ОШИБКИ ПАРСИНГА =====
-      text += "=== ОШИБКИ ПАРСИНГА ===\n\n";
-      
-      if (parseErrors.length === 0) {
-        text += "✅ Ошибок парсинга не найдено\n\n";
-      } else {
-        text += `❌ Найдено ошибок: ${parseErrors.length}\n\n`;
-        parseErrors.forEach((error, index) => {
-          text += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
-          text += `   "${error.line}"\n\n`;
-        });
-      }
-
-
-      text += "=== ПРОВЕРКА ФАЙЛОВ ===\n\n";
-        
-      // Отсутствующие файлы - проверяем ВСЕГДА, независимо от наличия звука
-      if (fileStats.missing.length > 0) {
-        text += "❌ ОТСУТСТВУЮТ ФАЙЛЫ:\n";
-        fileStats.missing.forEach(item => {
-          text += `  ${item.path}\n`;
-          if (item.refs) {
-            item.refs.forEach(ref => text += `    используется в: ${ref}\n`);
-          }
-        });
-        text += "\n";
-      } else {
-        text += "✅ Все файлы найдены\n\n";
-      }
-      
-      // Ошибки размеров изображений
-      if (fileStats.sizeErrors.length > 0) {
-        text += "❌ ПРОБЛЕМЫ С РАЗМЕРАМИ ИЗОБРАЖЕНИЙ:\n\n";
-        
-        fileStats.sizeErrors.forEach(item => {
-          text += `Файл: ${item.path}\n`;
-          text += `  Текущий размер: ${item.width}×${item.height}\n`;
-          if (item.category === 'bg') {
-            text += `  Требуется: не менее 1080×1920\n`;
-          } else if (item.category === 'char') {
-            text += `  Требуется: не менее 500×1200\n`;
-          }
-          text += `  Проблемы: ${item.errors.join(', ')}\n`;
-          if (item.refs) {
-            text += `  Используется в: ${item.refs.join(', ')}\n`;
-          }
-          text += "\n";
-        });
-      } else {
-        text += "✅ Все изображения соответствуют требованиям по размеру\n\n";
-      }
-      
-
-      text += "=== СТАТИСТИКА ФАЙЛОВ ===\n\n";
-      text += "Всего файлов: " + fileStats.files.length + "\n";
-      
-      // Подсчет изображений и аудио
-      var imageCount = 0;
-      var audioCount = 0;
-      fileStats.files.forEach(f => {
-        if (f.path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) imageCount++;
-        else if (f.path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) audioCount++;
-      });
-      
-      text += "  Изображения: " + imageCount + "\n";
-      text += "  Аудио: " + audioCount + "\n\n";
-
-      
-
-
-      text += "=== ОБЪЁМ ТЕКСТА ===\n\n";
-
-      text += "Всего символов: " + textInfo.characters + "\n";
-      text += "Всего слов: " + textInfo.words + "\n\n";
-
-
-      
-
-
-      text += "=== ИСПОЛЬЗОВАННЫЕ ФОНЫ ===\n";
-
-      if (!stats.backgroundsDetailed || !stats.backgroundsDetailed.length) {
-        text += "(нет)\n\n";
-      } else {
-        for (var i = 0; i < stats.backgroundsDetailed.length; i++) {
-          var bgItem = stats.backgroundsDetailed[i];
-          text += bgItem.used ? bgItem.id + "\n" : bgItem.id + "*\n";
-        }
-        text += "\n";
-      }
-
-
-
-
-
-      text += "=== ИСПОЛЬЗОВАННЫЕ ПЕРСОНАЖИ ===\n";
-
-      if (!stats.usedCharactersDetailed || !stats.usedCharactersDetailed.length) {
-        text += "(нет)\n\n";
-      } else {
-        for (var i = 0; i < stats.usedCharactersDetailed.length; i++) {
-          var item = stats.usedCharactersDetailed[i];
-          var emotionsText = item.emotionsDisplay && item.emotionsDisplay.length
-            ? item.emotionsDisplay.join(", ")
-            : "-";
-
-          var nameText = item.used ? item.name : (item.name + "*");
-          text += nameText + " [" + item.id + "] (" + emotionsText + ")\n";
-        }
-        text += "\n";
-      }
-
-
-
-
-      text += "=== ПРОВЕРКА СЦЕНАРИЯ ===\n";
-
-      if (errors.length === 0) {
-        text += "Ошибок не найдено.\n";
-      } else {
-        for (var i = 0; i < errors.length; i++) {
-          text += "- " + errors[i] + "\n";
-        }
-      }
-
-
-      
-      text += "\n\n=== ДОП. АНАЛИЗ СЦЕНАРИЯ ===\n\n";
-
-      text += "Недостижимые сцены (" + reach.unreachable.length + "):\n";
-      text += (reach.unreachable.length ? reach.unreachable.join("\n") : "(нет)") + "\n\n";
-
-      text += "Циклы / SCC (" + cycles.length + "):\n";
-      if (!cycles.length) {
-        text += "(нет)\n";
-      } else {
-        for (var i = 0; i < cycles.length; i++) {
-          text += "- " + cycles[i].join(" -> ") + "\n";
-        }
-      }
-
-      // ========== ПРОФАЙЛЕР ==========
-      text += "=== ПРОФАЙЛЕР ВРЕМЕНИ ===\n\n";
-      text += profilerInfo;
-      text += "\n";
-
-        text += "=== ЗАГРУЗКА НОВЕЛЛЫ ===\n";
-
-        if (profiler.marks['Первый экран готов'] !== undefined) {
-          text += "  До первого экрана: " +
-            profiler.marks['Первый экран готов'] + "ms (" +
-            (profiler.marks['Первый экран готов'] / 1000).toFixed(2) + "с)\n";
-        } else {
-          text += "  До первого экрана: ещё не измерено\n";
-        }
-
-        if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['Первый экран готов'] !== undefined) {
-          var firstScreenFromLoaderStart =
-            (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['Первый экран готов'];
-
-          text += "  От старта загрузчика до первого экрана: " +
-            firstScreenFromLoaderStart + "ms (" +
-            (firstScreenFromLoaderStart / 1000).toFixed(2) + "с)\n";
-        }
-
-
-      // ========== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ==========
-      text += "=== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ===\n\n";
-      
-      if (window.LOADER_STATS) {
-          var marks = window.LOADER_STATS.marks;
-
-          // Находим максимальное время (последнюю метку)
-          var maxTime = 0;
-          for (var key in marks) {
-              if (marks[key] > maxTime) {
-                  maxTime = marks[key];
-              }
-          }
-
-          var totalLoaderTime = maxTime; // Используем последнюю метку
-          // var totalLoaderTime = marks.parsing_end || marks.story_assigned || 0;
-          var parsingTime = marks.parsing_end || 0;
-          var processingTime = totalLoaderTime - parsingTime;
-
-          text += "Общее время загрузчика: " + totalLoaderTime + "ms\n";
-          text += "  Парсинг: " + parsingTime + "ms\n";
-          text += "  Обработка и передача: " + processingTime + "ms\n\n";
-          
-          text += "Детализация:\n";
-          text += "  Старт: 0ms\n";
-          
-          // Сортируем метки по времени
-          var sortedMarks = Object.keys(marks).sort(function(a, b) {
-              return marks[a] - marks[b];
-          });
-          
-          var lastTime = 0;
-          sortedMarks.forEach(function(name) {
-              var time = marks[name];
-              text += "  " + name + ": " + time + "ms (+" + (time - lastTime) + "ms)\n";
-              lastTime = time;
-          });
-          
-          text += "\n";
-          text += "Размер сценария:\n";
-          text += "  Сцен: " + window.LOADER_STATS.scenesCount + "\n";
-          text += "  Действий: " + window.LOADER_STATS.actionsCount + "\n";
-          text += "  Фонов: " + window.LOADER_STATS.backgroundsCount + "\n";
-          text += "  Персонажей: " + window.LOADER_STATS.charactersCount + "\n";
-          text += "  Аудио: " + window.LOADER_STATS.audioCount + "\n";
-          text += "  Время на сцену: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
-          text += "  Время на действие: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
-
-          // Прогноз для больших сценариев
-          var estimatedFor100Scenes = (totalLoaderTime / window.LOADER_STATS.scenesCount) * 100;
-          var estimatedFor1000Actions = (totalLoaderTime / window.LOADER_STATS.actionsCount) * 1000;
-          
-          // Прогноз для больших сценариев
-          var estimatedFor100Scenes = (totalLoaderTime / window.LOADER_STATS.scenesCount) * 100;
-          var estimatedFor1000Actions = (totalLoaderTime / window.LOADER_STATS.actionsCount) * 1000;
-
-          // Детальный прогноз по типам действий
-          var sayCount = stats.sayCount || 0;        // фразы персонажей
-          var textCount = stats.textCount || 0;      // авторский текст
-          var choiceCount = stats.choiceCount || 0;  // меню выбора
-          var bgmCount = stats.bgmActions || 0;                 // смены музыки
-          var bgCount = (stats.usedBackgroundIds || []).length; // используемые фоны
-
-          var totalDialogActions = sayCount + textCount;
-          var totalInteractiveActions = choiceCount;
-
-          text += "Прогноз производительности:\n";
-          text += "  На 100 сцен: ~" + Math.round(estimatedFor100Scenes) + "ms (" + (estimatedFor100Scenes/1000).toFixed(1) + "с)\n";
-          text += "  На 1000 действий: ~" + Math.round(estimatedFor1000Actions) + "ms (" + (estimatedFor1000Actions/1000).toFixed(1) + "с)\n\n";
-
-          text += "Детальный прогноз по типам действий (на 1000 шт):\n";
-
-          if (sayCount > 0) {
-              var timePerSay = totalLoaderTime / sayCount;
-              var estimated1000Say = timePerSay * 1000;
-              text += "  Фразы персонажей: ~" + Math.round(estimated1000Say) + "ms";
-              text += " (по " + timePerSay.toFixed(2) + "ms на фразу)\n";
-          }
-
-          if (textCount > 0) {
-              var timePerText = totalLoaderTime / textCount;
-              var estimated1000Text = timePerText * 1000;
-              text += "  Авторский текст: ~" + Math.round(estimated1000Text) + "ms";
-              text += " (по " + timePerText.toFixed(2) + "ms на текст)\n";
-          }
-
-          if (choiceCount > 0) {
-              var timePerChoice = totalLoaderTime / choiceCount;
-              var estimated1000Choice = timePerChoice * 1000;
-              text += "  Меню выбора: ~" + Math.round(estimated1000Choice) + "ms";
-              text += " (по " + timePerChoice.toFixed(2) + "ms на меню)\n";
-          }
-
-          if (bgmCount > 0) {
-              var timePerBgm = totalLoaderTime / bgmCount;
-              var estimated1000Bgm = timePerBgm * 1000;
-              text += "  Смена музыки: ~" + Math.round(estimated1000Bgm) + "ms";
-              text += " (по " + timePerBgm.toFixed(2) + "ms на смену)\n";
-          }
-
-          if (bgCount > 0) {
-              var timePerBg = totalLoaderTime / bgCount;
-              var estimated1000Bg = timePerBg * 1000;
-              text += "  Смена фона: ~" + Math.round(estimated1000Bg) + "ms";
-              text += " (по " + timePerBg.toFixed(2) + "ms на смену)\n";
-          }
-
-          text += "\n";
-
-
-      } else {
-          text += "Данные загрузчика недоступны\n\n";
-      }
-
-
-      // ========== ИНФОРМАЦИЯ ОБ ОКРУЖЕНИИ ==========
-      text += "=== ИНФОРМАЦИЯ ОБ УСТРОЙСТВЕ ===\n\n";
-      text += envInfo;
-      text += "\n";
-
-      // Добавляем JSON сценария для отладки
-      text += "\n\n=== JSON СЦЕНАРИЯ ===\n\n";
+    checkAssetsFiles()
+    .then(function(fileStats) {
+      console.log("[STATS] checkAssetsFiles done", fileStats);
       try {
-        // Убираем циклические ссылки (если есть)
-        const storyJson = JSON.stringify(STORY, (key, value) => {
-          if (key === 'sceneMap') return undefined; // не сериализуем
-          return value;
-        }, 2);
-        text += storyJson;
+        var stats = computeStoryStats(STORY);
+        var errors = validateStory(STORY);
+        var textInfo = computeTextInfo(STORY);
+        var reach = findUnreachableScenes(STORY);
+        var cycles = findCyclesSCC(STORY);
+
+        // Получаем ошибки парсинга
+        var parseErrors = window.PARSE_ERRORS || [];
+
+        var text = "";
+
+        text += `Версия программы: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
+
+        text += "=== СТАТИСТИКА СЦЕНАРИЯ ===\n\n";
+        text += "Название: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
+        text += "Сцен: " + stats.sceneCount + "\n";
+        text += "Меню выбора: " + stats.choiceCount + "\n\n";
+
+
+        // ===== ОШИБКИ ПАРСИНГА =====
+        text += "=== ОШИБКИ ПАРСИНГА ===\n\n";
+        
+        if (parseErrors.length === 0) {
+          text += "✅ Ошибок парсинга не найдено\n\n";
+        } else {
+          text += `❌ Найдено ошибок: ${parseErrors.length}\n\n`;
+          parseErrors.forEach((error, index) => {
+            text += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+            text += `   "${error.line}"\n\n`;
+          });
+        }
+
+
+        text += "=== ПРОВЕРКА ФАЙЛОВ ===\n\n";
+          
+        // Отсутствующие файлы - проверяем ВСЕГДА, независимо от наличия звука
+        if (fileStats.missing.length > 0) {
+          text += "❌ ОТСУТСТВУЮТ ФАЙЛЫ:\n";
+          fileStats.missing.forEach(item => {
+            text += `  ${item.path}\n`;
+            if (item.refs) {
+              item.refs.forEach(ref => text += `    используется в: ${ref}\n`);
+            }
+          });
+          text += "\n";
+        } else {
+          text += "✅ Все файлы найдены\n\n";
+        }
+        
+        // Ошибки размеров изображений
+        if (fileStats.sizeErrors.length > 0) {
+          text += "❌ ПРОБЛЕМЫ С РАЗМЕРАМИ ИЗОБРАЖЕНИЙ:\n\n";
+          
+          fileStats.sizeErrors.forEach(item => {
+            text += `Файл: ${item.path}\n`;
+            text += `  Текущий размер: ${item.width}×${item.height}\n`;
+            if (item.category === 'bg') {
+              text += `  Требуется: не менее 1080×1920\n`;
+            } else if (item.category === 'char') {
+              text += `  Требуется: не менее 500×1200\n`;
+            }
+            text += `  Проблемы: ${item.errors.join(', ')}\n`;
+            if (item.refs) {
+              text += `  Используется в: ${item.refs.join(', ')}\n`;
+            }
+            text += "\n";
+          });
+        } else {
+          text += "✅ Все изображения соответствуют требованиям по размеру\n\n";
+        }
+        
+
+        text += "=== СТАТИСТИКА ФАЙЛОВ ===\n\n";
+        text += "Всего файлов: " + fileStats.files.length + "\n";
+        
+        // Подсчет изображений и аудио
+        var imageCount = 0;
+        var audioCount = 0;
+        fileStats.files.forEach(f => {
+          if (f.path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) imageCount++;
+          else if (f.path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) audioCount++;
+        });
+        
+        text += "  Изображения: " + imageCount + "\n";
+        text += "  Аудио: " + audioCount + "\n\n";
+
+        
+
+
+        text += "=== ОБЪЁМ ТЕКСТА ===\n\n";
+
+        text += "Всего символов: " + textInfo.characters + "\n";
+        text += "Всего слов: " + textInfo.words + "\n\n";
+
+
+        
+
+
+        text += "=== ИСПОЛЬЗОВАННЫЕ ФОНЫ ===\n";
+
+        if (!stats.backgroundsDetailed || !stats.backgroundsDetailed.length) {
+          text += "(нет)\n\n";
+        } else {
+          for (var i = 0; i < stats.backgroundsDetailed.length; i++) {
+            var bgItem = stats.backgroundsDetailed[i];
+            text += bgItem.used ? bgItem.id + "\n" : bgItem.id + "*\n";
+          }
+          text += "\n";
+        }
+
+
+
+
+
+        text += "=== ИСПОЛЬЗОВАННЫЕ ПЕРСОНАЖИ ===\n";
+
+        if (!stats.usedCharactersDetailed || !stats.usedCharactersDetailed.length) {
+          text += "(нет)\n\n";
+        } else {
+          for (var i = 0; i < stats.usedCharactersDetailed.length; i++) {
+            var item = stats.usedCharactersDetailed[i];
+            var emotionsText = item.emotionsDisplay && item.emotionsDisplay.length
+              ? item.emotionsDisplay.join(", ")
+              : "-";
+
+            var nameText = item.used ? item.name : (item.name + "*");
+            text += nameText + " [" + item.id + "] (" + emotionsText + ")\n";
+          }
+          text += "\n";
+        }
+
+
+
+
+        text += "=== ПРОВЕРКА СЦЕНАРИЯ ===\n";
+
+        if (errors.length === 0) {
+          text += "Ошибок не найдено.\n";
+        } else {
+          for (var i = 0; i < errors.length; i++) {
+            text += "- " + errors[i] + "\n";
+          }
+        }
+
+
+        
+        text += "\n\n=== ДОП. АНАЛИЗ СЦЕНАРИЯ ===\n\n";
+
+        text += "Недостижимые сцены (" + reach.unreachable.length + "):\n";
+        text += (reach.unreachable.length ? reach.unreachable.join("\n") : "(нет)") + "\n\n";
+
+        text += "Циклы / SCC (" + cycles.length + "):\n";
+        if (!cycles.length) {
+          text += "(нет)\n";
+        } else {
+          for (var i = 0; i < cycles.length; i++) {
+            text += "- " + cycles[i].join(" -> ") + "\n";
+          }
+        }
+
+        // ========== ПРОФАЙЛЕР ==========
+        text += "=== ПРОФАЙЛЕР ВРЕМЕНИ ===\n\n";
+        text += profilerInfo;
+        text += "\n";
+
+          text += "=== ЗАГРУЗКА НОВЕЛЛЫ ===\n";
+
+          if (profiler.marks['Первый экран готов'] !== undefined) {
+            text += "  До первого экрана: " +
+              profiler.marks['Первый экран готов'] + "ms (" +
+              (profiler.marks['Первый экран готов'] / 1000).toFixed(2) + "с)\n";
+          } else {
+            text += "  До первого экрана: ещё не измерено\n";
+          }
+
+          if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['Первый экран готов'] !== undefined) {
+            var firstScreenFromLoaderStart =
+              (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['Первый экран готов'];
+
+            text += "  От старта загрузчика до первого экрана: " +
+              firstScreenFromLoaderStart + "ms (" +
+              (firstScreenFromLoaderStart / 1000).toFixed(2) + "с)\n";
+          }
+
+
+        // ========== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ==========
+        text += "=== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ===\n\n";
+        
+        if (window.LOADER_STATS) {
+            var marks = window.LOADER_STATS.marks;
+
+            // Находим максимальное время (последнюю метку)
+            var maxTime = 0;
+            for (var key in marks) {
+                if (marks[key] > maxTime) {
+                    maxTime = marks[key];
+                }
+            }
+
+            var totalLoaderTime = maxTime; // Используем последнюю метку
+            // var totalLoaderTime = marks.parsing_end || marks.story_assigned || 0;
+            var parsingTime = marks.parsing_end || 0;
+            var processingTime = totalLoaderTime - parsingTime;
+
+            text += "Общее время загрузчика: " + totalLoaderTime + "ms\n";
+            text += "  Парсинг: " + parsingTime + "ms\n";
+            text += "  Обработка и передача: " + processingTime + "ms\n\n";
+            
+            text += "Детализация:\n";
+            text += "  Старт: 0ms\n";
+            
+            // Сортируем метки по времени
+            var sortedMarks = Object.keys(marks).sort(function(a, b) {
+                return marks[a] - marks[b];
+            });
+            
+            var lastTime = 0;
+            sortedMarks.forEach(function(name) {
+                var time = marks[name];
+                text += "  " + name + ": " + time + "ms (+" + (time - lastTime) + "ms)\n";
+                lastTime = time;
+            });
+            
+            text += "\n";
+            text += "Размер сценария:\n";
+            text += "  Сцен: " + window.LOADER_STATS.scenesCount + "\n";
+            text += "  Действий: " + window.LOADER_STATS.actionsCount + "\n";
+            text += "  Фонов: " + window.LOADER_STATS.backgroundsCount + "\n";
+            text += "  Персонажей: " + window.LOADER_STATS.charactersCount + "\n";
+            text += "  Аудио: " + window.LOADER_STATS.audioCount + "\n";
+            text += "  Время на сцену: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
+            text += "  Время на действие: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
+
+            // Прогноз для больших сценариев
+            var estimatedFor100Scenes = (totalLoaderTime / window.LOADER_STATS.scenesCount) * 100;
+            var estimatedFor1000Actions = (totalLoaderTime / window.LOADER_STATS.actionsCount) * 1000;
+            
+            // Прогноз для больших сценариев
+            var estimatedFor100Scenes = (totalLoaderTime / window.LOADER_STATS.scenesCount) * 100;
+            var estimatedFor1000Actions = (totalLoaderTime / window.LOADER_STATS.actionsCount) * 1000;
+
+            // Детальный прогноз по типам действий
+            var sayCount = stats.sayCount || 0;        // фразы персонажей
+            var textCount = stats.textCount || 0;      // авторский текст
+            var choiceCount = stats.choiceCount || 0;  // меню выбора
+            var bgmCount = stats.bgmActions || 0;                 // смены музыки
+            var bgCount = (stats.usedBackgroundIds || []).length; // используемые фоны
+
+            var totalDialogActions = sayCount + textCount;
+            var totalInteractiveActions = choiceCount;
+
+            text += "Прогноз производительности:\n";
+            text += "  На 100 сцен: ~" + Math.round(estimatedFor100Scenes) + "ms (" + (estimatedFor100Scenes/1000).toFixed(1) + "с)\n";
+            text += "  На 1000 действий: ~" + Math.round(estimatedFor1000Actions) + "ms (" + (estimatedFor1000Actions/1000).toFixed(1) + "с)\n\n";
+
+            text += "Детальный прогноз по типам действий (на 1000 шт):\n";
+
+            if (sayCount > 0) {
+                var timePerSay = totalLoaderTime / sayCount;
+                var estimated1000Say = timePerSay * 1000;
+                text += "  Фразы персонажей: ~" + Math.round(estimated1000Say) + "ms";
+                text += " (по " + timePerSay.toFixed(2) + "ms на фразу)\n";
+            }
+
+            if (textCount > 0) {
+                var timePerText = totalLoaderTime / textCount;
+                var estimated1000Text = timePerText * 1000;
+                text += "  Авторский текст: ~" + Math.round(estimated1000Text) + "ms";
+                text += " (по " + timePerText.toFixed(2) + "ms на текст)\n";
+            }
+
+            if (choiceCount > 0) {
+                var timePerChoice = totalLoaderTime / choiceCount;
+                var estimated1000Choice = timePerChoice * 1000;
+                text += "  Меню выбора: ~" + Math.round(estimated1000Choice) + "ms";
+                text += " (по " + timePerChoice.toFixed(2) + "ms на меню)\n";
+            }
+
+            if (bgmCount > 0) {
+                var timePerBgm = totalLoaderTime / bgmCount;
+                var estimated1000Bgm = timePerBgm * 1000;
+                text += "  Смена музыки: ~" + Math.round(estimated1000Bgm) + "ms";
+                text += " (по " + timePerBgm.toFixed(2) + "ms на смену)\n";
+            }
+
+            if (bgCount > 0) {
+                var timePerBg = totalLoaderTime / bgCount;
+                var estimated1000Bg = timePerBg * 1000;
+                text += "  Смена фона: ~" + Math.round(estimated1000Bg) + "ms";
+                text += " (по " + timePerBg.toFixed(2) + "ms на смену)\n";
+            }
+
+            text += "\n";
+
+
+        } else {
+            text += "Данные загрузчика недоступны\n\n";
+        }
+
+
+        // ========== ИНФОРМАЦИЯ ОБ ОКРУЖЕНИИ ==========
+        text += "=== ИНФОРМАЦИЯ ОБ УСТРОЙСТВЕ ===\n\n";
+        text += envInfo;
+        text += "\n";
+
+        // Добавляем JSON сценария для отладки
+        text += "\n\n=== JSON СЦЕНАРИЯ ===\n\n";
+        try {
+          // Убираем циклические ссылки (если есть)
+          const storyJson = JSON.stringify(STORY, (key, value) => {
+            if (key === 'sceneMap') return undefined; // не сериализуем
+            return value;
+          }, 2);
+          text += storyJson;
+        } catch (e) {
+          text += "Ошибка сериализации: " + e.message;
+        }
+
+        text += "\n\n=== MERMAID GRAPH ===\n\n";
+        text += buildMermaidGraph(STORY, reach.unreachable);
+
+        elStatsBody.value = text;
+        elStatsBody.scrollTop = 0;
+
+
+        // Модифицируем существующую функцию renderStats для обновления графа при переключении
+        // Добавьте ЭТИ строки в конец функции renderStats:
+        // Если сейчас показывается граф, обновляем его
+        if (showingGraph && window.STORY) {
+          // Небольшая задержка, чтобы дать время обновиться DOM
+          setTimeout(function() {
+            try {
+              renderMermaidGraph();
+            } catch (e) {
+              console.error("[STATS] Ошибка рендера Mermaid-графа:", e);
+            }
+          }, 100);
+        }
+
+
       } catch (e) {
-        text += "Ошибка сериализации: " + e.message;
+        console.error("[STATS] Ошибка формирования текста статистики:", e);
+        elStatsBody.value =
+          "Ошибка формирования статистики:\n\n" +
+          (e && e.stack ? e.stack : String(e));
       }
-
-
-      text += "\n\n=== MERMAID GRAPH ===\n\n";
-      text += buildMermaidGraph(STORY, reach.unreachable);
-
-
-
-      elStatsBody.value = text;
-      elStatsBody.scrollTop = 0;
-
-
-      // Модифицируем существующую функцию renderStats для обновления графа при переключении
-      // Добавьте ЭТИ строки в конец функции renderStats:
-      // Если сейчас показывается граф, обновляем его
-      if (showingGraph && window.STORY) {
-        // Небольшая задержка, чтобы дать время обновиться DOM
-        setTimeout(function() {
-          renderMermaidGraph();
-        }, 100);
-      }
-
+    })
+    .catch(function(e) {
+      console.error("[STATS] Ошибка проверки файлов:", e);
+      elStatsBody.value =
+        "Ошибка проверки файлов:\n\n" +
+        (e && e.stack ? e.stack : String(e));
     });
+
 
   }
 
@@ -2932,6 +2951,13 @@ function collectEnvironmentInfo() {
         const fileResults = {};
         
         function checkComplete() {
+          console.log("[ASSET CHECK] progress", {
+            totalPaths: totalPaths,
+            loadedCount: loadedCount,
+            errorCount: errorCount,
+            done: loadedCount + errorCount
+          });
+
             if (loadedCount + errorCount === totalPaths) {
                 // Собираем результаты
                 uniquePaths.forEach(path => {
@@ -2978,6 +3004,14 @@ function collectEnvironmentInfo() {
                     }
                 });
                 
+                console.log("[ASSET CHECK] complete", {
+                  totalPaths: totalPaths,
+                  loadedCount: loadedCount,
+                  errorCount: errorCount,
+                  missing: result.missing.length,
+                  sizeErrors: result.sizeErrors.length,
+                  files: result.files.length
+                });
                 resolve(result);
             }
         }
@@ -3073,7 +3107,11 @@ function collectEnvironmentInfo() {
                 };
                 
                 audio.src = path + '?' + Date.now();
-            }
+              } else {
+                console.warn("[ASSET CHECK] unsupported file type:", path);
+                errorCount++;
+                checkComplete();
+              }
         });
     });
   }
@@ -3760,6 +3798,7 @@ function buildBackgroundsGraph(story) {
         }
 
         if (act.type === "char") {
+          if (!act.charId || !act.src) continue; // hide all пропускаем
 
           var id = extractAliasId(act.src, "ch");
 
