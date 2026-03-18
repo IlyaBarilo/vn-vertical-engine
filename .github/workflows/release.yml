@@ -18,19 +18,32 @@ on:
         required: true
         default: true
         type: boolean
+      deploy_pages:
+        description: "Deploy demo to GitHub Pages"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   # Нужно для загрузки файлов в релиз
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-pages
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      APP_NAME: ${{ github.event.repository.name }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
 
       - name: Detect version
         id: version
@@ -46,7 +59,6 @@ jobs:
           
       - name: Prepare release folder
         run: |
-          APP_NAME="${{ github.event.repository.name }}"
           # VERSION уже подготовлена в Detect version
 
           mkdir -p "build/$APP_NAME"
@@ -94,17 +106,30 @@ jobs:
             \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
           fi
 
+      - name: Prepare site build
+        shell: bash
+        run: |
+          mkdir -p build/site
+          cp -r build/$APP_NAME/* build/site/
 
+      - name: Inject version into engine.js
+        shell: bash
+        run: |
 
           # Подставляем номер версии в engine.js
-          if [ -f "build/$APP_NAME/engine.js" ]; then
-            VERSION_SAFE=$(printf '%s' "$VERSION" | sed 's/[\/&]/\\&/g')
-            sed -i "0,/__VERSION__/s/__VERSION__/$VERSION_SAFE/" "build/$APP_NAME/engine.js" # замена только первого найденного фрагмента
-          fi
+          VERSION_SAFE=$(printf '%s' "$VERSION" | sed 's/[\/&]/\\&/g')
+
+          for TARGET in \
+            "build/$APP_NAME/engine.js" \
+            "build/site/engine.js"
+          do
+            if [ -f "$TARGET" ]; then
+              sed -i "0,/__VERSION__/s/__VERSION__/$VERSION_SAFE/" "$TARGET"
+            fi
+          done
 
       - name: Create ZIP archive
         run: |
-          APP_NAME="${{ github.event.repository.name }}"
           # VERSION уже подготовлена в Detect version
 
           cd build
@@ -121,3 +146,21 @@ jobs:
           files: |
             ${{ github.event.repository.name }}-${{ env.VERSION }}.zip
             ${{ github.event.repository.name }}-latest.zip
+
+      - name: Setup Pages
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Debug build
+        run: ls -R build

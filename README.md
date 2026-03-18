@@ -126,7 +126,7 @@ This engine is suitable for:
     ├── README.md
     ├── LICENSE
     │
-    ├── libs/
+    ├── lib/
     └── assets/
              ├── backgrounds/
              ├── characters/
