@@ -311,9 +311,9 @@ This project uses the following open-source libraries:
 ### Mermaid (MIT License)
 
 -   **Purpose:** visualization of story graphs in debug and analysis
-    mode\
--   **File:** `lib/mermaid.min.js` (version 11.x)\
--   **License:** MIT (see `NOTICE.md` for details)\
+    mode
+-   **File:** `lib/mermaid.min.js` (version 11.x)
+-   **License:** MIT (see `NOTICE.md` for details)
 -   **Usage:** included in the repository without modifications, works
     fully offline
 
@@ -326,8 +326,8 @@ software can be found in the [NOTICE.md](NOTICE.md) file.
 
 ## 🔮 Possible Improvements
 
--   save/load system\
--   animations\
+-   save/load system
+-   animations
 -   additional scripting commands
 
 ---
