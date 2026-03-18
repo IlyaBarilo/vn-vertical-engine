@@ -1,124 +1,146 @@
 # 🎮 Visual Novel Vertical Engine (HTML/CSS/JS)
 
-Лёгкий движок визуальных новелл на **HTML, CSS и JavaScript**, разработанный специально для **вертикальных экранов** и **портретных дисплеев**, включая **4K телевизоры, установленные вертикально**.
+[![GitHub
+stars](https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=social)](https://github.com/IlyaBarilo/vn-vertical-engine)
+[![License](https://img.shields.io/github/license/IlyaBarilo/vn-vertical-engine)](LICENSE)
+[![Demo](https://img.shields.io/badge/demo-available-brightgreen)](https://github.com/IlyaBarilo/vn-vertical-engine)
 
-Движок работает **полностью офлайн**, не требует сборки или серверной части. Достаточно открыть `index.html` в браузере.
+A lightweight visual novel engine built with **HTML, CSS, and
+JavaScript**, designed specifically for **vertical screens** and
+**portrait displays**, including **4K TVs mounted vertically**.
 
-Проект вдохновлён принципами сценариев визуальных новелл (например, Ren'Py), но реализован как **минималистичная браузерная система**, удобная для демонстрационных и образовательных проектов.
+The engine works **fully offline** and does not require any build tools
+or backend. Simply open `index.html` in a browser.
 
----
-
-## ✨ Особенности
-
-- 📱 интерфейс для **вертикальных экранов**
-- 🖥 оптимизация под **4K телевизоры**
-- 📐 пропорция интерфейса **7:16**, а также адаптация под другое соотношение сторон
-- 🌐 **полностью офлайн**
-- ⚡ не требует сборки или фреймворков
-- 🧾 простой **текстовый формат сценария**
-- 🖼 поддержка **фонов**
-- 🎭 **персонажи и эмоции**
-- 💬 диалоги
-- 🔀 **ветвления сюжета**
-- 🎵 фоновая музыка
-- 🎮 возможность подключения **мини-игр через iframe** _(в разработке)_
-- 📊 встроенная **статистика загрузки ресурсов**
+The project is inspired by visual novel scripting systems (such as
+Ren'Py), but implemented as a **minimalistic browser-based solution**,
+suitable for demos and educational use.
 
 ---
 
-## 📷 Демонстрация
+## ✨ Features
 
-### 🖼️ Демонстрационная версия новеллы
+-   📱 UI optimized for **vertical screens**
+-   🖥 optimized for **4K displays**
+-   📐 interface ratio **7:16**, with support for other aspect ratios
+-   🌐 **fully offline**
+-   ⚡ no build tools or frameworks required
+-   🧾 simple **text-based scripting format**
+-   🖼 support for **backgrounds**
+-   🎭 **characters and emotions**
+-   💬 dialogue system
+-   🔀 **branching storylines**
+-   🎵 background music support
+-   🎮 ability to embed **mini-games via iframe** _(in progress)_
+-   📊 built-in **resource loading statistics**
+
+---
+
+## 📷 Demo
+
+### 🖼️ Visual Novel Demo
 
 <p align="center">
-<img src="docs/demo/images/anna-first-screen.jpg" width="300"> <img src="docs/demo/images/igor-second-screen.jpg" width="300"> <img src="docs/demo/images/menu.jpg" width="300"> <img src="docs/demo/images/bg-cafe.jpg" width="300">
+<img src="docs/demo/images/anna-first-screen.jpg" width="300">
+<img src="docs/demo/images/igor-second-screen.jpg" width="300">
+<img src="docs/demo/images/menu.jpg" width="300">
+<img src="docs/demo/images/bg-cafe.jpg" width="300">
 </p>
 
-Может работать горизонтально.
+Also supports horizontal mode:
 
 <p align="center">
 <img src="docs/demo/images/wide-first-screen.jpg" width="600">
 </p>
 
-### 📊 Возможности для анализа разрабатываемой новеллы
+---
 
-Проверка на ошибки и построение текста графа в формате Mermaid.
+### 📊 Analysis Tools
+
+Script validation and graph generation in Mermaid format.
 
 <p align="center">
 <img src="docs/stat/stat-check.jpg" width="300">
 </p>
 
-Построение графа прямо в программе и навигация по нему. Удобно для контроля сценария и возможных ошибок (отмечены красным).
+Graph rendering inside the engine with navigation support. Useful for
+debugging scripts and detecting unreachable nodes (marked in red).
 
 <p align="center">
-<img src="docs/stat/stat-mermaid.jpg" width="600"> <img src="docs/stat/stat-mermaid-zoom.jpg" height="300">
+<img src="docs/stat/stat-mermaid.jpg" width="600">
+<img src="docs/stat/stat-mermaid-zoom.jpg" height="300">
 </p>
 
 ---
 
-## 🧩 Где можно использовать
+## 🧩 Use Cases
 
-Движок подходит для:
-- интерактивных историй
-- музейных инсталляций
-- выставочных стендов
-- образовательных проектов
-- интерактивных экранов в университетах
-- сюжетных браузерных игр
-- вертикальных информационных киосков
-
----
-
-## 📁 Структура проекта
-
-```
-project/
-│
-├── README.md
-├── LICENSE
-│
-├── index.html
-├── engine.css
-├── engine.js
-│
-├── story-loader.js
-├── story.js
-│
-├── libs/
-└── assets/
-         ├── backgrounds/
-         ├── characters/
-         ├── audio/
-         └── minigames/
-```
-
----
-## 🚀 Быстрый запуск
-
-1. Скачать последнюю версию движка:
-
-👉 **[Скачать Latest Release](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)**
-
-2. Распаковать архив.
-
-3. Открыть файл **index.html** в браузере.
-
-Движок работает полностью **офлайн**.
-
----
-## 📏 Адаптация для вертикальных экранов
-
-Если необходимо ограничить поля сверху и внизу, для удобства работы с экраном начинающимся от пола - используйте параметры адресной строки index.html?topSpacing=500&bottomSpacing=800 (500 и 800 заменить на свои значения в пикселях).
+This engine is suitable for:
+- interactive stories
+- museum installations
+- exhibition stands
+- educational projects
+- university interactive displays
+- browser-based narrative games
+- vertical information kiosks
 
 ---
 
-## 📝 Формат сценария
+## 📁 Project Structure
 
-Сценарий хранится в `story.js` в виде текстового блока.
+    project/
+    │
+    ├── index.html
+    ├── engine.css
+    ├── engine.js
+    ├── story-loader.js
+    │
+    ├── story.js
+    │
+    ├── README.md
+    ├── LICENSE
+    │
+    ├── libs/
+    └── assets/
+             ├── backgrounds/
+             ├── characters/
+             ├── audio/
+             └── minigames/
 
-Пример:
+---
 
-```javascript
+## 🚀 Quick Start
+
+1.  Download the latest version:
+
+👉 **[Download Latest Release](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)**
+
+2.  Extract the archive.
+
+3.  Open **index.html** in your browser.
+
+The engine runs completely **offline**.
+
+---
+
+## 📏 Vertical Screen Adjustment
+
+To add top and bottom margins (useful for floor-mounted displays), use
+URL parameters:
+
+    index.html?topSpacing=500&bottomSpacing=800
+
+Replace `500` and `800` with your desired values (in pixels).
+
+---
+
+## 📝 Script Format
+
+The script is stored in `story.js` as a text block.
+
+Example:
+
+``` javascript
 window.STORY_TEXT = `
 
 [meta]
@@ -126,15 +148,15 @@ title: Demo Story
 startScene: intro
 
 [bg]
-hall = assets/bg_hall.jpg
+hall = assets/backgrounds/bg_hall.jpg
 
 [char]
-anna image neutral = assets/ch_anna_neutral.png
+anna image neutral = assets/characters/ch_anna_neutral.png
 anna name = "Anna"
 anna color = #0F0
 
 [audio]
-bgmDay = assets/bgm_day.mp3
+bgmDay = assets/audio/bgm_day.mp3
 
 [scene]
 scene intro
@@ -143,151 +165,150 @@ bg hall
 
 show anna neutral
 
-anna: "Добро пожаловать в демонстрацию."
+anna: "Welcome to the demo."
 
 menu
-"Пойти в лабораторию" -> lab_scene
-"Пойти в кафе" -> cafe_scene
+"Go to the lab" -> lab_scene
+"Go to the cafe" -> cafe_scene
+
 `;
 ```
 
 ---
-## 🎬 Основные команды
 
-### Сцена
+## 🎬 Core Commands
 
-```
-scene scene_id
-```
----
+### Scene
 
-### Фон
+    scene scene_id
 
-```
-bg backgroundId
-```
+### Background
 
----
+    bg backgroundId
 
-### Персонажи
+### Characters
 
-```
-show character emotion
-hide all
-```
+    show character emotion
+    hide all
 
----
+### Dialogue
 
-### Диалоги
+Character:
 
-Персонаж:
-```
-anna: "Текст персонажа"
-```
+    anna: "Text"
 
-Рассказчик:
-```
-"Текст рассказчика"
-```
----
+Narrator:
 
-### Выбор
+    "Text"
 
-```
-menu
-"Вариант 1" -> scene_a
-"Вариант 2" -> scene_b
-```
+### Choices
+
+    menu
+    "Option 1" -> scene_a
+    "Option 2" -> scene_b
+
+### Navigation
+
+    goto scene_id
+
+### Music
+
+    bgm musicId
+    bgm musicId loop
+    bgm stop
 
 ---
 
-### Переход
+## 🎮 Mini-games (in progress)
 
-```
-goto scene_id
-```
+The engine supports embedding mini-games via **iframe**.
 
----
-
-### Музыка
-
-```
-bgm musicId
-bgm musicId loop
-bgm stop
-```
+This allows integrating any HTML-based game directly into the story.
 
 ---
 
-## 🎮 Мини-игры (в разработке)
+## ⚙ Interface Configuration
 
-Движок поддерживает подключение мини-игр через **iframe**.
+The UI is designed for **tall vertical displays**.
 
-Это позволяет встроить любую HTML-игру прямо в сюжет.
+Available settings:
+- top spacing
+- bottom spacing
 
----
-
-## ⚙ Настройка интерфейса
-
-Интерфейс рассчитан на **высокие вертикальные экраны**.
-
-Поддерживаются настройки:
-- верхний отступ интерфейса
-- нижний отступ
-
-Это позволяет адаптировать игру под **очень высокие дисплеи и вертикальные телевизоры**.
+This allows adapting the interface for **very tall screens and vertical
+TVs**.
 
 ---
 
-## ⚠ Ограничения текущей версии
+## ⚠ Current Limitations
 
-- отсутствует система сохранений
-- формат сценария минималистичный
+-   no save/load system
+-   minimalistic script format
 
-Движок ориентирован на **простые интерактивные проекты и инсталляции**.
+The engine is focused on **simple interactive projects and
+installations**.
 
 ---
 
-## 📝 Лицензия
+## 📝 License
 
-### Исходный код
-Исходный код движка (`engine.js`, `engine.css`, `index.html`, `story-loader.js`) распространяется под лицензией **MIT**.
+### Source Code
+
+The engine source code (`engine.js`, `engine.css`, `index.html`,
+`story-loader.js`) is licensed under the **MIT License**.
 
 Copyright (c) 2026 Ilya Barilo
 
-Полный текст лицензии MIT доступен в файле [LICENSE](LICENSE).
-
-### Контент (демонстрационные материалы)
-Все медиафайлы, находящиеся в папке `assets/`, включая изображения персонажей, фонов, видео, аудиофайлы и другие материалы, используемые в демонстрационной новелле, **НЕ подпадают под действие лицензии MIT**.
-
-Данные файлы предоставлены исключительно в демонстрационных целях. Вы **не имеете права** использовать их в своих проектах (коммерческих или некоммерческих) без получения отдельного разрешения от правообладателя.
-
-При создании собственных историй с использованием движка вы обязаны заменить все демо-файлы на собственный контент.
+See the full license text in the [LICENSE](LICENSE).
 
 
-## 📦 Сторонние компоненты
+## 📦 Content (Demo Assets)
 
-Проект использует следующие открытые библиотеки:
+All media files located in the `assets/` folder --- including character
+images, backgrounds, videos, audio files, and other materials used in
+the demo novel --- are **NOT covered by the MIT License**.
 
-### [Mermaid](https://mermaid.js.org/) (MIT License)
-- **Назначение:** визуализация графов сценария в режиме отладки и анализа
-- **Файл:** `lib/mermaid.min.js` (версия 11.x)
-- **Лицензия:** MIT (подробнее в `NOTICE.md`)
-- **Использование:** библиотека включена в репозиторий без изменений, работает полностью офлайн
+These files are provided **for demonstration purposes only**. You **are
+not allowed** to use them in your own projects (commercial or
+non-commercial) without obtaining separate permission from the copyright
+holder.
 
-### Полный список уведомлений
-Подробная информация о лицензиях и условиях использования стороннего ПО находится в файле [`NOTICE.md`](NOTICE.md).
+When creating your own stories using this engine, you must replace all
+demo assets with your own content.
 
 ---
 
-## 🔮 Возможные улучшения
+## 📦 Third-Party Components
 
-Возможные направления развития:
-- система сохранений
-- анимации
-- дополнительные команды сценария
+This project uses the following open-source libraries:
 
-## Обновление зависимостей
+### Mermaid (MIT License)
 
-Mermaid обновляется вручную по мере выхода новых версий.
+-   **Purpose:** visualization of story graphs in debug and analysis
+    mode\
+-   **File:** `lib/mermaid.min.js` (version 11.x)\
+-   **License:** MIT (see `NOTICE.md` for details)\
+-   **Usage:** included in the repository without modifications, works
+    fully offline
+
+### Full Notices List
+
+Detailed information about licenses and usage terms of third-party
+software can be found in the [NOTICE.md](NOTICE.md) file.
+
+---
+
+## 🔮 Possible Improvements
+
+-   save/load system\
+-   animations\
+-   additional scripting commands
+
+---
+
+## 🔄 Dependency Updates
+
+Mermaid is updated manually as new versions are released.
+
+
 
