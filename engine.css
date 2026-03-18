@@ -37,7 +37,7 @@ body {
 
 
   /* Технические переменные сцены: задаются JS и/или сценарием */
-  --uiBottomOffset: calc(14px + env(safe-area-inset-bottom, 0px));
+  --uiBottomOffset: calc(0.875rem + env(safe-area-inset-bottom, 0px));
   --topSpacing: 0px;
   --bottomSpacing: 0px;
 
@@ -202,6 +202,10 @@ body {
   /* Фон контейнера графа */
   --graph-container-bg: #1a1a1a;
 
+  --char-shadow-y: 0.75rem;
+  --char-shadow-blur: 1.5rem;
+  --char-shadow-color: rgba(0,0,0,0.55);
+
 }
 
 /* Контейнер приложения */
@@ -242,7 +246,7 @@ body {
   /* max-width и max-height не использовать, управляется через JS */
   object-fit: contain;      /* персонажа обычно не режем */
   object-position: center bottom;
-  filter: drop-shadow(0 12px 24px rgba(0,0,0,0.55));
+  filter: drop-shadow(0 var(--char-shadow-y) var(--char-shadow-blur) var(--char-shadow-color));
   z-index: 3; /* ВЫШЕ всего */
   pointer-events: none; /* чтобы клики проходили сквозь персонажа */
 }
