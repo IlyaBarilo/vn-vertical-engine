@@ -305,6 +305,12 @@ body {
   line-height: 1.1;
 }
 
+.icon-btn .btn-icon {
+  display: inline-block;
+  line-height: 1;
+  transform: scale(1.8);
+  transform-origin: center;
+}
 
 
 /* Слайдер громкости */

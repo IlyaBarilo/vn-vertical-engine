@@ -1874,7 +1874,14 @@ function setAudioFromStoryDefaults() {
 }
 
 function updateMuteIcon() {
-  btnMute.textContent = audio.muted ? "🔇" : "🔊";
+  let icon = btnMute.querySelector('.btn-icon');
+
+  if (!icon) {
+    btnMute.innerHTML = '<span class="btn-icon"></span>';
+    icon = btnMute.querySelector('.btn-icon');
+  }
+
+  icon.textContent = audio.muted ? "🔇" : "🔊";
 }
 
 function applyAudioSettings() {
