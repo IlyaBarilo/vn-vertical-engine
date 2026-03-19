@@ -40,6 +40,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     env:
       APP_NAME: ${{ github.event.repository.name }}
@@ -160,10 +163,10 @@ jobs:
         with:
           path: build/site
 
+      - name: Debug build
+        run: ls -R build
+
       - name: Deploy to GitHub Pages
         if: github.event_name == 'release' || inputs.deploy_pages == true
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: Debug build
-        run: ls -R build
