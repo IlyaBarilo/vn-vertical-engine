@@ -875,6 +875,11 @@ if (state.sceneId === 'scene_02') {
     // если открыта игра — не продолжаем
     if (state.inGame) return;
 
+    var scene = state.sceneMap[state.sceneId];
+    if (!scene) {
+      showError("Не найдена сцена: " + state.sceneId);
+      return;
+    }
 
     // если дошли до конца сцены — останавливаемся
     if (state.actionIndex >= scene.actions.length) {
