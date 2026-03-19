@@ -51,6 +51,11 @@ bgmDay = assets/audio/bgm_campus_day.mp3
 # bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
 # sfxClickTest = assets/audio/sfx_button_click.mp3
 
+[var]
+
+x = 10
+y = 25
+
 [scene]
 # Формат описания сцен:
 # scene название_сцены
@@ -70,6 +75,22 @@ bg campusHall
 # bgm stop - остановить музыку
 
 bgm bgmDay loop
+
+calc x = x + 5
+calc z = 5 - y-x*2
+
+"Результат вычисления 1: {x}"
+
+calc x = x + 1
+
+show anna neutral
+anna: "Результат вычисления 2: {x}"
+
+
+if x > 5 -> branch_cafe_01
+
+if x + y > 5 - 1 -> branch_cafe_01
+
 
 show anna neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."

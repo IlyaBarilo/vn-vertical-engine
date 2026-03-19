@@ -132,6 +132,7 @@
         masterVolume: 0.2,
         muted: true
       },
+      vars: {},
       scenes: []
     };
 
@@ -184,6 +185,11 @@
         continue;
       }
 
+      if (/^\s*\[var\]\s*$/i.test(line)) {
+        currentSection = 'var';
+        continue;
+      }
+
       //Подсказка про устаревшее название
       if (/^\s*#\s*СЦЕНЫ\s*$/i.test(line)) {
         currentSection = 'scene';
@@ -209,6 +215,9 @@
           break;
         case 'audio':
           parseAssetLine(lineNumber, line, 'audio', story);
+          break;
+        case 'var':
+          parseVarLine(lineNumber, line, story);
           break;
         case 'scene':
           parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
@@ -385,6 +394,52 @@
 
     // Если тип неизвестен — возвращаем строку как есть
     return value;
+  }
+
+  function parseVarLine(lineNumber, line, story) {
+    line = line.split('#')[0].trim();
+    if (!line) return;
+
+    if (!line.includes('=')) return;
+
+    var parts = line.split('=');
+    var key = parts[0].trim();
+    var rawValue = parts.slice(1).join('=').trim();
+
+    if (!key) {
+      addParseError(lineNumber, line, "Имя переменной в [var] не может быть пустым", true);
+      return;
+    }
+
+    if (rawValue === '') {
+      addParseError(lineNumber, line, "Значение переменной в [var] не может быть пустым", true);
+      return;
+    }
+
+    if (rawValue === 'true') {
+      story.vars[key] = true;
+      return;
+    }
+
+    if (rawValue === 'false') {
+      story.vars[key] = false;
+      return;
+    }
+
+    if (!isNaN(Number(rawValue))) {
+      story.vars[key] = Number(rawValue);
+      return;
+    }
+
+    if (
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+    ) {
+      story.vars[key] = rawValue.slice(1, -1);
+      return;
+    }
+
+    story.vars[key] = rawValue;
   }
 
   // Парсинг метаданных
@@ -693,6 +748,58 @@
       return;
     }
     
+    // calc varName = expression
+    if (cleanLine.startsWith('calc ')) {
+      const expression = cleanLine.substring(5).trim();
+
+      if (!expression || expression.indexOf('=') === -1) {
+        addParseError(lineNumber, line, 'Неверный синтаксис calc. Используйте: calc x = 1 + 2', true);
+        return;
+      }
+
+      actions.push({
+        type: 'calc',
+        expression: expression
+      });
+      return;
+    }
+
+    // if expression -> sceneId
+    if (cleanLine.startsWith('if ')) {
+      const ifBody = cleanLine.substring(3).trim();
+      const parts = ifBody.split('->');
+
+      if (parts.length !== 2) {
+        addParseError(lineNumber, line, 'Неверный синтаксис if. Используйте: if x > 0 -> nextScene', true);
+        return;
+      }
+
+      const condition = parts[0].trim();
+      const target = parts[1].trim();
+
+      if (!condition) {
+        addParseError(lineNumber, line, 'Условие в if не может быть пустым', true);
+        return;
+      }
+
+      if (!target) {
+        addParseError(lineNumber, line, 'Целевая сцена в if не может быть пустой', true);
+        return;
+      }
+
+      if (target.includes(' ')) {
+        addParseError(lineNumber, line, `Целевая сцена "${target}" содержит пробелы. ID сцен не могут содержать пробелы.`, true);
+        return;
+      }
+
+      actions.push({
+        type: 'if_expr',
+        condition: condition,
+        target: target
+      });
+      return;
+    }
+
     // goto [сцена]
     if (cleanLine.startsWith('goto ')) {
       const target = cleanLine.substring(5).trim();
@@ -870,6 +977,16 @@
               }
             }
           });
+        }
+
+        if (action.type === 'if_expr') {
+          if (!sceneIds.has(action.target)) {
+            addParseError(
+              0,
+              `scene ${scene.id}`,
+              `Условный переход ведет в несуществующую сцену "${action.target}"`
+            );
+          }
         }
       });
     });

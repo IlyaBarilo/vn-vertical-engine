@@ -606,7 +606,7 @@ var state = {
   // Кэш для быстрого поиска сцен по id
   sceneMap: {},
   // Переменные (на будущее, для if/set и результатов мини-игр)
-  vars: {},
+  vars: JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {})),
   // Флаг: ждём ли клика "дальше"
   waitingNext: false,
   // Флаг: открыта ли мини-игра
@@ -777,7 +777,7 @@ function restart() {
   window.PARSE_ERRORS = [];
 
   // Никаких сохранений: просто сбрасываем переменные и идём в start.
-  state.vars = {};
+  state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
   state.inGame = false;
   hideChoices();
   closeGameFrameVisualOnly();
@@ -1016,6 +1016,16 @@ function onNext(e) {
   runCurrent();
 }
 
+function renderTextVars(text) {
+  if (typeof text !== "string") return text;
+
+  return text.replace(/\{([^}]+)\}/g, function(_, varName) {
+    var key = varName.trim();
+    var value = state.vars[key];
+    return value === undefined || value === null ? "" : String(value);
+  });
+}
+
 // =========================================================
 //                   ACTION EXECUTION
 // =========================================================
@@ -1161,7 +1171,7 @@ function executeAction(action) {
 
       if (!action.charVar) {
         console.warn('[Engine] say: charVar is missing in new format action:', action);
-        showDialog(null, action.text || "");
+        showDialog(null, renderTextVars(action.text || ""));
         return true;
       }
 
@@ -1179,7 +1189,7 @@ function executeAction(action) {
       }
       
       // Показываем диалог с именем (даже если персонаж не на экране)
-      showDialog(displayName, action.text, nameColor);
+      showDialog(displayName, renderTextVars(action.text), nameColor);
 
       if (!firstScreenMetrics.firstScreenShown && !firstScreenMetrics.waitingForCharacter) {
         markFirstScreenReady('say');
@@ -1189,7 +1199,7 @@ function executeAction(action) {
 
     case "text":
       console.log('[ENGINE TEXT] Показываю текст, возвращаю true');
-      showDialog(null, action.text);
+      showDialog(null, renderTextVars(action.text));
 
       // ВАЖНО: принудительно устанавливаем ожидание
       state.waitingNext = true;
@@ -1227,6 +1237,48 @@ function executeAction(action) {
       if (action.key) state.vars[action.key] = action.value;
       return false;
 
+    case "calc": {
+      var eqPos = action.expression.indexOf('=');
+
+      if (eqPos === -1) {
+        console.error("[VN] calc: неверное выражение", action.expression);
+        return false;
+      }
+
+      var varName = action.expression.substring(0, eqPos).trim();
+      var expr = action.expression.substring(eqPos + 1).trim();
+
+      if (!varName) {
+        console.error("[VN] calc: пустое имя переменной", action.expression);
+        return false;
+      }
+
+      try {
+        var fn = new Function("vars", "with(vars){ return (" + expr + "); }");
+        state.vars[varName] = fn(state.vars);
+        console.log("[VN] calc result:", varName, "=", state.vars[varName], "vars:", state.vars);
+      } catch (e) {
+        console.error("[VN] calc error:", action.expression, e);
+      }
+
+      return false;
+    }
+   case "if_expr": {
+      try {
+        var fn = new Function("vars", "with(vars){ return (" + action.condition + "); }");
+        var ok = !!fn(state.vars);
+
+        if (ok) {
+          gotoScene(action.target);
+          return false;
+        }
+
+        return false;
+      } catch (e) {
+        console.error("[VN] if_expr error:", action.condition, e);
+        return false;
+      }
+    }
     case "if":
       // if: { cond: "vars.score >= 3", then: "a", else: "b" }
       // ВНИМАНИЕ: без eval для безопасности. Поддержим только простую форму:
@@ -1659,7 +1711,9 @@ function showDialog(name, text, color) {
     dialogElement.classList.remove('has-name');
     dialogElement.classList.add('no-name');
   }
-  elText.textContent = text ? String(text) : "";
+  
+  //elText.textContent = text ? String(text) : "";
+  elText.textContent = text ? renderTextVars(String(text)) : "";
 
   // Управление подсказкой и классом диалога
   var hintElement = document.querySelector('.hint');
@@ -3415,6 +3469,12 @@ function buildMermaidGraph(story, unreachableList) {
         incomingEdges[act.target]++;
       }
       
+      if (act.type === "if_expr" && act.target) {
+        edges.push(scene.id + ' -->|' + act.condition.replace(/"/g, "'") + '| ' + act.target);
+        outgoingEdges[scene.id] = (outgoingEdges[scene.id] || 0) + 1;
+        incomingEdges[act.target] = (incomingEdges[act.target] || 0) + 1;
+      }
+
       // choice -> ребро с текстом пункта меню
       if (act.type === "choice" && act.choices && act.choices.length) {
         for (var c = 0; c < act.choices.length; c++) {
@@ -3812,6 +3872,12 @@ function validateStory(story) {
 
         if (!sceneMap[act.target]) {
           errors.push("Переход в несуществующую сцену: " + act.target);
+        }
+      }
+
+      if (act.type === "if_expr") {
+        if (!sceneMap[act.target]) {
+          errors.push("Условный переход в несуществующую сцену: " + act.target);
         }
       }
 
