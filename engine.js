@@ -3223,6 +3223,10 @@ function buildAdjacency(story) {
         adj[sc.id].push({ to: act.target, label: "" });
       }
 
+      if (act.type === "if_expr" && act.target) {
+        adj[sc.id].push({ to: act.target, label: String(act.condition || "") });
+      }
+
       if (act.type === "choice" && act.choices && act.choices.length) {
         for (var c = 0; c < act.choices.length; c++) {
           var ch = act.choices[c];
@@ -3475,9 +3479,16 @@ function buildMermaidGraph(story, unreachableList) {
       }
       
       if (act.type === "if_expr" && act.target) {
-        edges.push(scene.id + ' -->|' + act.condition.replace(/"/g, "'") + '| ' + act.target);
+        edges.push({
+          from: scene.id,
+          to: act.target,
+          label: String(act.condition || "")
+        });
+
         outgoingEdges[scene.id] = (outgoingEdges[scene.id] || 0) + 1;
-        incomingEdges[act.target] = (incomingEdges[act.target] || 0) + 1;
+
+        if (!incomingEdges[act.target]) incomingEdges[act.target] = 0;
+        incomingEdges[act.target]++;
       }
 
       // choice -> ребро с текстом пункта меню
