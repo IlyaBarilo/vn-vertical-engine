@@ -1237,16 +1237,11 @@ function executeAction(action) {
       playSfx(resolveAsset(action.src), num(action.volume, 1));
       return false;
 
-    case "set":
-      // set: { key: "...", value: ... }
-      if (action.key) state.vars[action.key] = action.value;
-      return false;
-
-    case "calc": {
+    case "set": {
       var eqPos = action.expression.indexOf('=');
 
       if (eqPos === -1) {
-        console.error("[VN] calc: неверное выражение", action.expression);
+        console.error("[VN] set: неверное выражение", action.expression);
         return false;
       }
 
@@ -1254,16 +1249,16 @@ function executeAction(action) {
       var expr = action.expression.substring(eqPos + 1).trim();
 
       if (!varName) {
-        console.error("[VN] calc: пустое имя переменной", action.expression);
+        console.error("[VN] set: пустое имя переменной", action.expression);
         return false;
       }
 
       try {
         var fn = new Function("vars", "with(vars){ return (" + expr + "); }");
         state.vars[varName] = fn(state.vars);
-        console.log("[VN] calc result:", varName, "=", state.vars[varName], "vars:", state.vars);
+        console.log("[VN] set result:", varName, "=", state.vars[varName], "vars:", state.vars);
       } catch (e) {
-        console.error("[VN] calc error:", action.expression, e);
+        console.error("[VN] set error:", action.expression, e);
       }
 
       return false;

@@ -749,16 +749,16 @@
     }
     
     // calc varName = expression
-    if (cleanLine.startsWith('calc ')) {
-      const expression = cleanLine.substring(5).trim();
+    if (cleanLine.startsWith('set ')) {
+      const expression = cleanLine.substring(4).trim();
 
       if (!expression || expression.indexOf('=') === -1) {
-        addParseError(lineNumber, line, 'Неверный синтаксис calc. Используйте: calc x = 1 + 2', true);
+        addParseError(lineNumber, line, 'Неверный синтаксис set. Используйте: set x = 1 + 2', true);
         return;
       }
 
       actions.push({
-        type: 'calc',
+        type: 'set',
         expression: expression
       });
       return;

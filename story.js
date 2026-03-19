@@ -156,9 +156,9 @@ scene branch_lab_01_repeat
 bg branchLab
 hide all
 
-calc labStep = labStep + 1
-calc x = x + 5
-calc z = z + x * 2 + 2
+set labStep = labStep + 1
+set x = x + 5
+set z = z + x * 2 + 2
 
 "Попытка №{labStep}. Система пересчитала параметры: x = {x}, z = {z}."
 
