@@ -98,8 +98,8 @@
   // Проверяем наличие текста
   if (!window.STORY_TEXT) {
     console.error('[Loader] window.STORY_TEXT не найден!');
-    loaderMark('Ошибка: нет STORY_TEXT');
-    createFallbackStory('Не найден story-content.js');
+    loaderMark('Error: STORY_TEXT is missing');
+    createFallbackStory('Не найден story.js');
     return;
   }
 
@@ -114,7 +114,7 @@
     console.log('[Loader] Начинаем парсинг, длина:', text.length);
     console.log('[Loader] ПЕРВЫЕ 500 символов текста:');
     console.log(text.substring(0, 500));
-    loaderMark('Начало парсинга');
+    loaderMark('Start parsing');
 
     // Структура для результата
     const story = {
@@ -255,21 +255,21 @@
       if (!sceneIds.has(story.meta.start)) {
         addParseError(
           0, 
-          "Метаданные", 
-          `Стартовая сцена "${story.meta.start}" не существует`
+          "Metadata", 
+          `The start scene "${story.meta.start}" does not exist`
         );
         
         // Автоматически исправляем на первую сцену
         if (story.scenes.length > 0) {
           const oldStart = story.meta.start;
           story.meta.start = story.scenes[0].id;
-          console.log(`[Loader] Стартовая сцена "${oldStart}" не найдена, исправлено на "${story.meta.start}"`);
+          console.log(`[Loader] Start scene "${oldStart}" not found, corrected to "${story.meta.start}"`);
         }
       } else {
-        console.log('[Loader] Стартовая сцена существует:', story.meta.start);
+        console.log('[Loader] Start scene exists:', story.meta.start);
       }
     } else {
-      addParseError(0, "Метаданные", "Не задана стартовая сцена (startScene)");
+      addParseError(0, "Metadata", "Start scene (startScene) not specified");
       if (story.scenes.length > 0) {
         story.meta.start = story.scenes[0].id;
         console.log('[Loader] Установлена первая сцена как стартовая:', story.meta.start);
@@ -284,7 +284,7 @@
     // ===== ВАЖНО: проверяем ссылки на сцены =====
     validateSceneReferences(story);
 
-    loaderMark('Парсинг завершен');
+    loaderMark('Parsing complete');
     console.log('[Loader] Парсинг завершён!');
     console.log('[Loader] Найдено сцен:', story.scenes.length);
     console.log('[Loader] Стартовая сцена:', story.meta.start);
@@ -359,7 +359,7 @@
     // Передаём в движок
     window.STORY = story;
     
-    loaderMark('STORY передан в window');
+    loaderMark('STORY has been transferred to the window');
     console.log('[Loader] ФИНАЛЬНЫЙ STORY.assets:', story.assets);
     console.log('[Loader] ФИНАЛЬНЫЙ backgrounds:', story.assets.backgrounds);
     console.log('[Loader] ФИНАЛЬНЫЙ audio:', story.assets.audio);
@@ -368,10 +368,10 @@
     if (window.__onStoryLoaded) {
       console.log('[Loader] Уведомляем движок');
       window.__onStoryLoaded(story);
-      loaderMark('Движок уведомлен');
+      loaderMark('The engine has been notified');
     } else {
       console.log('[Loader] Движок ещё не загружен, он подхватит window.STORY позже');
-      loaderMark('Ожидание движка');
+      loaderMark('Waiting for the engine');
     }
   }
 
@@ -407,12 +407,12 @@
     var rawValue = parts.slice(1).join('=').trim();
 
     if (!key) {
-      addParseError(lineNumber, line, "Имя переменной в [var] не может быть пустым", true);
+      addParseError(lineNumber, line, "The variable name in [var] cannot be empty", true);
       return;
     }
 
     if (rawValue === '') {
-      addParseError(lineNumber, line, "Значение переменной в [var] не может быть пустым", true);
+      addParseError(lineNumber, line, "The value of the variable in [var] cannot be empty", true);
       return;
     }
 
@@ -465,7 +465,7 @@
 
       // Проверяем, что startScene не пустой
       if (!value || value.trim() === '') {
-        addParseError(lineNumber, line, "startScene не может быть пустым", true);
+        addParseError(lineNumber, line, "startScene cannot be empty", true);
       }
       
       return;
@@ -521,7 +521,7 @@
         addParseError(
           lineNumber, 
           line, 
-          `Имя ключа "${key}" содержит пробелы. В секции [${category === 'backgrounds' ? 'bg' : 'audio'}] имена не могут содержать пробелы. Используйте camelCase (bgDay) или дефисы (bg-day).`, 
+          `The key name "${key}" contains spaces. In the section [${category === 'backgrounds' ? 'bg' : 'audio'}] names cannot contain spaces. Use camelCase (bgDay) or hyphens (bg-day).`, 
           true
         );
         return; // Прерываем обработку этой строки
@@ -532,7 +532,7 @@
         addParseError(
           lineNumber, 
           line, 
-          `Пустое имя ключа в секции [${category === 'backgrounds' ? 'bg' : 'audio'}]`, 
+          `An empty key name in the section [${category === 'backgrounds' ? 'bg' : 'audio'}]`, 
           true
         );
         return;
@@ -621,7 +621,7 @@
       
       const sceneId = cleanLine.substring(6).trim();
       if (!sceneId) {
-        addParseError(lineNumber, line, "ID сцены не может быть пустым", true);
+        addParseError(lineNumber, line, "The scene ID cannot be empty", true);
       }
 
       // ========== ПРОВЕРКА: запрещаем пробелы в ID сцен ==========
@@ -629,7 +629,7 @@
         addParseError(
           lineNumber, 
           line, 
-          `ID сцены "${sceneId}" содержит пробелы. ID сцен не могут содержать пробелы. Используйте camelCase (intro_01, scene02) или дефисы (intro-01).`, 
+          `The ID of scene "${sceneId}" contains spaces. Scene IDs cannot contain spaces. Use camelCase (intro_01, scene02) or hyphens (intro-01).`, 
           true
         );
         // Всё равно создаём сцену с очищенным ID, но с ошибкой
@@ -657,7 +657,7 @@
     if (cleanLine.startsWith('bg ')) {
       const bgName = cleanLine.substring(3).trim();
       if (!bgName) {
-        addParseError(lineNumber, line, "Не указано имя фона после bg", true);
+        addParseError(lineNumber, line, "No background name specified after ‘bg’", true);
       }
       actions.push({
         type: 'bg',
@@ -676,7 +676,7 @@
       const bgmName = bgmArgs[0];
 
       if (!bgmName) {
-        addParseError(lineNumber, line, "Не указано имя музыки после bgm", true);
+        addParseError(lineNumber, line, "No music name specified after bgm", true);
       }
 
       if (bgmName === 'stop') {
@@ -706,14 +706,14 @@
       const charId = parts[0]; // anna, igor
 
       if (!charId) {
-        addParseError(lineNumber, line, "Не указано имя персонажа после show", true);
+        addParseError(lineNumber, line, "No character name specified after 'show'", true);
       }
       
       const emotion = parts[1] || 'neutral'; // neutral, smile и т.д.
       
       // Проверяем, существует ли персонаж в ассетах
       if (charId && story.assets && story.assets.characters && !story.assets.characters[charId]) {
-        addParseError(lineNumber, line, `Персонаж "${charId}" не определен в секции [char]`, true);
+        addParseError(lineNumber, line, `The character "${charId}" is not defined in the [char] section`, true);
       }
 
       actions.push({
@@ -753,7 +753,7 @@
       const expression = cleanLine.substring(4).trim();
 
       if (!expression || expression.indexOf('=') === -1) {
-        addParseError(lineNumber, line, 'Неверный синтаксис set. Используйте: set x = 1 + 2', true);
+        addParseError(lineNumber, line, 'Invalid set syntax. Use: set x = 1 + 2', true);
         return;
       }
 
@@ -770,7 +770,7 @@
       const parts = ifBody.split('->');
 
       if (parts.length !== 2) {
-        addParseError(lineNumber, line, 'Неверный синтаксис if. Используйте: if x > 0 -> nextScene', true);
+        addParseError(lineNumber, line, 'Invalid if syntax. Use: if x > 0 -> nextScene', true);
         return;
       }
 
@@ -778,17 +778,17 @@
       const target = parts[1].trim();
 
       if (!condition) {
-        addParseError(lineNumber, line, 'Условие в if не может быть пустым', true);
+        addParseError(lineNumber, line, 'The condition in the if statement cannot be empty', true);
         return;
       }
 
       if (!target) {
-        addParseError(lineNumber, line, 'Целевая сцена в if не может быть пустой', true);
+        addParseError(lineNumber, line, 'The target scene in the if statement cannot be empty', true);
         return;
       }
 
       if (target.includes(' ')) {
-        addParseError(lineNumber, line, `Целевая сцена "${target}" содержит пробелы. ID сцен не могут содержать пробелы.`, true);
+        addParseError(lineNumber, line, `The target scene "${target}" contains spaces. Scene IDs cannot contain spaces.`, true);
         return;
       }
 
@@ -804,7 +804,7 @@
     if (cleanLine.startsWith('goto ')) {
       const target = cleanLine.substring(5).trim();
       if (!target) {
-        addParseError(lineNumber, line, "Не указана целевая сцена после goto", true);
+        addParseError(lineNumber, line, "No target scene specified after goto", true);
       }
 
       // ========== НОВАЯ ПРОВЕРКА ==========
@@ -812,7 +812,7 @@
         addParseError(
           lineNumber, 
           line, 
-          `Целевая сцена "${target}" содержит пробелы. ID сцен не могут содержать пробелы.`, 
+          `The target scene "${target}" contains spaces. Scene IDs cannot contain spaces.`, 
           true
         );
         return;
@@ -835,7 +835,7 @@
       
       // Проверяем, существует ли персонаж в ассетах
       if (charVar && story.assets && story.assets.characters && !story.assets.characters[charVar]) {
-        addParseError(lineNumber, line, `Персонаж "${charVar}" не определен в секции [char]`, true);
+        addParseError(lineNumber, line, `The character "${charVar}" is not defined in the [char] section`, true);
       }
 
       // Экранируем спецсимволы в тексте
@@ -857,10 +857,10 @@
       const target = choiceMatch[2].trim();
       
       if (!text) {
-        addParseError(lineNumber, line, "Пустой текст в пункте меню", true);
+        addParseError(lineNumber, line, "Empty text in menu item", true);
       }
       if (!target) {
-        addParseError(lineNumber, line, "Не указана целевая сцена в пункте меню", true);
+        addParseError(lineNumber, line, "No target scene specified in menu item", true);
       }
 
       // ========== НОВАЯ ПРОВЕРКА ==========
@@ -868,7 +868,7 @@
         addParseError(
           lineNumber, 
           line, 
-          `Целевая сцена "${target}" в пункте меню содержит пробелы. ID сцен не могут содержать пробелы.`, 
+          `The target scene "${target}" in the menu item contains spaces. Scene IDs cannot contain spaces.`, 
           true
         );
         return;
@@ -906,7 +906,7 @@
       console.log(`[PARSER LINE ${lineNumber}] MATCH: text`);
       let text = textMatch[1].trim();
       if (!text) {
-        addParseError(lineNumber, line, "Пустой текст в кавычках", true);
+        addParseError(lineNumber, line, "Empty text in quotes", true);
       }
       // Экранируем спецсимволы
       text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
@@ -921,7 +921,7 @@
     // Если ничего не подошло и это не комментарий
     if (cleanLine && !cleanLine.startsWith('#')) {
       console.log(`[PARSER LINE ${lineNumber}] UNKNOWN FORMAT - добавляем ошибку`);
-      addParseError(lineNumber, line, "Неизвестный формат строки", true);
+      addParseError(lineNumber, line, "Unrecognized string format", true);
       return false;
     }
   }
@@ -936,7 +936,7 @@
       if (scene.id) {
         sceneIds.add(scene.id);
       } else {
-        addParseError(0, "Сцена без ID", "Обнаружена сцена без идентификатора", true);
+        addParseError(0, "Scene without ID", "A scene without an identifier was detected", true);
       }
     });
     
@@ -957,7 +957,7 @@
             addParseError(
               0, 
               `Сцена ${scene.id}`, 
-              `Переход в несуществующую сцену "${action.target}"`, true
+              `Navigating to a non-existent scene "${action.target}"`, true
             );
           }
         }
@@ -971,8 +971,8 @@
                 errorCount++;
                 addParseError(
                   0, 
-                  `Сцена ${scene.id}`, 
-                  `Пункт меню "${choice.text || 'без текста'}" ведёт в несуществующую сцену "${choice.goto}"`, true
+                  `Scene ${scene.id}`, 
+                  `The menu item "${choice.text || 'no text'}" leads to the non-existent scene "${choice.goto}"`, true
                 );
               }
             }
@@ -984,7 +984,7 @@
             addParseError(
               0,
               `scene ${scene.id}`,
-              `Условный переход ведет в несуществующую сцену "${action.target}"`
+              `The conditional transition leads to the non-existent scene "${action.target}"`
             );
           }
         }
@@ -1007,7 +1007,7 @@
     
     window.STORY = {
       meta: {
-        title: "Ошибка загрузки",
+        title: "Loading error",
         start: "error_scene"
       },
       assets: {
@@ -1020,11 +1020,11 @@
         actions: [
           {
             type: "text",
-            text: "Ошибка загрузки сценария: " + errorMsg
+            text: "Script loading error: " + errorMsg
           },
           {
             type: "text",
-            text: "Проверьте, что файл story-content.js подключен и содержит window.STORY_TEXT"
+            text: "Check that the story.js file is included and contains window.STORY_TEXT"
           }
         ]
       }]
@@ -1040,14 +1040,14 @@
     console.log('[Loader] Показываю ошибку парсинга');
     
     // Формируем текст ошибки
-    let errorText = "❌ ОШИБКА ПАРСИНГА СЦЕНАРИЯ:\n\n";
+    let errorText = "❌ SCRIPT PARSE ERROR:\n\n";
     
     window.PARSE_ERRORS.forEach((error, index) => {
-      errorText += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+      errorText += `${index + 1}. Line ${error.lineNumber}: ${error.message}\n`;
       errorText += `   "${error.line}"\n\n`;
     });
     
-    errorText += "\nПожалуйста, исправьте ошибки в файле story.js";
+    errorText += "\nPlease fix the errors in the story.js file";
     
     // Находим элементы интерфейса
     const dialog = document.getElementById('dialog');

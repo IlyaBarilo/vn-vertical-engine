@@ -17,8 +17,8 @@ var profiler = {
   },
   
   getReport: function() {
-    var report = "Время загрузки и выполнения:\n";
-    report += "  Старт: 0ms\n";
+    var report = "Load and execution time:\n";
+    report += "  Start: 0ms\n";
     
     // Сортируем метки по времени
     var sortedMarks = Object.keys(this.marks).sort(function(a, b) {
@@ -33,27 +33,27 @@ var profiler = {
     });
     
     var totalTime = Date.now() - profiler.startTime;
-    report += "\n  Общее время: " + totalTime + "ms (" + (totalTime/1000).toFixed(2) + "с)\n";
+    report += "\n  Total time: " + totalTime + "ms (" + (totalTime/1000).toFixed(2) + "с)\n";
 
 
 
 
 
-    if (this.marks['Первый экран готов'] !== undefined) {
-      report += "  До первого экрана: " + this.marks['Первый экран готов'] + "ms (" +
-        (this.marks['Первый экран готов']/1000).toFixed(2) + "с)\n";
+    if (this.marks['First screen is ready'] !== undefined) {
+      report += "  To the first screen: " + this.marks['First screen is ready'] + "ms (" +
+        (this.marks['First screen is ready']/1000).toFixed(2) + "с)\n";
     }
 
     if (window.LOADER_STATS && window.LOADER_STATS.startTime) {
       var totalFromLoaderStart = Date.now() - window.LOADER_STATS.startTime;
-      report += "  От старта загрузчика до открытия статистики: " + totalFromLoaderStart + "ms (" +
+      report += "  From the loader's startup to the display of statistics: " + totalFromLoaderStart + "ms (" +
         (totalFromLoaderStart/1000).toFixed(2) + "с)\n";
 
-      if (this.marks['Первый экран готов'] !== undefined) {
+      if (this.marks['First screen is ready'] !== undefined) {
         var firstScreenFromLoaderStart =
-          (profiler.startTime - window.LOADER_STATS.startTime) + this.marks['Первый экран готов'];
+          (profiler.startTime - window.LOADER_STATS.startTime) + this.marks['First screen is ready'];
 
-        report += "  От старта загрузчика до первого экрана: " + firstScreenFromLoaderStart + "ms (" +
+        report += "  From the loader's startup to the first screen: " + firstScreenFromLoaderStart + "ms (" +
           (firstScreenFromLoaderStart/1000).toFixed(2) + "с)\n";
       }
     }
@@ -69,11 +69,11 @@ var profiler = {
         actionCount += scene.actions ? scene.actions.length : 0;
       });
       
-      report += "\nСложность сценария:\n";
-      report += "  Сцен: " + sceneCount + "\n";
-      report += "  Действий: " + actionCount + "\n";
-      report += "  Среднее время на сцену: " + (totalTime / Math.max(1, sceneCount)).toFixed(2) + "ms\n";
-      report += "  Среднее время на действие: " + (totalTime / Math.max(1, actionCount)).toFixed(2) + "ms\n";
+      report += "\nScenario complexity:\n";
+      report += "  Scenes: " + sceneCount + "\n";
+      report += "  Actions: " + actionCount + "\n";
+      report += "  Average time per scene: " + (totalTime / Math.max(1, sceneCount)).toFixed(2) + "ms\n";
+      report += "  Average time per action: " + (totalTime / Math.max(1, actionCount)).toFixed(2) + "ms\n";
     }
 
     return report;
@@ -81,7 +81,7 @@ var profiler = {
 };
 
 // Ставим первую метку
-profiler.mark('Скрипт начал загрузку');
+profiler.mark('The script has started loading');
 
 let __charSeq = 0;
 let __activeCharSeq = 0;
@@ -98,7 +98,7 @@ function markFirstScreenReady(reason) {
   if (firstScreenMetrics.firstScreenShown) return;
 
   firstScreenMetrics.firstScreenShown = true;
-  profiler.mark('Первый экран готов');
+  profiler.mark('First screen is ready');
 
   console.log('[FIRST SCREEN]', {
     reason: reason,
@@ -268,7 +268,7 @@ elStage.addEventListener("click", function (e) {
 
 
 
-profiler.mark('DOM загружен');
+profiler.mark('DOM has been loaded');
 
 
 
@@ -562,8 +562,8 @@ if (!window.STORY) {
 }
 
 var STORY = window.STORY;
-console.log('[Engine] Сценарий найден сразу:', STORY.meta.title);
-profiler.mark('Сценарий найден сразу');
+console.log('[Engine] Script found immediately:', STORY.meta.title);
+profiler.mark('Script found immediately');
 
 // ========== ЗАМЕНИТЕ НА ЭТОТ КОД ==========
 console.log('[Engine] STORY.assets:', STORY.assets);
@@ -579,7 +579,7 @@ if (STORY.assets) {
 
 // Применяем настройки отступов
 applySpacingSettings();
-profiler.mark('Настройки отступов применены');
+profiler.mark('Indentation settings applied');
 
 // =========================================================
 // НАСТРОЙКИ ИНТЕРФЕЙСА (масштаб)
@@ -685,14 +685,14 @@ audio.bgm.addEventListener('canplay', function () {
 
 
 setAudioFromStoryDefaults();
-profiler.mark('Аудио настроено');
+profiler.mark('Audio is set up');
 
 applyUiScale();
 window.addEventListener("resize", applyUiScale);
 
 // ---------- Подготовка сцен ----------
 buildSceneMap();
-profiler.mark('Карта сцен построена');
+profiler.mark('The scene map has been created');
 
 // Заголовок
 if (STORY.meta && STORY.meta.title) {
@@ -2563,70 +2563,70 @@ function renderStats() {
 
       var text = "";
 
-      text += `Версия программы: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
+      text += `Software version: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
 
-      text += "=== СТАТИСТИКА СЦЕНАРИЯ ===\n\n";
-      text += "Название: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
-      text += "Сцен: " + stats.sceneCount + "\n";
-      text += "Меню выбора: " + stats.choiceCount + "\n\n";
+      text += "=== SCRIPT STATISTICS ===\n\n";
+      text += "Title: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
+      text += "Scenes: " + stats.sceneCount + "\n";
+      text += "Choice menu: " + stats.choiceCount + "\n\n";
 
 
       // ===== ОШИБКИ ПАРСИНГА =====
-      text += "=== ОШИБКИ ПАРСИНГА ===\n\n";
+      text += "=== PARSE ERRORS ===\n\n";
       
       if (parseErrors.length === 0) {
-        text += "✅ Ошибок парсинга не найдено\n\n";
+        text += "✅ No parse errors found\n\n";
       } else {
-        text += `❌ Найдено ошибок: ${parseErrors.length}\n\n`;
+        text += `❌ Errors found: ${parseErrors.length}\n\n`;
         parseErrors.forEach((error, index) => {
-          text += `${index + 1}. Строка ${error.lineNumber}: ${error.message}\n`;
+          text += `${index + 1}. Line ${error.lineNumber}: ${error.message}\n`;
           text += `   "${error.line}"\n\n`;
         });
       }
 
 
-      text += "=== ПРОВЕРКА ФАЙЛОВ ===\n\n";
+      text += "=== FILE CHECK ===\n\n";
         
       // Отсутствующие файлы - проверяем ВСЕГДА, независимо от наличия звука
       if (fileStats.missing.length > 0) {
-        text += "❌ ОТСУТСТВУЮТ ФАЙЛЫ:\n\n";
+        text += "❌ MISSING FILES:\n\n";
         fileStats.missing.forEach(function(item, index) {
           text += (index + 1) + ". " + item.path + "\n";
-          text += "   Где используется:\n";
+          text += "   Used in:\n";
           item.refs.forEach(function(ref) {
             text += "   - " + ref + "\n";
           });
           text += "\n";
         });
       } else {
-        text += "✅ Все файлы найдены\n\n";
+        text += "✅ All files found\n\n";
       }
       
       // Ошибки размеров изображений
       if (fileStats.sizeErrors.length > 0) {
-        text += "❌ ПРОБЛЕМЫ С РАЗМЕРАМИ ИЗОБРАЖЕНИЙ:\n\n";
+        text += "❌ IMAGE SIZE ISSUES:\n\n";
         
         fileStats.sizeErrors.forEach(item => {
-          text += `Файл: ${item.path}\n`;
-          text += `  Текущий размер: ${item.width}×${item.height}\n`;
+          text += `File: ${item.path}\n`;
+          text += `  Current size: ${item.width}×${item.height}\n`;
           if (item.category === 'bg') {
-            text += `  Требуется: не менее 1080×1920\n`;
+            text += `  Required: at least 1080×1920\n`;
           } else if (item.category === 'char') {
-            text += `  Требуется: не менее 500×1200\n`;
+            text += `  Required: at least 500×1200\n`;
           }
-          text += `  Проблемы: ${item.errors.join(', ')}\n`;
+          text += `  Issues: ${item.errors.join(', ')}\n`;
           if (item.refs) {
-            text += `  Используется в: ${item.refs.join(', ')}\n`;
+            text += `  Used in: ${item.refs.join(', ')}\n`;
           }
           text += "\n";
         });
       } else {
-        text += "✅ Все изображения соответствуют требованиям по размеру\n\n";
+        text += "✅ All images meet the size requirements\n\n";
       }
       
 
-      text += "=== СТАТИСТИКА ФАЙЛОВ ===\n\n";
-      text += "Всего файлов: " + fileStats.files.length + "\n";
+      text += "=== FILE STATISTICS ===\n\n";
+      text += "Total files: " + fileStats.files.length + "\n";
       
       // Подсчет изображений и аудио
       var imageCount = 0;
@@ -2636,25 +2636,25 @@ function renderStats() {
         else if (f.path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) audioCount++;
       });
       
-      text += "  Изображения: " + imageCount + "\n";
-      text += "  Аудио: " + audioCount + "\n\n";
+      text += "  Images: " + imageCount + "\n";
+      text += "  Audio: " + audioCount + "\n\n";
 
       
 
 
-      text += "=== ОБЪЁМ ТЕКСТА ===\n\n";
+      text += "=== TEXT LENGTH ===\n\n";
 
-      text += "Всего символов: " + textInfo.characters + "\n";
-      text += "Всего слов: " + textInfo.words + "\n\n";
+      text += "Total characters: " + textInfo.characters + "\n";
+      text += "Total words: " + textInfo.words + "\n\n";
 
 
       
 
 
-      text += "=== ИСПОЛЬЗОВАННЫЕ ФОНЫ ===\n";
+      text += "=== USED BACKGROUNDS ===\n";
 
       if (!stats.backgroundsDetailed || !stats.backgroundsDetailed.length) {
-        text += "(нет)\n\n";
+        text += "(none)\n\n";
       } else {
         for (var i = 0; i < stats.backgroundsDetailed.length; i++) {
           var bgItem = stats.backgroundsDetailed[i];
@@ -2667,10 +2667,10 @@ function renderStats() {
 
 
 
-      text += "=== ИСПОЛЬЗОВАННЫЕ ПЕРСОНАЖИ ===\n";
+      text += "=== CHARACTERS USED ===\n";
 
       if (!stats.usedCharactersDetailed || !stats.usedCharactersDetailed.length) {
-        text += "(нет)\n\n";
+        text += "(none)\n\n";
       } else {
         for (var i = 0; i < stats.usedCharactersDetailed.length; i++) {
           var item = stats.usedCharactersDetailed[i];
@@ -2687,10 +2687,10 @@ function renderStats() {
 
 
 
-      text += "=== ПРОВЕРКА СЦЕНАРИЯ ===\n";
+      text += "=== SCRIPT REVIEW ===\n";
 
       if (errors.length === 0) {
-        text += "Ошибок не найдено.\n";
+        text += "No errors found.\n";
       } else {
         for (var i = 0; i < errors.length; i++) {
           text += "- " + errors[i] + "\n";
@@ -2699,14 +2699,14 @@ function renderStats() {
 
 
       
-      text += "\n\n=== ДОП. АНАЛИЗ СЦЕНАРИЯ ===\n\n";
+      text += "\n\n=== ADDITIONAL SCRIPT ANALYSIS ===\n\n";
 
-      text += "Недостижимые сцены (" + reach.unreachable.length + "):\n";
-      text += (reach.unreachable.length ? reach.unreachable.join("\n") : "(нет)") + "\n\n";
+      text += "Unreachable scenes (" + reach.unreachable.length + "):\n";
+      text += (reach.unreachable.length ? reach.unreachable.join("\n") : "(none)") + "\n\n";
 
-      text += "Циклы / SCC (" + cycles.length + "):\n";
+      text += "Cycles / SCC (" + cycles.length + "):\n";
       if (!cycles.length) {
-        text += "(нет)\n";
+        text += "(none)\n";
       } else {
         for (var i = 0; i < cycles.length; i++) {
           text += "- " + cycles[i].join(" -> ") + "\n";
@@ -2714,32 +2714,32 @@ function renderStats() {
       }
 
       // ========== ПРОФАЙЛЕР ==========
-      text += "=== ПРОФАЙЛЕР ВРЕМЕНИ ===\n\n";
+      text += "=== TIME PROFILER ===\n\n";
       text += profilerInfo;
       text += "\n";
 
-      text += "=== ЗАГРУЗКА НОВЕЛЛЫ ===\n";
+      text += "=== LOADING THE NOVEL ===\n";
 
-      if (profiler.marks['Первый экран готов'] !== undefined) {
-        text += "  До первого экрана: " +
-          profiler.marks['Первый экран готов'] + "ms (" +
-          (profiler.marks['Первый экран готов'] / 1000).toFixed(2) + "с)\n";
+      if (profiler.marks['First screen ready'] !== undefined) {
+        text += "  To first screen: " +
+          profiler.marks['First Screen Ready'] + "ms (" +
+          (profiler.marks['First Screen Ready'] / 1000).toFixed(2) + "с)\n";
       } else {
-        text += "  До первого экрана: ещё не измерено\n";
+        text += "  To first screen: not yet measured\n";
       }
 
-      if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['Первый экран готов'] !== undefined) {
+      if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['First screen ready'] !== undefined) {
         var firstScreenFromLoaderStart =
-          (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['Первый экран готов'];
+          (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['First screen ready'];
 
-        text += "  От старта загрузчика до первого экрана: " +
+        text += "  From loader start to first screen: " +
           firstScreenFromLoaderStart + "ms (" +
           (firstScreenFromLoaderStart / 1000).toFixed(2) + "с)\n";
       }
 
 
       // ========== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ==========
-      text += "=== ВРЕМЯ ЗАГРУЗКИ СЦЕНАРИЯ ===\n\n";
+      text += "=== SCRIPT LOAD TIME ===\n\n";
       
       if (window.LOADER_STATS) {
         var marks = window.LOADER_STATS.marks;
@@ -2757,12 +2757,12 @@ function renderStats() {
         var parsingTime = marks.parsing_end || 0;
         var processingTime = totalLoaderTime - parsingTime;
 
-        text += "Общее время загрузчика: " + totalLoaderTime + "ms\n";
-        text += "  Парсинг: " + parsingTime + "ms\n";
-        text += "  Обработка и передача: " + processingTime + "ms\n\n";
+        text += "Total loader time: " + totalLoaderTime + "ms\n";
+        text += "  Parsing: " + parsingTime + "ms\n";
+        text += "  Processing and transmission: " + processingTime + "ms\n\n";
         
-        text += "Детализация:\n";
-        text += "  Старт: 0ms\n";
+        text += "Details:\n";
+        text += "  Start: 0ms\n";
         
         // Сортируем метки по времени
         var sortedMarks = Object.keys(marks).sort(function(a, b) {
@@ -2777,14 +2777,14 @@ function renderStats() {
         });
         
         text += "\n";
-        text += "Размер сценария:\n";
-        text += "  Сцен: " + window.LOADER_STATS.scenesCount + "\n";
-        text += "  Действий: " + window.LOADER_STATS.actionsCount + "\n";
-        text += "  Фонов: " + window.LOADER_STATS.backgroundsCount + "\n";
-        text += "  Персонажей: " + window.LOADER_STATS.charactersCount + "\n";
-        text += "  Аудио: " + window.LOADER_STATS.audioCount + "\n";
-        text += "  Время на сцену: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
-        text += "  Время на действие: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
+        text += "Script size:\n";
+        text += "  Scenes: " + window.LOADER_STATS.scenesCount + "\n";
+        text += "  Actions: " + window.LOADER_STATS.actionsCount + "\n";
+        text += "  Backgrounds: " + window.LOADER_STATS.backgroundsCount + "\n";
+        text += "  Characters: " + window.LOADER_STATS.charactersCount + "\n";
+        text += "  Audio: " + window.LOADER_STATS.audioCount + "\n";
+        text += "  Time per scene: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
+        text += "  Time per action: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
 
         // Прогноз для больших сценариев
         var estimatedFor100Scenes = (totalLoaderTime / window.LOADER_STATS.scenesCount) * 100;
@@ -2804,62 +2804,62 @@ function renderStats() {
         var totalDialogActions = sayCount + textCount;
         var totalInteractiveActions = choiceCount;
 
-        text += "Прогноз производительности:\n";
-        text += "  На 100 сцен: ~" + Math.round(estimatedFor100Scenes) + "ms (" + (estimatedFor100Scenes/1000).toFixed(1) + "с)\n";
-        text += "  На 1000 действий: ~" + Math.round(estimatedFor1000Actions) + "ms (" + (estimatedFor1000Actions/1000).toFixed(1) + "с)\n\n";
+        text += "Performance estimate:\n";
+        text += "  Per 100 scenes: ~" + Math.round(estimatedFor100Scenes) + "ms (" + (estimatedFor100Scenes/1000).toFixed(1) + "с)\n";
+        text += "  Per 1,000 actions: ~" + Math.round(estimatedFor1000Actions) + "ms (" + (estimatedFor1000Actions/1000).toFixed(1) + "с)\n\n";
 
-        text += "Детальный прогноз по типам действий (на 1000 шт):\n";
+        text += "Detailed estimate by action type (per 1,000 actions):\n";
 
         if (sayCount > 0) {
           var timePerSay = totalLoaderTime / sayCount;
           var estimated1000Say = timePerSay * 1000;
-          text += "  Фразы персонажей: ~" + Math.round(estimated1000Say) + "ms";
-          text += " (по " + timePerSay.toFixed(2) + "ms на фразу)\n";
+          text += "  Character phrases: ~" + Math.round(estimated1000Say) + "ms";
+          text += " (по " + timePerSay.toFixed(2) + "ms per phrase)\n";
         }
 
         if (textCount > 0) {
           var timePerText = totalLoaderTime / textCount;
           var estimated1000Text = timePerText * 1000;
-          text += "  Авторский текст: ~" + Math.round(estimated1000Text) + "ms";
-          text += " (по " + timePerText.toFixed(2) + "ms на текст)\n";
+          text += "  Author's text: ~" + Math.round(estimated1000Text) + "ms";
+          text += " (at " + timePerText.toFixed(2) + "ms per text)\n";
         }
 
         if (choiceCount > 0) {
           var timePerChoice = totalLoaderTime / choiceCount;
           var estimated1000Choice = timePerChoice * 1000;
-          text += "  Меню выбора: ~" + Math.round(estimated1000Choice) + "ms";
-          text += " (по " + timePerChoice.toFixed(2) + "ms на меню)\n";
+          text += "  Selection menu: ~" + Math.round(estimated1000Choice) + "ms";
+          text += " (at " + timePerChoice.toFixed(2) + "ms per menu)\n";
         }
 
         if (bgmCount > 0) {
           var timePerBgm = totalLoaderTime / bgmCount;
           var estimated1000Bgm = timePerBgm * 1000;
-          text += "  Смена музыки: ~" + Math.round(estimated1000Bgm) + "ms";
-          text += " (по " + timePerBgm.toFixed(2) + "ms на смену)\n";
+          text += "  Music change: ~" + Math.round(estimated1000Bgm) + "ms";
+          text += " (at " + timePerBgm.toFixed(2) + "ms per change)\n";
         }
 
         if (bgCount > 0) {
           var timePerBg = totalLoaderTime / bgCount;
           var estimated1000Bg = timePerBg * 1000;
-          text += "  Смена фона: ~" + Math.round(estimated1000Bg) + "ms";
-          text += " (по " + timePerBg.toFixed(2) + "ms на смену)\n";
+          text += "  Background change: ~" + Math.round(estimated1000Bg) + "ms";
+          text += " (по " + timePerBg.toFixed(2) + "ms per change)\n";
         }
 
         text += "\n";
 
 
       } else {
-          text += "Данные загрузчика недоступны\n\n";
+          text += "Bootloader data is not available\n\n";
       }
 
 
       // ========== ИНФОРМАЦИЯ ОБ ОКРУЖЕНИИ ==========
-      text += "=== ИНФОРМАЦИЯ ОБ УСТРОЙСТВЕ ===\n\n";
+      text += "=== DEVICE INFORMATION ===\n\n";
       text += envInfo;
       text += "\n";
 
       // Добавляем JSON сценария для отладки
-      text += "\n\n=== JSON СЦЕНАРИЯ ===\n\n";
+      text += "\n\n=== SCENARIO JSON ===\n\n";
       try {
         // Убираем циклические ссылки (если есть)
         const storyJson = JSON.stringify(STORY, (key, value) => {
@@ -2868,7 +2868,7 @@ function renderStats() {
         }, 2);
         text += storyJson;
       } catch (e) {
-        text += "Ошибка сериализации: " + e.message;
+        text += "Serialization error: " + e.message;
       }
 
       text += "\n\n=== MERMAID GRAPH ===\n\n";
@@ -2887,23 +2887,23 @@ function renderStats() {
           try {
             renderMermaidGraph();
           } catch (e) {
-            console.error("[STATS] Ошибка рендера Mermaid-графа:", e);
+            console.error("[STATS] Mermaid graph rendering error:", e);
           }
         }, 100);
       }
 
 
     } catch (e) {
-      console.error("[STATS] Ошибка формирования текста статистики:", e);
+      console.error("[STATS] Error generating statistics text:", e);
       elStatsBody.value =
-        "Ошибка формирования статистики:\n\n" +
+        "Error generating statistics:\n\n" +
         (e && e.stack ? e.stack : String(e));
     }
   })
   .catch(function(e) {
-    console.error("[STATS] Ошибка проверки файлов:", e);
+    console.error("[STATS] File verification error:", e);
     elStatsBody.value =
-      "Ошибка проверки файлов:\n\n" +
+      "File verification error:\n\n" +
       (e && e.stack ? e.stack : String(e));
   });
 
@@ -2936,7 +2936,7 @@ function collectEnvironmentInfo() {
   var info = "";
     
   // Размеры окна
-  info += "Размеры окна:\n";
+  info += "Window dimensions:\n";
   info += "  window.innerWidth: " + window.innerWidth + "px\n";
   info += "  window.innerHeight: " + window.innerHeight + "px\n";
   info += "  window.outerWidth: " + window.outerWidth + "px\n";
@@ -2949,8 +2949,8 @@ function collectEnvironmentInfo() {
   
   // Соотношение сторон
   var aspectRatio = (window.innerWidth / window.innerHeight).toFixed(2);
-  info += "Соотношение сторон: " + aspectRatio + " (" + aspectRatio + ":1)\n";
-  info += "Ориентация: " + (window.innerHeight > window.innerWidth ? "вертикальная" : "горизонтальная") + "\n\n";
+  info += "Aspect ratio: " + aspectRatio + " (" + aspectRatio + ":1)\n";
+  info += "Orientation: " + (window.innerHeight > window.innerWidth ? "вертикальная" : "горизонтальная") + "\n\n";
   
   // CSS переменные
   var rootStyle = getComputedStyle(document.documentElement);
@@ -2961,7 +2961,7 @@ function collectEnvironmentInfo() {
   var topSpacing = rootStyle.getPropertyValue('--topSpacing').trim();
   var bottomSpacing = rootStyle.getPropertyValue('--bottomSpacing').trim();
   
-  info += "CSS переменные:\n";
+  info += "CSS variables:\n";
   info += "  --uiScale: " + uiScale + "\n";
   info += "  --baseFontPx: " + baseFontPx + "\n";
   info += "  --baseFontSize: " + baseFontSize + "\n";
@@ -2970,7 +2970,7 @@ function collectEnvironmentInfo() {
   info += "  --bottomSpacing: " + bottomSpacing + "px\n\n";
   
   // JS переменные масштабирования
-  info += "JS настройки масштаба:\n";
+  info += "JS scaling settings:\n";
   info += "  UI_FONT_SCALE: " + UI_FONT_SCALE + "\n";
   info += "  UI_REFERENCE_HEIGHT: " + UI_REFERENCE_HEIGHT + "\n\n";
   
@@ -2978,19 +2978,19 @@ function collectEnvironmentInfo() {
   var dialog = document.getElementById('dialog');
   if (dialog) {
     var dialogStyle = getComputedStyle(dialog);
-    info += "Диалог:\n";
+    info += "Dialog:\n";
     info += "  width: " + dialogStyle.width + "\n";
     info += "  height: " + dialogStyle.height + "\n";
     info += "  padding: " + dialogStyle.padding + "\n";
     info += "  font-size: " + dialogStyle.fontSize + "\n";
     info += "  bottom: " + dialogStyle.bottom + "\n";
-    info += "  классы: " + dialog.className + "\n\n";
+    info += "  classes: " + dialog.className + "\n\n";
   }
   
   var nameBox = document.getElementById('nameBox');
   if (nameBox && !nameBox.classList.contains('hidden')) {
     var nameStyle = getComputedStyle(nameBox);
-    info += "Имя персонажа:\n";
+    info += "Character name:\n";
     info += "  padding: " + nameStyle.padding + "\n";
     info += "  font-size: " + nameStyle.fontSize + "\n";
     info += "  margin-bottom: " + nameStyle.marginBottom + "\n\n";
@@ -3000,32 +3000,32 @@ function collectEnvironmentInfo() {
   if (choices && !choices.classList.contains('hidden')) {
     var choicesStyle = getComputedStyle(choices);
     var choiceBtn = document.querySelector('.choiceBtn');
-    info += "Меню выбора:\n";
-    info += "  контейнер bottom: " + choicesStyle.bottom + "\n";
+    info += "Selection menu:\n";
+    info += "  container bottom: " + choicesStyle.bottom + "\n";
     info += "  gap: " + choicesStyle.gap + "\n";
     
     if (choiceBtn) {
       var btnStyle = getComputedStyle(choiceBtn);
-      info += "  кнопка padding: " + btnStyle.padding + "\n";
-      info += "  кнопка font-size: " + btnStyle.fontSize + "\n";
+      info += "  button padding: " + btnStyle.padding + "\n";
+      info += "  button font-size: " + btnStyle.fontSize + "\n";
     }
     info += "\n";
   }
   
   var char = document.getElementById('charLayer');
   if (char && !char.classList.contains('hidden')) {
-    info += "Персонаж:\n";
-    info += "  высота (JS): " + char.style.height + "\n";
-    info += "  фактическая высота: " + char.offsetHeight + "px\n";
+    info += "Character:\n";
+    info += "  height (JS): " + char.style.height + "\n";
+    info += "  actual height: " + char.offsetHeight + "px\n";
     info += "  max-height (CSS): " + getComputedStyle(char).maxHeight + "\n";
     info += "  bottom: " + getComputedStyle(char).bottom + "\n\n";
   }
   
   // Информация о браузере
-  info += "Браузер:\n";
+  info += "Browser:\n";
   info += "  userAgent: " + navigator.userAgent + "\n";
-  info += "  язык: " + navigator.language + "\n";
-  info += "  платформа: " + navigator.platform + "\n";
+  info += "  language: " + navigator.language + "\n";
+  info += "  platform: " + navigator.platform + "\n";
   
   return info;
 }
@@ -3080,7 +3080,7 @@ function checkAssetsFiles() {
       Object.entries(STORY.assets.audio).forEach(([id, path]) => {
         if (typeof path !== "string" || path.trim() === "") {
           result.missing.push({
-            path: `[некорректный путь: ${String(path)}]`,
+            path: `[invalid path: ${String(path)}]`,
             refs: [`audio: ${id}`]
           });
           return;
@@ -3145,10 +3145,10 @@ function checkAssetsFiles() {
                 if (required.width > 0 && required.height > 0) {
                   const errors = [];
                   if (fileData.width < required.width) {
-                    errors.push(`ширина ${fileData.width}px < ${required.width}px`);
+                    errors.push(`width ${fileData.width}px < ${required.width}px`);
                   }
                   if (fileData.height < required.height) {
-                    errors.push(`высота ${fileData.height}px < ${required.height}px`);
+                    errors.push(`height ${fileData.height}px < ${required.height}px`);
                   }
                   
                   if (errors.length > 0) {
@@ -3638,14 +3638,14 @@ function buildMermaidGraph(story, unreachableList) {
   mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
 
   // Стили для узлов. Основные настройки производятся в CSS
-  mermaid += "%% Определение стилей для сцен\n";
+  mermaid += "%% Defining styles for scenes\n";
   mermaid += "classDef scene fill:#fff3e0,stroke:#e6d6bc,color:#000,stroke-width:1px,r:12px;\n";
   mermaid += "classDef start fill:#e1f5e1,stroke:#b6deb6,color:#000,stroke-width:2px,r:15px;\n";
   mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
   mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
 
   // Стили для специальных узлов (серые тона)
-  mermaid += "%% Определение стилей для специальных узлов\n";
+  mermaid += "%% Defining styles for special nodes\n";
   mermaid += "classDef characters-group fill:#e0e0e0,stroke:#808080,color:#333,stroke-width:2px,r:12px;\n";
   mermaid += "classDef character-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
   mermaid += "classDef backgrounds-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n\n";
@@ -3662,7 +3662,7 @@ function buildMermaidGraph(story, unreachableList) {
   // Создаем узлы с многострочными метками
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
-    var chars = node.characters.length ? node.characters.join(", ") : "(нет)";
+    var chars = node.characters.length ? node.characters.join(", ") : "(none)";
     
     // Формируем многострочную метку - ВАЖНО: порядок элементов
     var label = node.id + "<br/>";
@@ -3694,7 +3694,7 @@ function buildMermaidGraph(story, unreachableList) {
     // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
     var statsParts = [];
     
-    if (chars != '(нет)') {
+    if (chars != '(none)') {
       statsParts.push("👤" + chars + "\n");
     }
     
@@ -3723,7 +3723,7 @@ function buildMermaidGraph(story, unreachableList) {
   mermaid += "\n";
     
   // Применяем классы
-  mermaid += "%% Применение стилей\n";
+  mermaid += "%% Applying styles\n";
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
     var classes = [];
@@ -3752,7 +3752,7 @@ function buildMermaidGraph(story, unreachableList) {
     }
   }
   
-  mermaid += "\n%% Связи\n";
+  mermaid += "\n%% Edges\n";
     
   // Создаем связи с подписями (только реальные связи из сценария)
   for (var e = 0; e < edges.length; e++) {
@@ -3775,7 +3775,7 @@ function buildMermaidGraph(story, unreachableList) {
 
   // ВАЖНО: Добавляем пунктирную связь от узла "Персонажи" к первой сцене
   var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
-  mermaid += '\n    %% Связь персонажей с первой главой\n';
+  mermaid += '\n    %% Character connections to the first chapter\n';
   mermaid += '    characters -.-> ' + startId + ';\n';
 
   return mermaid;
@@ -3848,7 +3848,7 @@ function buildCharactersGraph(story) {
   } // for
     
     // Добавляем связи пунктирной линией
-    mermaid += '\n    %% Связи персонажей с первой главой\n';
+    mermaid += '\n    %% Character connections from Chapter 1\n';
     
     // Связь от "Персонажи" к первому узлу (опционально)
     // mermaid += '    characters -.-> ' + startId + ';\n';
@@ -3909,14 +3909,14 @@ function buildBackgroundsGraph(story) {
   var bgCount = bgIds.length;
   
   // Формируем метку элемента
-  var label = '<b>🖼️ Фоны (' + bgCount + ')</b><br/>' + bgImagesHtml;
+  var label = '<b>🖼️ Backgrounds (' + bgCount + ')</b><br/>' + bgImagesHtml;
   
   // Добавляем узел "Фоны" с серым фоном
   mermaid += '    backgrounds["' + label + '"]\n';
   mermaid += '    backgrounds:::backgrounds-group\n';  // Исправлено: используем :::
 
   // Добавляем пунктирную связь с первой главой
-  mermaid += '\n    %% Связь фонов с первой главой\n';
+  mermaid += '\n    %% Connection between backgrounds and the first chapter\n';
   mermaid += '    backgrounds -.-> ' + startId + ';\n';
   
   return mermaid;
@@ -3979,13 +3979,13 @@ function validateStory(story) {
       if (act.type === "goto") {
 
         if (!sceneMap[act.target]) {
-          errors.push("Переход в несуществующую сцену: " + act.target);
+          errors.push("Jump to a non-existent scene: " + act.target);
         }
       }
 
       if (act.type === "if_expr") {
         if (!sceneMap[act.target]) {
-          errors.push("Условный переход в несуществующую сцену: " + act.target);
+          errors.push("Conditional transition to a non-existent scene: " + act.target);
         }
       }
 
@@ -3994,7 +3994,7 @@ function validateStory(story) {
         var id = extractAliasId(act.src, "bg");
 
         if (id && !story.assets.backgrounds[id]) {
-          errors.push("Не найден фон: " + id);
+          errors.push("Background not found: " + id);
         }
       }
 
@@ -4004,7 +4004,7 @@ function validateStory(story) {
         var id = extractAliasId(act.src, "ch");
 
         if (id && !story.assets.characters[id]) {
-          errors.push("Не найден персонаж: " + id);
+          errors.push("Character not found: " + id);
         }
       }
 
@@ -4804,10 +4804,10 @@ function renderMermaidGraph() {
             
         } catch (e) {
           console.error("Ошибка инициализации Mermaid:", e);
-          mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
+          mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Error rendering the graph. Check the console.</div>';
         }
       } else {
-          mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">Библиотека Mermaid не загружена</div>';
+          mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">The Mermaid library has not been loaded</div>';
       }
     }, 50);
   }
