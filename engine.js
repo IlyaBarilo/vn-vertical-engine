@@ -3790,7 +3790,7 @@ function buildCharactersGraph(story) {
   var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
   
   // Создаем узел "Персонажи"
-  mermaid += '    characters["<b>👥 Персонажи</b>"]\n';
+  mermaid += '    characters["<b>👥 Characters</b>"]\n';
   mermaid += '    characters:::characters-group\n';  // Применяем CSS-класс
   
   // Создаем узлы для каждого персонажа
