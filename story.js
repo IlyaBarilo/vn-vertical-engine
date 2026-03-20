@@ -51,6 +51,9 @@ bgmDay = assets/audio/bgm_campus_day.mp3
 # bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
 # sfxClickTest = assets/audio/sfx_button_click.mp3
 
+[game]
+gameCoffeeRush = assets/games/coffee_rush.html
+
 [var]
 x = 10 # объявление переменных
 y = 25
@@ -76,6 +79,15 @@ bg campusHall
 # bgm stop - остановить музыку
 
 bgm bgmDay loop
+
+
+# Проверка работы игры
+# game gameCoffeeRush difficulty=3 result=coffee
+# if coffee == 1 -> cafeGood
+# if coffee == 0 -> cafeBad
+
+
+
 
 show anna neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
@@ -135,10 +147,30 @@ bg branchCafe2
 anna: "Кофе здесь просто божественный! Особенно тот латте с карамелью."
 igor: "Зато какие мемы рождаются после трёх чашек! Помнишь тот с котом-программистом?"
 
-bg branchCafe3
 anna: "Ой, не напоминай! Мы потом неделю смеялись."
 
+anna: "Кажется, бариста не справляется с наплывом. Хочешь помочь?"
+
+game gameCoffeeRush difficulty=3 result=coffee
+
+if coffee == 1 -> cafeGood
+if coffee == 0 -> cafeBad
+
 goto finale_01
+
+
+
+scene cafeGood
+bg branchCafe3
+"Ты отлично справился с потоком заказов."
+goto finale_01
+
+scene cafeBad
+bg branchCafe3
+"Поток оказался слишком быстрым, но атмосфера всё равно запомнилась."
+goto finale_01
+
+
 
 scene branch_lab_01
 

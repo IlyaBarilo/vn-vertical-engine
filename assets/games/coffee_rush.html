@@ -1,0 +1,732 @@
+  <!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Бариста: Кофейный поток</title>
+  <style>
+    :root {
+      --bg1: #1b1020;
+      --bg2: #2e1a30;
+      --panel: rgba(20, 16, 24, 0.82);
+      --panel-border: rgba(255,255,255,0.12);
+      --text: #fff8f0;
+      --muted: #d7cfc5;
+      --accent: #ffb45c;
+      --good: #7ee787;
+      --bad: #ff7b72;
+      --shadow: rgba(0,0,0,0.28);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(255,180,92,0.18), transparent 28%),
+        linear-gradient(180deg, var(--bg2), var(--bg1));
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .hud {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 5;
+      padding: max(12px, env(safe-area-inset-top)) 12px 0;
+    }
+
+    .hud-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px var(--shadow);
+      backdrop-filter: blur(10px);
+      padding: 10px 12px;
+    }
+
+    .title-card {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-top: 2px;
+    }
+
+    #arena {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .lane-glow {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(82vw, 440px);
+      height: 100%;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)),
+        repeating-linear-gradient(180deg, rgba(255,255,255,0.035) 0 4px, transparent 4px 18px);
+      opacity: 0.35;
+    }
+
+    .player {
+      position: absolute;
+      left: 50%;
+      bottom: calc(max(18px, env(safe-area-inset-bottom)) + 26px);
+      transform: translateX(-50%);
+      width: min(78vw, 420px);
+      z-index: 3;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .tray {
+      width: 100%;
+      height: 32px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.07));
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: 0 12px 20px rgba(0,0,0,0.28);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tray::before {
+      content: "☕";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -58%);
+      font-size: 20px;
+      opacity: 0.85;
+    }
+
+    .touch-zone {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      touch-action: none;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .item {
+      position: absolute;
+      z-index: 2;
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+      border: 1px solid rgba(255,255,255,0.16);
+      will-change: transform, top, left;
+      cursor: pointer;
+    }
+
+    .good {
+      background: linear-gradient(180deg, rgba(255,180,92,0.32), rgba(255,180,92,0.12));
+    }
+
+    .bad {
+      background: linear-gradient(180deg, rgba(255,123,114,0.28), rgba(255,123,114,0.12));
+    }
+
+    .feedback {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 90px;
+      z-index: 6;
+      font-size: 18px;
+      font-weight: 800;
+      text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .feedback.show { opacity: 1; }
+    .feedback.good { color: var(--good); }
+    .feedback.bad { color: var(--bad); }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      background: rgba(10, 8, 12, 0.7);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .overlay.hidden { display: none; }
+
+    .dialog {
+      width: min(92vw, 460px);
+      background: rgba(22,18,24,0.9);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      padding: 18px;
+    }
+
+    .dialog h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .dialog p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 15px;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 16px;
+      font-size: 14px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      min-width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    .badge.good { background: rgba(255,180,92,0.18); }
+    .badge.bad { background: rgba(255,123,114,0.18); }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 16px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: linear-gradient(180deg, #ffc67c, #ffac45);
+      color: #2a1604;
+      flex: 1;
+    }
+
+    .secondary {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+    }
+
+    .meter {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .meter-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #7ee787, #ffb45c);
+      transform-origin: left center;
+      transform: scaleX(1);
+    }
+
+    .final-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 16px 0 8px;
+    }
+
+    .final-stats .card { padding: 12px; }
+
+    @media (max-width: 420px) {
+      .item { width: 48px; height: 48px; font-size: 25px; }
+      .stat-value { font-size: 22px; }
+      .dialog h1 { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="hud">
+      <div class="hud-grid">
+        <div class="card title-card">
+          <div>
+            <div class="title">Бариста: кофейный поток</div>
+            <div class="subtitle" id="difficultyLabel">Сложность: 3 / 5</div>
+          </div>
+          <div style="text-align:right; min-width: 94px;">
+            <div class="stat-label">Цель</div>
+            <div class="stat-value" id="targetValue">12</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="stat-label">Счёт</div>
+          <div class="stat-value" id="scoreValue">0</div>
+        </div>
+        <div class="card">
+          <div class="stat-label">Время</div>
+          <div class="stat-value" id="timeValue">20</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="arena">
+      <div class="lane-glow"></div>
+      <div class="player"><div class="tray"></div></div>
+      <div class="feedback" id="feedback"></div>
+      <div class="touch-zone" id="touchZone" aria-label="Игровая зона"></div>
+    </div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="dialog">
+        <h1>Удержи кофейный поток</h1>
+        <p>Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов.</p>
+        <div class="legend">
+          <div class="legend-row"><div class="badge good">☕</div><div>Лови кофейные заказы — это очки.</div></div>
+          <div class="legend-row"><div class="badge good">🧋</div><div>Редкий бонус — даёт больше очков.</div></div>
+          <div class="legend-row"><div class="badge bad">🗑️</div><div>Не трогай мусор — это штраф.</div></div>
+          <div class="legend-row"><div class="badge bad">💤</div><div>Сонливость — тоже помеха.</div></div>
+        </div>
+        <div class="btn-row">
+          <button class="primary" id="startBtn">Начать</button>
+          <button class="secondary" id="cancelBtn">Закрыть</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="endOverlay">
+      <div class="dialog">
+        <h1 id="endTitle">Отличная смена</h1>
+        <p id="endText">Ты справился с наплывом студентов.</p>
+        <div class="meter"><div class="meter-fill" id="successMeter"></div></div>
+        <div class="final-stats">
+          <div class="card">
+            <div class="stat-label">Счёт</div>
+            <div class="stat-value" id="finalScore">0</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Рейтинг</div>
+            <div class="stat-value" id="finalRating">1★</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Попадания</div>
+            <div class="stat-value" id="finalHits">0</div>
+          </div>
+          <div class="card">
+            <div class="stat-label">Ошибки</div>
+            <div class="stat-value" id="finalMisses">0</div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="primary" id="sendResultBtn">Продолжить новеллу</button>
+          <button class="secondary" id="restartBtn">Сыграть ещё</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const GOOD_EMOJIS = ['☕', '🥤', '🧋'];
+      const BAD_EMOJIS = ['🗑️', '💤', '📄'];
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+      const rand = (min, max) => Math.random() * (max - min) + min;
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+      const els = {
+        arena: document.getElementById('arena'),
+        touchZone: document.getElementById('touchZone'),
+        scoreValue: document.getElementById('scoreValue'),
+        timeValue: document.getElementById('timeValue'),
+        targetValue: document.getElementById('targetValue'),
+        difficultyLabel: document.getElementById('difficultyLabel'),
+        feedback: document.getElementById('feedback'),
+        startOverlay: document.getElementById('startOverlay'),
+        endOverlay: document.getElementById('endOverlay'),
+        startBtn: document.getElementById('startBtn'),
+        cancelBtn: document.getElementById('cancelBtn'),
+        restartBtn: document.getElementById('restartBtn'),
+        sendResultBtn: document.getElementById('sendResultBtn'),
+        endTitle: document.getElementById('endTitle'),
+        endText: document.getElementById('endText'),
+        successMeter: document.getElementById('successMeter'),
+        finalScore: document.getElementById('finalScore'),
+        finalRating: document.getElementById('finalRating'),
+        finalHits: document.getElementById('finalHits'),
+        finalMisses: document.getElementById('finalMisses')
+      };
+
+      const state = {
+        config: null,
+        running: false,
+        startedAt: 0,
+        elapsedMs: 0,
+        score: 0,
+        hits: 0,
+        misses: 0,
+        falseHits: 0,
+        items: [],
+        spawnTimer: 0,
+        lastFrame: 0,
+        sent: false,
+        animationFrame: 0
+      };
+
+      function buildConfig(input) {
+        const difficulty = clamp(parseInt((input && input.difficulty) || 3, 10) || 3, 1, 5);
+        const durationMs = [22000, 21000, 20000, 18500, 17000][difficulty - 1];
+        const targetScore = [10, 13, 16, 20, 24][difficulty - 1];
+        const spawnEveryMs = [900, 760, 650, 560, 480][difficulty - 1];
+        const fallSpeed = [180, 220, 260, 315, 380][difficulty - 1];
+        const badChance = [0.12, 0.18, 0.24, 0.30, 0.36][difficulty - 1];
+        return {
+          gameId: (input && input.gameId) || 'coffee_rush',
+          difficulty,
+          durationMs,
+          targetScore,
+          spawnEveryMs,
+          fallSpeed,
+          badChance,
+          seed: input && input.seed,
+          context: (input && input.context) || {}
+        };
+      }
+
+      function parseQuery() {
+        const url = new URL(window.location.href);
+        const difficulty = url.searchParams.get('difficulty');
+        return difficulty ? { difficulty: parseInt(difficulty, 10) } : {};
+      }
+
+      function applyConfigView() {
+        const cfg = state.config;
+        els.targetValue.textContent = cfg.targetScore;
+        els.difficultyLabel.textContent = 'Сложность: ' + cfg.difficulty + ' / 5';
+        updateHud();
+      }
+
+      function updateHud() {
+        const cfg = state.config;
+        els.scoreValue.textContent = String(state.score);
+        const remaining = Math.max(0, Math.ceil((cfg.durationMs - state.elapsedMs) / 1000));
+        els.timeValue.textContent = String(remaining);
+      }
+
+      function showFeedback(text, kind) {
+        els.feedback.textContent = text;
+        els.feedback.className = 'feedback show ' + kind;
+        clearTimeout(showFeedback._timer);
+        showFeedback._timer = setTimeout(() => {
+          els.feedback.className = 'feedback';
+        }, 280);
+      }
+
+      function spawnItem() {
+        const width = els.arena.clientWidth;
+        const isBad = Math.random() < state.config.badChance;
+        const isBonus = !isBad && Math.random() < 0.16;
+        const size = Math.random() < 0.35 ? 48 : 54;
+        const x = rand(16, width - size - 16);
+        const speed = state.config.fallSpeed * rand(0.92, 1.18);
+        const item = {
+          id: Math.random().toString(36).slice(2),
+          x,
+          y: -size - 8,
+          size,
+          speed,
+          bad: isBad,
+          bonus: isBonus,
+          emoji: isBad ? pick(BAD_EMOJIS) : (isBonus ? '🧋' : '☕'),
+          points: isBad ? -2 : (isBonus ? 3 : 1),
+          el: document.createElement('div')
+        };
+
+        item.el.className = 'item ' + (isBad ? 'bad' : 'good');
+        item.el.style.width = size + 'px';
+        item.el.style.height = size + 'px';
+        item.el.textContent = item.emoji;
+        item.el.dataset.id = item.id;
+        item.el.addEventListener('pointerdown', onItemTap, { passive: false });
+        item.el.addEventListener('click', onItemTap, { passive: false });
+        positionItem(item);
+        els.arena.appendChild(item.el);
+        state.items.push(item);
+      }
+
+      function positionItem(item) {
+        item.el.style.transform = 'translate(' + item.x + 'px,' + item.y + 'px)';
+      }
+
+      function onItemTap(ev) {
+        ev.preventDefault();
+        const id = ev.currentTarget.dataset.id;
+        const item = state.items.find(i => i.id === id);
+        if (!item || !state.running) return;
+
+        if (item.bad) {
+          state.score = Math.max(0, state.score - 2);
+          state.falseHits += 1;
+          state.misses += 1;
+          showFeedback('−2 Ошибка', 'bad');
+        } else {
+          state.score += item.points;
+          state.hits += 1;
+          showFeedback('+' + item.points + ' Отлично', 'good');
+        }
+        removeItem(item.id);
+        updateHud();
+      }
+
+      function removeItem(id) {
+        const index = state.items.findIndex(i => i.id === id);
+        if (index === -1) return;
+        const [item] = state.items.splice(index, 1);
+        if (item && item.el && item.el.parentNode) item.el.parentNode.removeChild(item.el);
+      }
+
+      function clearItems() {
+        state.items.forEach(item => {
+          if (item.el && item.el.parentNode) item.el.parentNode.removeChild(item.el);
+        });
+        state.items = [];
+      }
+
+      function loop(ts) {
+        if (!state.running) return;
+        if (!state.lastFrame) state.lastFrame = ts;
+        const dt = ts - state.lastFrame;
+        state.lastFrame = ts;
+        state.elapsedMs = ts - state.startedAt;
+
+        state.spawnTimer += dt;
+        while (state.spawnTimer >= state.config.spawnEveryMs) {
+          state.spawnTimer -= state.config.spawnEveryMs;
+          spawnItem();
+        }
+
+        const arenaHeight = els.arena.clientHeight;
+        for (let i = state.items.length - 1; i >= 0; i--) {
+          const item = state.items[i];
+          item.y += item.speed * (dt / 1000);
+          positionItem(item);
+          if (item.y > arenaHeight + 20) {
+            if (!item.bad) state.misses += 1;
+            removeItem(item.id);
+          }
+        }
+
+        updateHud();
+
+        if (state.elapsedMs >= state.config.durationMs) {
+          finishGame();
+          return;
+        }
+
+        state.animationFrame = requestAnimationFrame(loop);
+      }
+
+      function getRating(score, target) {
+        const ratio = score / Math.max(1, target);
+        if (ratio >= 1.15) return 3;
+        if (ratio >= 0.75) return 2;
+        return 1;
+      }
+
+      function buildResult() {
+        const cfg = state.config;
+        const rating = getRating(state.score, cfg.targetScore);
+        return {
+          type: 'gameResult',
+          gameId: cfg.gameId,
+          difficulty: cfg.difficulty,
+          success: state.score >= cfg.targetScore,
+          score: state.score,
+          rating,
+          durationMs: Math.min(cfg.durationMs, Math.round(state.elapsedMs || cfg.durationMs)),
+          meta: {
+            hits: state.hits,
+            misses: state.misses,
+            falseHits: state.falseHits,
+            targetScore: cfg.targetScore
+          }
+        };
+      }
+
+      function finishGame() {
+        state.running = false;
+        cancelAnimationFrame(state.animationFrame);
+        const result = buildResult();
+        showEnd(result);
+      }
+
+      function showEnd(result) {
+        const texts = {
+          success: {
+            title: 'Отличная смена',
+            text: 'Ты справился с наплывом студентов и держал ритм кафе.'
+          },
+          mid: {
+            title: 'Неплохо',
+            text: 'Поток был плотный, но ты выдержал темп.'
+          },
+          fail: {
+            title: 'Смена вышла нервной',
+            text: 'Сегодня кофейный поток оказался быстрее тебя.'
+          }
+        };
+        const key = result.success ? 'success' : (result.rating === 2 ? 'mid' : 'fail');
+        els.endTitle.textContent = texts[key].title;
+        els.endText.textContent = texts[key].text;
+        els.finalScore.textContent = String(result.score);
+        els.finalRating.textContent = String(result.rating) + '★';
+        els.finalHits.textContent = String(result.meta.hits);
+        els.finalMisses.textContent = String(result.meta.misses);
+        els.successMeter.style.transform = 'scaleX(' + clamp(result.score / Math.max(1, result.meta.targetScore * 1.2), 0.08, 1) + ')';
+        els.endOverlay.classList.remove('hidden');
+        state.lastResult = result;
+      }
+
+      function startGame() {
+        clearItems();
+        state.running = true;
+        state.startedAt = performance.now();
+        state.elapsedMs = 0;
+        state.score = 0;
+        state.hits = 0;
+        state.misses = 0;
+        state.falseHits = 0;
+        state.spawnTimer = 0;
+        state.lastFrame = 0;
+        state.sent = false;
+        els.startOverlay.classList.add('hidden');
+        els.endOverlay.classList.add('hidden');
+        updateHud();
+        state.animationFrame = requestAnimationFrame(loop);
+      }
+
+      function sendResult(result) {
+        if (!result) result = buildResult();
+        if (state.sent) return;
+        state.sent = true;
+        window.parent.postMessage(result, '*');
+      }
+
+      function cancelGame() {
+        window.parent.postMessage({
+          type: 'gameResult',
+          gameId: state.config.gameId,
+          difficulty: state.config.difficulty,
+          success: false,
+          cancelled: true,
+          score: 0,
+          rating: 1,
+          durationMs: 0,
+          meta: { hits: 0, misses: 0, falseHits: 0, targetScore: state.config.targetScore }
+        }, '*');
+      }
+
+      function handleGameInit(data) {
+        state.config = buildConfig(data || parseQuery());
+        applyConfigView();
+      }
+
+      window.addEventListener('message', function (event) {
+        if (!event || !event.data || typeof event.data !== 'object') return;
+        if (event.data.type === 'gameInit') {
+          handleGameInit(event.data);
+        }
+      });
+
+      els.startBtn.addEventListener('click', startGame);
+      els.cancelBtn.addEventListener('click', cancelGame);
+      els.restartBtn.addEventListener('click', startGame);
+      els.sendResultBtn.addEventListener('click', function () {
+        sendResult(state.lastResult);
+      });
+
+      
+
+      handleGameInit(parseQuery());
+      window.parent.postMessage({
+        type: 'gameReady',
+        gameId: state.config.gameId,
+        supports: ['difficulty', 'result']
+      }, '*');
+    })();
+  </script>
+</body>
+</html>

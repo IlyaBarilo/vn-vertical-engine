@@ -611,6 +611,7 @@ var state = {
   waitingNext: false,
   // Флаг: открыта ли мини-игра
   inGame: false,
+  currentGame: null,
   lastNextAt: 0,
   nextLocked: false
 };
@@ -1227,6 +1228,10 @@ function executeAction(action) {
       }
 
       return true;
+
+    case "game":
+      openGame(action);
+      return "async";
 
     case "text":
       console.log('[ENGINE TEXT] Показываю текст, возвращаю true');
@@ -1932,54 +1937,82 @@ function hideChoices() {
 // =========================================================
 
 function openGame(action) {
-  // action: { id, src, onResult }
-  if (!action || !action.src) return;
+  if (!action || !action.src) {
+    console.warn('[GAME] openGame: missing action.src', action);
+    return;
+  }
 
   state.inGame = true;
+  state.currentGame = {
+    gameId: action.gameId || 'game',
+    resultVar: action.resultVar || null,
+    params: action.params || {}
+  };
+
   elGameModal.classList.remove("hidden");
 
   // Загружаем игру в iframe
   elGameFrame.src = action.src;
 
-  // Сохраним "обработчик" результата в state
-  state.currentGame = {
-    id: action.id || "game",
-    onResult: action.onResult || null
+  // После загрузки iframe отправляем в игру все named params
+  elGameFrame.onload = function () {
+    if (!state.currentGame) return;
+
+    var payload = {
+      type: 'gameInit',
+      gameId: state.currentGame.gameId
+    };
+
+    var params = state.currentGame.params || {};
+    for (var key in params) {
+      if (Object.prototype.hasOwnProperty.call(params, key)) {
+        payload[key] = params[key];
+      }
+    }
+
+    try {
+      elGameFrame.contentWindow.postMessage(payload, '*');
+      console.log('[GAME] gameInit sent:', payload);
+    } catch (e) {
+      console.error('[GAME] failed to send gameInit', e);
+    }
   };
 }
 
 function closeGame(resultData) {
-  // resultData может быть null или объектом { type:'gameResult', gameId, score, ... }
-
   // закрываем iframe и модалку
   closeGameFrameVisualOnly();
   state.inGame = false;
 
-  // если результат пришёл — обработаем
-  if (resultData && state.currentGame && state.currentGame.onResult) {
-    var onResult = state.currentGame.onResult;
+  // Сохраняем только result
+  if (
+    resultData &&
+    state.currentGame &&
+    state.currentGame.resultVar
+  ) {
+    var resultValue = 0;
 
-    // Пример onResult:
-    // { setKey:"quizScore", from:"score", goto:"afterQuiz" }
-    if (onResult.setKey) {
-      var fromKey = onResult.from || "score";
-      state.vars[onResult.setKey] = resultData[fromKey];
+    if (typeof resultData.result === 'number') {
+      resultValue = resultData.result;
+    } else if (!isNaN(Number(resultData.result))) {
+      resultValue = Number(resultData.result);
     }
-    if (onResult.goto) {
-      gotoScene(onResult.goto);
-    }
+
+    state.vars[state.currentGame.resultVar] = resultValue;
+    console.log('[GAME] result saved:', state.currentGame.resultVar, '=', resultValue);
   }
 
   state.currentGame = null;
 
   // продолжаем выполнение
   state.waitingNext = false;
+  state.nextLocked = false;
   runCurrent();
 }
 
 function closeGameFrameVisualOnly() {
   elGameModal.classList.add("hidden");
-  // "глушим" iframe (чтобы игра остановилась)
+  elGameFrame.onload = null;
   elGameFrame.src = "about:blank";
 }
 

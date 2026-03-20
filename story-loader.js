@@ -126,7 +126,8 @@
       assets: {
         backgrounds: {},
         characters: {},
-        audio: {}
+        audio: {},
+        games: {}
       },
       audioSettings: {
         masterVolume: 0.2,
@@ -137,7 +138,7 @@
     };
 
     let currentScene = null;
-    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'scene'
+    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'game', 'var', 'scene'
     let lineNumber = 0;
 
     const lines = text.split(/\r?\n/);
@@ -185,6 +186,11 @@
         continue;
       }
 
+      if (/^\s*\[game\]\s*$/i.test(line)) {
+        currentSection = 'game';
+        continue;
+      }
+
       if (/^\s*\[var\]\s*$/i.test(line)) {
         currentSection = 'var';
         continue;
@@ -215,6 +221,9 @@
           break;
         case 'audio':
           parseAssetLine(lineNumber, line, 'audio', story);
+          break;
+        case 'game':
+          parseAssetLine(lineNumber, line, 'games', story);
           break;
         case 'var':
           parseVarLine(lineNumber, line, story);
@@ -441,6 +450,93 @@
 
     story.vars[key] = rawValue;
   }
+
+
+
+
+function parseActionParams(paramTokens) {
+  var params = {};
+
+  for (var i = 0; i < paramTokens.length; i++) {
+    var token = String(paramTokens[i] || "").trim();
+    if (!token) continue;
+
+    var eqIndex = token.indexOf('=');
+    if (eqIndex <= 0) continue;
+
+    var key = token.slice(0, eqIndex).trim();
+    var rawValue = token.slice(eqIndex + 1).trim();
+
+    if (!key) continue;
+
+    if (
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+    ) {
+      rawValue = rawValue.slice(1, -1);
+    }
+
+    if (rawValue === 'true') {
+      params[key] = true;
+      continue;
+    }
+
+    if (rawValue === 'false') {
+      params[key] = false;
+      continue;
+    }
+
+    if (rawValue !== '' && !isNaN(Number(rawValue))) {
+      params[key] = Number(rawValue);
+      continue;
+    }
+
+    params[key] = rawValue;
+  }
+
+  return params;
+}
+
+function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
+  var tokens = cleanLine.split(/\s+/);
+  if (tokens.length < 2) {
+    addParseError(lineNumber, line, 'The game command must contain the game ID', true);
+    return;
+  }
+
+  var gameId = tokens[1];
+
+  if (!story.assets.games || !story.assets.games[gameId]) {
+    addParseError(lineNumber, line, 'Game "' + gameId + '" is not declared in [game]', true);
+    return;
+  }
+
+  var params = parseActionParams(tokens.slice(2));
+
+  if (!Object.prototype.hasOwnProperty.call(params, 'result')) {
+    addParseError(lineNumber, line, 'The game command must contain result=<varName>', true);
+    return;
+  }
+
+  var resultVar = String(params.result || '').trim();
+  if (!resultVar) {
+    addParseError(lineNumber, line, 'The result variable in game command cannot be empty', true);
+    return;
+  }
+
+  delete params.result;
+
+  currentScene.actions.push({
+    type: 'game',
+    gameId: gameId,
+    src: story.assets.games[gameId],
+    resultVar: resultVar,
+    params: params
+  });
+}
+
+
+
 
   // Парсинг метаданных
   function parseMetaLine(line, story) {
@@ -761,6 +857,16 @@
         type: 'set',
         expression: expression
       });
+      return;
+    }
+
+    if (cleanLine.startsWith('game ')) {
+      if (!currentScene) {
+        addParseError(lineNumber, line, 'The game command is used outside of a scene', true);
+        return;
+      }
+
+      parseGameAction(lineNumber, line, cleanLine, story, currentScene);
       return;
     }
 
