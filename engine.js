@@ -630,7 +630,8 @@ var audio = {
 };
 
 var failedAssets = {
-  audio: Object.create(null)
+  audio: Object.create(null),
+  images: Object.create(null)
 };
 
 function normalizeAssetUrl(url) {
@@ -1423,11 +1424,41 @@ function gotoScene(sceneId) {
 
 function setBackground(src) {
   if (!src) return;
-  elBg.src = src;
+  
+  var normalizedSrc = normalizeAssetUrl(src);
+
+  if (failedAssets.images[normalizedSrc]) {
+    if (!failedAssets.images[normalizedSrc + "_logged"]) {
+      console.warn('[IMG] skip failed background src:', normalizedSrc);
+      failedAssets.images[normalizedSrc + "_logged"] = true;
+    }
+  return;
+}
+
+  elBg.onerror = null;
+
+  elBg.onerror = function() {
+    var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
+    badSrc = normalizeAssetUrl(badSrc);
+
+    console.warn('[IMG] background load error:', badSrc);
+
+    if (badSrc) {
+      failedAssets.images[badSrc] = true;
+    }
+
+    elBg.onerror = null;
+    elBg.removeAttribute('src');
+
+    // ДОБАВИТЬ:
+    elBg.src = ""; // ← сброс окончательный
+  };
+
+  elBg.src = normalizedSrc;
   
   // Обновляем размытый фон тем же изображением
   if (typeof updateBlurBackground === 'function') {
-    updateBlurBackground(src);
+    updateBlurBackground(normalizedSrc);
   }
   
   // Убираем принудительное применение стилей через JS
@@ -1466,6 +1497,23 @@ function setCharacter(src, pos, charId, done) {
 
   const seq = ++__charSeq;
   __activeCharSeq = seq;
+
+  var normalizedSrc = normalizeAssetUrl(src);
+
+  if (failedAssets.images[normalizedSrc]) {
+    if (!failedAssets.images[normalizedSrc + "_logged"]) {
+      console.warn('[CHAR FLOW] skip failed character src', {
+        src: normalizedSrc,
+        charId: charId
+      });
+      failedAssets.images[normalizedSrc + "_logged"] = true;
+    }
+
+    if (done) {
+      setTimeout(done, 0);
+    }
+    return;
+  }
 
   console.log('[CHAR FLOW] setCharacter:start', {
     seq,
@@ -1518,20 +1566,20 @@ function setCharacter(src, pos, charId, done) {
   const currentCharId = elChar.dataset.charId;
 
   // Если это тот же персонаж с той же эмоцией и он уже видим
-  if (currentSrc === src && !elChar.classList.contains('hidden')) {
+  if (currentSrc === normalizedSrc && !elChar.classList.contains('hidden')) {
     console.log('[Engine setCharacter] Same image already visible, skipping');
     if (done) done();
     return;
   }
 
   // Если это тот же персонаж, но с другой эмоцией - показываем новую эмоцию без перезагрузки
-  if (currentCharId === charId && currentSrc !== src && !elChar.classList.contains('hidden')) {
+  if (currentCharId === charId && currentSrc !== normalizedSrc && !elChar.classList.contains('hidden')) {
     console.log('[Engine setCharacter] Same character, changing emotion');
     
     // Просто меняем src, не скрывая персонажа
     elChar.onload = function() {
 
-      console.log('[Engine setCharacter] Emotion changed successfully:', src);
+      console.log('[Engine setCharacter] Emotion changed successfully:', normalizedSrc);
       console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
       adjustCharacterScale();
       if (done) {
@@ -1542,13 +1590,20 @@ function setCharacter(src, pos, charId, done) {
     };
     
     elChar.onerror = function() {
-      console.log('[Engine setCharacter] Failed to load new emotion:', src);
+      var badSrc = normalizeAssetUrl(elChar.currentSrc || elChar.src || normalizedSrc);
+
+      console.log('[Engine setCharacter] Failed to load new emotion:', normalizedSrc);
       console.log('[Engine setCharacter] Full URL:', elChar.src);
       console.log('[Engine setCharacter] Error event:', arguments);
+
+      if (badSrc) {
+        failedAssets.images[badSrc] = true;
+      }
+
       if (done) done();
     };
     
-    elChar.src = src;
+    elChar.src = normalizedSrc;
     return; // Не продолжаем в основной код, так как уже обработали
   }
   // ===== =====
@@ -1618,28 +1673,32 @@ function setCharacter(src, pos, charId, done) {
   };
 
   elChar.onerror = function() {
-    console.log('[Engine setCharacter] Image failed to load:', src);
+    var badSrc = normalizeAssetUrl(elChar.currentSrc || elChar.src || normalizedSrc);
+
+    console.log('[Engine setCharacter] Image failed to load:', normalizedSrc);
     console.log('[Engine setCharacter] Full URL:', elChar.src);
     console.log('[Engine setCharacter] Error event:', arguments);
-    
-    console.log('[Engine setCharacter] Image failed to load:', src);
 
     console.log('[CHAR FLOW] onerror', {
       seq,
       activeSeq: __activeCharSeq,
-      src,
+      src: normalizedSrc,
       domSrc: elChar.currentSrc || elChar.src
     });
+
+    if (badSrc) {
+      failedAssets.images[badSrc] = true;
+    }
 
     if (seq !== __activeCharSeq) {
       return;
     }
-    
-    // В случае ошибки всё равно пытаемся показать (может быть битая ссылка)
-    elChar.classList.remove("hidden");
-    adjustCharacterScale();
-    if (done) done();
 
+    elChar.classList.add("hidden");
+    elChar.removeAttribute('src');
+    elChar.removeAttribute('data-char-id');
+
+    if (done) done();
   };
 
   if (seq !== __activeCharSeq) {
@@ -1650,8 +1709,8 @@ function setCharacter(src, pos, charId, done) {
     });
   }
 
-  console.log('[Engine setCharacter] Setting src:', src);
-  elChar.src = src;
+  console.log('[Engine setCharacter] Setting src:', normalizedSrc);
+  elChar.src = normalizedSrc;
 }
 
 function showDialog(name, text, color) {
@@ -2031,23 +2090,6 @@ function resumeBgmIfNeeded(reason) {
   }
 }
 
-function resumeBgmIfNeeded() {
-  if (!audio || !audio.bgm) return;
-  if (audio.muted) return;
-  if (!audio.bgm.src) return;
-
-  try {
-    var p = audio.bgm.play();
-    if (p && typeof p.catch === "function") {
-      p.catch(function (err) {
-        console.log("[AUDIO] resumeBgmIfNeeded blocked:", err);
-      });
-    }
-  } catch (e) {
-    console.log("[AUDIO] resumeBgmIfNeeded exception:", e);
-  }
-}
-
 const DEFAULT_BGM_VOLUME = 0.2;
 
 function playBgm(src, loop, vol, fadeMs) {
@@ -2064,7 +2106,9 @@ function playBgm(src, loop, vol, fadeMs) {
 
   var normalizedSrc = normalizeAssetUrl(src);
 
-  if (failedAssets.audio[normalizedSrc]) {
+  var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
+
+  if (failedAssets.audio[normalizedSrc] || failedAssets.audio[currentSrc]) { 
     console.warn('[AUDIO] skip failed bgm src:', normalizedSrc);
     return;
   }
@@ -2225,6 +2269,12 @@ function resolveAsset(ref, charId, emotion) {
       console.log('[Engine resolveAsset] Found image path:', imagePath);
       
       if (imagePath) {
+        var normalizedImagePath = normalizeAssetUrl(imagePath);
+        if (failedAssets.images[normalizedImagePath]) {
+          console.log('[Engine resolveAsset] Character image marked as failed:', normalizedImagePath);
+          return "";
+        }
+
         console.log('[Engine resolveAsset] Returning character path:', imagePath);
         return imagePath;
       } else {
@@ -2280,8 +2330,17 @@ function resolveAsset(ref, charId, emotion) {
       return "";
     }
     console.log('[Engine resolveAsset] Available backgrounds:', Object.keys(STORY.assets.backgrounds));
+    
     const result = STORY.assets.backgrounds[key];
     console.log('[Engine resolveAsset] Found background:', result);
+
+    if (result) {
+      var normalizedBg = normalizeAssetUrl(result);
+      if (failedAssets.images[normalizedBg]) {
+        console.log('[Engine resolveAsset] Background marked as failed:', normalizedBg);
+        return "";
+      }
+    }
     return result || "";
   }
   
