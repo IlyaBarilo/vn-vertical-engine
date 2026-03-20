@@ -629,6 +629,19 @@ var audio = {
   fadeTimer: null
 };
 
+var failedAssets = {
+  audio: Object.create(null)
+};
+
+function normalizeAssetUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url, window.location.href).href;
+  } catch (e) {
+    return String(url);
+  }
+}
+
 // Чтобы музыка не включалась слишком громко при старте
 audio.bgm.loop = true;
 
@@ -648,8 +661,20 @@ audio.bgm.addEventListener('ended', function () {
 });
 
 audio.bgm.addEventListener('error', function () {
-  console.log('[AUDIO EVENT] bgm error', audio.bgm.error);
+  var badSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
+
+  console.log('[AUDIO EVENT] bgm error', audio.bgm.error, badSrc);
   logAudioState('event: error');
+
+  if (badSrc) {
+    failedAssets.audio[badSrc] = true;
+  }
+
+  try {
+    audio.bgm.pause();
+    audio.bgm.removeAttribute('src');
+    audio.bgm.load();
+  } catch (e) {}
 });
 
 audio.bgm.addEventListener('canplay', function () {
@@ -1982,6 +2007,12 @@ function resumeBgmIfNeeded(reason) {
     return;
   }
 
+  var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
+  if (currentSrc && failedAssets.audio[currentSrc]) {
+    console.log('[AUDIO] resume skipped: failed src', currentSrc);
+    return;
+  }
+
   try {
     var p = audio.bgm.play();
     console.log('[AUDIO] resume play() called, reason =', reason);
@@ -2031,12 +2062,19 @@ function playBgm(src, loop, vol, fadeMs) {
 
   if (!src) return;
 
+  var normalizedSrc = normalizeAssetUrl(src);
+
+  if (failedAssets.audio[normalizedSrc]) {
+    console.warn('[AUDIO] skip failed bgm src:', normalizedSrc);
+    return;
+  }
+
   audio.bgm.loop = loop !== false; // по умолчанию true
   audio.currentBgmVolume = clamp((typeof vol === "number" ? vol : DEFAULT_BGM_VOLUME), 0, 1);
   console.log('[AUDIO] playBgm currentBgmVolume set to', audio.currentBgmVolume);
 
   // Если тот же трек — просто обновим громкость/loop
-  if (audio.bgm.src && endsWith(audio.bgm.src, src)) {
+  if (audio.bgm.src && endsWith(audio.bgm.src, normalizedSrc)) {
     console.log('[AUDIO] playBgm same track detected');
     applyAudioSettings();
 
@@ -2052,14 +2090,14 @@ function playBgm(src, loop, vol, fadeMs) {
 
   // Плавная смена (по желанию)
   if (fadeMs && fadeMs > 0 && !audio.muted) {
-    crossfadeToBgm(src, fadeMs);
+    crossfadeToBgm(normalizedSrc, fadeMs);
     return;
   }
 
   // Быстрая смена
   try {
     audio.bgm.pause();
-    audio.bgm.src = src;
+    audio.bgm.src = normalizedSrc;
     audio.bgm.currentTime = 0;
     applyAudioSettings();
     // В некоторых окружениях автозапуск может быть заблокирован до первого клика.
