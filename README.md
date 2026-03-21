@@ -131,7 +131,7 @@ This engine is suitable for:
              ├── backgrounds/
              ├── characters/
              ├── audio/
-             └── minigames/
+             └── games/
 
 ---
 
@@ -245,7 +245,7 @@ Narrator:
 
 ---
 
-## 🎮 Mini-games (in progress)
+## 🎮 Mini-games
 
 The engine supports embedding mini-games via **iframe**.
 
