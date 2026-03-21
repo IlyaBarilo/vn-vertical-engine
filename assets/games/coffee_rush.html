@@ -608,12 +608,15 @@
 
       function buildResult() {
         const cfg = state.config;
+        const isWin = state.score >= cfg.targetScore;
         const rating = getRating(state.score, cfg.targetScore);
+
         return {
           type: 'gameResult',
           gameId: cfg.gameId,
           difficulty: cfg.difficulty,
-          success: state.score >= cfg.targetScore,
+          result: isWin ? 1 : 0,
+          success: isWin,
           score: state.score,
           rating,
           durationMs: Math.min(cfg.durationMs, Math.round(state.elapsedMs || cfg.durationMs)),
@@ -690,6 +693,7 @@
           type: 'gameResult',
           gameId: state.config.gameId,
           difficulty: state.config.difficulty,
+          result: 0,
           success: false,
           cancelled: true,
           score: 0,

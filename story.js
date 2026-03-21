@@ -82,11 +82,10 @@ bgm bgmDay loop
 
 
 # Проверка работы игры
-# game gameCoffeeRush difficulty=3 result=coffee
+# game gameCoffeeRush difficulty=1 result=coffee x=1 y=100
+# anna: "coffee={coffee}"
 # if coffee == 1 -> cafeGood
 # if coffee == 0 -> cafeBad
-
-
 
 
 show anna neutral
