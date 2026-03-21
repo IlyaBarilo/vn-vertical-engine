@@ -57,8 +57,16 @@ No setup. No dependencies. Just open `index.html` and start.
 -   💬 dialogue system
 -   🔀 **branching storylines**
 -   🎵 background music support
--   🎮 ability to embed **mini-games via iframe** _(in progress)_
 -   📊 built-in **resource loading statistics**
+-   📘 **Script & Game Specification:** [SPECIFICATION.md](SPECIFICATION.md)
+
+---
+
+## 📘 Specification
+
+Full scripting and mini-game integration specification:
+
+👉 [SPECIFICATION.md](SPECIFICATION.md)
 
 ---
 
@@ -125,6 +133,7 @@ This engine is suitable for:
     │
     ├── README.md
     ├── LICENSE
+    ├── SPECIFICATION.md   ← scripting & mini-game specification
     │
     ├── lib/
     └── assets/
@@ -202,6 +211,25 @@ menu
 
 ---
 
+## 📘 Script Specification
+
+The full scripting language specification is available in:
+
+👉 [SPECIFICATION.md](SPECIFICATION.md)
+
+This document describes:
+- all script sections
+- command syntax
+- variables and logic
+- mini-game integration
+- strict rules for AI-generated games
+
+If you are:
+- writing a story → read this first
+- building a mini-game → follow the strict contract inside
+
+---
+
 ## 🎬 Core Commands
 
 ### Scene
@@ -247,9 +275,17 @@ Narrator:
 
 ## 🎮 Mini-games
 
-The engine supports embedding mini-games via **iframe**.
+The engine supports embedding mini-games via iframe.
 
-This allows integrating any HTML-based game directly into the story.
+⚠️ Important:
+Mini-games must follow the strict communication protocol described in:
+
+👉 [SPECIFICATION.md](SPECIFICATION.md)
+
+This includes:
+- initialization via `gameInit`
+- returning results via `gameResult`
+- strict rules required for compatibility
 
 ---
 
