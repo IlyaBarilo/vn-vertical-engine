@@ -72,6 +72,7 @@ jobs:
           mkdir -p "build/$APP_NAME/assets/backgrounds"
           mkdir -p "build/$APP_NAME/assets/characters"
           mkdir -p "build/$APP_NAME/assets/audio"
+          mkdir -p "build/$APP_NAME/assets/games"
           mkdir -p "build/$APP_NAME/lib"
 
           # Копируем основные файлы проекта
@@ -81,6 +82,7 @@ jobs:
           [ -f story.js ] && cp story.js "build/$APP_NAME/"
           [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
+          [ -f SPECIFICATION.md ] && cp SPECIFICATION.md "build/$APP_NAME/"
           [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
           [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
@@ -110,6 +112,11 @@ jobs:
               -iname "*.mp3" -o \
               -iname "*.wav" \
             \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
+          fi
+
+          # Копируем мини-игры
+          if [ -d assets/games ]; then
+            find assets/games -type f -iname "*.html" -exec cp {} "build/$APP_NAME/assets/games/" \;
           fi
 
       - name: Prepare site build
