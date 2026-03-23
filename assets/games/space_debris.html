@@ -1,0 +1,930 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Уклонение от мусора</title>
+    <style>
+        :root {
+            --scale: 1;
+            --safe-pad: calc(18px * var(--scale));
+            --hud-top: calc(20px * var(--scale));
+            --hud-right: calc(20px * var(--scale));
+            --hud-font: calc(30px * var(--scale));
+            --overlay-pad: calc(42px * var(--scale));
+            --title-font: calc(42px * var(--scale));
+            --text-font: calc(22px * var(--scale));
+            --btn-font: calc(24px * var(--scale));
+            --btn-pad-y: calc(18px * var(--scale));
+            --btn-pad-x: calc(18px * var(--scale));
+            --btn-radius: calc(16px * var(--scale));
+            --btn-gap: calc(18px * var(--scale));
+            --joy-size: calc(150px * var(--scale));
+            --joy-knob-size: calc(62px * var(--scale));
+            --joy-border: calc(3px * var(--scale));
+            --drag-top: calc(-42px * var(--scale));
+            --drag-font: calc(16px * var(--scale));
+            --drag-pad-y: calc(8px * var(--scale));
+            --drag-pad-x: calc(14px * var(--scale));
+            --drag-radius: calc(18px * var(--scale));
+            --shadow-big: 0 calc(4px * var(--scale)) calc(8px * var(--scale)) rgba(0,0,0,0.35);
+            --shadow-small: 0 calc(2px * var(--scale)) calc(5px * var(--scale)) rgba(0,0,0,0.5);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            text-align: center;
+            padding: var(--overlay-pad);
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 {
+            font-size: max(calc(24px * var(--scale)), var(--title-font));
+            margin-bottom: calc(20px * var(--scale));
+            color: #4da6ff;
+        }
+
+        p {
+            font-size: max(calc(14px * var(--scale)), var(--text-font));
+            margin-bottom: calc(18px * var(--scale));
+            max-width: min(92vw, calc(620px * var(--scale)));
+            line-height: 1.5;
+            color: #ddd;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--btn-gap);
+            width: 100%;
+            max-width: min(92vw, calc(340px * var(--scale)));
+        }
+
+        button {
+            background: #4da6ff;
+            color: #000;
+            border: none;
+            padding: var(--btn-pad-y) var(--btn-pad-x);
+            font-size: max(calc(16px * var(--scale)), var(--btn-font));
+            border-radius: var(--btn-radius);
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: var(--shadow-big);
+            min-height: calc(64px * var(--scale));
+        }
+
+        button:active {
+            transform: translateY(calc(2px * var(--scale)));
+            box-shadow: 0 calc(2px * var(--scale)) calc(4px * var(--scale)) rgba(0,0,0,0.3);
+        }
+
+        button.danger { background: #e74c3c; color: white; }
+        button.success { background: #2ecc71; color: white; }
+
+        #hud {
+            position: absolute;
+            top: var(--hud-top);
+            right: var(--hud-right);
+            font-size: max(calc(18px * var(--scale)), var(--hud-font));
+            color: white;
+            z-index: 5;
+            font-weight: bold;
+            text-shadow: calc(2px * var(--scale)) calc(2px * var(--scale)) calc(4px * var(--scale)) rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+
+        #joystick-container {
+            position: absolute;
+            bottom: 40%;
+            right: 2%;
+            width: var(--joy-size);
+            height: var(--joy-size);
+            z-index: 20;
+        }
+
+        #joystick-base {
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.1);
+            border: var(--joy-border) solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #joystick-knob {
+            width: var(--joy-knob-size);
+            height: var(--joy-knob-size);
+            background: rgba(77, 166, 255, 0.8);
+            border-radius: 50%;
+            position: absolute;
+            pointer-events: none;
+            box-shadow: 0 0 calc(12px * var(--scale)) rgba(77,166,255,0.5);
+            transition: transform 0.05s ease-out;
+        }
+
+        #drag-handle {
+            position: absolute;
+            top: var(--drag-top);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.25);
+            padding: var(--drag-pad-y) var(--drag-pad-x);
+            border-radius: var(--drag-radius);
+            font-size: max(calc(11px * var(--scale)), var(--drag-font));
+            color: white;
+            cursor: grab;
+            pointer-events: auto;
+            white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.5);
+            box-shadow: var(--shadow-small);
+        }
+
+        #drag-handle:active {
+            cursor: grabbing;
+            background: rgba(255,255,255,0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud">⏱️ 30</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="joystick-container">
+        <div id="drag-handle">✥ Переместить</div>
+        <div id="joystick-base">
+            <div id="joystick-knob"></div>
+        </div>
+    </div>
+
+    <div id="screen-start" class="overlay">
+        <h1>Космический Мусор</h1>
+        <p>Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора.</p>
+        <p>Спутник двигается только <b>вверх и вниз</b>.<br> Избегайте столкновений.</p>
+        <p style="color: #f39c12;">💡 Круг управления можно перетащить за ярлык «Переместить».</p>
+        <div class="btn-group">
+            <button onclick="startGameFlow()">Начать полёт</button>
+        </div>
+    </div>
+
+    <div id="screen-lose" class="overlay hidden">
+        <h1 style="color: #e74c3c;">Столкновение!</h1>
+        <p>Спутник получил критические повреждения от космического мусора.</p>
+        <div class="btn-group">
+            <button onclick="startGameFlow()">Повторить</button>
+            <button class="danger" onclick="finishGame(0)">Завершить</button>
+        </div>
+    </div>
+
+    <div id="screen-win" class="overlay hidden">
+        <h1 style="color: #2ecc71;">Успех!</h1>
+        <p>Спутник благополучно преодолел опасный участок орбиты.</p>
+        <div class="btn-group">
+            <button class="success" onclick="finishGame(1)">Завершить</button>
+        </div>
+    </div>
+
+<script>
+    // ==========================================
+    // ГЛОБАЛЬНЫЙ МАСШТАБ И РАЗМЕРЫ ОБЪЕКТОВ
+    // Все игровые объекты ниже автоматически домножаются
+    // на общий scale интерфейса.
+    // ==========================================
+    const SCALE_CONFIG = {
+        baseWidth: 810,
+        baseHeight: 1440,
+        globalObjectScale: 1.0,
+
+        // Отдельные множители размеров объектов в космосе
+        // Можно менять независимо, но они всё равно подчиняются общему scale.
+        satelliteSize: 1.0,
+        debrisSize: 1.0,
+        starSize: 1.0
+    };
+
+    // ==========================================
+    // НАСТРОЙКИ ИГРЫ
+    // ==========================================
+    const CONFIG = {
+        totalTime: 30,
+        slowPhaseTime: 3,
+        rampUpTime: 10,
+        stopSpawningTime: 26,
+
+        // Глобальные множители сложности и скорости
+        speedMultiplier: 1.0,
+        difficultyBase: 1.0,
+
+        satellite: {
+            baseRadius: 40,
+            xPos: 0.08,
+            acceleration: 0.04,
+            deceleration: 0.02,
+            maxSpeed: 0.005, // 0.015
+            moveSpeedCoef: 0.22 // 0.72
+        },
+
+        debris: {
+            spawnRateMin: 600,
+            spawnRateMax: 1000,
+            baseSpeedX: 0.0003,
+            speedVarX: 0.0002,
+            // Максимальная горизонтальная скорость мусора.
+            // ИМЕННО ЭТО значение ограничивает реальную скорость объекта на экране.
+            // Оно задаётся от сложности через maxSpeedByDifficulty.
+            // Единица измерения: доля ширины экрана за 1 мс.
+            maxSpeedX: 0.0011,
+            maxSpeedByDifficulty: {
+                1: 0.00075,
+                2: 0.0009,
+                3: 0.0011,
+                4: 0.00125,
+                5: 0.0014
+            },
+            baseSizeMin: 24,
+            baseSizeMax: 64,
+
+            // Какие типы мусора разрешено спавнить.
+            // Чтобы отключить ненужный тип — просто поставь false.
+            enabledTypes: {
+                0: false,  // Двойная солнечная панель --
+                1: true,  // Классический астероид ++
+                2: false,  // Контейнер / бак ++
+                3: false,  // Ломаная обшивка --
+                4: false,  // Крупный неровный камень --
+                5: false,  // Крестообразный модуль ??
+                6: false,  // Обломок корпуса с хвостом --
+                7: false,  // Кольцо / хомут ??
+                8: false,  // Шипастый фрагмент --
+                9: false,  // Компактный блок --
+                10: false, // Антенна с тарелкой ++
+                11: true, // Г-образный каркас ++
+                12: false, // Баллон / топливный бак --
+                13: true  // Пучок тонких стержней ++
+            }
+        },
+
+        stars: {
+            count: 100,
+            speedMultiplier: 0.1,
+            baseSizeMin: 0.8,
+            baseSizeMax: 3.0
+        }
+    };
+
+    let difficulty = 3;
+    let resultSent = false;
+    let receivedGameInit = false;
+    let globalScale = 1;
+
+    function applyDifficultySettings(level) {
+        const normalizedLevel = Math.max(1, Math.min(5, Math.round(Number(level) || 3)));
+        difficulty = normalizedLevel;
+        CONFIG.difficultyBase = 0.4 + (normalizedLevel * 0.2);
+        CONFIG.debris.maxSpeedX = CONFIG.debris.maxSpeedByDifficulty[normalizedLevel] ?? CONFIG.debris.maxSpeedByDifficulty[3];
+    }
+
+    window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "gameInit") return;
+        applyDifficultySettings(event.data.difficulty ?? 3);
+        receivedGameInit = true;
+
+        if (typeof event.data.speedMultiplier === 'number') {
+            CONFIG.speedMultiplier = event.data.speedMultiplier;
+        }
+        if (typeof event.data.moveSpeedCoef === 'number') {
+            CONFIG.satellite.moveSpeedCoef = event.data.moveSpeedCoef;
+        }
+        if (typeof event.data.objectScale === 'number') {
+            SCALE_CONFIG.globalObjectScale = event.data.objectScale;
+        }
+        if (typeof event.data.satelliteScale === 'number') {
+            SCALE_CONFIG.satelliteSize = event.data.satelliteScale;
+        }
+        if (typeof event.data.debrisScale === 'number') {
+            SCALE_CONFIG.debrisSize = event.data.debrisScale;
+        }
+        if (typeof event.data.starScale === 'number') {
+            SCALE_CONFIG.starSize = event.data.starScale;
+        }
+
+        resizeCanvas();
+        initBackground();
+        draw();
+
+        document.getElementById('screen-start').classList.remove('hidden');
+        joyContainer.style.pointerEvents = 'auto';
+    });
+
+    function finishGame(result) {
+        if (resultSent) return;
+        resultSent = true;
+        gameState = 'FINISHED';
+        joyInput = 0;
+        isUsingJoy = false;
+        isDraggingBase = false;
+        joyContainer.style.pointerEvents = 'none';
+
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "gameResult", result: Number.isFinite(result) ? result : 0 }, "*");
+        } else {
+            console.log("Игра завершена, результат: " + result);
+        }
+    }
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const joyContainer = document.getElementById('joystick-container');
+    const dragHandle = document.getElementById('drag-handle');
+    const joyBase = document.getElementById('joystick-base');
+    const joyKnob = document.getElementById('joystick-knob');
+
+    let gameState = 'START';
+    let timeRemaining = CONFIG.totalTime;
+    let timeElapsed = 0;
+    let lastTime = 0;
+
+    let sat = { x: 0, y: 0, vy: 0, targetVy: 0, radius: 0 };
+    let debrisArr = [];
+    let stars = [];
+    let lastSpawnTime = 0;
+
+    function computeScale() {
+        return Math.min(window.innerWidth / SCALE_CONFIG.baseWidth, window.innerHeight / SCALE_CONFIG.baseHeight);
+    }
+
+    function applyScaleVariables() {
+        globalScale = computeScale();
+        document.documentElement.style.setProperty('--scale', globalScale.toFixed(5));
+    }
+
+    function getObjectScale(typeMultiplier = 1) {
+        return globalScale * SCALE_CONFIG.globalObjectScale * typeMultiplier;
+    }
+
+    function resizeCanvas() {
+        applyScaleVariables();
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        sat.radius = CONFIG.satellite.baseRadius * getObjectScale(SCALE_CONFIG.satelliteSize);
+        sat.x = canvas.width * CONFIG.satellite.xPos;
+        if (gameState === 'START') sat.y = canvas.height / 2;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    function initBackground() {
+        stars = [];
+        const starScale = getObjectScale(SCALE_CONFIG.starSize);
+        for (let i = 0; i < CONFIG.stars.count; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: (CONFIG.stars.baseSizeMin + Math.random() * (CONFIG.stars.baseSizeMax - CONFIG.stars.baseSizeMin)) * starScale,
+                speed: (Math.random() * 0.5 + 0.1) * CONFIG.stars.speedMultiplier,
+                blinkRate: Math.random() * 0.05 + 0.01,
+                alpha: Math.random()
+            });
+        }
+    }
+
+    function spawnDebris(currentSpeedMult) {
+        const debrisScale = getObjectScale(SCALE_CONFIG.debrisSize);
+        const size = (CONFIG.debris.baseSizeMin + Math.random() * (CONFIG.debris.baseSizeMax - CONFIG.debris.baseSizeMin)) * debrisScale;
+        const enabledTypes = Object.entries(CONFIG.debris.enabledTypes)
+            .filter(([, enabled]) => enabled)
+            .map(([type]) => Number(type));
+
+        if (!enabledTypes.length) return;
+
+        // Здесь выбирается, КАКОЙ ИМЕННО элемент мусора будет создан.
+        // Чтобы отключить ненужные варианты, редактируй CONFIG.debris.enabledTypes выше.
+        const type = enabledTypes[Math.floor(Math.random() * enabledTypes.length)];
+
+        // Это максимальная скорость мусора на текущей сложности.
+        // Формируется из maxSpeedByDifficulty и применяется как жёсткий лимит.
+        const maxDebrisSpeed = canvas.width * CONFIG.debris.maxSpeedX;
+        const rawSpeed = canvas.width * (CONFIG.debris.baseSpeedX + Math.random() * CONFIG.debris.speedVarX) * currentSpeedMult;
+
+        const d = {
+            x: canvas.width + size,
+            y: Math.random() * (canvas.height - size * 2.5) + size * 1.25,
+            type,
+            size,
+            speed: Math.min(rawSpeed, maxDebrisSpeed),
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.003
+        };
+
+        // ===== TYPE 1: классический астероид =====
+        if (type === 1 || type === 4 || type === 8) {
+            const points = type === 1 ? 6 : (type === 4 ? 7 : 8);
+            const minR = type === 1 ? 0.7 : (type === 4 ? 0.45 : 0.55);
+            const varR = type === 1 ? 0.5 : (type === 4 ? 0.65 : 0.35);
+            d.shape = [];
+            for (let i = 0; i < points; i++) d.shape.push(minR + Math.random() * varR);
+        }
+
+        // ===== TYPE 5: крестообразный модуль =====
+        if (type === 5) {
+            d.panelOffset = 0.18 + Math.random() * 0.18;
+        }
+
+        // ===== TYPE 6: обломок корпуса с хвостом =====
+        if (type === 6) {
+            d.notch = 0.18 + Math.random() * 0.12;
+            d.tail = 0.22 + Math.random() * 0.18;
+        }
+
+        // ===== TYPE 7: кольцо / хомут =====
+        if (type === 7) {
+            d.ringInner = 0.2 + Math.random() * 0.08;
+            d.ringOuter = 0.46 + Math.random() * 0.12;
+        }
+
+        // ===== TYPE 9: компактный блок =====
+        if (type === 9) {
+            d.widthFactor = 0.7 + Math.random() * 0.45;
+            d.heightFactor = 0.4 + Math.random() * 0.3;
+        }
+
+        // ===== TYPE 10: антенна с тарелкой =====
+        if (type === 10) {
+            d.dishRadius = 0.22 + Math.random() * 0.08;
+            d.mastHeight = 0.65 + Math.random() * 0.2;
+        }
+
+        // ===== TYPE 11: Г-образный каркас =====
+        if (type === 11) {
+            d.armLength = 0.55 + Math.random() * 0.22;
+            d.armThickness = 0.12 + Math.random() * 0.05;
+        }
+
+        // ===== TYPE 12: баллон / бак =====
+        if (type === 12) {
+            d.tankWidth = 0.36 + Math.random() * 0.12;
+            d.tankHeight = 0.58 + Math.random() * 0.18;
+        }
+
+        // ===== TYPE 13: пучок тонких стержней =====
+        if (type === 13) {
+            d.rodCount = 3 + Math.floor(Math.random() * 3);
+            d.rodSpread = 0.18 + Math.random() * 0.08;
+        }
+
+        debrisArr.push(d);
+    }
+
+    function hideAllOverlays() {
+        document.getElementById('screen-start').classList.add('hidden');
+        document.getElementById('screen-lose').classList.add('hidden');
+        document.getElementById('screen-win').classList.add('hidden');
+    }
+
+    function startGameFlow() {
+        if (resultSent) return;
+        hideAllOverlays();
+        joyContainer.style.pointerEvents = 'auto';
+
+        timeRemaining = CONFIG.totalTime;
+        timeElapsed = 0;
+        debrisArr = [];
+        sat.vy = 0;
+        sat.targetVy = 0;
+        sat.radius = CONFIG.satellite.baseRadius * getObjectScale(SCALE_CONFIG.satelliteSize);
+        sat.y = canvas.height / 2;
+        lastSpawnTime = performance.now();
+
+        initBackground();
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+        requestAnimationFrame(loop);
+    }
+
+    function loop(timestamp) {
+        if (gameState !== 'PLAYING') return;
+
+        const dt = Math.min(34, timestamp - lastTime);
+        lastTime = timestamp;
+
+        update(dt, timestamp);
+        draw();
+
+        if (gameState === 'PLAYING') {
+            requestAnimationFrame(loop);
+        }
+    }
+
+    function update(dt, timestamp) {
+        const deltaSec = dt / 1000;
+        timeElapsed += deltaSec;
+        timeRemaining -= deltaSec;
+
+        if (timeRemaining <= 0) {
+            timeRemaining = 0;
+            gameState = 'WON';
+            document.getElementById('hud').innerText = `⏱️ 0`;
+            document.getElementById('screen-win').classList.remove('hidden');
+            return;
+        }
+        document.getElementById('hud').innerText = `⏱️ ${Math.ceil(timeRemaining)}`;
+
+        let pacingFactor = 1;
+        if (timeElapsed < CONFIG.slowPhaseTime) {
+            pacingFactor = 0.2;
+        } else if (timeElapsed < CONFIG.rampUpTime) {
+            const t = (timeElapsed - CONFIG.slowPhaseTime) / (CONFIG.rampUpTime - CONFIG.slowPhaseTime);
+            pacingFactor = 0.2 + 0.8 * t;
+        }
+        const currentSpeedMult = pacingFactor * CONFIG.speedMultiplier * CONFIG.difficultyBase;
+
+        sat.targetVy = joyInput * (canvas.height * CONFIG.satellite.maxSpeed * CONFIG.satellite.moveSpeedCoef);
+        const accel = (Math.abs(joyInput) > 0.1) ? CONFIG.satellite.acceleration : CONFIG.satellite.deceleration;
+        sat.vy += (sat.targetVy - sat.vy) * accel;
+        sat.y += sat.vy;
+
+        const satMaxY = canvas.height - sat.radius;
+        const satMinY = sat.radius;
+        if (sat.y > satMaxY) { sat.y = satMaxY; sat.vy = 0; }
+        if (sat.y < satMinY) { sat.y = satMinY; sat.vy = 0; }
+
+        stars.forEach((s) => {
+            s.x -= s.speed * dt;
+            if (s.x < -s.size) {
+                s.x = canvas.width + s.size;
+                s.y = Math.random() * canvas.height;
+            }
+            s.alpha += s.blinkRate;
+            if (s.alpha > 1 || s.alpha < 0) s.blinkRate *= -1;
+        });
+
+        if (timeElapsed < CONFIG.stopSpawningTime) {
+            const clampedMult = Math.min(1, Math.max(0, currentSpeedMult));
+            const spawnDelay = CONFIG.debris.spawnRateMax - (CONFIG.debris.spawnRateMax - CONFIG.debris.spawnRateMin) * clampedMult;
+            if (timestamp - lastSpawnTime > spawnDelay) {
+                spawnDebris(currentSpeedMult);
+                lastSpawnTime = timestamp;
+            }
+        }
+
+        for (let i = debrisArr.length - 1; i >= 0; i--) {
+            const d = debrisArr[i];
+            d.x -= d.speed * dt;
+            d.rotation += d.rotSpeed * dt;
+
+            const dx = sat.x - d.x;
+            const dy = sat.y - d.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < sat.radius + d.size * 0.75) {
+                gameState = 'LOST';
+                document.getElementById('screen-lose').classList.remove('hidden');
+                return;
+            }
+
+            if (d.x < -d.size * 2) debrisArr.splice(i, 1);
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        stars.forEach((s) => {
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, s.alpha)})`;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        debrisArr.forEach((d) => {
+            ctx.save();
+            ctx.translate(d.x, d.y);
+            ctx.rotate(d.rotation);
+            const s = d.size;
+            ctx.lineWidth = Math.max(1, 2 * globalScale);
+
+            if (d.type === 0) {
+                ctx.fillStyle = "#2c3e50";
+                ctx.fillRect(-s, -s/4, s * 2, s / 2);
+                ctx.fillStyle = "#5dade2";
+                ctx.fillRect(-s * 0.9, -s / 4 + 2 * globalScale, s * 0.8, s / 2 - 4 * globalScale);
+                ctx.fillRect(s * 0.1, -s / 4 + 2 * globalScale, s * 0.8, s / 2 - 4 * globalScale);
+                ctx.strokeStyle = "#7f8c8d";
+                ctx.beginPath();
+                ctx.moveTo(0, -s);
+                ctx.lineTo(0, s);
+                ctx.stroke();
+            } else if (d.type === 1) {
+                ctx.fillStyle = "#7f8c8d";
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = i * Math.PI / 3;
+                    const r = s * d.shape[i];
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#555";
+                ctx.beginPath();
+                ctx.arc(-s / 3, -s / 4, s / 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(s / 4, s / 3, s / 6, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (d.type === 2) {
+                ctx.fillStyle = "#d35400";
+                ctx.beginPath();
+                ctx.moveTo(-s / 2, -s / 2);
+                ctx.lineTo(s / 2, -s / 2);
+                ctx.lineTo(s, s / 2);
+                ctx.lineTo(-s, s / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#bdc3c7";
+                ctx.fillRect(-s / 2, -s / 2 - s / 3, s, s / 3);
+            } else if (d.type === 3) {
+                ctx.fillStyle = "#8e9aa5";
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.85, -s * 0.18);
+                ctx.lineTo(s * 0.3, -s * 0.45);
+                ctx.lineTo(s * 0.9, -s * 0.05);
+                ctx.lineTo(s * 0.2, s * 0.48);
+                ctx.lineTo(-s * 0.75, s * 0.25);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#c7d0d9";
+                ctx.fillRect(-s * 0.15, -s * 0.12, s * 0.45, s * 0.18);
+            } else if (d.type === 4) {
+                ctx.fillStyle = "#6f7b86";
+                ctx.beginPath();
+                for (let i = 0; i < 7; i++) {
+                    const angle = i * Math.PI * 2 / 7;
+                    const r = s * d.shape[i];
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = "#aeb6bf";
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.45, -s * 0.25);
+                ctx.lineTo(s * 0.4, s * 0.2);
+                ctx.moveTo(-s * 0.2, s * 0.45);
+                ctx.lineTo(s * 0.28, -s * 0.38);
+                ctx.stroke();
+            } else if (d.type === 5) {
+                ctx.fillStyle = "#566573";
+                ctx.fillRect(-s * 0.7, -s * 0.18, s * 1.4, s * 0.36);
+                ctx.fillStyle = "#85929e";
+                ctx.fillRect(-s * 0.18, -s * 0.55, s * 0.36, s * 1.1);
+                ctx.fillStyle = "#5dade2";
+                ctx.fillRect(-s * 0.95, -s * d.panelOffset, s * 0.45, s * d.panelOffset * 2);
+                ctx.fillRect(s * 0.5, -s * (d.panelOffset + 0.03), s * 0.45, s * (d.panelOffset + 0.03) * 2);
+            } else if (d.type === 6) {
+                ctx.fillStyle = "#7b8a8b";
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.95, -s * 0.16);
+                ctx.lineTo(-s * 0.15, -s * 0.42);
+                ctx.lineTo(s * 0.82, -s * d.notch);
+                ctx.lineTo(s * 0.38, 0);
+                ctx.lineTo(s * 0.88, s * d.tail);
+                ctx.lineTo(-s * 0.12, s * 0.38);
+                ctx.lineTo(-s * 0.98, s * 0.12);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#cfd6db";
+                ctx.fillRect(-s * 0.15, -s * 0.1, s * 0.34, s * 0.2);
+            } else if (d.type === 7) {
+                ctx.strokeStyle = "#9aa4ad";
+                ctx.lineWidth = Math.max(1.5, 4 * globalScale);
+                ctx.beginPath();
+                ctx.arc(0, 0, s * d.ringOuter, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = "#d5d8dc";
+                ctx.beginPath();
+                ctx.arc(0, 0, s * d.ringInner, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#84919c";
+                ctx.fillRect(-s * 0.12, -s * 0.75, s * 0.24, s * 0.3);
+                ctx.fillRect(-s * 0.12, s * 0.45, s * 0.24, s * 0.3);
+            } else if (d.type === 8) {
+                ctx.fillStyle = "#6c7a89";
+                ctx.beginPath();
+                for (let i = 0; i < 8; i++) {
+                    const angle = i * Math.PI * 2 / 8;
+                    const r = s * d.shape[i];
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = "#b9c3cc";
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.55, 0);
+                ctx.lineTo(s * 0.55, 0);
+                ctx.moveTo(0, -s * 0.55);
+                ctx.lineTo(0, s * 0.55);
+                ctx.stroke();
+            } else if (d.type === 9) {
+                ctx.fillStyle = "#5d6d7e";
+                ctx.beginPath();
+                ctx.roundRect(-s * d.widthFactor, -s * d.heightFactor, s * d.widthFactor * 2, s * d.heightFactor * 2, s * 0.18);
+                ctx.fill();
+                ctx.fillStyle = "#aab7c4";
+                ctx.fillRect(-s * 0.18, -s * 0.55, s * 0.36, s * 1.1);
+                ctx.fillRect(-s * 0.55, -s * 0.12, s * 1.1, s * 0.24);
+            } else if (d.type === 10) {
+                ctx.strokeStyle = "#aeb6bf";
+                ctx.beginPath();
+                ctx.moveTo(0, s * 0.15);
+                ctx.lineTo(0, -s * d.mastHeight);
+                ctx.stroke();
+                ctx.fillStyle = "#5dade2";
+                ctx.beginPath();
+                ctx.arc(0, -s * d.mastHeight, s * d.dishRadius, Math.PI, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#85929e";
+                ctx.fillRect(-s * 0.18, s * 0.05, s * 0.36, s * 0.3);
+            } else if (d.type === 11) {
+                ctx.fillStyle = "#9099a2";
+                ctx.fillRect(-s * d.armThickness, -s * 0.75, s * d.armThickness * 2, s * 1.5);
+                ctx.fillRect(-s * d.armThickness, -s * 0.75, s * d.armLength, s * d.armThickness * 2);
+                ctx.fillStyle = "#d6dbdf";
+                ctx.fillRect(s * (d.armLength - 0.12), -s * 0.86, s * 0.24, s * 0.24);
+            } else if (d.type === 12) {
+                ctx.fillStyle = "#7f8c8d";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s * d.tankWidth, s * d.tankHeight, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#cfd6db";
+                ctx.fillRect(-s * 0.12, -s * (d.tankHeight + 0.12), s * 0.24, s * 0.18);
+                ctx.fillRect(-s * 0.12, s * (d.tankHeight - 0.06), s * 0.24, s * 0.18);
+            } else {
+                ctx.strokeStyle = "#bfc9d1";
+                ctx.lineWidth = Math.max(1, 3 * globalScale);
+                for (let i = 0; i < d.rodCount; i++) {
+                    const offset = (i - (d.rodCount - 1) / 2) * s * d.rodSpread;
+                    ctx.beginPath();
+                    ctx.moveTo(-s * 0.75, offset - s * 0.08);
+                    ctx.lineTo(s * 0.75, offset + s * 0.08);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = "#85929e";
+                ctx.beginPath();
+                ctx.arc(0, 0, s * 0.14, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        });
+
+        ctx.save();
+        ctx.translate(sat.x, sat.y);
+        const r = sat.radius;
+        ctx.lineWidth = Math.max(1.5, 2 * globalScale);
+
+        if (Math.abs(sat.vy) > 0.5) {
+            ctx.fillStyle = "#e67e22";
+            ctx.beginPath();
+            const flameSize = r * (Math.random() * 0.5 + 0.6);
+            const mult = (sat.vy < 0) ? 1 : -1;
+            ctx.moveTo(-r/3, r/2 * mult);
+            ctx.lineTo(r/3, r/2 * mult);
+            ctx.lineTo(0, (r/2 + flameSize) * mult);
+            ctx.closePath(); ctx.fill();
+
+            ctx.fillStyle = "#f1c40f";
+            ctx.beginPath();
+            ctx.moveTo(-r/6, r/2 * mult);
+            ctx.lineTo(r/6, r/2 * mult);
+            ctx.lineTo(0, (r/2 + flameSize * 0.6) * mult);
+            ctx.closePath(); ctx.fill();
+        }
+
+        ctx.fillStyle = "#ecf0f1"; ctx.fillRect(-r/2, -r/2, r, r);
+        ctx.fillStyle = "#3498db"; ctx.fillRect(-r, -r/4, r/2, r/2); ctx.fillRect(r/2, -r/4, r/2, r/2);
+        ctx.strokeStyle = "#bdc3c7"; ctx.beginPath(); ctx.moveTo(0, -r/2); ctx.lineTo(0, -r); ctx.stroke();
+        ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.arc(0, -r, r/8, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    let isDraggingBase = false;
+    let dragStartX = 0, dragStartY = 0, initialLeft = 0, initialTop = 0;
+    let isUsingJoy = false;
+    let joyInput = 0;
+
+    function onDragStart(e) {
+        if (resultSent) return;
+        isDraggingBase = true;
+        const point = e.touches ? e.touches[0] : e;
+        dragStartX = point.clientX;
+        dragStartY = point.clientY;
+
+        const rect = joyContainer.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        e.preventDefault();
+    }
+
+    function onDragMove(e) {
+        if (!isDraggingBase || resultSent) return;
+        const point = e.touches ? e.touches[0] : e;
+
+        const newLeft = Math.max(0, Math.min(window.innerWidth - joyContainer.offsetWidth, initialLeft + (point.clientX - dragStartX)));
+        const newTop = Math.max(0, Math.min(window.innerHeight - joyContainer.offsetHeight, initialTop + (point.clientY - dragStartY)));
+
+        joyContainer.style.left = newLeft + 'px';
+        joyContainer.style.top = newTop + 'px';
+        joyContainer.style.right = 'auto';
+        joyContainer.style.bottom = 'auto';
+    }
+
+    function onDragEnd() { isDraggingBase = false; }
+
+    function onJoyStart(e) {
+        if (resultSent || e.target === dragHandle) return;
+        isUsingJoy = true;
+        updateJoyState(e);
+        e.preventDefault();
+    }
+
+    function onJoyMove(e) {
+        if (!isUsingJoy || resultSent) return;
+        updateJoyState(e);
+        e.preventDefault();
+    }
+
+    function onJoyEnd() {
+        isUsingJoy = false;
+        joyInput = 0;
+        joyKnob.style.transform = `translate(0px, 0px)`;
+    }
+
+    function updateJoyState(e) {
+        const point = e.touches ? e.touches[0] : e;
+        const rect = joyBase.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        let dy = point.clientY - centerY;
+        const maxDist = rect.height / 2 - joyKnob.offsetHeight / 2;
+
+        dy = Math.max(-maxDist, Math.min(maxDist, dy));
+        joyKnob.style.transform = `translate(0px, ${dy}px)`;
+        joyInput = maxDist > 0 ? (dy / maxDist) : 0;
+    }
+
+    dragHandle.addEventListener('mousedown', onDragStart);
+    dragHandle.addEventListener('touchstart', onDragStart, { passive: false });
+    joyBase.addEventListener('mousedown', onJoyStart);
+    joyBase.addEventListener('touchstart', onJoyStart, { passive: false });
+
+    window.addEventListener('mousemove', (e) => { if (isDraggingBase) onDragMove(e); if (isUsingJoy) onJoyMove(e); });
+    window.addEventListener('touchmove', (e) => { if (isDraggingBase) onDragMove(e); if (isUsingJoy) onJoyMove(e); }, { passive: false });
+    window.addEventListener('mouseup', () => { onDragEnd(); onJoyEnd(); });
+    window.addEventListener('touchend', () => { onDragEnd(); onJoyEnd(); });
+    window.addEventListener('touchcancel', () => { onDragEnd(); onJoyEnd(); });
+
+    window.addEventListener('error', () => {
+        if (!resultSent) finishGame(0);
+    });
+
+    window.addEventListener('beforeunload', () => {
+        if (!resultSent && receivedGameInit) finishGame(0);
+    });
+
+    applyDifficultySettings(difficulty);
+    resizeCanvas();
+    initBackground();
+    draw();
+</script>
+</body>
+</html>
