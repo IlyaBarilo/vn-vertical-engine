@@ -3622,6 +3622,9 @@ function buildMermaidGraph(story, unreachableList) {
     // массив для хранения ВСЕХ фонов в сцене (в порядке появления)
     var allBgImages = [];   // Массив объектов {src, id, order}
 
+     // игры, использованные в сцене
+    var gameSet = {};
+
     // Инициализируем счетчики связей
     if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
     if (!outgoingEdges[scene.id]) outgoingEdges[scene.id] = 0;
@@ -3634,9 +3637,14 @@ function buildMermaidGraph(story, unreachableList) {
         charSet[act.charId] = true;
       }
       
+      if (act.type === "game" && act.gameId) {
+        gameSet[act.gameId] = true;
+      }
+
       if (act.type === "say") sayCount++;
       if (act.type === "text") textCount++;
       if (act.type === "bgm") bgmCount++;
+      
       
       // ПОДСЧЕТ ФОНОВ И СОХРАНЕНИЕ ВСЕХ ИЗОБРАЖЕНИЙ
       if (act.type === "bg" && act.src) {
@@ -3729,6 +3737,7 @@ function buildMermaidGraph(story, unreachableList) {
     nodes.push({
       id: scene.id,
       characters: keysSorted(charSet),
+      games: keysSorted(gameSet),
       phraseCount: (sayCount + textCount),
       bgmCount: bgmCount,
       bgCount: bgCount, // Общее количество смен фонов
@@ -3787,7 +3796,8 @@ function buildMermaidGraph(story, unreachableList) {
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
     var chars = node.characters.length ? node.characters.join(", ") : "(none)";
-    
+    var games = (node.games && node.games.length) ? node.games : [];
+
     // Формируем многострочную метку - ВАЖНО: порядок элементов
     var label = node.id + "<br/>";
 
@@ -3817,11 +3827,15 @@ function buildMermaidGraph(story, unreachableList) {
     
     // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
     var statsParts = [];
-    
+
     if (chars != '(none)') {
-      statsParts.push("👤" + chars + "\n");
+      statsParts.push("<div>👤 " + chars + "</div>");
     }
-    
+
+    if (games.length > 0) {
+      statsParts.push("<div>🎮 " + games.join(", ") + "</div>");
+    }
+
     // Добавляем счетчики
     var counters = [];
     if (node.bgCount != 0) {
