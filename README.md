@@ -183,15 +183,24 @@ title: Demo Story
 startScene: intro
 
 [bg]
-hall = assets/backgrounds/bg_hall.jpg
+campusHall file=assets/backgrounds/bg_campus_hall.jpg
 
 [char]
-anna image neutral = assets/characters/ch_anna_neutral.png
-anna name = "Anna"
-anna color = #0F0
+anna emotion=neutral image=assets/characters/ch_anna_neutral.png name="Анна" color=#0F0
+anna emotion=smile file=assets/characters/ch_anna.png  # добавление эмоций персонажу anna
+igor emotion=neutral file=assets/characters/ch_igor_neutral.png name="Игорь" color=#F00
+
+igor name="Игорь" image=assets/characters/ch_igor_smile.png  # Если не указана эмоция, то считается neutral
+igor color=#F00  # можно отдельно дополнять значения для персонажа
 
 [audio]
-bgmDay = assets/audio/bgm_day.mp3
+bgmDay file=assets/audio/bgm_campus_day.mp3
+
+[var]
+resultGame = 0
+
+[game]
+gameCoffeeRush file=assets/games/coffee_rush.html result=resultGame
 
 [scene]
 scene intro

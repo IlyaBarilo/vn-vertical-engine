@@ -17,14 +17,14 @@ startScene: intro_01
 [bg]
 # Формат описания для фона:
 # имя_фона = путь_и_название_файла
-campusHall = assets/backgrounds/bg_campus_hall.jpg
-libraryEvening = assets/backgrounds/bg_library_evening.jpg
-branchCafe = assets/backgrounds/bg_campus_cafe.jpg
-branchCafe2 = assets/backgrounds/bg_campus_cafe2.jpg
-branchCafe3 = assets/backgrounds/bg_campus_cafe3.jpg
-branchLab = assets/backgrounds/bg_it_lab.jpg
-branchYard = assets/backgrounds/bg_uni_yard_night.jpg
-branchYardTest = assets/backgrounds/bg_uni_yard_night.jpg
+campusHall file=assets/backgrounds/bg_campus_hall.jpg
+libraryEvening file=assets/backgrounds/bg_library_evening.jpg
+branchCafe file=assets/backgrounds/bg_campus_cafe.jpg
+branchCafe2 file=assets/backgrounds/bg_campus_cafe2.jpg
+branchCafe3 file=assets/backgrounds/bg_campus_cafe3.jpg
+branchLab file=assets/backgrounds/bg_it_lab.jpg
+branchYard file=assets/backgrounds/bg_uni_yard_night.jpg
+branchYardTest file=assets/backgrounds/bg_uni_yard_night.jpg
 
 [char]
 # Формат описания для персонажа:
@@ -33,28 +33,22 @@ branchYardTest = assets/backgrounds/bg_uni_yard_night.jpg
 # - image - изображение персонажа
 # - name - имя персонажа
 # - color - цвет подсветки имени персонажа
-anna image neutral = assets/characters/ch_anna_neutral.png
-anna name = "Анна"
-anna color = #0F0
-igor image smile = assets/characters/ch_igor_smile.png
-igor image neutral = assets/characters/ch_igor_neutralTest.png
-igor name = "Игорь"
-igor color = #F00
-ivan image neutral = assets/characters/ch_ivan_smileTest.png
-ivan name = "Иван"
-ivan color = #060
+anna file=assets/characters/ch_anna_neutral.png name="Анна" color=#0F0  # По умолчанию emotion=neutral
+igor emotion=smile file=assets/characters/ch_igor_smile.png
+igor emotion=neutral file=assets/characters/ch_igor_neutralTest.png name="Игорь" color=#F00
+ivan emotion=neutral file=assets/characters/ch_ivan_smileTest.png name="Иван" color=#060
 
 [audio] 
 # Формат описания для музыки:
 # название_музыки = путь_и_название_файла
-bgmDay = assets/audio/bgm_campus_day.mp3
-# bgmMysteryTest = assets/audio/bgm_library_mystery.mp3
-# sfxClickTest = assets/audio/sfx_button_click.mp3
+bgmDay file=assets/audio/bgm_campus_day.mp3
+# bgmMysteryTest file=assets/audio/bgm_library_mystery.mp3
+# sfxClickTest file=assets/audio/sfx_button_click.mp3
 
 [game]
-gameCoffeeRush = assets/games/coffee_rush.html
-spaceDebris = assets/games/space_debris.html
-gameTestMiss = assets/games/space_debrisTestMiss.html
+gameCoffeeRush file=assets/games/coffee_rush.html
+spaceDebris file=assets/games/space_debris.html
+gameTestMiss file=assets/games/space_debrisTestMiss.html
 
 [var]
 x = 10 # объявление переменных
@@ -92,7 +86,7 @@ bgm bgmDay loop
 # if coffee == 0 -> cafeBad
 
 
-show anna neutral
+show anna  # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
 
 show igor smile

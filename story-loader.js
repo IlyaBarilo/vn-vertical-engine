@@ -110,6 +110,22 @@
   // ПАРСЕР
   // ========================================
 
+  function normalizeAssetsAfterParse(story) {
+    if (!story || !story.assets) return;
+
+    if (!story.assets.backgrounds) story.assets.backgrounds = {};
+    if (!story.assets.characters) story.assets.characters = {};
+    if (!story.assets.audio) story.assets.audio = {};
+    if (!story.assets.games) story.assets.games = {};
+
+    Object.keys(story.assets.characters).forEach(function(charId) {
+      var char = story.assets.characters[charId];
+      if (!char.images) {
+        char.images = {};
+      }
+    });
+  }
+
   function parseStory(text) {
     console.log('[Loader] Начинаем парсинг, длина:', text.length);
     console.log('[Loader] ПЕРВЫЕ 500 символов текста:');
@@ -244,6 +260,8 @@
     if (currentScene) {
       story.scenes.push(currentScene);
     }
+    
+    normalizeAssetsAfterParse(story);
     
     // Устанавливаем стартовую сцену, если не задана
     if (!story.meta.start && story.scenes.length > 0) {
@@ -581,10 +599,111 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     }
   }
 
+
+
+
+
+
+
+
+ 
+
+ 
+
+
+
+
+
+
+
+  function parseNewStyleAssetLine(lineNumber, line, category, story) {
+    var cleanLine = line.trim();
+    if (!cleanLine) return false;
+
+    // убираем комментарий, но не трогаем color=#...
+    if (cleanLine.includes('#') && !cleanLine.match(/=\s*#/)) {
+      cleanLine = cleanLine.split('#')[0].trim();
+    }
+
+    if (!cleanLine) return false;
+
+    // Новый формат: id arg=value arg=value
+    // Должен быть хотя бы один пробел после id и хотя бы один arg=value
+    var m = cleanLine.match(/^([^\s=]+)\s+(.+)$/);
+    if (!m) return false;
+
+    var assetId = m[1].trim();
+    var rest = m[2].trim();
+
+    // Если справа нет key=value, это не новый формат
+    if (rest.indexOf('=') === -1) return false;
+
+    // Если справа просто путь без key=value, это старый формат вида key = value
+    // Например: campusHall = assets/...
+    if (!/\b[a-zA-Z_][a-zA-Z0-9_-]*\s*=/.test(rest)) return false;
+
+    var args = {};
+    var re = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*("([^"]*)"|[^\s]+)/g;
+    var match;
+
+    while ((match = re.exec(rest)) !== null) {
+      var key = match[1].toLowerCase();
+      var value = match[3] !== undefined ? match[3] : match[2];
+
+      if (key === 'image' || key === 'src') key = 'file';
+      if (key === 'emo') key = 'emotion';
+
+      args[key] = value;
+    }
+
+    if (Object.keys(args).length === 0) return false;
+
+    if (category === 'backgrounds' || category === 'audio' || category === 'games') {
+      if (!args.file) {
+        addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
+        return true;
+      }
+
+      story.assets[category][assetId] = args.file;
+      return true;
+    }
+
+    if (category === 'characters') {
+      if (!story.assets.characters[assetId]) {
+        story.assets.characters[assetId] = { images: {} };
+      }
+
+      var char = story.assets.characters[assetId];
+      if (!char.images) char.images = {};
+
+      if (args.name !== undefined) char.name = args.name;
+      if (args.color !== undefined) char.color = args.color;
+
+      if (args.file !== undefined) {
+        var emotion = args.emotion || 'neutral';
+        char.images[emotion] = args.file;
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+
+
   // Парсинг ресурсов (bg, char, audio)
   function parseAssetLine(lineNumber, line, category, story) {
     console.log('[Loader] parseAssetLine:', line, 'category:', category);
     
+    // Сначала пробуем новый формат:
+    // campusHall file=assets/...
+    // anna emotion=smile file=... name="Анна"
+    if (parseNewStyleAssetLine(lineNumber, line, category, story)) {
+      console.log('[Loader] parsed by new-style asset parser:', line);
+      return;
+    }
+
     // Удаляем комментарии
     // Удаляем комментарии, но сохраняем # если это цвет (после =)
     if (line.includes('#') && !line.match(/=\s*#/)) {
@@ -612,14 +731,14 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
 
-    // ========== запрещаем пробелы в ключах для bg и audio ==========
-    if (category === 'backgrounds' || category === 'audio') {
+    // ========== запрещаем пробелы в ключах для bg / audio / games ==========
+    if (category === 'backgrounds' || category === 'audio' || category === 'games') {
       // Проверяем, есть ли пробелы в ключе
       if (key.includes(' ')) {
         addParseError(
           lineNumber, 
           line, 
-          `The key name "${key}" contains spaces. In the section [${category === 'backgrounds' ? 'bg' : 'audio'}] names cannot contain spaces. Use camelCase (bgDay) or hyphens (bg-day).`, 
+          `The key name "${key}" contains spaces. In the section [${category === 'backgrounds' ? 'bg' : category === 'audio' ? 'audio' : 'game'}] names cannot contain spaces. Use camelCase (bgDay) or hyphens (bg-day).`, 
           true
         );
         return; // Прерываем обработку этой строки
@@ -630,7 +749,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(
           lineNumber, 
           line, 
-          `An empty key name in the section [${category === 'backgrounds' ? 'bg' : 'audio'}]`, 
+          `An empty key name in the section [${category === 'backgrounds' ? 'bg' : category === 'audio' ? 'audio' : 'game'}]`, 
           true
         );
         return;
@@ -659,7 +778,17 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         
         if (keyParts.length >= 2) {
             const charId = keyParts[0]; // anna, igor
-            const propType = keyParts[1]; // image, name, color
+            let propType = keyParts[1]; // image, name, color
+            
+            if (propType === 'file' || propType === 'src') {
+              propType = 'image';
+            }
+
+            if (propType === 'emo') {
+              propType = 'emotion';
+            }
+
+
             
             console.log('[Loader CHAR] charId:', charId, 'propType:', propType);
             
