@@ -4853,7 +4853,7 @@ var zoomResetBtn = document.getElementById("zoomResetBtn");
 // Состояние panzoom
 var panzoomState = {
   scale: 1,
-  minScale: 0.5,      // Минимальный масштаб до 50%
+  minScale: 0.1,      // Минимальный масштаб до 10%
   maxScale: 500,       // Максимальный масштаб до 50000% (500x)
   translateX: 0,
   translateY: 0,
