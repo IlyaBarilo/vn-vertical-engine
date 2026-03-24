@@ -61,6 +61,7 @@ y = 25
 z = 0
 labStep = 0
 spaceResult = 0
+coffee = 0
 
 [scene]
 # Формат описания сцен:

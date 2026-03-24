@@ -524,6 +524,13 @@ body {
   justify-content: center;
   padding: var(--modal-padding);
   z-index: 60;
+  touch-action: none;
+}
+
+.gameFrame,
+.gameControls,
+#btnCloseGame {
+  touch-action: auto;
 }
 
 .gameFrameWrap {

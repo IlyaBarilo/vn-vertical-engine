@@ -217,6 +217,26 @@ var elGameModal = document.getElementById("gameModal");
 var elGameFrame = document.getElementById("gameFrame");
 var btnCloseGame = document.getElementById("btnCloseGame");
 
+function swallowEvent(e) {
+  if (!e) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (typeof e.stopImmediatePropagation === "function") {
+    e.stopImmediatePropagation();
+  }
+}
+
+// Блокируем любые клики/тапы по модалке вне iframe и кнопки закрытия
+["pointerdown", "pointerup", "click", "touchstart", "touchend", "mousedown", "mouseup"].forEach(function (type) {
+  elGameModal.addEventListener(type, function (e) {
+    // Разрешаем события только внутри iframe и кнопки Close Game
+    if (e.target === elGameFrame || elGameFrame.contains(e.target)) return;
+    if (e.target === btnCloseGame || btnCloseGame.contains(e.target)) return;
+
+    swallowEvent(e);
+  }, true);
+});
+
 var btnStats = document.getElementById("btnStats");
 var elStatsPanel = document.getElementById("statsPanel");
 var btnCloseStats = document.getElementById("btnCloseStats");
@@ -261,6 +281,12 @@ function isUiClick(target) {
 }
 
 elStage.addEventListener("click", function (e) {
+  console.log("[LOG] stage click", {
+    targetId: e.target && e.target.id,
+    modalHidden: elGameModal.classList.contains("hidden"),
+    inGame: state.inGame
+  });
+  
   if (isUiClick(e.target)) return;
   onNext();
 });
@@ -705,6 +731,14 @@ if (STORY.meta && STORY.meta.title) {
 // основной обработчик перехода (один!)
 elDialog.addEventListener("pointerup", function(e){
 
+  console.log("[LOG] dialog pointerup", {
+    targetId: e.target && e.target.id,
+    modalHidden: elGameModal.classList.contains("hidden"),
+    inGame: state.inGame,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked
+  });
+
   console.log(
     "[VN] pointerup",
     "waitingNext:", state.waitingNext,
@@ -775,9 +809,33 @@ sliderVolume.addEventListener("input", function () {
   }
 });
 
-btnCloseGame.addEventListener("click", function () {
-  // Закрытие игры без результата
-  closeGame(null);
+btnCloseGame.addEventListener("pointerup", function (e) {
+  console.log("[LOG] close pointerup", {
+    inGame: state.inGame,
+    modalHidden: elGameModal.classList.contains("hidden"),
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked
+  });
+
+  swallowEvent(e);
+
+  // Сброс от случайного "следующего клика" после закрытия
+  lastNextTime = Date.now();
+
+  suppressAutoRunOnce = true;
+
+  closeGame({ manualClose: true, result: 0 });
+
+  console.log("[LOG] after closeGame", {
+    inGame: state.inGame,
+    modalHidden: elGameModal.classList.contains("hidden"),
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked
+  });
+});
+
+btnCloseGame.addEventListener("click", function (e) {
+  swallowEvent(e);
 });
 
 // Слушаем результаты мини-игр через postMessage
@@ -980,8 +1038,22 @@ if (state.sceneId === 'scene_02') {
 // Добавьте в начало файла переменную
 var lastNextTime = 0;
 var NEXT_COOLDOWN = 300; // миллисекунд
+var suppressAutoRunOnce = false;
 
 function onNext(e) {
+  console.log("[LOG] onNext enter", {
+    eventType: e && e.type,
+    targetId: e && e.target && e.target.id,
+    modalHidden: elGameModal.classList.contains("hidden"),
+    inGame: state.inGame,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked,
+    dt: Date.now() - lastNextTime
+  });
+
+  if (state.inGame) return;
+  if (elGameModal && !elGameModal.classList.contains("hidden")) return;
+
   console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
   console.trace(); // <-- Добавьте это! Покажет стек вызовов
 
@@ -1168,15 +1240,16 @@ function executeAction(action) {
 
         firstScreenMetrics.waitingForCharacter = false;
 
-        // Восстанавливаем индекс только если это был первый показ
-        // и мы не в состоянии ожидания
-        //if (state.actionIndex === currentActionIndex + 1 && !state.waitingNext) {
-        //  console.log('[FLOW] Восстанавливаем индекс до', currentActionIndex);
-        //  state.actionIndex = currentActionIndex;
-        //}
-
         state.nextLocked = false;
         state.waitingNext = false;
+
+        if (suppressAutoRunOnce) {
+          console.log('[FLOW] char(new):done callback suppressed after manual game close');
+          suppressAutoRunOnce = false;
+          state.nextLocked = false;
+          state.waitingNext = true;
+          return;
+        }
 
         console.log('[FLOW] char(new):done callback before runCurrent', {
           sceneId: state.sceneId,
@@ -2004,7 +2077,20 @@ function closeGame(resultData) {
 
   state.currentGame = null;
 
-  // продолжаем выполнение
+  var manualClose = !!(resultData && resultData.manualClose === true);
+
+  if (manualClose) {
+    // Игра закрыта вручную: просто выходим из режима игры,
+    // но НЕ продолжаем сцену автоматически.
+    state.currentGame = null;
+    state.waitingNext = true;
+    state.nextLocked = false;
+    console.log("[GAME] manualClose -> stay on current dialog");
+    return;
+  }
+
+  // Игра завершилась обычным образом (gameResult) — продолжаем сценарий
+  state.currentGame = null;
   state.waitingNext = false;
   state.nextLocked = false;
   runCurrent();
