@@ -3768,6 +3768,7 @@ function buildMermaidGraph(story, unreachableList) {
   mermaid += "classDef characters-group fill:#e0e0e0,stroke:#808080,color:#333,stroke-width:2px,r:12px;\n";
   mermaid += "classDef character-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
   mermaid += "classDef backgrounds-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n\n";
+  mermaid += "classDef games-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n";
 
   // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
   var charGraphData = buildCharactersGraph(story);
@@ -3776,6 +3777,10 @@ function buildMermaidGraph(story, unreachableList) {
 
   // ДОБАВЛЯЕМ УЗЕЛ "ФОНЫ"
   mermaid += buildBackgroundsGraph(story);
+  mermaid += "\n";
+
+  // ДОБАВЛЯЕМ УЗЕЛ "ИГРЫ"
+  mermaid += buildGamesGraph(story);
   mermaid += "\n";
 
   // Создаем узлы с многострочными метками
@@ -4041,6 +4046,57 @@ function buildBackgroundsGraph(story) {
   return mermaid;
 }
 
+function buildGamesGraph(story) {
+  var mermaid = "";
+  var games = (story.assets && story.assets.games) ? story.assets.games : {};
+  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+  var scenes = story.scenes || [];
+  var usedGames = {};
+
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.actions) continue;
+
+    var actions = scene.actions;
+    for (var a = 0; a < actions.length; a++) {
+      var act = actions[a];
+      if (act && act.type === "game" && act.gameId && games[act.gameId]) {
+        usedGames[act.gameId] = true;
+      }
+    }
+  }
+
+  var gameIds = Object.keys(usedGames).sort();
+  var gamesCount = gameIds.length;
+  var gamesListHtml = '<div class="games-list-container">';
+
+  if (gamesCount > 0) {
+    for (var i = 0; i < gameIds.length; i++) {
+      var gameId = gameIds[i];
+      var safeGameId = gameId
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+      gamesListHtml += '<div class="game-list-item">' + safeGameId + '</div>';
+    }
+  } else {
+    gamesListHtml += '<div class="game-list-empty">(none)</div>';
+  }
+
+  gamesListHtml += '</div>';
+
+  var label = '<b>🎮 Games (' + gamesCount + ')</b><br/>' + gamesListHtml;
+
+  mermaid += '    games["' + label + '"]\n';
+  mermaid += '    games:::games-group\n';
+
+  mermaid += '\n    %% Connection between games and the first chapter\n';
+  mermaid += '    games -.-> ' + startId + ';\n';
+
+  return mermaid;
+}
 
 function computeTextInfo(story) {
 
