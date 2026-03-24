@@ -2784,20 +2784,33 @@ function renderStats() {
       }
       
 
+
+      // text += "DEBUG files:\n";
+      // fileStats.files.forEach(function(f) {
+      //  text += JSON.stringify(f) + "\n";
+      // });
+      // text += "\n";
+
+
+
       text += "=== FILE STATISTICS ===\n\n";
       text += "Total files: " + fileStats.files.length + "\n";
       
-      // Подсчет изображений и аудио
       var imageCount = 0;
       var audioCount = 0;
-      fileStats.files.forEach(f => {
-        if (f.path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) imageCount++;
-        else if (f.path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) audioCount++;
-      });
-      
-      text += "  Images: " + imageCount + "\n";
-      text += "  Audio: " + audioCount + "\n\n";
 
+      fileStats.files.forEach(function(f) {
+        if (f.category === 'bg' || f.category === 'char') imageCount++;
+        else if (f.category === 'audio') audioCount++;
+      });
+
+      var gameCount = (STORY.assets && STORY.assets.games)
+        ? Object.keys(STORY.assets.games).length
+        : 0;
+      
+      text += "Images: " + imageCount + "\n";
+      text += "Audio: " + audioCount + "\n";
+      text += "Games: " + gameCount + "\n\n";
       
 
 
@@ -3269,6 +3282,35 @@ function checkAssetsFiles() {
       });
     }
 
+
+
+    // Игры
+    if (STORY.assets.games) {
+      Object.entries(STORY.assets.games).forEach(([id, path]) => {
+        if (typeof path !== "string" || path.trim() === "") {
+          result.missing.push({
+            path: `[invalid path: ${String(path)}]`,
+            refs: [`game: ${id}`]
+          });
+          return;
+        }
+
+        allFiles.push({
+          id: id,
+          path: path.trim(),
+          type: 'game',
+          category: 'game',
+          ref: id
+        });
+      });
+    }
+
+    console.log("[ASSET CHECK] STORY.assets.games =", STORY.assets.games);
+    console.log("[ASSET CHECK] allFiles after games =", allFiles);
+
+
+
+
     if (allFiles.length === 0) {
       resolve(result);
       return;
@@ -3283,7 +3325,12 @@ function checkAssetsFiles() {
       pathGroups[file.path].push(file);
     });
     
+    console.log("[ASSET CHECK] pathGroups =", pathGroups);
+
     const uniquePaths = Object.keys(pathGroups);
+
+    console.log("[ASSET CHECK] uniquePaths =", uniquePaths);
+
     let loadedCount = 0;
     let errorCount = 0;
     const totalPaths = uniquePaths.length;
@@ -3301,6 +3348,14 @@ function checkAssetsFiles() {
       if (loadedCount + errorCount === totalPaths) {
           // Собираем результаты
           uniquePaths.forEach(path => {
+
+            console.log("[ASSET CHECK] checking path:", path, {
+              group: pathGroups[path],
+              isImage: /\.(jpg|jpeg|png|gif|webp)$/i.test(path),
+              isAudio: /\.(mp3|wav|ogg|flac|m4a)$/i.test(path),
+              isGameHtml: /\.(html|htm)$/i.test(path)
+            });
+
             if (fileResults[path] && fileResults[path].success) {
               result.files.push(fileResults[path].data);
               
@@ -3447,6 +3502,53 @@ function checkAssetsFiles() {
           };
           
           audio.src = path + '?' + Date.now();
+        
+        } else if (path.match(/\.(html|htm)$/i)) {
+          // Проверка HTML-файла игры
+          const firstFile = pathGroups[path][0];
+          const isFileProtocol = window.location.protocol === 'file:';
+
+          if (isFileProtocol) {
+            console.warn("[ASSET CHECK][GAME] skip verification on file://", path);
+
+            fileResults[path] = {
+              success: true,
+              data: {
+                path: path,
+                category: firstFile.category,
+                refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`),
+                skippedCheck: true
+              }
+            };
+
+            loadedCount++;
+            checkComplete();
+          } else {
+            const requestUrl = path + '?' + Date.now();
+
+            fetch(requestUrl, { method: 'GET' })
+              .then(function(response) {
+                if (!response.ok) {
+                  throw new Error('HTTP ' + response.status);
+                }
+
+                fileResults[path] = {
+                  success: true,
+                  data: {
+                    path: path,
+                    category: firstFile.category,
+                    refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
+                  }
+                };
+
+                loadedCount++;
+                checkComplete();
+              })
+              .catch(function() {
+                errorCount++;
+                checkComplete();
+              });
+          }
         } else {
           console.warn("[ASSET CHECK] unsupported file type:", path);
           errorCount++;
