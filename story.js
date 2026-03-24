@@ -54,6 +54,7 @@ bgmDay = assets/audio/bgm_campus_day.mp3
 [game]
 gameCoffeeRush = assets/games/coffee_rush.html
 spaceDebris = assets/games/space_debris.html
+gameTestMiss = assets/games/space_debrisTestMiss.html
 
 [var]
 x = 10 # объявление переменных

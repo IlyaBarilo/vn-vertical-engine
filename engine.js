@@ -2682,12 +2682,52 @@ function renderStats() {
 
       var text = "";
 
+
+
+
+      // ===== GAMES: declared / used / unused =====
+      var declaredGames = (STORY.assets && STORY.assets.games)
+        ? Object.keys(STORY.assets.games).sort()
+        : [];
+
+      var gamesMap = (STORY.assets && STORY.assets.games) ? STORY.assets.games : {};
+      var allGameIds = Object.keys(gamesMap).sort();
+
+      var usedGamesMap = {};
+      if (STORY.scenes && STORY.scenes.length > 0) {
+        STORY.scenes.forEach(function(scene) {
+          if (!scene.actions) return;
+          scene.actions.forEach(function(action) {
+            if (action && action.type === "game" && action.gameId) {
+              usedGamesMap[action.gameId] = true;
+            }
+          });
+        });
+      }
+
+      var usedGameIds = [];
+      var unusedGameIds = [];
+
+      for (var i = 0; i < allGameIds.length; i++) {
+        var gameId = allGameIds[i];
+        if (usedGamesMap[gameId]) usedGameIds.push(gameId);
+        else unusedGameIds.push(gameId);
+      }
+
+      var orderedGameIds = usedGameIds.concat(unusedGameIds);
+
+
+
+
+
+
       text += `Software version: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
 
       text += "=== SCRIPT STATISTICS ===\n\n";
       text += "Title: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
       text += "Scenes: " + stats.sceneCount + "\n";
-      text += "Choice menu: " + stats.choiceCount + "\n\n";
+      text += "Choice menu: " + stats.choiceCount + "\n";
+      text += "Games: " + declaredGames.length + "\n\n";
 
 
       // ===== ОШИБКИ ПАРСИНГА =====
@@ -2805,6 +2845,19 @@ function renderStats() {
 
 
 
+      text += "=== USED GAMES ===\n";
+      if (orderedGameIds.length === 0) {
+        text += "(none)\n";
+      } else {
+        for (var i = 0; i < orderedGameIds.length; i++) {
+          var gameId = orderedGameIds[i];
+          text += gameId + (usedGamesMap[gameId] ? "" : "*") + "\n";
+        }
+      }
+      text += "\n";
+
+
+
 
       text += "=== SCRIPT REVIEW ===\n";
 
@@ -2902,6 +2955,7 @@ function renderStats() {
         text += "  Backgrounds: " + window.LOADER_STATS.backgroundsCount + "\n";
         text += "  Characters: " + window.LOADER_STATS.charactersCount + "\n";
         text += "  Audio: " + window.LOADER_STATS.audioCount + "\n";
+        text += "  Games: " + (window.LOADER_STATS.gamesCount || 0) + "\n";
         text += "  Time per scene: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
         text += "  Time per action: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
 

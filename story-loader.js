@@ -344,6 +344,7 @@
       window.LOADER_STATS.charactersCount = characterCount;
       
       window.LOADER_STATS.audioCount = story.assets.audio ? Object.keys(story.assets.audio).length : 0;
+      window.LOADER_STATS.gamesCount = story.assets.games ? Object.keys(story.assets.games).length : 0;
     }
 
     loaderMark('stats_collected');
@@ -352,7 +353,8 @@
       actions: window.LOADER_STATS.actionsCount,
       backgrounds: window.LOADER_STATS.backgroundsCount,
       characters: window.LOADER_STATS.charactersCount,
-      audio: window.LOADER_STATS.audioCount
+      audio: window.LOADER_STATS.audioCount,
+      games: window.LOADER_STATS.gamesCount
     });
 
 
