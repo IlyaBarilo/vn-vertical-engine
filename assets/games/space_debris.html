@@ -253,7 +253,7 @@
             xPos: 0.08,
             acceleration: 0.04,
             deceleration: 0.02,
-            maxSpeed: 0.005, // 0.015
+            maxSpeed: 1, // 0.015
             moveSpeedCoef: 0.22 // 0.72
         },
 
@@ -571,10 +571,16 @@
         }
         const currentSpeedMult = pacingFactor * CONFIG.speedMultiplier * CONFIG.difficultyBase;
 
-        sat.targetVy = joyInput * (canvas.height * CONFIG.satellite.maxSpeed * CONFIG.satellite.moveSpeedCoef);
-        const accel = (Math.abs(joyInput) > 0.1) ? CONFIG.satellite.acceleration : CONFIG.satellite.deceleration;
-        sat.vy += (sat.targetVy - sat.vy) * accel;
-        sat.y += sat.vy;
+        const targetSpeedPerSec = joyInput * (canvas.height * CONFIG.satellite.maxSpeed * CONFIG.satellite.moveSpeedCoef);
+        const response = (Math.abs(joyInput) > 0.1)
+            ? CONFIG.satellite.acceleration
+            : CONFIG.satellite.deceleration;
+
+        // нормализация под 60 FPS
+        const lerpFactor = 1 - Math.pow(1 - response, dt / 16.6667);
+
+        sat.vy += (targetSpeedPerSec - sat.vy) * lerpFactor;
+        sat.y += sat.vy * deltaSec;
 
         const satMaxY = canvas.height - sat.radius;
         const satMinY = sat.radius;
