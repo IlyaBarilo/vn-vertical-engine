@@ -110,7 +110,7 @@
   // ПАРСЕР
   // ========================================
 
-  function normalizeAssetsAfterParse(story) {
+    function normalizeAssetsAfterParse(story) {
     if (!story || !story.assets) return;
 
     if (!story.assets.backgrounds) story.assets.backgrounds = {};
@@ -122,6 +122,21 @@
       var char = story.assets.characters[charId];
       if (!char.images) {
         char.images = {};
+      }
+    });
+
+    Object.keys(story.assets.games).forEach(function(gameId) {
+      var game = story.assets.games[gameId];
+
+      if (!game || typeof game !== 'object') {
+        story.assets.games[gameId] = {
+          file: ''
+        };
+        return;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(game, 'file')) {
+        game.file = '';
       }
     });
   }
@@ -546,10 +561,24 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
   delete params.result;
 
+
+
+
+
+  var gameAsset = story.assets.games[gameId];
+  var gameSrc = gameAsset && typeof gameAsset === 'object'
+    ? String(gameAsset.file || '').trim()
+    : '';
+
+  if (!gameSrc) {
+    addParseError(lineNumber, line, 'Game "' + gameId + '" does not contain file=... in [game]', true);
+    return;
+  }
+
   currentScene.actions.push({
     type: 'game',
     gameId: gameId,
-    src: story.assets.games[gameId],
+    src: gameSrc,
     resultVar: resultVar,
     params: params
   });
@@ -652,13 +681,16 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
       if (key === 'image' || key === 'src') key = 'file';
       if (key === 'emo') key = 'emotion';
+      if (key === 'coverimage' || key === 'thumbnail') key = 'cover';
 
       args[key] = value;
     }
 
     if (Object.keys(args).length === 0) return false;
 
-    if (category === 'backgrounds' || category === 'audio' || category === 'games') {
+    
+    
+    if (category === 'backgrounds' || category === 'audio') {
       if (!args.file) {
         addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
         return true;
@@ -667,6 +699,31 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       story.assets[category][assetId] = args.file;
       return true;
     }
+
+    if (category === 'games') {
+      if (!args.file) {
+        addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
+        return true;
+      }
+
+      var game = story.assets.games[assetId];
+      if (!game || typeof game !== 'object') {
+        game = {};
+      }
+
+      game.file = args.file;
+
+      if (args.title !== undefined) game.title = args.title;
+      if (args.description !== undefined) game.description = args.description;
+      if (args.cover !== undefined) game.cover = args.cover;
+
+      story.assets.games[assetId] = game;
+      return true;
+    }
+
+
+
+
 
     if (category === 'characters') {
       if (!story.assets.characters[assetId]) {
@@ -701,6 +758,16 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     // anna emotion=smile file=... name="Анна"
     if (parseNewStyleAssetLine(lineNumber, line, category, story)) {
       console.log('[Loader] parsed by new-style asset parser:', line);
+      return;
+    }
+
+    if (category === 'games') {
+      addParseError(
+        lineNumber,
+        line,
+        'In [game], use only the new format: gameId file=... title="..." description="..." cover=...',
+        true
+      );
       return;
     }
 
@@ -1250,7 +1317,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       assets: {
         backgrounds: {},
         characters: {},
-        audio: {}
+        audio: {},
+        games: {}
       },
       scenes: [{
         id: "error_scene",

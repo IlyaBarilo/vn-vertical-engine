@@ -46,8 +46,8 @@ bgmDay file=assets/audio/bgm_campus_day.mp3
 # sfxClickTest file=assets/audio/sfx_button_click.mp3
 
 [game]
-gameCoffeeRush file=assets/games/coffee_rush.html
-spaceDebris file=assets/games/space_debris.html
+gameCoffeeRush file=assets/games/coffee_rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." logo=image.png
+spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора."
 gameTestMiss file=assets/games/space_debrisTestMiss.html
 
 [var]
