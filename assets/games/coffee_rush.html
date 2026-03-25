@@ -477,15 +477,21 @@
         const durationMs = [22000, 21000, 20000, 18500, 17000][difficulty - 1];
         const targetScore = [10, 13, 16, 20, 24][difficulty - 1];
         const spawnEveryMs = [900, 760, 650, 560, 480][difficulty - 1];
-        const fallSpeed = [180, 220, 260, 315, 380][difficulty - 1];
+
+        // Скорость падения в долях высоты игрового поля в секунду.
+        // Так время прохождения одинаковой относительной дистанции
+        // будет одинаковым на разных разрешениях.
+        const fallSpeedScreenFrac = [0.18, 0.22, 0.26, 0.315, 0.38][difficulty - 1];
+
         const badChance = [0.12, 0.18, 0.24, 0.30, 0.36][difficulty - 1];
+
         return {
           gameId: (input && input.gameId) || 'coffee_rush',
           difficulty,
           durationMs,
           targetScore,
           spawnEveryMs,
-          fallSpeed,
+          fallSpeedScreenFrac,
           badChance,
           seed: input && input.seed,
           context: (input && input.context) || {}
@@ -538,13 +544,14 @@
 
       function spawnItem() {
         const width = els.arena.clientWidth;
+        const arenaHeight = els.arena.clientHeight;
         const scale = state.uiScale || 1;
         const isBad = Math.random() < state.config.badChance;
         const isBonus = !isBad && Math.random() < 0.16;
         const size = (Math.random() < 0.35 ? 48 : 54) * scale;
         const margin = 16 * scale;
         const x = rand(margin, Math.max(margin, width - size - margin));
-        const speed = state.config.fallSpeed * scale * rand(0.92, 1.18);
+        const speed = arenaHeight * state.config.fallSpeedScreenFrac * rand(0.92, 1.18);
         const item = {
           id: Math.random().toString(36).slice(2),
           x,
