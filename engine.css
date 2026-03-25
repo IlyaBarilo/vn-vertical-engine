@@ -536,8 +536,6 @@ body {
 .gameFrameWrap {
   width: 100%;
   height: 100%;
-  max-width: var(--modal-frame-max-width);
-  max-height: var(--modal-frame-max-height);
   display: flex;
   flex-direction: column;
   gap: var(--modal-gap);
