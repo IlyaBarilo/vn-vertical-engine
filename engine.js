@@ -4924,164 +4924,160 @@ function zoom(delta, mouseX, mouseY) {
   updatePanzoomTransform();
 }
 
-// Инициализация обработчиков panzoom
-// Инициализация обработчиков panzoom
 function initPanzoom() {
   if (!panzoomWrapper || !panzoomContent) return;
-  
+
   var container = document.getElementById("graphContainer");
-  
-  // Обработчик начала панорамирования (левая кнопка)
-  panzoomWrapper.addEventListener('mousedown', function(e) {
-    // Не на кнопках управления
-    if (e.target.closest('.graph-zoom-controls')) return;
-    
-    // Левая кнопка (0)
-    if (e.button === 0) {
-      e.preventDefault();
-      
-      panzoomState.isPanning = true;
-      panzoomState.panMode = 'left';
-      panzoomState.startX = e.clientX;
-      panzoomState.startY = e.clientY;
-      panzoomState.startTranslateX = panzoomState.translateX;
-      panzoomState.startTranslateY = panzoomState.translateY;
-      
-      container.classList.add('panning');
+  var activePointerId = null;
+
+  // Для тача/пера отключаем нативный pan браузера
+  panzoomWrapper.style.touchAction = 'none';
+
+  panzoomWrapper.addEventListener('pointerdown', function(e) {
+    if (!e.isPrimary) return;
+
+    // Разрешаем мышь: левая (0) и средняя (1)
+    // touch/pen тоже разрешаем
+    var isMouse = e.pointerType === 'mouse';
+    if (isMouse && e.button !== 0 && e.button !== 1) return;
+
+    e.preventDefault();
+
+    activePointerId = e.pointerId;
+    panzoomState.isPanning = true;
+    panzoomState.panMode = isMouse ? (e.button === 1 ? 'middle' : 'left') : 'touch';
+    panzoomState.startX = e.clientX;
+    panzoomState.startY = e.clientY;
+    panzoomState.startTranslateX = panzoomState.translateX;
+    panzoomState.startTranslateY = panzoomState.translateY;
+
+    if (panzoomWrapper.setPointerCapture) {
+      panzoomWrapper.setPointerCapture(e.pointerId);
     }
-    
-    // Средняя кнопка (колесико) - тоже для панорамирования
+
+    container.classList.add('panning');
+  });
+
+  // Блокируем стандартное поведение на нажатие колесика
+  panzoomWrapper.addEventListener('auxclick', function(e) {
     if (e.button === 1) {
       e.preventDefault();
-      
-      panzoomState.isPanning = true;
-      panzoomState.panMode = 'middle';
-      panzoomState.startX = e.clientX;
-      panzoomState.startY = e.clientY;
-      panzoomState.startTranslateX = panzoomState.translateX;
-      panzoomState.startTranslateY = panzoomState.translateY;
-      
-      container.classList.add('panning');
     }
   });
-  
-  // Обработчик движения мыши
-  window.addEventListener('mousemove', function(e) {
-    if (!panzoomState.isPanning) return;
-    
-    e.preventDefault();
-    
-    var dx = e.clientX - panzoomState.startX;
-    var dy = e.clientY - panzoomState.startY;
-    
-    panzoomState.translateX = panzoomState.startTranslateX + dx;
-    panzoomState.translateY = panzoomState.startTranslateY + dy;
-    
-    updatePanzoomTransform();
-  });
-  
-  // Обработчик окончания панорамирования
-  window.addEventListener('mouseup', function(e) {
-    if (panzoomState.isPanning) {
-      panzoomState.isPanning = false;
-      panzoomState.panMode = 'none';
-      container.classList.remove('panning');
+
+  panzoomWrapper.addEventListener('mousedown', function(e) {
+    if (e.button === 1) {
+      e.preventDefault();
     }
   });
-  
-  // Предотвращаем появление контекстного меню при отпускании средней кнопки
+
   panzoomWrapper.addEventListener('contextmenu', function(e) {
     if (e.button === 1 || e.button === 2) {
       e.preventDefault();
     }
   });
-  
-  // Обработчик колесика мыши для зума с увеличенным шагом
+
+  panzoomWrapper.addEventListener('pointermove', function(e) {
+    if (!panzoomState.isPanning) return;
+    if (e.pointerId !== activePointerId) return;
+
+    e.preventDefault();
+
+    var dx = e.clientX - panzoomState.startX;
+    var dy = e.clientY - panzoomState.startY;
+
+    panzoomState.translateX = panzoomState.startTranslateX + dx;
+    panzoomState.translateY = panzoomState.startTranslateY + dy;
+
+    updatePanzoomTransform();
+  });
+
+  function stopPan(e) {
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+
+    panzoomState.isPanning = false;
+    panzoomState.panMode = 'none';
+    activePointerId = null;
+    container.classList.remove('panning');
+  }
+
+  panzoomWrapper.addEventListener('pointerup', stopPan);
+  panzoomWrapper.addEventListener('pointercancel', stopPan);
+
+
+
+
+  // ОСТАВИТЬ ваш существующий wheel-обработчик
   panzoomWrapper.addEventListener('wheel', function(e) {
     e.preventDefault();
-    
-    // Увеличил шаг зума для более быстрого масштабирования
+
     var delta = e.deltaY > 0 ? -1 : 1;
-    
-    // Более агрессивный зум (умножаем на 1.2 вместо 1.1)
     var oldScale = panzoomState.scale;
     var newScale = panzoomState.scale * (delta > 0 ? 1.2 : 0.83);
     newScale = Math.max(panzoomState.minScale, Math.min(panzoomState.maxScale, newScale));
-    
+
     if (newScale === oldScale) return;
-    
-    // Зум относительно позиции мыши
+
     var rect = panzoomWrapper.getBoundingClientRect();
     var mouseXRatio = (e.clientX - rect.left - panzoomState.translateX) / oldScale;
     var mouseYRatio = (e.clientY - rect.top - panzoomState.translateY) / oldScale;
-    
+
     panzoomState.translateX = e.clientX - rect.left - mouseXRatio * newScale;
     panzoomState.translateY = e.clientY - rect.top - mouseYRatio * newScale;
     panzoomState.scale = newScale;
-    
+
     updatePanzoomTransform();
   }, { passive: false });
-  
-  // Кнопки зума с увеличенным шагом
+
+  // ОСТАВИТЬ существующие click на кнопках
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', function() {
       var oldScale = panzoomState.scale;
-      var newScale = oldScale * 1.3; // Увеличил шаг с 1.2 до 1.3
-      newScale = Math.min(panzoomState.maxScale, newScale);
-      
+      var newScale = Math.min(panzoomState.maxScale, oldScale * 1.3);
       if (newScale === oldScale) return;
-      
-      // Центрированный зум
-      if (panzoomWrapper) {
-        var rect = panzoomWrapper.getBoundingClientRect();
-        var centerX = rect.left + rect.width / 2;
-        var centerY = rect.top + rect.height / 2;
-        
-        var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
-        var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
-        
-        panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
-        panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
-      }
-      
+
+      var rect = panzoomWrapper.getBoundingClientRect();
+      var centerX = rect.left + rect.width / 2;
+      var centerY = rect.top + rect.height / 2;
+
+      var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
+      var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
+
+      panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
+      panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
       panzoomState.scale = newScale;
+
       updatePanzoomTransform();
     });
   }
-  
+
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener('click', function() {
       var oldScale = panzoomState.scale;
-      var newScale = oldScale / 1.3; // Увеличил шаг
-      newScale = Math.max(panzoomState.minScale, newScale);
-      
+      var newScale = Math.max(panzoomState.minScale, oldScale / 1.3);
       if (newScale === oldScale) return;
-      
-      // Центрированный зум
-      if (panzoomWrapper) {
-        var rect = panzoomWrapper.getBoundingClientRect();
-        var centerX = rect.left + rect.width / 2;
-        var centerY = rect.top + rect.height / 2;
-        
-        var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
-        var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
-        
-        panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
-        panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
-      }
-      
+
+      var rect = panzoomWrapper.getBoundingClientRect();
+      var centerX = rect.left + rect.width / 2;
+      var centerY = rect.top + rect.height / 2;
+
+      var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
+      var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
+
+      panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
+      panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
       panzoomState.scale = newScale;
+
       updatePanzoomTransform();
     });
   }
-  
+
   if (zoomResetBtn) {
     zoomResetBtn.addEventListener('click', function() {
       resetPanzoom();
     });
   }
-  
-  // Сброс при переключении графа
+
   resetPanzoom();
 }
 
