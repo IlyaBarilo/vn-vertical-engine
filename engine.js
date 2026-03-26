@@ -86,6 +86,142 @@ profiler.mark('The script has started loading');
 let __charSeq = 0;
 let __activeCharSeq = 0;
 
+const UI_I18N = {
+  en: {
+    mute: "Mute",
+    stats: "Stats",
+    next: "Next",
+    choices: "Choices",
+    game: "Game",
+    closeGame: "Close Game",
+    hintContinue: "Click to continue",
+    statsTitle: "Script Statistics",
+    graphButton: "📊 Graph",
+    textButton: "📄 Text",
+    graphButtonTitle: "Show/hide graph",
+    textButtonTitle: "Show text statistics",
+    closeStats: "Close stats",
+    zoomOut: "Zoom Out",
+    zoomIn: "Zoom In",
+    zoomReset: "Reset zoom",
+    copyCode: "📋 Copy code",
+    refresh: "🔄 Refresh",
+    copied: "✅ Copied!",
+    copyError: "Failed to copy code",
+    loadingStory: "Loading story...",
+    parseErrorTitle: "❌ SCRIPT PARSE ERROR:",
+    parseErrorHint: "Please fix the errors in the story.js file",
+    statsRenderError: "Error generating statistics:",
+    statsFileError: "File verification error:",
+    mermaidRenderError: "Mermaid graph rendering error:"
+  },
+  ru: {
+    mute: "Звук",
+    stats: "Статистика",
+    next: "Далее",
+    choices: "Выбор",
+    game: "Игра",
+    closeGame: "Закрыть игру",
+    hintContinue: "Нажмите, чтобы продолжить",
+    statsTitle: "Статистика сценария",
+    graphButton: "📊 Граф",
+    textButton: "📄 Текст",
+    graphButtonTitle: "Показать/скрыть граф",
+    textButtonTitle: "Показать текстовую статистику",
+    closeStats: "Закрыть статистику",
+    zoomOut: "Уменьшить",
+    zoomIn: "Увеличить",
+    zoomReset: "Сбросить масштаб",
+    copyCode: "📋 Копировать код",
+    refresh: "🔄 Обновить",
+    copied: "✅ Скопировано!",
+    copyError: "Не удалось скопировать код",
+    loadingStory: "Загрузка сценария...",
+    parseErrorTitle: "❌ ОШИБКА ПАРСИНГА СЦЕНАРИЯ:",
+    parseErrorHint: "Исправьте ошибки в файле story.js",
+    statsRenderError: "Ошибка генерации статистики:",
+    statsFileError: "Ошибка проверки файлов:",
+    mermaidRenderError: "Ошибка рендера графа Mermaid:"
+  }
+};
+
+function getCurrentUiLanguage() {
+  var lang =
+    (window.STORY && window.STORY.meta && window.STORY.meta.lang) ||
+    window.STORY_LANG ||
+    'en';
+
+  lang = String(lang || 'en').toLowerCase();
+  if (!UI_I18N[lang]) lang = 'en';
+  return lang;
+}
+
+function t(key) {
+  var lang = getCurrentUiLanguage();
+  return (UI_I18N[lang] && UI_I18N[lang][key]) || UI_I18N.en[key] || key;
+}
+
+function applyUiLanguage() {
+  var html = document.documentElement;
+  if (html) {
+    html.lang = getCurrentUiLanguage();
+  }
+
+  var btnMute = document.getElementById("btnMute");
+  if (btnMute) btnMute.setAttribute("aria-label", t("mute"));
+
+  var btnStats = document.getElementById("btnStats");
+  if (btnStats) btnStats.setAttribute("aria-label", t("stats"));
+
+  var dialog = document.getElementById("dialog");
+  if (dialog) dialog.setAttribute("aria-label", t("next"));
+
+  var choices = document.getElementById("choices");
+  if (choices) choices.setAttribute("aria-label", t("choices"));
+
+  var gameModal = document.getElementById("gameModal");
+  if (gameModal) gameModal.setAttribute("aria-label", t("game"));
+
+  var btnCloseGame = document.getElementById("btnCloseGame");
+  if (btnCloseGame) btnCloseGame.textContent = t("closeGame");
+
+  var hint = document.querySelector(".hint");
+  if (hint) hint.textContent = t("hintContinue");
+
+  var statsTitle = document.querySelector(".statsTitle");
+  if (statsTitle) statsTitle.textContent = t("statsTitle");
+
+  var btnToggleGraph = document.getElementById("btnToggleGraph");
+  if (btnToggleGraph) {
+    if (window.showingGraph) {
+      btnToggleGraph.textContent = t("textButton");
+      btnToggleGraph.title = t("textButtonTitle");
+    } else {
+      btnToggleGraph.textContent = t("graphButton");
+      btnToggleGraph.title = t("graphButtonTitle");
+    }
+  }
+
+  var btnCloseStats = document.getElementById("btnCloseStats");
+  if (btnCloseStats) btnCloseStats.setAttribute("aria-label", t("closeStats"));
+
+  var zoomOutBtn = document.getElementById("zoomOutBtn");
+  if (zoomOutBtn) zoomOutBtn.title = t("zoomOut");
+
+  var zoomInBtn = document.getElementById("zoomInBtn");
+  if (zoomInBtn) zoomInBtn.title = t("zoomIn");
+
+  var zoomResetBtn = document.getElementById("zoomResetBtn");
+  if (zoomResetBtn) zoomResetBtn.title = t("zoomReset");
+
+  var btnCopyMermaid = document.getElementById("btnCopyMermaid");
+  if (btnCopyMermaid) btnCopyMermaid.textContent = t("copyCode");
+
+  var btnRefreshGraph = document.getElementById("btnRefreshGraph");
+  if (btnRefreshGraph) btnRefreshGraph.textContent = t("refresh");
+}
+
+window.showingGraph = false;
 
 
 
@@ -333,15 +469,14 @@ if (btnCopyMermaid) {
   btnCopyMermaid.addEventListener("click", function() {
     if (currentMermaidCode) {
       navigator.clipboard.writeText(currentMermaidCode).then(function() {
-        // Временная индикация успеха
         var originalText = btnCopyMermaid.textContent;
-        btnCopyMermaid.textContent = "✅ Скопировано!";
+        btnCopyMermaid.textContent = t("copied");
         setTimeout(function() {
           btnCopyMermaid.textContent = originalText;
         }, 2000);
       }).catch(function(err) {
-        console.error("Ошибка копирования:", err);
-        alert("Не удалось скопировать код");
+        console.error("Copy error:", err);
+        alert(t("copyError"));
       });
     }
   });
@@ -365,9 +500,10 @@ function toggleGraphView() {
     statsBody.classList.add("hidden");
     graphContainer.classList.remove("hidden");
     graphControls.classList.remove("hidden");
-    btnToggleGraph.textContent = "📄 Текст";
-    btnToggleGraph.title = "Показать текстовую статистику";
+    btnToggleGraph.textContent = t("textButton");
+    btnToggleGraph.title = t("textButtonTitle");
     showingGraph = true;
+    window.showingGraph = true;
     
     // Генерируем и отображаем граф
     renderMermaidGraph();
@@ -385,10 +521,12 @@ function toggleGraphView() {
     statsBody.classList.remove("hidden");
     graphContainer.classList.add("hidden");
     graphControls.classList.add("hidden");
-    btnToggleGraph.textContent = "📊 Граф";
-    btnToggleGraph.title = "Показать граф сценария";
+    btnToggleGraph.textContent = t("graphButton");
+    btnToggleGraph.title = t("graphButtonTitle");
     showingGraph = false;
+    window.showingGraph = false;
   }
+  applyUiLanguage();
 }
 
 // Функция рендеринга графа Mermaid
@@ -554,7 +692,7 @@ if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
 // ---------- Проверка story ----------
 if (!window.STORY) {
   console.log('[Engine] Ожидание window.STORY...');
-  elText.textContent = "Загрузка сценария...";
+  elText.textContent = t("loadingStory"); // "Загрузка сценария..."
   
   // Ждём загрузки от story-loader.js
   window.__onStoryLoaded = function(story) {
@@ -575,7 +713,9 @@ if (!window.STORY) {
     }
 
     applySpacingSettings();
-    
+
+    applyUiLanguage();
+
     // Применяем настройки аудио
     setAudioFromStoryDefaults();
     
@@ -591,7 +731,6 @@ var STORY = window.STORY;
 console.log('[Engine] Script found immediately:', STORY.meta.title);
 profiler.mark('Script found immediately');
 
-// ========== ЗАМЕНИТЕ НА ЭТОТ КОД ==========
 console.log('[Engine] STORY.assets:', STORY.assets);
 if (STORY.assets) {
   console.log('[Engine] STORY.assets.backgrounds:', STORY.assets.backgrounds);
@@ -600,11 +739,11 @@ if (STORY.assets) {
 } else {
   console.log('[Engine] STORY.assets is undefined!');
 }
-// ===========================================
 
 
 // Применяем настройки отступов
 applySpacingSettings();
+applyUiLanguage();
 profiler.mark('Indentation settings applied');
 
 // =========================================================
@@ -891,7 +1030,7 @@ function restart() {
     elText.textContent = "";
   }
 
-
+  applyUiLanguage();
 
 
 
@@ -3089,7 +3228,7 @@ function renderStats() {
   .catch(function(e) {
     console.error("[STATS] File verification error:", e);
     elStatsBody.value =
-      "File verification error:\n\n" +
+      t("statsFileError") + "\n\n" +
       (e && e.stack ? e.stack : String(e));
   });
 

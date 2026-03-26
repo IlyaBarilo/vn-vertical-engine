@@ -26,7 +26,7 @@
   loaderMark('loader_start');
   console.log('[Loader] Запуск парсера...');
 
-
+  window.STORY_LANG = 'en';
 
 
 
@@ -152,6 +152,7 @@
       meta: {
         title: "Без названия",
         start: null,
+        lang: 'en',
         blurBackground: true
       },
       assets: {
@@ -278,6 +279,8 @@
     
     normalizeAssetsAfterParse(story);
     
+    window.STORY_LANG = (story.meta && story.meta.lang ? story.meta.lang : 'en');
+
     // Устанавливаем стартовую сцену, если не задана
     if (!story.meta.start && story.scenes.length > 0) {
       story.meta.start = story.scenes[0].id;
@@ -589,15 +592,26 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
   // Парсинг метаданных
   function parseMetaLine(line, story) {
+    var originalLine = line;
+
     // Удаляем комментарий после #
     line = line.split('#')[0].trim();
     if (!line) return;
 
-    if (!line.includes(':')) return;
+    // Поддерживаем и key: value, и key=value
+    var separatorIndex = line.indexOf(':');
+    var eqIndex = line.indexOf('=');
 
-    const parts = line.split(':');
-    const key = parts[0].trim();
-    let value = parts.slice(1).join(':').trim();
+    if (separatorIndex === -1 || (eqIndex !== -1 && eqIndex < separatorIndex)) {
+      separatorIndex = eqIndex;
+    }
+
+    if (separatorIndex === -1) return;
+
+    var key = line.slice(0, separatorIndex).trim();
+    var value = line.slice(separatorIndex + 1).trim();
+
+    if (!key) return;
 
     // Базовые служебные параметры истории
     if (key === 'title') {
@@ -608,11 +622,19 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     if (key === 'startScene') {
       story.meta.start = value;
 
-      // Проверяем, что startScene не пустой
       if (!value || value.trim() === '') {
-        addParseError(lineNumber, line, "startScene cannot be empty", true);
+        addParseError(0, originalLine, "startScene cannot be empty", true);
       }
-      
+
+      return;
+    }
+
+    if (key === 'lang') {
+      var lang = (value || 'en').trim().toLowerCase();
+      if (!lang) lang = 'en';
+
+      story.meta.lang = lang;
+      window.STORY_LANG = lang;
       return;
     }
 
@@ -1312,7 +1334,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     window.STORY = {
       meta: {
         title: "Loading error",
-        start: "error_scene"
+        start: "error_scene",
+        lang: "en"
       },
       assets: {
         backgrounds: {},
