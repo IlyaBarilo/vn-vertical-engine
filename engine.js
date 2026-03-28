@@ -260,8 +260,8 @@ if (window.mermaid) {
       htmlLabels: true,
       curve: 'basis',
       padding: 4,           // Внутренние отступы в узлах (было 15)
-      nodeSpacing: 30,       // Расстояние между узлами (было 50)
-      rankSpacing: 40,       // Расстояние между уровнями (было 50)
+      nodeSpacing: 60,       // Расстояние между узлами (было 50)
+      rankSpacing: 100,       // Расстояние между уровнями (было 50)
       borderRadius: 10
     },
     securityLevel: 'loose',
@@ -4325,7 +4325,7 @@ function buildBackgroundsGraph(story) {
   }
     
   // Формируем HTML для изображений фонов
-  var bgImagesHtml = '<div class="bg-images-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; padding: 4px;">';
+  var bgImagesHtml = '<div class="bg-images-container" style="display:flex; flex-wrap:nowrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;">';
   
   var bgIds = Object.keys(allUniqueBgs).sort();
   for (var i = 0; i < bgIds.length; i++) {
@@ -5291,8 +5291,8 @@ function renderMermaidGraph() {
               htmlLabels: true,
               curve: 'basis',
               padding: 4,
-              nodeSpacing: 30,
-              rankSpacing: 40,
+              nodeSpacing: 60,
+              rankSpacing: 100,
               borderRadius: 10
             },
             securityLevel: 'loose',

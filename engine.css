@@ -1074,15 +1074,6 @@ body {
   z-index: auto !important;
 }
 
-/* Увеличенное состояние */
-.graphContainer .mermaid .node img.zoomed {
-  transform: scale(3) !important;
-  z-index: 9999 !important;  /* Очень высокий z-index, чтобы быть поверх всего */
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-  position: relative !important;
-  cursor: zoom-out !important;
-}
-
 /* Все возможные обертки внутри узла */
 .graphContainer .mermaid .node * {
   overflow: visible !important;
@@ -1098,19 +1089,6 @@ body {
   z-index: auto !important;
 }
 
-/* Увеличенное состояние - перекрывает всё */
-.graphContainer .mermaid .node img.zoomed,
-.graphContainer .mermaid .node img:hover {
-  transform: scale(3) !important;
-  
-  
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-  position: relative !important;
-  cursor: zoom-out !important;
-  
-  /* Убираем возможные ограничения родителя */
-  isolation: isolate !important;
-}
 
 /* Специально для Mermaid foreignObject */
 .graphContainer .mermaid foreignObject {
@@ -1162,30 +1140,27 @@ body {
 
 /* Отключаем конфликтующие стили для изображений в узлах */
 .graphContainer .mermaid .node img {
-  all: unset !important; /* Сбрасываем все предыдущие стили */
-  display: inline-block !important;
-  width: 40px !important;
-  height: 40px !important;
-  object-fit: cover !important;
-  background-color: #f0f0f0 !important;
-  border-radius: 8px !important;     /* Увеличено скругление углов */
-  border: none !important;            /* Убираем серый контур */
-  transition: transform 0.2s ease !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  margin: 0 1px !important;
-  vertical-align: middle !important;
   cursor: zoom-in !important;
+  transform-origin: center center !important;
 }
 
-.graphContainer .mermaid .node img:hover {
+/* Увеличение только при наведении */
+.graphContainer .mermaid .node img:hover,
+.graphContainer .mermaid .node img.zoomed {
   transform: scale(3.5) !important;
-  z-index: 9999 !important;
+  z-index: 1000 !important;
+  position: relative !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-  cursor: zoom-out !important;
 }
-
-
-
 
 
 /* Контейнер для эмоций персонажа */
@@ -1423,4 +1398,6 @@ body {
   color: #444444 !important;
   font-style: italic !important;
 }
+
+
 
