@@ -48,7 +48,8 @@ bgmDay file=assets/audio/bgm_campus_day.mp3
 
 [game]
 gameCoffeeRush file=assets/games/coffee_rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." logo=image.png
-spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора."
+spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." logo=image.png
+screenBenchmark file=assets/games/interactive_screen_benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." logo=image.png
 gameTestMiss file=assets/games/space_debrisTestMiss.html
 
 [var]
@@ -57,7 +58,8 @@ y = 25
 z = 0
 labStep = 0
 spaceResult = 0
-coffee = 0
+coffeeResult = 0
+benchmarkResult = 0
 
 [scene]
 # Формат описания сцен:
@@ -81,10 +83,10 @@ bgm bgmDay loop
 
 
 # Проверка работы игры
-# game gameCoffeeRush difficulty=1 result=coffee x=1 y=100
-# anna: "coffee={coffee}"
-# if coffee == 1 -> cafeGood
-# if coffee == 0 -> cafeBad
+# game gameCoffeeRush difficulty=1 result=coffeeResult x=1 y=100
+# anna: "coffee={coffeeResult}"
+# if coffeeResult == 1 -> cafeGood
+# if coffeeResult == 0 -> cafeBad
 
 
 show anna  # если не указана эмоция, то используется neutral
@@ -149,10 +151,10 @@ anna: "Ой, не напоминай! Мы потом неделю смеяли�
 
 anna: "Кажется, бариста не справляется с наплывом. Хочешь помочь?"
 
-game gameCoffeeRush difficulty=3 result=coffee
+game gameCoffeeRush difficulty=3 result=coffeeResult
 
-if coffee == 1 -> cafeGood
-if coffee == 0 -> cafeBad
+if coffeeResult == 1 -> cafeGood
+if coffeeResult == 0 -> cafeBad
 
 goto finale_01
 
@@ -176,12 +178,24 @@ bg branchLab
 hide all
 
 "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
+"Здесь можно не только запускать расчёты, но и проверять, как система ведёт себя в интерактивных сценариях."
 
-goto branch_lab_01_repeat
+show anna neutral
+anna: "Похоже, лаборатория сегодня свободна. Чем займёмся?"
+
+show igor smile
+igor: "Можно прогнать расчёт, как раньше. А можно проверить сенсорный экран и понять, готов ли он для игровых сцен."
+
+menu
+"Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> branch_lab_calc
+"Провести калибровку сенсорной панели" -> branch_lab_benchmark
 
 
 
-scene branch_lab_01_repeat
+
+
+
+scene branch_lab_calc
 
 bg branchLab
 hide all
@@ -202,7 +216,69 @@ if labStep > 2 -> finale_01
 
 anna: "Это ещё не финал. Давай прогоним расчёт ещё раз."
 
-goto branch_lab_01_repeat
+goto branch_lab_calc
+
+
+
+
+
+
+scene branch_lab_benchmark
+
+
+bg branchLab
+hide all
+
+"На одном из стендов уже открыт режим калибровки. Система предлагает проверить, насколько быстро экран реагирует на касания и как держит нагрузку."
+"Если всё работает стабильно, такую панель можно использовать для интерактивных игровых сцен и совместного управления."
+
+show anna neutral
+anna: "Это как раз то, что нужно для нашей истории. Проверим отклик, multitouch и точность?"
+
+show igor smile
+igor: "Отлично. Если панель справится, потом сюда можно встроить и другие игровые эпизоды."
+
+"Ты подходишь к экрану и запускаешь диагностику."
+
+game screenBenchmark difficulty=3 result=benchmarkResult
+
+if benchmarkResult == 1 -> branch_lab_benchmark_good
+if benchmarkResult == 0 -> branch_lab_benchmark_bad
+
+
+
+scene branch_lab_benchmark_good
+bg branchLab
+hide all
+
+"Диагностика завершена успешно. Экран уверенно реагирует на касания, поддерживает multitouch и подходит для интерактивных сцен."
+
+show anna neutral
+anna: "Отлично. Значит, такие механики можно смело встраивать в историю."
+
+show igor smile
+igor: "Вот теперь лаборатория выглядит не просто как декорация, а как место, где рождаются игровые идеи."
+
+goto finale_01
+
+
+
+scene branch_lab_benchmark_bad
+
+bg branchLab
+hide all
+
+"Диагностика показала, что системе ещё есть куда расти: часть проверок оказалась нестабильной."
+
+show anna neutral
+anna: "Ничего страшного. Зато теперь понятно, что именно нужно доработать."
+
+show igor neutral
+igor: "Это тоже полезный результат. Любая хорошая система начинается с честной проверки."
+
+goto finale_01
+
+
 
 
 

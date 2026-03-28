@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Interactive Screen Benchmark</title>
+<style>
+  :root{
+    --bg0:#07111f; --bg1:#10233f; --bg2:#193860; --panel:rgba(8,18,32,.78); --line:rgba(255,255,255,.12);
+    --text:#eef6ff; --muted:#9fb4cc; --good:#7ff4b5; --warn:#ffd166; --bad:#ff6b7a;
+    --cyan:#66deff; --pink:#ff87dc; --violet:#b58cff; --orange:#ffb86b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+  html,body{width:100%;height:100%;margin:0;overflow:hidden;background:radial-gradient(circle at 50% 18%, #22497a 0%, var(--bg1) 35%, var(--bg0) 100%);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;touch-action:none}
+  #game{position:relative;width:100%;height:100%;overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #ui{position:absolute;inset:0;pointer-events:none}
+  .panel{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:24px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.25);pointer-events:auto}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+  .hidden{display:none!important}
+  .button{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));color:var(--text);font-weight:800;letter-spacing:.02em;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 14px rgba(0,0,0,.16)}
+  .button:active{transform:translateY(1px) scale(.99)}
+  .t,.s,.b{position:absolute;white-space:pre-line}
+  .t{font-weight:900}.s{font-weight:700;color:var(--muted)}.b{line-height:1.35}
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="stars"></canvas>
+  <canvas id="world"></canvas>
+  <canvas id="hud"></canvas>
+  <div id="ui"></div>
+</div>
+<script>
+(() => {
+'use strict';
+
+// ==============================
+// ПАРАМЕТРЫ МАСШТАБИРОВАНИЯ UI
+// ==============================
+const GLOBAL_UI_SCALE = 0.92;
+const TEXT_SCALE = 0.88;
+const HUD_SCALE = 0.90;
+const NARROW_SCREEN_RATIO = 0.64;
+
+const BASE_W = 810, BASE_H = 1440;
+const STAGES = ['latency','tapzones','dualdrag','multitouch','falling'];
+const STAGE_TITLES = {
+  latency:'ЭТАП 1 · ОТКЛИК КАСАНИЯ',
+  tapzones:'ЭТАП 2 · ПОДСЧЁТ НАЖАТИЙ В ДВУХ ЗОНАХ',
+  dualdrag:'ЭТАП 3 · ДВА ОБЪЕКТА ЗА ПАЛЬЦАМИ',
+  multitouch:'ЭТАП 4 · МНОГО ОДНОВРЕМЕННЫХ НАЖАТИЙ',
+  falling:'ЭТАП 5 · ПАДАЮЩИЕ ЦЕЛИ'
+};
+const STAGE_HINTS = {
+  latency:'Быстро касайтесь световой цели. Смотрите на задержку, FPS и заметность регистрации касания.',
+  tapzones:'Два игрока могут нажимать по своей половине экрана. Серия сбрасывается, если пауза больше 3 секунд.',
+  dualdrag:'Нажмите прямо на левый и правый круги и тяните их пальцами. Когда круг в своей зоне — он светлеет.',
+  multitouch:'Поставьте как можно больше пальцев одновременно. Этап показывает текущий и максимальный уровень одновременных касаний.',
+  falling:'Касайтесь падающих кругов. Слева они медленные, справа — очень быстрые. Это проверяет задержку и точность.'
+};
+
+const CFG = {
+  comboResetMs:3000,
+  graphSeconds:12,
+  touchMarkMs:180,
+  goodLatency:35,
+  okLatency:60,
+  goodFps:55,
+  okFps:40,
+  goodLongFrames:8,
+  okLongFrames:24,
+  dualNeedRatio:.30,
+  dualNeedSimSec:2.4,
+  fallNeedRatio:.35,
+  touchGood:4,
+  buttonH:74,
+  cursorR:46,
+  gateR:102,
+  fallingMinR:18,
+  fallingMaxR:68,
+  fallingSpawn:0.55,
+  fallingSpeedMin:110,
+  fallingSpeedMax:980,
+  starMin:14,
+  starMax:42
+};
+
+const state = {
+  initialized:false, started:false, finished:false, finishSent:false,
+  gameId:'screenBenchmark', difficulty:3,
+  vw:0,vh:0,cx:0,cy:0,scale:1,textScale:1,hudScale:1,
+  phase:'intro', phaseIndex:0, phaseElapsed:0, totalElapsed:0, lastFrame:0,
+  pointers:new Map(), pointerCountNow:0, maxSimultaneousPointers:0,
+  particles:[], inputMarks:[], totalPresses:0,
+  latencySamples:[], lastInputLatency:0, fpsSamples:[], fpsValue:0, fpsMin:Infinity, fpsMax:0, longFrames:0,
+  latencyTarget:{x:.5,y:.55,r:.07,hits:0},
+  tapZones:{
+    left:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0},
+    right:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0}
+  },
+  leftCursor:{x:.28,y:.76,active:null,overGate:false},
+  rightCursor:{x:.72,y:.76,active:null,overGate:false},
+  gateLeft:{x:.28,y:.42}, gateRight:{x:.72,y:.42},
+  dualHoldTime:0, dualSimTime:0,
+  multitouchBins:Array(CFG.graphSeconds).fill(0), multitouchPeakThisSecond:0, multitouchPeakOverall:0,
+  falling:{circles:[], spawnTimer:0, spawned:0, hits:0, misses:0},
+  summary:null
+};
+
+const $ = id => document.getElementById(id);
+const dom = { game:$('game'), stars:$('stars'), world:$('world'), hud:$('hud'), ui:$('ui') };
+const sctx = dom.stars.getContext('2d');
+const wctx = dom.world.getContext('2d');
+const hctx = dom.hud.getContext('2d');
+
+const overlay = document.createElement('div'); overlay.className='overlay';
+const introCard = document.createElement('div'); introCard.className='panel'; overlay.appendChild(introCard); dom.ui.appendChild(overlay);
+const summaryLayer = document.createElement('div'); summaryLayer.className='overlay hidden';
+const summaryCard = document.createElement('div'); summaryCard.className='panel'; summaryLayer.appendChild(summaryCard); dom.ui.appendChild(summaryLayer);
+const stageControls = document.createElement('div'); stageControls.className='panel hidden'; stageControls.style.position='absolute'; dom.ui.appendChild(stageControls);
+
+function px(v,k='ui'){ const m=k==='text'?state.textScale:k==='hud'?state.hudScale:state.scale; return `${Math.round(v*m)}px`; }
+function sc(v,k='ui'){ const m=k==='text'?state.textScale:k==='hud'?state.hudScale:state.scale; return v*m; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function hypot2(x,y){ return Math.sqrt(x*x+y*y); }
+function avg(a){ return a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0; }
+function median(a){ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y), m=Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
+function percentile(a,p){ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const idx=(s.length-1)*p, lo=Math.floor(idx), hi=Math.ceil(idx); return lo===hi?s[lo]:lerp(s[lo],s[hi],idx-lo); }
+function hexToRgba(hex, alpha){ const h=hex.replace('#',''); const n=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${alpha})`; }
+function fmtMs(n){ return `${Math.round(n)} ms`; }
+function fmtFps(n){ return `${Math.round(n||0)}`; }
+function isNarrowScreen(){ return state.vw/state.vh < NARROW_SCREEN_RATIO; }
+
+function mkText(cls,parent){ const e=document.createElement('div'); e.className=cls; parent.appendChild(e); return e; }
+function mkButton(label,parent,fn){
+  const e=document.createElement('button'); e.className='button'; e.textContent=label;
+  const fire = ev => { ev.preventDefault(); ev.stopPropagation(); fn(); };
+  e.addEventListener('click', fire);
+  e.addEventListener('pointerdown', ev => ev.stopPropagation());
+  parent.appendChild(e); return e;
+}
+function style(el,obj){ Object.assign(el.style,obj); }
+
+const intro = {
+  title:mkText('t',introCard), subtitle:mkText('s',introCard), body:mkText('b',introCard),
+  start:mkButton('НАЧАТЬ ДИАГНОСТИКУ', introCard, startRun),
+  fail:mkButton('ЗАВЕРШИТЬ КАК FAIL', introCard, abortEarly)
+};
+const sum = {
+  title:mkText('t',summaryCard), subtitle:mkText('s',summaryCard), body:mkText('b',summaryCard),
+  confirm:mkButton('ПОДТВЕРДИТЬ РЕЗУЛЬТАТ', summaryCard, commitResult),
+  retry:mkButton('ПОВТОРИТЬ ТЕСТ', summaryCard, resetRun)
+};
+const stageBtns = {
+  next:mkButton('СЛЕДУЮЩИЙ ЭТАП', stageControls, advanceStage),
+  finish:mkButton('ЗАВЕРШИТЬ ТЕСТ', stageControls, finishStages)
+};
+
+function layoutIntro(){
+  style(introCard,{width:px(690),height:px(900),padding:px(34),position:'relative'});
+  style(intro.title,{left:px(34),top:px(36),width:px(620),fontSize:px(48,'text'),lineHeight:px(56,'text')});
+  style(intro.subtitle,{left:px(34),top:px(140),width:px(620),fontSize:px(22,'text'),lineHeight:px(30,'text')});
+  style(intro.body,{left:px(34),top:px(212),width:px(620),fontSize:px(22,'text'),lineHeight:px(31,'text')});
+  style(intro.start,{left:px(34),bottom:px(44),width:px(380),height:px(84),fontSize:px(30,'text'),position:'absolute'});
+  style(intro.fail,{right:px(34),bottom:px(44),width:px(220),height:px(84),fontSize:px(24,'text'),position:'absolute'});
+}
+function layoutSummary(){
+  style(summaryCard,{width:px(700),height:px(860),padding:px(34),position:'relative'});
+  style(sum.title,{left:px(34),top:px(34),width:px(630),fontSize:px(48,'text')});
+  style(sum.subtitle,{left:px(34),top:px(110),width:px(630),fontSize:px(22,'text')});
+  style(sum.body,{left:px(34),top:px(170),width:px(630),fontSize:px(22,'text')});
+  style(sum.confirm,{left:px(34),bottom:px(44),width:px(360),height:px(84),fontSize:px(26,'text'),position:'absolute'});
+  style(sum.retry,{right:px(34),bottom:px(44),width:px(240),height:px(84),fontSize:px(24,'text'),position:'absolute'});
+}
+function layoutStageControls(){
+  style(stageControls,{left:px(24),right:px(24),bottom:px(22),height:px(96),padding:px(12),display:'flex',alignItems:'center',justifyContent:'space-between',gap:px(18),borderRadius:px(22)});
+  style(stageBtns.next,{flex:'1 1 auto',height:px(CFG.buttonH),fontSize:px(24,'text')});
+  style(stageBtns.finish,{width:px(264),height:px(CFG.buttonH),fontSize:px(22,'text')});
+}
+
+function buildStars(){
+  const count = Math.max(26, Math.round((state.vw*state.vh)/30000));
+  state.particles = Array.from({length:count},()=>({x:Math.random()*state.vw,y:Math.random()*state.vh,r:(0.8+Math.random()*2.5)*state.scale,s:(CFG.starMin+Math.random()*(CFG.starMax-CFG.starMin))*state.scale,a:.18+Math.random()*.62}));
+}
+function resize(){
+  state.vw=innerWidth; state.vh=innerHeight; state.cx=state.vw/2; state.cy=state.vh/2;
+  state.scale=Math.min(state.vw/BASE_W,state.vh/BASE_H)*GLOBAL_UI_SCALE;
+  state.textScale=state.scale*TEXT_SCALE; state.hudScale=state.scale*HUD_SCALE;
+  [dom.stars,dom.world,dom.hud].forEach(c=>{ c.width=state.vw; c.height=state.vh; });
+  layoutIntro(); layoutSummary(); layoutStageControls(); buildStars();
+}
+
+function showIntro(){
+  overlay.classList.remove('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.add('hidden');
+  intro.title.textContent='ДИАГНОСТИКА ИНТЕРАКТИВНОГО ЭКРАНА';
+  intro.subtitle.textContent='Мини-игра проверяет тач-ввод, FPS, multitouch и пригодность экрана для других игр.';
+  intro.body.textContent=[
+    'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
+    '',
+    'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
+    '',
+    'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',
+    '',
+    'Этап 4 — подсчёт количества одновременных касаний. Можно проверить, сколько пальцев поддерживается сразу.',
+    '',
+    'Этап 5 — падающие круги разных размеров и скоростей: слева медленно, справа очень быстро.'
+  ].join('\n');
+}
+
+function initFromParams(data={}){
+  state.gameId=String(data.gameId||'screenBenchmark');
+  state.difficulty=clamp(Number(data.difficulty??3)||3,1,5);
+  state.initialized=true; state.phase='intro'; showIntro();
+}
+
+function resetMetrics(){
+  state.finished=false; state.summary=null; state.phaseElapsed=0; state.totalElapsed=0; state.lastFrame=0;
+  state.pointers.clear(); state.pointerCountNow=0; state.maxSimultaneousPointers=0;
+  state.inputMarks=[]; state.totalPresses=0;
+  state.latencySamples=[]; state.lastInputLatency=0; state.fpsSamples=[]; state.fpsValue=0; state.fpsMin=Infinity; state.fpsMax=0; state.longFrames=0;
+  state.latencyTarget={x:.5,y:.55,r:.07,hits:0};
+  state.tapZones.left={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0};
+  state.tapZones.right={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0};
+  state.leftCursor={x:.28,y:.76,active:null,overGate:false}; state.rightCursor={x:.72,y:.76,active:null,overGate:false};
+  state.gateLeft={x:.28,y:.42}; state.gateRight={x:.72,y:.42}; state.dualHoldTime=0; state.dualSimTime=0;
+  state.multitouchBins=Array(CFG.graphSeconds).fill(0); state.multitouchPeakThisSecond=0; state.multitouchPeakOverall=0;
+  state.falling={circles:[],spawnTimer:0,spawned:0,hits:0,misses:0};
+}
+function startRun(){ resetMetrics(); overlay.classList.add('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.remove('hidden'); state.started=true; state.phaseIndex=0; state.phase=STAGES[0]; spawnLatencyTarget(true); }
+function resetRun(){ if(state.finishSent) return; state.started=false; state.phase='intro'; state.summary=null; showIntro(); }
+function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
+function commitResult(){ if(!state.finishSent) finishGame(state.summary ? state.summary.result : 0); }
+function finishGame(result){ if(state.finishSent) return; state.finishSent=true; state.finished=true; try{ parent.postMessage({type:'gameResult', result:Number(result)||0},'*'); }catch(_){} dom.game.style.pointerEvents='none'; }
+function advanceStage(){
+  if(!state.started || state.phase==='summary') return;
+  if(state.phaseIndex >= STAGES.length-1){ finishStages(); return; }
+  state.phaseIndex += 1; state.phase = STAGES[state.phaseIndex]; state.phaseElapsed = 0; releasePointers();
+}
+function finishStages(){ state.summary=summarize(false); state.phase='summary'; showSummary(); }
+function showSummary(){
+  overlay.classList.add('hidden'); summaryLayer.classList.remove('hidden'); stageControls.classList.add('hidden');
+  const s=state.summary, pass=s.result===1; sum.title.textContent=pass?'ИСПЫТАНИЕ ПРОЙДЕНО':'НУЖНА ПРОВЕРКА ЖЕЛЕЗА';
+  sum.title.style.color=pass?'var(--good)':'var(--bad)';
+  sum.subtitle.textContent=pass?'Экран подходит для активных интерактивных сцен и мини-игр.':'Есть ограничения, которые стоит учитывать перед интеграцией игр.';
+  sum.body.textContent=[
+    `• Медианная задержка: ${fmtMs(s.medianLatency)} (P95 ${fmtMs(s.p95Latency)})`,
+    `• Средний FPS: ${fmtFps(s.avgFps)} | минимум: ${fmtFps(s.minFps)} | длинные кадры: ${s.longFrames}`,
+    `• Макс. одновременных касаний: ${s.maxPointers}`,
+    `• Удержание двух кругов в зонах: ${Math.round(s.dualHoldRatio*100)}% этапа`,
+    `• Левая зона: серия ${s.leftBest}, всего ${s.leftTotal}`,
+    `• Правая зона: серия ${s.rightBest}, всего ${s.rightTotal}`,
+    `• Попаданий по падающим целям: ${s.fallHits} из ${s.fallSpawned}`,
+    `• Вердикт: ${s.verdict}`,
+    '',
+    'Нажмите «Подтвердить результат», чтобы зафиксировать итог для движка.'
+  ].join('\n');
+}
+
+function releasePointers(){
+  state.pointers.clear(); state.pointerCountNow=0; state.leftCursor.active=null; state.rightCursor.active=null;
+}
+function screenToNorm(x,y){ return {x:x/state.vw, y:y/state.vh}; }
+function recordLatency(e){ const now=performance.now(); const raw=typeof e.timeStamp==='number' ? now-e.timeStamp : 0; const lat=clamp(raw,0,250); state.lastInputLatency=lat; state.latencySamples.push(lat); if(state.latencySamples.length>220) state.latencySamples.shift(); }
+function addMark(x,y,type='touch'){ state.inputMarks.push({x,y,type,t:performance.now()}); if(state.inputMarks.length>40) state.inputMarks.shift(); }
+function spawnLatencyTarget(first=false){
+  let nx=.14+Math.random()*.72, ny=.26+Math.random()*.56;
+  if(!first){ let tries=0; while(tries<10 && hypot2(nx-state.latencyTarget.x, ny-state.latencyTarget.y)<.18){ nx=.14+Math.random()*.72; ny=.26+Math.random()*.56; tries++; } }
+  state.latencyTarget.x=nx; state.latencyTarget.y=ny;
+}
+function pointInZone(x,side){ return side==='left' ? x<.5 : x>=.5; }
+function registerZoneTap(side){
+  const z=state.tapZones[side], now=performance.now(); z.total += 1;
+  z.combo = (!z.lastTap || now-z.lastTap>CFG.comboResetMs) ? 1 : z.combo+1;
+  z.lastTap=now; z.best=Math.max(z.best,z.combo); z.secCounter += 1;
+}
+function updateZoneCombos(now){ ['left','right'].forEach(side=>{ const z=state.tapZones[side]; if(z.combo>0 && z.lastTap && now-z.lastTap>CFG.comboResetMs) z.combo=0; }); }
+function rollZoneBins(){ ['left','right'].forEach(side=>{ const z=state.tapZones[side]; z.secBins.push(z.secCounter); while(z.secBins.length>CFG.graphSeconds) z.secBins.shift(); z.secCounter=0; }); }
+function rollMultitouchBin(){ state.multitouchBins.push(state.multitouchPeakThisSecond); while(state.multitouchBins.length>CFG.graphSeconds) state.multitouchBins.shift(); state.multitouchPeakThisSecond=0; }
+function tryHitLatency(x,y){ if(hypot2(x-state.latencyTarget.x,y-state.latencyTarget.y)<=state.latencyTarget.r){ state.latencyTarget.hits+=1; spawnLatencyTarget(); } }
+function tryHitFalling(x,y){
+  const px=x*state.vw, py=y*state.vh;
+  for(let i=state.falling.circles.length-1;i>=0;i--){ const c=state.falling.circles[i]; if(hypot2(px-c.x,py-c.y)<=c.r){ state.falling.hits++; state.falling.circles.splice(i,1); return true; } }
+  return false;
+}
+function assignDragRole(pointerId,x,y){
+  const hitR = (CFG.cursorR+20)*state.scale;
+  const lx=state.leftCursor.x*state.vw, ly=state.leftCursor.y*state.vh;
+  const rx=state.rightCursor.x*state.vw, ry=state.rightCursor.y*state.vh;
+  const px=x*state.vw, py=y*state.vh;
+  if(state.leftCursor.active===null && hypot2(px-lx,py-ly)<=hitR){ state.leftCursor.active=pointerId; return 'left'; }
+  if(state.rightCursor.active===null && hypot2(px-rx,py-ry)<=hitR){ state.rightCursor.active=pointerId; return 'right'; }
+  return null;
+}
+
+function onPointerDown(e){
+  if(!state.initialized || state.finished) return;
+  recordLatency(e); const p=screenToNorm(e.clientX,e.clientY); dom.game.setPointerCapture?.(e.pointerId);
+  const pointer={id:e.pointerId,type:e.pointerType||'mouse',x:p.x,y:p.y,role:null}; state.pointers.set(e.pointerId,pointer); state.pointerCountNow=state.pointers.size;
+  state.maxSimultaneousPointers=Math.max(state.maxSimultaneousPointers,state.pointerCountNow); state.multitouchPeakThisSecond=Math.max(state.multitouchPeakThisSecond,state.pointerCountNow); state.multitouchPeakOverall=Math.max(state.multitouchPeakOverall,state.pointerCountNow);
+  state.totalPresses += 1; addMark(p.x,p.y,pointer.type);
+
+  if(state.phase==='latency') tryHitLatency(p.x,p.y);
+  else if(state.phase==='tapzones') registerZoneTap(pointInZone(p.x,'left')?'left':'right');
+  else if(state.phase==='dualdrag') pointer.role=assignDragRole(e.pointerId,p.x,p.y);
+  else if(state.phase==='falling') tryHitFalling(p.x,p.y);
+  e.preventDefault();
+}
+function onPointerMove(e){
+  if(!state.initialized || state.finished) return; const pointer=state.pointers.get(e.pointerId); if(!pointer) return;
+  recordLatency(e); const p=screenToNorm(e.clientX,e.clientY); pointer.x=p.x; pointer.y=p.y;
+  if(state.phase==='dualdrag'){
+    if(pointer.role==='left' && state.leftCursor.active===e.pointerId){ state.leftCursor.x=clamp(p.x,.08,.92); state.leftCursor.y=clamp(p.y,.20,.92); }
+    if(pointer.role==='right' && state.rightCursor.active===e.pointerId){ state.rightCursor.x=clamp(p.x,.08,.92); state.rightCursor.y=clamp(p.y,.20,.92); }
+  }
+  e.preventDefault();
+}
+function onPointerUp(e){
+  const pointer=state.pointers.get(e.pointerId); if(pointer){ if(pointer.role==='left'&&state.leftCursor.active===e.pointerId) state.leftCursor.active=null; if(pointer.role==='right'&&state.rightCursor.active===e.pointerId) state.rightCursor.active=null; }
+  state.pointers.delete(e.pointerId); state.pointerCountNow=state.pointers.size; e.preventDefault();
+}
+
+function update(dt){
+  if(!state.initialized) return; state.totalElapsed+=dt; if(state.started&&state.phase!=='summary'&&state.phase!=='intro') state.phaseElapsed+=dt;
+  const fps = dt>0 ? 1/dt : 0; state.fpsValue=fps; state.fpsSamples.push(fps); if(state.fpsSamples.length>240) state.fpsSamples.shift(); state.fpsMin=Math.min(state.fpsMin,fps); state.fpsMax=Math.max(state.fpsMax,fps); if(dt>.05) state.longFrames++; if(state.pointers.size>=2) state.dualSimTime += dt;
+  for(const p of state.particles){ p.y += p.s*dt; if(p.y>state.vh+p.r){ p.y=-p.r; p.x=Math.random()*state.vw; } }
+  const now=performance.now(); updateZoneCombos(now); while(state.inputMarks.length && now-state.inputMarks[0].t>CFG.touchMarkMs) state.inputMarks.shift();
+  const prevSec=Math.floor(state.phaseElapsed-dt), currSec=Math.floor(state.phaseElapsed); if(currSec!==prevSec){ rollZoneBins(); rollMultitouchBin(); }
+
+  if(state.phase==='latency'){
+    state.latencyTarget.x += Math.sin(state.phaseElapsed*0.28)*0.0007*state.difficulty;
+    state.latencyTarget.y += Math.cos(state.phaseElapsed*0.21)*0.0005*state.difficulty;
+    state.latencyTarget.x = clamp(state.latencyTarget.x,.14,.86); state.latencyTarget.y = clamp(state.latencyTarget.y,.24,.84);
+  }
+  if(state.phase==='dualdrag'){
+    const t=state.totalElapsed; state.gateLeft.x=.25+Math.sin(t*0.95)*0.03; state.gateLeft.y=.44+Math.cos(t*1.10)*0.035; state.gateRight.x=.75+Math.sin(t*1.02+1.2)*0.03; state.gateRight.y=.44+Math.cos(t*1.25+.6)*0.035;
+    const gateR=.11; const li=hypot2(state.leftCursor.x-state.gateLeft.x,state.leftCursor.y-state.gateLeft.y)<=gateR*.92; const ri=hypot2(state.rightCursor.x-state.gateRight.x,state.rightCursor.y-state.gateRight.y)<=gateR*.92;
+    state.leftCursor.overGate=li; state.rightCursor.overGate=ri; if(li&&ri) state.dualHoldTime += dt;
+  }
+  if(state.phase==='falling'){
+    state.falling.spawnTimer += dt; const interval=Math.max(.22, CFG.fallingSpawn - state.difficulty*0.04);
+    while(state.falling.spawnTimer>=interval){ state.falling.spawnTimer-=interval; spawnFallingCircle(); }
+    for(let i=state.falling.circles.length-1;i>=0;i--){ const c=state.falling.circles[i]; c.y += c.speed*dt; if(c.y-c.r>state.vh){ state.falling.misses++; state.falling.circles.splice(i,1); } }
+  }
+}
+function spawnFallingCircle(){ const xNorm=.08+Math.random()*.84; const r=(CFG.fallingMinR + Math.random()*(CFG.fallingMaxR-CFG.fallingMinR))*state.scale; const speed=lerp(CFG.fallingSpeedMin,CFG.fallingSpeedMax,xNorm)*(1+(state.difficulty-3)*.06); state.falling.circles.push({x:xNorm*state.vw,y:-80*state.scale,r,speed}); state.falling.spawned++; }
+
+function draw(){ drawStars(); drawWorld(); drawHud(); }
+function drawStars(){ sctx.clearRect(0,0,state.vw,state.vh); for(const p of state.particles){ sctx.globalAlpha=p.a; sctx.fillStyle='#d9eeff'; sctx.beginPath(); sctx.arc(p.x,p.y,p.r,0,Math.PI*2); sctx.fill(); } sctx.globalAlpha=1; }
+function drawWorld(){ wctx.clearRect(0,0,state.vw,state.vh); if(state.phase==='latency') drawLatencyWorld(); if(state.phase==='tapzones') drawTapZonesWorld(); if(state.phase==='dualdrag') drawDualWorld(); if(state.phase==='multitouch') drawMultitouchWorld(); if(state.phase==='falling') drawFallingWorld(); }
+function roundRect(ctx,x,y,w,h,r,fill,stroke){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(1,state.scale*2);ctx.stroke();} }
+function drawLatencyWorld(){ const tx=state.latencyTarget.x*state.vw, ty=state.latencyTarget.y*state.vh, r=state.latencyTarget.r*Math.min(state.vw,state.vh); const alpha=.22+.20*Math.sin(state.phaseElapsed*5.5); wctx.beginPath(); wctx.strokeStyle=`rgba(255,209,102,${alpha})`; wctx.lineWidth=16*state.scale; wctx.arc(tx,ty,r*1.35,0,Math.PI*2); wctx.stroke(); const g=wctx.createRadialGradient(tx,ty,r*.1,tx,ty,r*1.05); g.addColorStop(0,'rgba(255,255,255,.98)'); g.addColorStop(.3,'rgba(255,230,160,.96)'); g.addColorStop(1,'rgba(255,170,50,.12)'); wctx.fillStyle=g; wctx.beginPath(); wctx.arc(tx,ty,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(255,255,255,.6)'; wctx.lineWidth=3*state.scale; wctx.beginPath(); wctx.arc(tx,ty,r*.63,0,Math.PI*2); wctx.stroke(); }
+function drawTapZonesWorld(){ const mid=state.vw/2, top=220*state.scale, bottom=state.vh-190*state.scale; roundRect(wctx,20*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(102,222,255,.08)','rgba(102,222,255,.20)'); roundRect(wctx,mid+4*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(255,135,220,.08)','rgba(255,135,220,.20)'); drawZoneCaption(0.25,'ЛЕВАЯ ЗОНА','#66deff'); drawZoneCaption(0.75,'ПРАВАЯ ЗОНА','#ff87dc'); }
+function drawZoneCaption(nx,text,color){ wctx.fillStyle=color; wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.fillText(text,nx*state.vw,260*state.scale); wctx.textAlign='left'; }
+function drawDualWorld(){ drawGate(state.gateLeft.x*state.vw,state.gateLeft.y*state.vh,CFG.gateR*state.scale,'#66deff',state.leftCursor.overGate); drawGate(state.gateRight.x*state.vw,state.gateRight.y*state.vh,CFG.gateR*state.scale,'#ff87dc',state.rightCursor.overGate); drawCursor(state.leftCursor.x*state.vw,state.leftCursor.y*state.vh,CFG.cursorR*state.scale,'#66deff','L',state.leftCursor.overGate); drawCursor(state.rightCursor.x*state.vw,state.rightCursor.y*state.vh,CFG.cursorR*state.scale,'#ff87dc','R',state.rightCursor.overGate); }
+function drawGate(x,y,r,color,active){ wctx.fillStyle=active?hexToRgba(color,.26):'rgba(255,255,255,.04)'; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle=active?hexToRgba('#ffffff',.9):'rgba(255,255,255,.22)'; wctx.lineWidth=10*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.88,0,Math.PI*2); wctx.stroke(); wctx.strokeStyle=active?color:'rgba(255,255,255,.12)'; wctx.lineWidth=2.4*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.58,0,Math.PI*2); wctx.stroke(); }
+function drawCursor(x,y,r,color,label,active){ wctx.fillStyle=active?hexToRgba('#ffffff',.85):color; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.fillStyle=active?hexToRgba(color,.65):'rgba(255,255,255,.22)'; wctx.beginPath(); wctx.arc(x-r*.22,y-r*.22,r*.34,0,Math.PI*2); wctx.fill(); wctx.fillStyle='#09111c'; wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.textBaseline='middle'; wctx.fillText(label,x,y+state.scale); wctx.textAlign='left'; wctx.textBaseline='alphabetic'; }
+function drawMultitouchWorld(){ const cx=state.cx, cy=state.cy+60*state.scale, r=180*state.scale; const glow=Math.min(1,state.pointerCountNow/Math.max(1,state.multitouchPeakOverall||1)); wctx.fillStyle=`rgba(181,140,255,${.10+.18*glow})`; wctx.beginPath(); wctx.arc(cx,cy,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(181,140,255,.45)'; wctx.lineWidth=10*state.scale; wctx.beginPath(); wctx.arc(cx,cy,r*.82,0,Math.PI*2); wctx.stroke(); wctx.fillStyle='#eef6ff'; wctx.font=`900 ${Math.round(34*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.fillText('Поставьте много пальцев сразу',cx,cy-r-26*state.scale); wctx.font=`900 ${Math.round(92*state.scale)}px Inter,system-ui,sans-serif`; wctx.fillText(String(state.pointerCountNow),cx,cy+16*state.scale); wctx.font=`800 ${Math.round(24*state.scale)}px Inter,system-ui,sans-serif`; wctx.fillText(`максимум: ${state.maxSimultaneousPointers}`,cx,cy+74*state.scale); wctx.textAlign='left'; }
+function drawFallingWorld(){ for(const c of state.falling.circles){ const g=wctx.createRadialGradient(c.x,c.y,c.r*.14,c.x,c.y,c.r); g.addColorStop(0,'rgba(255,255,255,.98)'); g.addColorStop(.32,'rgba(255,215,140,.95)'); g.addColorStop(1,'rgba(255,160,70,.16)'); wctx.fillStyle=g; wctx.beginPath(); wctx.arc(c.x,c.y,c.r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(255,255,255,.55)'; wctx.lineWidth=2.4*state.scale; wctx.beginPath(); wctx.arc(c.x,c.y,c.r*.63,0,Math.PI*2); wctx.stroke(); } const y=220*state.scale; wctx.fillStyle='rgba(255,255,255,.55)'; wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='left'; wctx.fillText('МЕДЛЕННО',24*state.scale,y); wctx.textAlign='right'; wctx.fillText('ОЧЕНЬ БЫСТРО',state.vw-24*state.scale,y); wctx.textAlign='left'; }
+
+function drawHud(){ hctx.clearRect(0,0,state.vw,state.vh); if(state.phase==='intro') return; drawTopHud(); drawStageHeader(); if(state.phase==='tapzones') drawTapZoneCounters(); drawCharts(); drawPointerMarks(); if(state.phase==='dualdrag') drawDualProgress(); }
+function drawGlass(x,y,w,h){ roundRect(hctx,x,y,w,h,20*state.scale,'rgba(7,17,31,.56)','rgba(255,255,255,.10)'); }
+function drawTopHud(){ const s=state.scale, pad=24*s, y=24*s, w=158*s, h=90*s, gap=14*s; const items=[ ['FPS',fmtFps(state.fpsValue)], ['ОТКЛИК',fmtMs(state.lastInputLatency)], ['КАСАНИЙ',String(state.pointerCountNow)], ['ВСЕГО',String(state.totalPresses)] ]; items.forEach((it,i)=>{ const x=pad+i*(w+gap); drawGlass(x,y,w,h); hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(it[0],x+14*s,y+26*s); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(32*s)}px Inter,system-ui,sans-serif`; hctx.fillText(it[1],x+14*s,y+64*s); }); }
+function drawStageHeader(){ const s=state.scale; const narrow=isNarrowScreen(); const titleMaxW=state.vw-(narrow?80*s:120*s); const titleSize=narrow?32*s:38*s; const hintSize=narrow?20*s:22*s; const titleLineH=titleSize*1.12; const hintLineH=hintSize*1.34; hctx.textAlign='center'; hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(titleSize)}px Inter,system-ui,sans-serif`; const titleY=156*s; const titleLines=wrapCenteredText(hctx,STAGE_TITLES[state.phase]||'',state.cx,titleY,titleMaxW,titleLineH); hctx.fillStyle='rgba(159,180,204,.96)'; hctx.font=`800 ${Math.round(hintSize)}px Inter,system-ui,sans-serif`; const hintY=titleY + titleLines*titleLineH + (narrow?18*s:12*s); wrapCenteredText(hctx,STAGE_HINTS[state.phase]||'',state.cx,hintY,state.vw-(narrow?76*s:70*s),hintLineH); hctx.textAlign='left'; }
+function wrapCenteredText(ctx,text,cx,y,maxW,lineH){ const tokens=text.split(' '); let line='', yy=y, lines=0; for(let i=0;i<tokens.length;i++){ let word=tokens[i]; if(ctx.measureText(word).width>maxW){ let part=''; for(const ch of word){ const test=part+ch; if(part && ctx.measureText(test).width>maxW){ const rendered=line?line+' '+part:part; ctx.fillText(rendered,cx,yy); lines++; yy+=lineH; line=''; part=ch; } else part=test; } word=part; } const test=line?line+' '+word:word; if(ctx.measureText(test).width>maxW && line){ ctx.fillText(line,cx,yy); lines++; yy+=lineH; line=word; } else line=test; } if(line){ ctx.fillText(line,cx,yy); lines++; } return lines; }
+function drawCharts(){ const s=state.scale, baseW=248*s, h=130*s, gap=14*s, x=24*s; const narrow=isNarrowScreen(); const w=narrow?Math.min(baseW,(state.vw-3*gap-2*x)/2):baseW; const y=state.vh-h-140*s; drawLineChart(x,y,w,h,'FPS',state.fpsSamples,0,Math.max(60,state.fpsMax||60),'#66deff','fps'); drawLineChart(x+w+gap,y,w,h,'ОТКЛИК',state.latencySamples,0,120,'#ff87dc','ms'); if(state.phase==='tapzones'){ if(narrow){ drawBarChart(x,y-(h+16*s),w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff'); drawBarChart(x+w+gap,y-(h+16*s),w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc'); } else { drawBarChart(x+(w+gap)*2,y,w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff'); drawBarChart(x+(w+gap)*3,y,w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc'); } } else if(state.phase==='multitouch'){ drawBarChart(x+(w+gap)*2,y,w,h,'ОДНОВР. КАСАНИЯ',state.multitouchBins,state.multitouchPeakThisSecond,'#b58cff'); } else if(state.phase==='falling'){ drawMiniBox(x+(w+gap)*2,y,w,h,'ПОПАДАНИЯ',`${state.falling.hits}/${state.falling.spawned}`,'#ffb86b'); } else if(state.phase==='dualdrag'){ drawMiniBox(x+(w+gap)*2,y,w,h,'УДЕРЖАНИЕ',`${Math.round((state.dualHoldTime/Math.max(.001,state.phaseElapsed||1))*100)}%`,'#7ff4b5'); } }
+function drawLineChart(x,y,w,h,title,data,min,max,color,unit){ drawGlass(x,y,w,h); const s=state.scale, px=x+14*s, py=y+36*s, pw=w-28*s, ph=h-50*s; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); hctx.strokeStyle='rgba(255,255,255,.08)'; hctx.lineWidth=Math.max(1,1.4*s); for(let i=0;i<3;i++){ const yy=py + (ph/2)*i; hctx.beginPath(); hctx.moveTo(px,yy); hctx.lineTo(px+pw,yy); hctx.stroke(); } const arr=data.slice(-80); if(arr.length>1){ hctx.beginPath(); arr.forEach((v,i)=>{ const xx=px+(i/Math.max(1,arr.length-1))*pw; const norm=clamp((v-min)/Math.max(1e-6,max-min),0,1); const yy=py+ph-norm*ph; if(i===0) hctx.moveTo(xx,yy); else hctx.lineTo(xx,yy); }); hctx.strokeStyle=color; hctx.lineWidth=Math.max(2,2.8*s); hctx.stroke(); } hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='right'; hctx.fillText(`${Math.round(arr.at(-1)||0)} ${unit}`,x+w-12*s,y+24*s); hctx.textAlign='left'; }
+function drawBarChart(x,y,w,h,title,bins,current,color){ drawGlass(x,y,w,h); const s=state.scale, px=x+14*s, py=y+36*s, pw=w-28*s, ph=h-50*s; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); const arr=[...bins.slice(-(CFG.graphSeconds-1)), current]; const max=Math.max(3,...arr); const barW=pw/arr.length*.72; arr.forEach((v,i)=>{ const xx=px+i*(pw/arr.length)+(pw/arr.length-barW)/2; const bh=(v/max)*ph; hctx.fillStyle=hexToRgba(color,.8); hctx.fillRect(xx,py+ph-bh,barW,bh); }); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='right'; hctx.fillText(`${current}/сек`,x+w-12*s,y+24*s); hctx.textAlign='left'; }
+function drawMiniBox(x,y,w,h,title,value,color){ drawGlass(x,y,w,h); const s=state.scale; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); hctx.fillStyle=color; hctx.font=`900 ${Math.round(42*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='center'; hctx.fillText(value,x+w/2,y+82*s); hctx.textAlign='left'; }
+function drawPointerMarks(){ const s=state.scale; for(const m of state.inputMarks){ drawTouchMarker(m.x*state.vw,m.y*state.vh,'rgba(255,255,255,.95)','rgba(255,255,255,.5)','rgba(255,255,255,.28)'); } if(state.phase==='multitouch'){ for(const p of state.pointers.values()){ drawTouchMarker(p.x*state.vw,p.y*state.vh,'rgba(181,140,255,.98)','rgba(181,140,255,.55)','rgba(181,140,255,.32)'); } } function drawTouchMarker(x,y,c1,c2,c3){ hctx.strokeStyle=c1; hctx.lineWidth=3.2*s; hctx.beginPath(); hctx.arc(x,y,26*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c2; hctx.lineWidth=4.6*s; hctx.beginPath(); hctx.arc(x,y,54*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c3; hctx.lineWidth=5.2*s; hctx.beginPath(); hctx.arc(x,y,94*s,0,Math.PI*2); hctx.stroke(); } }
+function drawDualProgress(){ const s=state.scale, w=520*s, h=24*s, x=state.cx-w/2, y=state.vh-134*s; drawGlass(x-8*s,y-8*s,w+16*s,h+16*s); roundRect(hctx,x,y,w,h,999*s,'rgba(255,255,255,.07)','rgba(255,255,255,.1)'); const ratio=clamp(state.dualHoldTime/Math.max(.001,state.phaseElapsed||1),0,1); roundRect(hctx,x,y,w*ratio,h,999*s,'rgba(127,244,181,.88)',null); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(20*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='center'; hctx.fillText(`Совместное удержание: ${Math.round(ratio*100)}%`,state.cx,y-14*s); hctx.textAlign='left'; }
+
+
+function drawTapZoneCounters(){
+  const s=state.scale, narrow=isNarrowScreen();
+  const x=24*s, y=narrow?230*s:206*s, w=narrow?250*s:220*s, h=118*s, gap=12*s;
+  const left=state.tapZones.left, right=state.tapZones.right;
+  drawZoneCounterBox(x,y,w,h,'ЛЕВАЯ','#66deff',left);
+  drawZoneCounterBox(x,y+h+gap,w,h,'ПРАВАЯ','#ff87dc',right);
+}
+function drawZoneCounterBox(x,y,w,h,label,color,z){
+  drawGlass(x,y,w,h);
+  const s=state.scale;
+  hctx.fillStyle=color;
+  hctx.font=`900 ${Math.round(18*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(label,x+14*s,y+22*s);
+  hctx.fillStyle='#eef6ff';
+  hctx.font=`900 ${Math.round(34*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(`${z.combo}`,x+14*s,y+62*s);
+  hctx.font=`800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillStyle='rgba(159,180,204,.96)';
+  hctx.fillText(`серия`,x+82*s,y+42*s);
+  hctx.fillText(`лучшая ${z.best}`,x+82*s,y+62*s);
+  hctx.fillText(`всего ${z.total}`,x+82*s,y+82*s);
+}
+
+function summarize(forcedFail){
+  const med=median(state.latencySamples), p95=percentile(state.latencySamples,.95), avgF=avg(state.fpsSamples), minF=state.fpsMin===Infinity?0:state.fpsMin;
+  const dualRatio = state.phase==='dualdrag' ? state.dualHoldTime/Math.max(.001,state.phaseElapsed||1) : state.dualHoldTime/Math.max(1,state.totalElapsed);
+  const fallRatio = state.falling.spawned ? state.falling.hits/state.falling.spawned : 0;
+  const latencyScore = med<=CFG.goodLatency ? 1 : med<=CFG.okLatency ? .5 : 0;
+  const fpsScore = avgF>=CFG.goodFps ? 1 : avgF>=CFG.okFps ? .5 : 0;
+  const jankScore = state.longFrames<=CFG.goodLongFrames ? 1 : state.longFrames<=CFG.okLongFrames ? .5 : 0;
+  const dualScore = (state.maxSimultaneousPointers>=2 && state.dualSimTime>=CFG.dualNeedSimSec && dualRatio>=CFG.dualNeedRatio) ? 1 : 0;
+  const tapScore = (Math.max(...state.tapZones.left.secBins,state.tapZones.left.secCounter)>=5 && Math.max(...state.tapZones.right.secBins,state.tapZones.right.secCounter)>=5) ? 1 : .5;
+  const multiScore = state.maxSimultaneousPointers>=CFG.touchGood ? 1 : state.maxSimultaneousPointers>=2 ? .5 : 0;
+  const fallScore = fallRatio>=CFG.fallNeedRatio ? 1 : fallRatio>=.2 ? .5 : 0;
+  const final = forcedFail ? 0 : latencyScore*.18 + fpsScore*.16 + jankScore*.12 + tapScore*.14 + dualScore*.18 + multiScore*.10 + fallScore*.12;
+  const result = (!forcedFail && dualScore===1 && final>=.66) ? 1 : 0;
+  let verdict='Недостаточно данных.';
+  if(result===1) verdict='Хороший кандидат для активных мини-игр, drag-механик и одновременной игры нескольких людей.';
+  else if(state.maxSimultaneousPointers<2) verdict='Мало подтверждений multitouch: стоит проверить поддержку одновременных касаний.';
+  else if(med>CFG.okLatency) verdict='Задержка ввода заметна: быстрые сцены могут ощущаться вязко.';
+  else if(avgF<CFG.okFps || state.longFrames>CFG.okLongFrames) verdict='Есть просадки кадров или длинные кадры: устройству нужен запас производительности.';
+  else if(fallRatio<.2) verdict='Быстрые цели справа ловятся с трудом: возможна задержка тача или нехватка точности.';
+  else verdict='Устройство близко к допустимому, но лучше проверить на финальной сцене игры.';
+  return {result, medianLatency:med, p95Latency:p95, avgFps:avgF, minFps:minF, longFrames:state.longFrames, maxPointers:state.maxSimultaneousPointers, dualHoldRatio:dualRatio, leftBest:state.tapZones.left.best, rightBest:state.tapZones.right.best, leftTotal:state.tapZones.left.total, rightTotal:state.tapZones.right.total, fallHits:state.falling.hits, fallSpawned:state.falling.spawned, verdict};
+}
+
+function loop(ts){ if(!state.lastFrame) state.lastFrame=ts; let dt=(ts-state.lastFrame)/1000; state.lastFrame=ts; dt=clamp(dt,.001,.05); update(dt); draw(); requestAnimationFrame(loop); }
+window.addEventListener('resize', resize);
+dom.game.addEventListener('pointerdown', onPointerDown, {passive:false});
+dom.game.addEventListener('pointermove', onPointerMove, {passive:false});
+dom.game.addEventListener('pointerup', onPointerUp, {passive:false});
+dom.game.addEventListener('pointercancel', onPointerUp, {passive:false});
+dom.game.addEventListener('pointerleave', onPointerUp, {passive:false});
+window.addEventListener('message', e => { if(e.data && e.data.type==='gameInit') initFromParams(e.data); });
+window.addEventListener('beforeunload', () => { if(!state.finishSent){ try{ parent.postMessage({type:'gameResult', result:0},'*'); }catch(_){} } });
+resize(); showIntro(); requestAnimationFrame(loop); setTimeout(()=>{ if(!state.initialized) initFromParams({type:'gameInit',gameId:'screenBenchmark',difficulty:3}); },80);
+})();
+</script>
+</body>
+</html>
