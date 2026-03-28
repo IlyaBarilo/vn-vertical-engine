@@ -4073,6 +4073,7 @@ function buildMermaidGraph(story, unreachableList) {
   mermaid += "classDef character-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
   mermaid += "classDef backgrounds-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n\n";
   mermaid += "classDef games-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n";
+  mermaid += "classDef game-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
 
   // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
   var charGraphData = buildCharactersGraph(story);
@@ -4097,13 +4098,17 @@ function buildMermaidGraph(story, unreachableList) {
     var label = node.id + "<br/>";
 
     // Параметры настройки
-    var imageSize = 40;           // Размер миниатюр
-    var imageGap = 2;             // Расстояние между миниатюрами
-    var containerPadding = 8;     // Внутренние отступы контейнера
+    var imageSize = 100;          // должно совпадать с --graph-max-image-width
+    var imageGap = 2;
+    var containerPadding = 8;
 
     if (node.allBgImages && node.allBgImages.length > 0) {
-      // Простой контейнер без сложных расчетов ширины
-      label += '<div class="bg-images-container" style="padding: 4px;">';
+      var bgStripWidth =
+        (node.allBgImages.length * imageSize) +
+        (Math.max(0, node.allBgImages.length - 1) * imageGap) +
+        (containerPadding * 2);
+
+      label += '<div class="bg-images-container" style="width:' + bgStripWidth + 'px; white-space:nowrap;">';
       
       for (var b = 0; b < node.allBgImages.length; b++) {
         var bg = node.allBgImages[b];
@@ -4240,7 +4245,7 @@ function buildCharactersGraph(story) {
     if (char.images) {
       var emotionIds = Object.keys(char.images).sort();
       
-      emotionsHtml = '<div class="char-emotions-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin-top: 4px;">';
+      emotionsHtml = '<div class="char-emotions-container">';
       
       for (var e = 0; e < emotionIds.length; e++) {
         var emotion = emotionIds[e];
@@ -4324,9 +4329,24 @@ function buildBackgroundsGraph(story) {
   }
     
   // Формируем HTML для изображений фонов
-  var bgImagesHtml = '<div class="bg-images-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; padding: 4px;">';
-  
   var bgIds = Object.keys(allUniqueBgs).sort();
+
+  // Формируем HTML для изображений фонов
+  var imageSize = 100;        // должно совпадать с --graph-max-image-width
+  var imageGap = 2;
+  var containerPadding = 8;
+
+  var bgStripWidth =
+    (bgIds.length * imageSize) +
+    (Math.max(0, bgIds.length - 1) * imageGap) +
+    (containerPadding * 2);
+
+  var bgImagesHtml =
+    '<div class="bg-images-container" style="width:' + bgStripWidth + 'px; white-space:nowrap;">';
+
+
+
+
   for (var i = 0; i < bgIds.length; i++) {
     var bgId = bgIds[i];
     var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
@@ -4358,7 +4378,9 @@ function buildBackgroundsGraph(story) {
 function buildGamesGraph(story) {
   var mermaid = "";
   var games = (story.assets && story.assets.games) ? story.assets.games : {};
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+  var startId = (story.meta && story.meta.start)
+    ? story.meta.start
+    : (story.scenes[0] ? story.scenes[0].id : "START");
   var scenes = story.scenes || [];
   var usedGames = {};
 
@@ -4377,29 +4399,49 @@ function buildGamesGraph(story) {
 
   var gameIds = Object.keys(usedGames).sort();
   var gamesCount = gameIds.length;
-  var gamesListHtml = '<div class="games-list-container">';
 
-  if (gamesCount > 0) {
-    for (var i = 0; i < gameIds.length; i++) {
-      var gameId = gameIds[i];
-      var safeGameId = gameId
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-      gamesListHtml += '<div class="game-list-item">' + safeGameId + '</div>';
-    }
-  } else {
-    gamesListHtml += '<div class="game-list-empty">(none)</div>';
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
-  gamesListHtml += '</div>';
+  var groupLabel = '<b>🎮 Games (' + gamesCount + ')</b>';
 
-  var label = '<b>🎮 Games (' + gamesCount + ')</b><br/>' + gamesListHtml;
-
-  mermaid += '    games["' + label + '"]\n';
+  mermaid += '    games["' + groupLabel + '"]\n';
   mermaid += '    games:::games-group\n';
+
+  for (var i = 0; i < gameIds.length; i++) {
+    var gameId = gameIds[i];
+    var game = games[gameId] || {};
+
+    var safeGameId = escapeHtml(gameId);
+    var safeTitle = escapeHtml(game.title || gameId);
+    var safeDescription = escapeHtml(game.description || "");
+    var safeCover = escapeHtml(game.cover || "");
+    var tooltip = escapeHtml(game.description || game.title || gameId);
+
+    var gameNodeId = 'game_' + gameId.replace(/[^a-zA-Z0-9_]/g, '_');
+
+    var label = '<div class="game-card" title="' + tooltip + '">' +
+      '<div class="game-card-var">' + safeGameId + '</div>' +
+      '<div class="game-card-title">' + safeTitle + '</div>' +
+      (safeCover
+        ? '<div class="game-card-image-wrap">' +
+            '<img src="' + safeCover + '" ' +
+            'class="game-thumbnail" ' +
+            'alt="" ' +
+            'loading="eager" />' +
+          '</div>'
+        : '') +
+      '</div>';
+
+    mermaid += '    ' + gameNodeId + '["' + label + '"]\n';
+    mermaid += '    ' + gameNodeId + ':::game-node\n';
+    mermaid += '    games -.-> ' + gameNodeId + '\n';
+  }
 
   mermaid += '\n    %% Connection between games and the first chapter\n';
   mermaid += '    games -.-> ' + startId + ';\n';
@@ -4561,6 +4603,13 @@ function computeStoryStats(story) {
     if (usedBg[bgId]) usedBackgroundIds.push(bgId);
     else unusedBackgroundIds.push(bgId);
   }
+
+
+
+
+
+
+
 
   var backgroundsDetailed = [];
 

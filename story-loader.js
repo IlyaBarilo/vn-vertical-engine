@@ -703,7 +703,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
       if (key === 'image' || key === 'src') key = 'file';
       if (key === 'emo') key = 'emotion';
-      if (key === 'coverimage' || key === 'thumbnail') key = 'cover';
+      if (key === 'coverimage' || key === 'thumbnail' || key === 'logo') key = 'cover';
 
       args[key] = value;
     }

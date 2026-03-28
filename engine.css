@@ -206,6 +206,15 @@ body {
   --char-shadow-blur: 1.5rem;
   --char-shadow-color: rgba(0,0,0,0.55);
 
+
+
+  --graph-thumb-radius: 8px;
+  --graph-max-image-width: 80px;
+  --graph-max-image-height: 200px;
+
+  --graph-game-card-min-width: 0px;
+  --graph-scene-card-min-width: 0px;
+  --graph-bg-block-min-width: 0px;
 }
 
 /* Контейнер приложения */
@@ -987,22 +996,7 @@ body {
 
 /* Сами изображения */
 .graphContainer .mermaid .node img {
-  display: inline-block !important;  /* Вместо block, чтобы быть в строке */
-  width: 80px !important;
-  height: 120px !important;
-  object-fit: cover !important;
-  background-color: #f0f0f0 !important;
-  border-radius: 4px !important;
-  border: 1px solid #ccc !important;
-  transition: transform 0.2s ease !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  margin: 0 !important;  /* Убираем отступы */
-  vertical-align: middle !important; /* Выравнивание по вертикали */
-  position: relative !important;  /* Для правильного наложения */
-  z-index: 1 !important;
-  cursor: zoom-in !important;
-
-  /* Убираем любые ограничения */
+  display: block !important;
   max-width: none !important;
   max-height: none !important;
 }
@@ -1074,55 +1068,21 @@ body {
   overflow: visible !important;
 }
 
-/* Для мобильных устройств уменьшаем количество колонок */
-@media (max-width: 600px) {
-  .bg-images-container {
-    grid-template-columns: repeat(3, minmax(40px, 1fr));
-  }
-}
 
-/* Контейнер для изображений - только один раз! */
-.bg-images-container {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  justify-content: center !important;
-  align-items: center !important;
-  gap: 2px !important;
-  margin: 4px auto !important;
-  background-color: rgba(255,255,255,0.3) !important;
-  border-radius: 6px !important;
-  padding: 8px !important;
-  box-sizing: border-box !important;
-  border: none !important;            /* Убираем контур */
-}
-
-/* Миниатюры - только один раз! */
-.bg-thumbnail {
-  width: 40px !important;
-  height: 40px !important;
-  object-fit: cover !important;
-  background-color: #f0f0f0 !important;
-  border-radius: 8px !important;     /* Увеличено скругление углов */
-  border: none !important;            /* Убираем серый контур */
-  transition: transform 0.2s ease !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  cursor: zoom-in !important;
-  flex-shrink: 0 !important;
-  padding: 2px !important;           /* Добавляем внутренний отступ */
-  box-sizing: border-box !important;  /* Чтобы padding не увеличивал размер */
-}
 
 
 /* Отключаем конфликтующие стили для изображений в узлах */
 .graphContainer .mermaid .node img {
-  all: unset !important; /* Сбрасываем все предыдущие стили */
+  all: unset !important;
   display: inline-block !important;
-  width: 40px !important;
-  height: 40px !important;
-  object-fit: cover !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
+  object-fit: contain !important;
   background-color: #f0f0f0 !important;
-  border-radius: 8px !important;     /* Увеличено скругление углов */
-  border: none !important;            /* Убираем серый контур */
+  border-radius: var(--graph-thumb-radius) !important;
+  border: none !important;
   transition: transform 0.2s ease !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
   margin: 0 1px !important;
@@ -1143,29 +1103,31 @@ body {
 
 /* Контейнер для эмоций персонажа */
 .char-emotions-container {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  justify-content: center !important;
+  display: inline-flex !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
   align-items: center !important;
-  gap: 2px !important;
-  margin-top: 4px !important;
-  background-color: transparent !important;
+  gap: 4px !important;
+  margin-top: 6px !important;
+  padding: 4px !important;
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  background-color: rgba(200,200,200,0.2) !important;
   border-radius: 8px !important;
-  padding: 2px !important;
 }
 
 /* Миниатюры эмоций */
 .char-emotion-thumbnail {
-  width: 40px !important;
-  height: 40px !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
   object-fit: contain !important;
-  background-color: #f0f0f0 !important;
-  border-radius: 8px !important;
-  border: none !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  transition: transform 0.2s ease !important;
-  cursor: zoom-in !important;
-  flex-shrink: 0 !important;
+  display: block !important;
+  border-radius: var(--graph-thumb-radius) !important;
 }
 
 .char-emotion-thumbnail:hover {
@@ -1177,11 +1139,6 @@ body {
 
 
 
-/* Увеличенные миниатюры для фонов */
-.bg-thumbnail.large {
-  width: 50px !important;
-  height: 50px !important;
-}
 
 
 
@@ -1214,6 +1171,17 @@ body {
 
 .character-node .label {
   color: #333333 !important;        /* Темно-серый текст */
+}
+
+/* Класс для узлов игр */
+.game-node > rect {
+  fill: #d0d0d0 !important;
+  stroke: #808080 !important;
+  stroke-width: 1px !important;
+}
+
+.game-node .label {
+  color: #333333 !important;
 }
 
 /* Класс для группы фонов */
@@ -1283,11 +1251,13 @@ body {
 
 /* Миниатюры эмоций */
 .char-emotion-thumbnail {
-  width: 40px !important;
-  height: 40px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
   object-fit: contain !important;
   background-color: #f0f0f0 !important;
-  border-radius: 6px !important;
+  border-radius: var(--graph-thumb-radius) !important;
   border: 1px solid #a0a0a0 !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
   transition: transform 0.2s ease, box-shadow 0.2s ease !important;
@@ -1302,36 +1272,123 @@ body {
   cursor: zoom-out !important;
 }
 
-/* Контейнер для фонов */
-.bg-images-container {
-  display: flex !important;
-  flex-wrap: wrap !important;
+/* Карточка игры внутри Mermaid */
+.game-card {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  padding: 4px 6px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  text-align: center !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+
+.game-card-var {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #333 !important;
+  line-height: 1.2 !important;
+  word-break: break-word !important;
+}
+
+.game-card-title {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #111 !important;
+  line-height: 1.2 !important;
+  word-break: break-word !important;
+}
+
+.game-card-image-wrap {
+  display: inline-flex !important;
   justify-content: center !important;
   align-items: center !important;
-  gap: 4px !important;
-  margin: 6px auto !important;
-  padding: 6px !important;
-  background-color: rgba(220,220,220,0.3) !important;
-  border-radius: 8px !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin-top: 2px !important;
+  overflow: visible !important;
+  border-radius: var(--graph-thumb-radius) !important;
+}
+
+.game-thumbnail {
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
+  object-fit: contain !important;
+  display: block !important;
+  background-color: #f0f0f0 !important;
+  border-radius: var(--graph-thumb-radius) !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  flex-shrink: 0 !important;
+}
+
+.game-thumbnail:hover {
+  transform: scale(3.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+  cursor: zoom-out !important;
+}
+
+.game-card-description {
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  color: #444 !important;
+  word-break: break-word !important;
+  max-width: 160px !important;
+}
+
+/* Контейнер для фонов */
+.bg-images-container {
+  display: block !important;
+  white-space: nowrap !important;
+  margin: 4px auto !important;
+  background-color: rgba(255,255,255,0.3) !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  border: none !important;
 }
 
 /* Миниатюры фонов (обычные) */
 .bg-thumbnail {
-  width: 40px !important;
-  height: 40px !important;
+  display: inline-block !important;
+  vertical-align: top !important;
+  margin: 0 2px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
   object-fit: cover !important;
-  background-color: #e8e8e8 !important;
-  border-radius: 6px !important;
-  border: 1px solid #a0a0a0 !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 8px !important;
+  border: none !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-  cursor: zoom-in !important;
 }
 
 /* Увеличенные миниатюры для фонов */
 .bg-thumbnail.large {
-  width: 50px !important;
-  height: 50px !important;
+  display: inline-block !important;
+  vertical-align: top !important;
+  margin: 0 2px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: var(--graph-max-image-width) !important;
+  max-height: var(--graph-max-image-height) !important;
+  object-fit: cover !important;
+  border-radius: var(--graph-thumb-radius) !important;
 }
 
 .bg-thumbnail:hover {
@@ -1340,6 +1397,13 @@ body {
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
   border: 1px solid #606060 !important;
   cursor: zoom-out !important;
+}
+
+.bg-thumbnail,
+.bg-thumbnail.large {
+  display: inline-block !important;
+  vertical-align: top !important;
+  margin-right: 2px !important;
 }
 
 /* Стили для текста в узлах */

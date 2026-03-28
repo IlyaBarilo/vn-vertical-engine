@@ -47,9 +47,9 @@ bgmDay file=assets/audio/bgm_campus_day.mp3
 # sfxClickTest file=assets/audio/sfx_button_click.mp3
 
 [game]
-gameCoffeeRush file=assets/games/coffee_rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." logo=image.png
-spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." logo=image.png
-screenBenchmark file=assets/games/interactive_screen_benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." logo=image.png
+gameCoffeeRush file=assets/games/coffee_rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee_rush.jpg
+spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space_debris.jpg
+screenBenchmark file=assets/games/interactive_screen_benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive_screen_benchmark.jpg
 gameTestMiss file=assets/games/space_debrisTestMiss.html
 
 [var]
