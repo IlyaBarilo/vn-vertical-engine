@@ -988,8 +988,6 @@ body {
 /* Сами изображения */
 .graphContainer .mermaid .node img {
   display: inline-block !important;  /* Вместо block, чтобы быть в строке */
-  width: 80px !important;
-  height: 120px !important;
   object-fit: cover !important;
   background-color: #f0f0f0 !important;
   border-radius: 4px !important;
@@ -1097,13 +1095,6 @@ body {
 
 .graphContainer .mermaid foreignObject * {
   overflow: visible !important;
-}
-
-/* Для мобильных устройств уменьшаем количество колонок */
-@media (max-width: 600px) {
-  .bg-images-container {
-    grid-template-columns: repeat(3, minmax(40px, 1fr));
-  }
 }
 
 /* Контейнер для изображений - только один раз! */
@@ -1336,7 +1327,8 @@ body {
 
 /* Контейнер для фонов */
 .bg-images-container {
-  display: flex !important;
+  display: inline-flex !important;
+  width: fit-content;
   flex-wrap: wrap !important;
   justify-content: center !important;
   align-items: center !important;
@@ -1400,4 +1392,23 @@ body {
 }
 
 
+/* .graphContainer .mermaid .node img {
+  width: 40px !important;
+}
+*/
 
+.graphContainer .mermaid .node .bg-images-container.imgcount1 .bg-thumbnail {
+  width: 120px !important;
+}
+
+.graphContainer .mermaid .node .bg-images-container.imgcount2 .bg-thumbnail {
+  width: 80px !important;
+}
+
+.graphContainer .mermaid .node .bg-images-container.imgcount3 .bg-thumbnail {
+  width: 60px !important;
+}
+
+.graphContainer .mermaid .node .bg-images-container.imgcount4 .bg-thumbnail {
+  width: 40px !important;
+}

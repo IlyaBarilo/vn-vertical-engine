@@ -4241,6 +4241,14 @@ function buildCharactersGraph(story) {
     if (char.images) {
       var emotionIds = Object.keys(char.images).sort();
       
+      console.log('[GRAPH CHAR BUILD]', {
+        charId: charId,
+        emotionCount: emotionIds.length,
+        emotions: emotionIds.slice(),
+        inlineThumbSize: '40x40',
+        inlineGap: '2px'
+      });
+
       emotionsHtml = '<div class="char-emotions-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin-top: 4px;">';
       
       for (var e = 0; e < emotionIds.length; e++) {
@@ -4250,7 +4258,7 @@ function buildCharactersGraph(story) {
         // ВАЖНО: экранируем кавычки в обработчиках событий
         emotionsHtml += '<img src="' + imgSrc + '" ' +
                         'class="char-emotion-thumbnail" ' +
-                        'style="width: 40px; height: 40px; object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
+                        'style="object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
                         'onmouseover="this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;" ' +
                         'onmouseout="this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;" ' +
                         'title="' + emotion + '" alt="" /> ';
@@ -4325,16 +4333,26 @@ function buildBackgroundsGraph(story) {
   }
     
   // Формируем HTML для изображений фонов
-  var bgImagesHtml = '<div class="bg-images-container" style="display:flex; flex-wrap:nowrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;">';
-  
   var bgIds = Object.keys(allUniqueBgs).sort();
+
+  var bgCountClass = 'imgcount4';
+  if (bgIds.length === 1) {
+    bgCountClass = 'imgcount1';
+  } else if (bgIds.length >= 2 && bgIds.length <= 4) {
+    bgCountClass = 'imgcount2';
+  } else if (bgIds.length >= 5 && bgIds.length <= 9) {
+    bgCountClass = 'imgcount3';
+  }
+
+  var bgImagesHtml = '<div class="bg-images-container ' + bgCountClass + '" style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;">';
+  
   for (var i = 0; i < bgIds.length; i++) {
     var bgId = bgIds[i];
     var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
     
     bgImagesHtml += '<img src="' + imgSrc + '" ' +
-                    'class="bg-thumbnail large" ' +  // Добавим класс large для фонов
-                    'title="' + bgId + '" alt="" /> ';
+                'class="bg-thumbnail ' + bgCountClass + '" ' +
+                'title="' + bgId + '" alt="" /> ';
   }
     
   bgImagesHtml += '</div>';
@@ -5311,6 +5329,8 @@ function renderMermaidGraph() {
                 svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
             }
             
+            debugCharacterGraphLayout();
+
             // Сбрасываем масштаб
             resetPanzoom();
           }, 100);
@@ -5325,6 +5345,97 @@ function renderMermaidGraph() {
     }, 50);
   }
 } // function
+
+
+
+function debugCharacterGraphLayout() {
+  try {
+    var svg = mermaidGraph && mermaidGraph.querySelector('svg');
+    if (!svg) {
+      console.log('[GRAPH DEBUG] svg not found');
+      return;
+    }
+
+    var nodes = svg.querySelectorAll('g.node');
+    console.log('[GRAPH DEBUG] total nodes:', nodes.length);
+
+    nodes.forEach(function(node, index) {
+      var fo = node.querySelector('foreignObject');
+      var container = node.querySelector('.char-emotions-container');
+      var thumbs = node.querySelectorAll('.char-emotion-thumbnail');
+      var labelText = (node.textContent || '').replace(/\s+/g, ' ').trim();
+
+      if (!container && !thumbs.length) return;
+
+      var nodeBox = (typeof node.getBBox === 'function') ? node.getBBox() : null;
+      var foRect = fo ? fo.getBoundingClientRect() : null;
+      var containerRect = container ? container.getBoundingClientRect() : null;
+
+      console.group('[GRAPH DEBUG NODE] ' + labelText);
+      console.log('index =', index);
+      console.log('thumbCount =', thumbs.length);
+
+      if (nodeBox) {
+        console.log(
+          'nodeBBox width =', Math.round(nodeBox.width),
+          'height =', Math.round(nodeBox.height)
+        );
+      } else {
+        console.log('nodeBBox = unavailable');
+      }
+
+      if (fo) {
+        console.log(
+          'foreignObject attr width =', fo.getAttribute('width'),
+          'attr height =', fo.getAttribute('height')
+        );
+      } else {
+        console.log('foreignObject = not found');
+      }
+
+      if (foRect) {
+        console.log(
+          'foreignObject rect width =', Math.round(foRect.width),
+          'height =', Math.round(foRect.height)
+        );
+      }
+
+      if (container && containerRect) {
+        var ccs = window.getComputedStyle(container);
+        console.log(
+          'container rect width =', Math.round(containerRect.width),
+          'height =', Math.round(containerRect.height)
+        );
+        console.log(
+          'container computed width =', ccs.width,
+          'maxWidth =', ccs.maxWidth,
+          'display =', ccs.display,
+          'flexWrap =', ccs.flexWrap,
+          'gap =', ccs.gap,
+          'overflow =', ccs.overflow
+        );
+      } else {
+        console.log('char-emotions-container = not found');
+      }
+
+      thumbs.forEach(function(img, i) {
+        var r = img.getBoundingClientRect();
+        var cs = window.getComputedStyle(img);
+        console.log(
+          'thumb[' + i + '] rect width =', Math.round(r.width),
+          'height =', Math.round(r.height),
+          'computed width =', cs.width,
+          'computed height =', cs.height
+        );
+      });
+
+      console.groupEnd();
+    });
+  } catch (err) {
+    console.error('[GRAPH DEBUG ERROR]', err);
+  }
+}
+
 
 // Добавьте эту функцию для принудительного пересчета при переключении вкладок
 
