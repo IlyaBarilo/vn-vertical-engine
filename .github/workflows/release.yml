@@ -114,9 +114,14 @@ jobs:
             \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
           fi
 
-          # Копируем мини-игры
+          # Копируем мини-игры и изображения к ним
           if [ -d assets/games ]; then
-            find assets/games -type f -iname "*.html" -exec cp {} "build/$APP_NAME/assets/games/" \;
+            find assets/games -type f \( \
+              -iname "*.jpg" -o \
+              -iname "*.jpeg" -o \
+              -iname "*.png" -o \
+              -iname "*.html" \
+            \) -exec cp {} "build/$APP_NAME/assets/games/" \;
           fi
 
       - name: Prepare site build
