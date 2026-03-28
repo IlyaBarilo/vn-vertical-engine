@@ -1397,18 +1397,24 @@ body {
 }
 */
 
-.graphContainer .mermaid .node .bg-images-container.imgcount1 .bg-thumbnail {
+.graphContainer .mermaid .node img.imgcount1 {
   width: 120px !important;
 }
 
-.graphContainer .mermaid .node .bg-images-container.imgcount2 .bg-thumbnail {
+.graphContainer .mermaid .node img.imgcount2 {
   width: 80px !important;
 }
 
-.graphContainer .mermaid .node .bg-images-container.imgcount3 .bg-thumbnail {
+.graphContainer .mermaid .node img.imgcount3 {
   width: 60px !important;
 }
 
-.graphContainer .mermaid .node .bg-images-container.imgcount4 .bg-thumbnail {
+.graphContainer .mermaid .node img.imgcount4 {
   width: 40px !important;
+}
+
+.char-emotion-thumbnail,
+.bg-thumbnail,
+.game-thumbnail {
+  object-fit: contain !important;
 }
