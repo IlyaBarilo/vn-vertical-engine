@@ -4098,17 +4098,13 @@ function buildMermaidGraph(story, unreachableList) {
     var label = node.id + "<br/>";
 
     // Параметры настройки
-    var imageSize = 100;          // должно совпадать с --graph-max-image-width
-    var imageGap = 2;
-    var containerPadding = 8;
+    var imageSize = 80;           // Размер миниатюр
+    var imageGap = 2;             // Расстояние между миниатюрами
+    var containerPadding = 8;     // Внутренние отступы контейнера
 
     if (node.allBgImages && node.allBgImages.length > 0) {
-      var bgStripWidth =
-        (node.allBgImages.length * imageSize) +
-        (Math.max(0, node.allBgImages.length - 1) * imageGap) +
-        (containerPadding * 2);
-
-      label += '<div class="bg-images-container" style="width:' + bgStripWidth + 'px; white-space:nowrap;">';
+      // Простой контейнер без сложных расчетов ширины
+      label += '<div class="bg-images-container" style="padding: 4px;">';
       
       for (var b = 0; b < node.allBgImages.length; b++) {
         var bg = node.allBgImages[b];
@@ -4245,7 +4241,7 @@ function buildCharactersGraph(story) {
     if (char.images) {
       var emotionIds = Object.keys(char.images).sort();
       
-      emotionsHtml = '<div class="char-emotions-container">';
+      emotionsHtml = '<div class="char-emotions-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin-top: 4px;">';
       
       for (var e = 0; e < emotionIds.length; e++) {
         var emotion = emotionIds[e];
@@ -4329,24 +4325,9 @@ function buildBackgroundsGraph(story) {
   }
     
   // Формируем HTML для изображений фонов
+  var bgImagesHtml = '<div class="bg-images-container" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; padding: 4px;">';
+  
   var bgIds = Object.keys(allUniqueBgs).sort();
-
-  // Формируем HTML для изображений фонов
-  var imageSize = 100;        // должно совпадать с --graph-max-image-width
-  var imageGap = 2;
-  var containerPadding = 8;
-
-  var bgStripWidth =
-    (bgIds.length * imageSize) +
-    (Math.max(0, bgIds.length - 1) * imageGap) +
-    (containerPadding * 2);
-
-  var bgImagesHtml =
-    '<div class="bg-images-container" style="width:' + bgStripWidth + 'px; white-space:nowrap;">';
-
-
-
-
   for (var i = 0; i < bgIds.length; i++) {
     var bgId = bgIds[i];
     var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
@@ -4378,9 +4359,7 @@ function buildBackgroundsGraph(story) {
 function buildGamesGraph(story) {
   var mermaid = "";
   var games = (story.assets && story.assets.games) ? story.assets.games : {};
-  var startId = (story.meta && story.meta.start)
-    ? story.meta.start
-    : (story.scenes[0] ? story.scenes[0].id : "START");
+  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
   var scenes = story.scenes || [];
   var usedGames = {};
 
@@ -4399,23 +4378,34 @@ function buildGamesGraph(story) {
 
   var gameIds = Object.keys(usedGames).sort();
   var gamesCount = gameIds.length;
+  var gamesListHtml = '<div class="games-list-container">';
 
-  function escapeHtml(value) {
-    return String(value || "")
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  if (gamesCount > 0) {
+    for (var i = 0; i < gameIds.length; i++) {
+      var gameId = gameIds[i];
+      var safeGameId = gameId
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+      gamesListHtml += '<div class="game-list-item">' + safeGameId + '</div>';
+    }
+  } else {
+    gamesListHtml += '<div class="game-list-empty">(none)</div>';
   }
 
-  var groupLabel = '<b>🎮 Games (' + gamesCount + ')</b>';
+  gamesListHtml += '</div>';
 
-  mermaid += '    games["' + groupLabel + '"]\n';
+  var label = '<b>🎮 Games (' + gamesCount + ')</b><br/>' + gamesListHtml;
+
+  mermaid += '    games["' + label + '"]\n';
   mermaid += '    games:::games-group\n';
 
   for (var i = 0; i < gameIds.length; i++) {
     var gameId = gameIds[i];
     var game = games[gameId] || {};
+    console.log('[GRAPH GAME]', gameId, game);
 
     var safeGameId = escapeHtml(gameId);
     var safeTitle = escapeHtml(game.title || gameId);
@@ -4448,6 +4438,7 @@ function buildGamesGraph(story) {
 
   return mermaid;
 }
+
 
 function computeTextInfo(story) {
 
@@ -4603,13 +4594,6 @@ function computeStoryStats(story) {
     if (usedBg[bgId]) usedBackgroundIds.push(bgId);
     else unusedBackgroundIds.push(bgId);
   }
-
-
-
-
-
-
-
 
   var backgroundsDetailed = [];
 
