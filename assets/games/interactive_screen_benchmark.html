@@ -60,7 +60,7 @@ const STAGE_HINTS = {
   tapzones:'Два игрока могут нажимать по своей половине экрана. Видно серию, лучший темп и одновременность работы.',
   dualdrag:'Нажмите прямо на левый и правый круги и тяните их пальцами. Считается качество следования за пальцами.',
   multitouch:'Поставьте как можно больше пальцев одновременно. Этап показывает текущий, максимальный и устойчивый уровень касаний.',
-  falling:'Касайтесь падающих кругов. Слева медленно, справа очень быстро. Статистика делится по скорости и размеру.',
+  falling:'Касайтесь падающих кругов. Слева медленно, справа — очень быстро. Над кругом показана скорость в %/с — сколько процентов высоты экрана цель проходит за 1 секунду.',
   lightscene:'Почти пустая сцена. Ничего не делайте и просто смотрите на FPS, frame time и частоту событий движения.',
   tracepath:'Ведите палец по светящейся траектории. Проверяется плавность движения, отклонение и число разрывов.',
   dualpaths:'Двое игроков одновременно ведут свои круги по своим дорожкам. Проверяется реальная совместная игра.'
@@ -93,8 +93,8 @@ const CFG = {
   fallingMinR:18,
   fallingMaxR:68,
   fallingSpawn:0.55,
-  fallingSpeedMin:110,
-  fallingSpeedMax:980,
+  fallingSpeedMin:5,
+  fallingSpeedMax:2500,
 
   starMin:14,
   starMax:42,
@@ -989,32 +989,45 @@ function drawMultitouchWorld(){ const cx=state.cx, cy=state.cy+60*state.scale, r
 
 function drawFallingWorld(){
   for(const c of state.falling.circles){
-    const g = wctx.createRadialGradient(c.x,c.y,c.r*.14,c.x,c.y,c.r);
-    g.addColorStop(0,'rgba(255,255,255,.98)');
-    g.addColorStop(.32,'rgba(255,215,140,.95)');
-    g.addColorStop(1,'rgba(255,160,70,.16)');
+    const g = wctx.createRadialGradient(
+      c.x, c.y, c.r * 0.10,
+      c.x, c.y, c.r * 0.98
+    );
+    g.addColorStop(0, 'rgba(255,255,255,.98)');
+    g.addColorStop(0.32, 'rgba(255,235,175,.97)');
+    g.addColorStop(0.68, 'rgba(255,215,140,.95)');
+    g.addColorStop(1, 'rgba(255,190,95,.90)');
+
     wctx.fillStyle = g;
     wctx.beginPath();
-    wctx.arc(c.x,c.y,c.r,0,Math.PI*2);
+    wctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
     wctx.fill();
 
-    wctx.strokeStyle = 'rgba(255,255,255,.55)';
-    wctx.lineWidth = 2.4 * state.scale;
+    wctx.fillStyle = g;
     wctx.beginPath();
-    wctx.arc(c.x,c.y,c.r*.63,0,Math.PI*2);
-    wctx.stroke();
+    wctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    wctx.fill();
+
+    const speedPercentPerSec = Math.round((c.speed / Math.max(1, state.vh)) * 100);
+
+    wctx.fillStyle = 'rgba(255,255,255,.92)';
+    wctx.font = `900 ${Math.round(16 * state.scale)}px Inter,system-ui,sans-serif`;
+    wctx.textAlign = 'center';
+    wctx.textBaseline = 'bottom';
+    wctx.fillText(`${speedPercentPerSec}%/с`, c.x, c.y - c.r - 8 * state.scale);
+    wctx.textBaseline = 'alphabetic';
   }
 
   const y = 290 * state.scale;
-  wctx.fillStyle='rgba(255,255,255,.55)';
-  wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`;
-  wctx.textAlign='left';
-  wctx.fillText('МЕДЛЕННО',24*state.scale,y);
-  wctx.textAlign='center';
-  wctx.fillText('СРЕДНЕ',state.cx,y);
-  wctx.textAlign='right';
-  wctx.fillText('ОЧЕНЬ БЫСТРО',state.vw-24*state.scale,y);
-  wctx.textAlign='left';
+  wctx.fillStyle = 'rgba(255,255,255,.55)';
+  wctx.font = `800 ${Math.round(22 * state.scale)}px Inter,system-ui,sans-serif`;
+  wctx.textAlign = 'left';
+  wctx.fillText('МЕДЛЕННО', 24 * state.scale, y);
+  wctx.textAlign = 'center';
+  wctx.fillText('СРЕДНЕ', state.cx, y);
+  wctx.textAlign = 'right';
+  wctx.fillText('ОЧЕНЬ БЫСТРО', state.vw - 24 * state.scale, y);
+  wctx.textAlign = 'left';
 }
 
 function drawLightSceneWorld(){
