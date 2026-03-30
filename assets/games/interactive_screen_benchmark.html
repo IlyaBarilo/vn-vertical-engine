@@ -917,13 +917,24 @@ function update(dt){
   }
 }
 function spawnFallingCircle(){
-  const xNorm = .08 + Math.random() * .84;
+  const safeMin = 0.08;
+  const safeMax = 0.92;
+  const safeSpan = safeMax - safeMin;
+
+  // Смещаем распределение вправо, чтобы быстрые зоны получали больше целей.
+  // Чем больше exponent < 1, тем сильнее смещение вправо.
+  const speedBiasExponent = 0.65;
+
+  const biased = Math.pow(Math.random(), speedBiasExponent);
+  const xSafeNorm = biased;
+  const xNorm = safeMin + xSafeNorm * safeSpan;
+
   const r = (CFG.fallingMinR + Math.random() * (CFG.fallingMaxR - CFG.fallingMinR)) * state.scale;
-  const speed = lerp(CFG.fallingSpeedMin, CFG.fallingSpeedMax, xNorm) * (1 + (state.difficulty - 3) * .06);
+  const speed = lerp(CFG.fallingSpeedMin, CFG.fallingSpeedMax, xSafeNorm) * (1 + (state.difficulty - 3) * .06);
 
   let bandSpeed = 'medium';
-  if(xNorm < 0.33) bandSpeed = 'slow';
-  else if(xNorm > 0.66) bandSpeed = 'fast';
+  if(xSafeNorm < 0.33) bandSpeed = 'slow';
+  else if(xSafeNorm > 0.66) bandSpeed = 'fast';
 
   let bandSize = 'mediumSize';
   const minR = CFG.fallingMinR * state.scale;
@@ -933,12 +944,13 @@ function spawnFallingCircle(){
   else if(t > 0.66) bandSize = 'large';
 
   state.falling.circles.push({
-    x:xNorm * state.vw,
-    y:-80 * state.scale,
+    x: xNorm * state.vw,
+    y: -80 * state.scale,
     r,
     speed,
     bandSpeed,
-    bandSize
+    bandSize,
+    xSafeNorm
   });
 
   state.falling.spawned++;
