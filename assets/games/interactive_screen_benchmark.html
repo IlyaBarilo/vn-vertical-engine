@@ -238,7 +238,7 @@ function style(el,obj){ Object.assign(el.style,obj); }
 const intro = {
   title:mkText('t',introCard), subtitle:mkText('s',introCard), body:mkText('b',introCard),
   start:mkButton('НАЧАТЬ ДИАГНОСТИКУ', introCard, startRun),
-  fail:mkButton('ЗАВЕРШИТЬ КАК FAIL', introCard, abortEarly)
+  fail:mkButton('ЗАВЕРШИТЬ', introCard, abortEarly)
 };
 const sum = {
   title:mkText('t',summaryCard), subtitle:mkText('s',summaryCard), body:mkText('b',summaryCard),
@@ -256,7 +256,7 @@ function layoutIntro(){
   style(introCard,{width:px(690),height:px(900),padding:px(34),position:'relative'});
   style(intro.title,{left:px(34),top:px(36),width:px(620),fontSize:px(48,'text'),lineHeight:px(56,'text')});
   style(intro.subtitle,{left:px(34),top:px(140),width:px(620),fontSize:px(22,'text'),lineHeight:px(30,'text')});
-  style(intro.body,{left:px(34),top:px(212),width:px(620),fontSize:px(22,'text'),lineHeight:px(31,'text')});
+  style(intro.body,{left:px(34),top:px(212),width:px(620),fontSize:px(18,'text'),lineHeight:px(25,'text')});
   style(intro.start,{left:px(34),bottom:px(44),width:px(380),height:px(84),fontSize:px(30,'text'),position:'absolute'});
   style(intro.fail,{right:px(34),bottom:px(44),width:px(220),height:px(84),fontSize:px(24,'text'),position:'absolute'});
 }
@@ -457,6 +457,7 @@ function resetMetrics(){
     deviationMax:0,
     deviationSamples:0,
     breaks:0,
+    capturePoints:0,
     completed:false
   };
 
@@ -498,6 +499,7 @@ function resetTraceStage(){
   state.trace.deviationMax = 0;
   state.trace.deviationSamples = 0;
   state.trace.breaks = 0;
+  state.trace.capturePoints = 0;
   state.trace.completed = false;
 }
 
@@ -545,7 +547,7 @@ function showSummary(){
     `• Правая зона: серия ${s.rightBest}, всего ${s.rightTotal}`,
     `• Одновременных тапов по двум зонам: ${s.simultaneousZoneHits}`,
     `• Падающие цели: ${s.fallHits} из ${s.fallSpawned}`,
-    `• Траектория: ${Math.round(s.traceProgress * 100)}% | среднее отклонение ${Math.round(s.traceAvgDeviation)} px | разрывы ${s.traceBreaks}`,
+    `• Траектория: ${Math.round(s.traceProgress * 100)}% | среднее отклонение ${Math.round(s.traceAvgDeviation)} px | разрывы ${s.traceBreaks} | точки ${s.traceCapturePoints}`,
     `• Две траектории: ${Math.round(s.dualPathLeftProgress * 100)}% / ${Math.round(s.dualPathRightProgress * 100)}%`,
     `• Вердикт: ${s.verdict}`,
     '',
@@ -747,6 +749,7 @@ function onPointerMove(e){
   else if(state.phase === 'tracepath' && state.trace.activeId === e.pointerId){
     const px = e.clientX, py = e.clientY;
     state.trace.points.push({x:px, y:py});
+    state.trace.capturePoints = state.trace.points.length;
 
     const dist = distanceToPolyline(px, py, state.trace.path);
     state.trace.deviationSum += dist;
@@ -1055,16 +1058,16 @@ function drawTracePathWorld(){
   drawPathLine(state.trace.path, 'rgba(102,222,255,.14)', CFG.traceGuideWidth * state.scale);
   drawPathLine(state.trace.path, 'rgba(255,255,255,.72)', 4 * state.scale);
 
-  for(let i=0;i<state.trace.path.length;i+=6){
-    const p = state.trace.path[i];
-    wctx.fillStyle='rgba(255,255,255,.9)';
-    wctx.beginPath();
-    wctx.arc(p.x, p.y, 6 * state.scale, 0, Math.PI * 2);
-    wctx.fill();
-  }
-
   if(state.trace.points.length > 1){
     drawPathLine(state.trace.points, 'rgba(255,184,107,.95)', 6 * state.scale);
+
+    for(let i=0;i<state.trace.points.length;i+=4){
+      const p = state.trace.points[i];
+      wctx.fillStyle='rgba(255,245,220,.95)';
+      wctx.beginPath();
+      wctx.arc(p.x, p.y, 5 * state.scale, 0, Math.PI * 2);
+      wctx.fill();
+    }
   }
 
   const start = state.trace.path[0];
@@ -1136,22 +1139,30 @@ function drawHud(){
 
   if(state.phase==='multitouch'){
     const s = state.scale;
-    let boxX = state.vw - 260*s;
-    let boxY = state.vh - 140*s - 118*s;
-    const fit = fitAuxPanelRect(boxX, boxY, 236*s, 118*s, 1);
-    boxX = fit.x;
-    boxY = fit.y;
+    const baseW = 228*s;
+    const h = 130*s;
+    const gap = 14*s;
+    const x = 24*s;
+    const narrow = isNarrowScreen();
+    const w = narrow ? Math.min(baseW,(state.vw-3*gap-2*x)/2) : baseW;
+    const y = state.vh - h - 140*s;
 
-    drawGlass(boxX, boxY, 236*s, 118*s);
+    const boxX = x + (w + gap) * 4;
+    const boxY = y;
+    const fit = fitAuxPanelRect(boxX, boxY, w, h, 1);
+
+    drawGlass(fit.x, fit.y, w, h);
     hctx.fillStyle='rgba(159,180,204,.96)';
     hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText('СТАБИЛЬНО 1 СЕК', boxX + 14*s, boxY + 24*s);
+    hctx.fillText('СТАБИЛЬНО 1 СЕК', fit.x + 14*s, fit.y + 24*s);
+
     hctx.fillStyle='#eef6ff';
     hctx.font=`900 ${Math.round(34*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(String(state.stableMultiTouchMax), boxX + 14*s, boxY + 70*s);
+    hctx.fillText(String(state.stableMultiTouchMax), fit.x + 14*s, fit.y + 70*s);
+
     hctx.fillStyle='rgba(159,180,204,.96)';
     hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(`cancel: ${state.pointerCancelCount}`, boxX + 14*s, boxY + 100*s);
+    hctx.fillText(`cancel: ${state.pointerCancelCount}`, fit.x + 14*s, fit.y + 102*s);
   }
 
   if(state.phase==='falling'){
@@ -1169,16 +1180,33 @@ function drawHud(){
   if(state.phase==='tracepath'){
     const s = state.scale;
     const avgDev = state.trace.deviationSamples ? state.trace.deviationSum / state.trace.deviationSamples : 0;
-    drawGlass(state.vw - 286*s, 230*s, 262*s, 118*s);
+
+    let boxX = state.vw - 286*s;
+    let boxY = 230*s;
+    let fit = fitAuxPanelRect(boxX, boxY, 262*s, 118*s, 0);
+
+    drawGlass(fit.x, fit.y, 262*s, 118*s);
     hctx.fillStyle='rgba(159,180,204,.96)';
     hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText('ОТКЛОНЕНИЕ', state.vw - 270*s, 254*s);
+    hctx.fillText('ОТКЛОНЕНИЕ', fit.x + 16*s, fit.y + 24*s);
     hctx.fillStyle='#eef6ff';
     hctx.font=`900 ${Math.round(28*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(`${Math.round(avgDev)} px`, state.vw - 270*s, 294*s);
+    hctx.fillText(`${Math.round(avgDev)} px`, fit.x + 16*s, fit.y + 64*s);
     hctx.fillStyle='rgba(159,180,204,.96)';
     hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(`разрывы: ${state.trace.breaks}`, state.vw - 270*s, 326*s);
+    hctx.fillText(`разрывы: ${state.trace.breaks}`, fit.x + 16*s, fit.y + 96*s);
+
+    boxX = state.vw - 286*s;
+    boxY = 230*s + 134*s;
+    fit = fitAuxPanelRect(boxX, boxY, 262*s, 118*s, 1);
+
+    drawGlass(fit.x, fit.y, 262*s, 118*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText('ТОЧКИ ФИКСАЦИИ', fit.x + 16*s, fit.y + 24*s);
+    hctx.fillStyle='#eef6ff';
+    hctx.font=`900 ${Math.round(34*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(String(state.trace.capturePoints), fit.x + 16*s, fit.y + 72*s);
   }
 
   if(state.phase==='dualpaths'){
@@ -1202,7 +1230,7 @@ function drawGlass(x,y,w,h){ roundRect(hctx,x,y,w,h,20*state.scale,'rgba(7,17,31
 
 
 function drawTopHud(){
-  const s = state.scale, pad = 24*s, y = 24*s, w = 144*s, h = 90*s, gap = 12*s;
+  const s = state.scale, pad = 24*s, y = 24*s, w = 115*s, h = 90*s, gap = 12*s;
   const items = [
     ['FPS', fmtFps(state.fpsValue)],
     ['КАДР', fmtMs(state.lastFrameTimeMs)],
@@ -1216,10 +1244,10 @@ function drawTopHud(){
     drawGlass(x,y,w,h);
     hctx.fillStyle='rgba(159,180,204,.95)';
     hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(it[0],x+14*s,y+26*s);
+    hctx.fillText(it[0],x+12*s,y+26*s);
     hctx.fillStyle='#eef6ff';
-    hctx.font=`900 ${Math.round(28*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(it[1],x+14*s,y+64*s);
+    hctx.font=`900 ${Math.round(24*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(it[1],x+12*s,y+62*s);
   });
 }
 
@@ -1459,6 +1487,7 @@ function summarize(forcedFail){
     traceProgress:state.trace.progress,
     traceAvgDeviation:traceAvgDev,
     traceBreaks:state.trace.breaks,
+    traceCapturePoints:state.trace.capturePoints,
 
     dualPathLeftProgress:state.dualpaths.left.progress,
     dualPathRightProgress:state.dualpaths.right.progress,
