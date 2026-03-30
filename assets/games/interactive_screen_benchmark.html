@@ -44,46 +44,69 @@ const HUD_SCALE = 0.90;
 const NARROW_SCREEN_RATIO = 0.64;
 
 const BASE_W = 810, BASE_H = 1440;
-const STAGES = ['latency','tapzones','dualdrag','multitouch','falling'];
+const STAGES = ['latency','tapzones','dualdrag','multitouch','falling','lightscene','tracepath','dualpaths'];
 const STAGE_TITLES = {
   latency:'ЭТАП 1 · ОТКЛИК КАСАНИЯ',
   tapzones:'ЭТАП 2 · ПОДСЧЁТ НАЖАТИЙ В ДВУХ ЗОНАХ',
   dualdrag:'ЭТАП 3 · ДВА ОБЪЕКТА ЗА ПАЛЬЦАМИ',
   multitouch:'ЭТАП 4 · МНОГО ОДНОВРЕМЕННЫХ НАЖАТИЙ',
-  falling:'ЭТАП 5 · ПАДАЮЩИЕ ЦЕЛИ'
+  falling:'ЭТАП 5 · ПАДАЮЩИЕ ЦЕЛИ',
+  lightscene:'ЭТАП 6 · БАЗОВЫЙ FPS БЕЗ НАГРУЗКИ',
+  tracepath:'ЭТАП 7 · ВЕДЕНИЕ ПАЛЬЦА ПО ТРАЕКТОРИИ',
+  dualpaths:'ЭТАП 8 · ДВЕ ТРАЕКТОРИИ ДЛЯ ДВУХ ИГРОКОВ'
 };
 const STAGE_HINTS = {
-  latency:'Быстро касайтесь световой цели. Смотрите на задержку, FPS и заметность регистрации касания.',
-  tapzones:'Два игрока могут нажимать по своей половине экрана. Серия сбрасывается, если пауза больше 3 секунд.',
-  dualdrag:'Нажмите прямо на левый и правый круги и тяните их пальцами. Когда круг в своей зоне — он светлеет.',
-  multitouch:'Поставьте как можно больше пальцев одновременно. Этап показывает текущий и максимальный уровень одновременных касаний.',
-  falling:'Касайтесь падающих кругов. Слева они медленные, справа — очень быстрые. Это проверяет задержку и точность.'
+  latency:'Быстро касайтесь световой цели. Смотрите на задержку, FPS, frame time и точность попаданий.',
+  tapzones:'Два игрока могут нажимать по своей половине экрана. Видно серию, лучший темп и одновременность работы.',
+  dualdrag:'Нажмите прямо на левый и правый круги и тяните их пальцами. Считается качество следования за пальцами.',
+  multitouch:'Поставьте как можно больше пальцев одновременно. Этап показывает текущий, максимальный и устойчивый уровень касаний.',
+  falling:'Касайтесь падающих кругов. Слева медленно, справа очень быстро. Статистика делится по скорости и размеру.',
+  lightscene:'Почти пустая сцена. Ничего не делайте и просто смотрите на FPS, frame time и частоту событий движения.',
+  tracepath:'Ведите палец по светящейся траектории. Проверяется плавность движения, отклонение и число разрывов.',
+  dualpaths:'Двое игроков одновременно ведут свои круги по своим дорожкам. Проверяется реальная совместная игра.'
 };
 
 const CFG = {
   comboResetMs:3000,
   graphSeconds:12,
   touchMarkMs:180,
+
   goodLatency:35,
   okLatency:60,
+
   goodFps:55,
   okFps:40,
+
   goodLongFrames:8,
   okLongFrames:24,
+
   dualNeedRatio:.30,
   dualNeedSimSec:2.4,
+
   fallNeedRatio:.35,
   touchGood:4,
+
   buttonH:74,
   cursorR:46,
   gateR:102,
+
   fallingMinR:18,
   fallingMaxR:68,
   fallingSpawn:0.55,
   fallingSpeedMin:110,
   fallingSpeedMax:980,
+
   starMin:14,
-  starMax:42
+  starMax:42,
+
+  traceGuideWidth:58,
+  traceHitRadius:34,
+  traceBreakDist:86,
+
+  dualPathRadius:34,
+  dualPathHitWidth:60,
+
+  stableMultiHoldSec:1.0
 };
 
 const state = {
@@ -91,20 +114,89 @@ const state = {
   gameId:'screenBenchmark', difficulty:3,
   vw:0,vh:0,cx:0,cy:0,scale:1,textScale:1,hudScale:1,
   phase:'intro', phaseIndex:0, phaseElapsed:0, totalElapsed:0, lastFrame:0,
-  pointers:new Map(), pointerCountNow:0, maxSimultaneousPointers:0,
-  particles:[], inputMarks:[], totalPresses:0,
-  latencySamples:[], lastInputLatency:0, fpsSamples:[], fpsValue:0, fpsMin:Infinity, fpsMax:0, longFrames:0,
-  latencyTarget:{x:.5,y:.55,r:.07,hits:0},
+
+  pointers:new Map(),
+  pointerCountNow:0,
+  maxSimultaneousPointers:0,
+  stableMultiTouchMax:0,
+  multiTouchHoldTimer:0,
+  pointerCancelCount:0,
+
+  particles:[],
+  inputMarks:[],
+  totalPresses:0,
+  totalMoves:0,
+  moveBins:Array(CFG.graphSeconds).fill(0),
+  moveCounter:0,
+
+  latencySamples:[],
+  lastInputLatency:0,
+
+  fpsSamples:[],
+  fpsValue:0,
+  fpsMin:Infinity,
+  fpsMax:0,
+  longFrames:0,
+
+  frameTimeSamples:[],
+  frameTimeBins:Array(CFG.graphSeconds).fill(0),
+  lastFrameTimeMs:0,
+
+  latencyTarget:{x:.5,y:.55,r:.07,hits:0,misses:0},
+
   tapZones:{
-    left:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0},
-    right:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0}
+    left:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0, bestPerSec:0},
+    right:{total:0, combo:0, best:0, lastTap:0, secBins:Array(CFG.graphSeconds).fill(0), secCounter:0, bestPerSec:0}
   },
-  leftCursor:{x:.28,y:.76,active:null,overGate:false},
-  rightCursor:{x:.72,y:.76,active:null,overGate:false},
-  gateLeft:{x:.28,y:.42}, gateRight:{x:.72,y:.42},
-  dualHoldTime:0, dualSimTime:0,
-  multitouchBins:Array(CFG.graphSeconds).fill(0), multitouchPeakThisSecond:0, multitouchPeakOverall:0,
-  falling:{circles:[], spawnTimer:0, spawned:0, hits:0, misses:0},
+  simultaneousZoneHits:0,
+
+  leftCursor:{x:.28,y:.76,active:null,overGate:false,lastFingerLag:0,maxFingerLag:0,sumFingerLag:0,samples:0,lost:0},
+  rightCursor:{x:.72,y:.76,active:null,overGate:false,lastFingerLag:0,maxFingerLag:0,sumFingerLag:0,samples:0,lost:0},
+  gateLeft:{x:.28,y:.42},
+  gateRight:{x:.72,y:.42},
+  dualHoldTime:0,
+  dualSimTime:0,
+
+  multitouchBins:Array(CFG.graphSeconds).fill(0),
+  multitouchPeakThisSecond:0,
+  multitouchPeakOverall:0,
+
+  falling:{
+    circles:[],
+    spawnTimer:0,
+    spawned:0,
+    hits:0,
+    misses:0,
+    slow:{spawned:0,hits:0},
+    medium:{spawned:0,hits:0},
+    fast:{spawned:0,hits:0},
+    small:{spawned:0,hits:0},
+    mediumSize:{spawned:0,hits:0},
+    large:{spawned:0,hits:0}
+  },
+
+  lightscene:{},
+
+  trace:{
+    activeId:null,
+    points:[],
+    path:[],
+    progress:0,
+    covered:0,
+    deviationSum:0,
+    deviationMax:0,
+    deviationSamples:0,
+    breaks:0,
+    completed:false
+  },
+
+  dualpaths:{
+    left:{activeId:null,progress:0,covered:0,deviationSum:0,deviationSamples:0,maxDeviation:0,breaks:0},
+    right:{activeId:null,progress:0,covered:0,deviationSum:0,deviationSamples:0,maxDeviation:0,breaks:0},
+    leftPath:[],
+    rightPath:[]
+  },
+
   summary:null
 };
 
@@ -154,6 +246,8 @@ const sum = {
   retry:mkButton('ПОВТОРИТЬ ТЕСТ', summaryCard, resetRun)
 };
 const stageBtns = {
+  resetTrace:mkButton('ОЧИСТИТЬ ТРАЕКТОРИЮ', stageControls, resetTraceStage),
+  resetDualPaths:mkButton('СБРОСИТЬ ЭТАП', stageControls, resetDualPathsStage),
   next:mkButton('СЛЕДУЮЩИЙ ЭТАП', stageControls, advanceStage),
   finish:mkButton('ЗАВЕРШИТЬ ТЕСТ', stageControls, finishStages)
 };
@@ -175,9 +269,46 @@ function layoutSummary(){
   style(sum.retry,{right:px(34),bottom:px(44),width:px(240),height:px(84),fontSize:px(24,'text'),position:'absolute'});
 }
 function layoutStageControls(){
-  style(stageControls,{left:px(24),right:px(24),bottom:px(22),height:px(96),padding:px(12),display:'flex',alignItems:'center',justifyContent:'space-between',gap:px(18),borderRadius:px(22)});
-  style(stageBtns.next,{flex:'1 1 auto',height:px(CFG.buttonH),fontSize:px(24,'text')});
-  style(stageBtns.finish,{width:px(264),height:px(CFG.buttonH),fontSize:px(22,'text')});
+  style(stageControls,{
+    left:px(24),
+    right:px(24),
+    bottom:px(22),
+    height:px(96),
+    padding:px(12),
+    display:'flex',
+    alignItems:'center',
+    justifyContent:'space-between',
+    gap:px(14),
+    borderRadius:px(22),
+    flexWrap:'wrap'
+  });
+
+  style(stageBtns.resetTrace,{
+    display:'none',
+    width:px(270),
+    height:px(CFG.buttonH),
+    fontSize:px(20,'text')
+  });
+
+  style(stageBtns.resetDualPaths,{
+    display:'none',
+    width:px(240),
+    height:px(CFG.buttonH),
+    fontSize:px(20,'text')
+  });
+
+  style(stageBtns.next,{
+    flex:'1 1 auto',
+    minWidth:px(250),
+    height:px(CFG.buttonH),
+    fontSize:px(24,'text')
+  });
+
+  style(stageBtns.finish,{
+    width:px(264),
+    height:px(CFG.buttonH),
+    fontSize:px(22,'text')
+  });
 }
 
 function buildStars(){
@@ -197,16 +328,22 @@ function showIntro(){
   intro.title.textContent='ДИАГНОСТИКА ИНТЕРАКТИВНОГО ЭКРАНА';
   intro.subtitle.textContent='Мини-игра проверяет тач-ввод, FPS, multitouch и пригодность экрана для других игр.';
   intro.body.textContent=[
-    'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
-    '',
-    'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
-    '',
-    'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',
-    '',
-    'Этап 4 — подсчёт количества одновременных касаний. Можно проверить, сколько пальцев поддерживается сразу.',
-    '',
-    'Этап 5 — падающие круги разных размеров и скоростей: слева медленно, справа очень быстро.'
-  ].join('\n');
+  'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
+  '',
+  'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
+  '',
+  'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',
+  '',
+  'Этап 4 — подсчёт количества одновременных касаний. Можно проверить, сколько пальцев поддерживается сразу.',
+  '',
+  'Этап 5 — падающие круги разных размеров и скоростей: слева медленно, справа очень быстро.',
+  '',
+  'Этап 6 — почти пустая сцена для проверки базового FPS и частоты событий движения без нагрузки.',
+  '',
+  'Этап 7 — ведение пальца по траектории: проверяется отклонение от линии, разрывы и прогресс прохождения.',
+  '',
+  'Этап 8 — две отдельные траектории для двух игроков: можно проверить одновременное совместное ведение.'
+].join('\n');
 }
 
 function initFromParams(data={}){
@@ -215,19 +352,123 @@ function initFromParams(data={}){
   state.initialized=true; state.phase='intro'; showIntro();
 }
 
-function resetMetrics(){
-  state.finished=false; state.summary=null; state.phaseElapsed=0; state.totalElapsed=0; state.lastFrame=0;
-  state.pointers.clear(); state.pointerCountNow=0; state.maxSimultaneousPointers=0;
-  state.inputMarks=[]; state.totalPresses=0;
-  state.latencySamples=[]; state.lastInputLatency=0; state.fpsSamples=[]; state.fpsValue=0; state.fpsMin=Infinity; state.fpsMax=0; state.longFrames=0;
-  state.latencyTarget={x:.5,y:.55,r:.07,hits:0};
-  state.tapZones.left={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0};
-  state.tapZones.right={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0};
-  state.leftCursor={x:.28,y:.76,active:null,overGate:false}; state.rightCursor={x:.72,y:.76,active:null,overGate:false};
-  state.gateLeft={x:.28,y:.42}; state.gateRight={x:.72,y:.42}; state.dualHoldTime=0; state.dualSimTime=0;
-  state.multitouchBins=Array(CFG.graphSeconds).fill(0); state.multitouchPeakThisSecond=0; state.multitouchPeakOverall=0;
-  state.falling={circles:[],spawnTimer:0,spawned:0,hits:0,misses:0};
+function buildSinePath(cx, cy, amp, width, points = 80){
+  const arr = [];
+  for(let i=0;i<points;i++){
+    const t = i / (points - 1);
+    const x = cx - width / 2 + t * width;
+    const y = cy + Math.sin(t * Math.PI * 2.0) * amp * (0.75 + 0.25 * Math.cos(t * Math.PI));
+    arr.push({x, y});
+  }
+  return arr;
 }
+
+function buildDualPath(side){
+  const cyTop = state.vh * 0.30;
+  const cyBottom = state.vh * 0.74;
+  const cx = side === 'left' ? state.vw * 0.30 : state.vw * 0.70;
+  const amp = state.vw * 0.06;
+  const path = [];
+  const points = 72;
+
+  for(let i=0;i<points;i++){
+    const t = i / (points - 1);
+    const y = cyTop + t * (cyBottom - cyTop);
+    const x = cx + Math.sin(t * Math.PI * 2.0 + (side === 'left' ? 0 : 1.1)) * amp;
+    path.push({x, y});
+  }
+  return path;
+}
+
+function resetMetrics(){
+  state.finished=false;
+  state.summary=null;
+  state.phaseElapsed=0;
+  state.totalElapsed=0;
+  state.lastFrame=0;
+
+  state.pointers.clear();
+  state.pointerCountNow=0;
+  state.maxSimultaneousPointers=0;
+  state.stableMultiTouchMax=0;
+  state.multiTouchHoldTimer=0;
+  state.pointerCancelCount=0;
+
+  state.inputMarks=[];
+  state.totalPresses=0;
+  state.totalMoves=0;
+  state.moveBins=Array(CFG.graphSeconds).fill(0);
+  state.moveCounter=0;
+
+  state.latencySamples=[];
+  state.lastInputLatency=0;
+
+  state.fpsSamples=[];
+  state.fpsValue=0;
+  state.fpsMin=Infinity;
+  state.fpsMax=0;
+  state.longFrames=0;
+
+  state.frameTimeSamples=[];
+  state.frameTimeBins=Array(CFG.graphSeconds).fill(0);
+  state.lastFrameTimeMs=0;
+
+  state.latencyTarget={x:.5,y:.55,r:.07,hits:0,misses:0};
+
+  state.tapZones.left={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0,bestPerSec:0};
+  state.tapZones.right={total:0,combo:0,best:0,lastTap:0,secBins:Array(CFG.graphSeconds).fill(0),secCounter:0,bestPerSec:0};
+  state.simultaneousZoneHits=0;
+
+  state.leftCursor={x:.28,y:.76,active:null,overGate:false,lastFingerLag:0,maxFingerLag:0,sumFingerLag:0,samples:0,lost:0};
+  state.rightCursor={x:.72,y:.76,active:null,overGate:false,lastFingerLag:0,maxFingerLag:0,sumFingerLag:0,samples:0,lost:0};
+
+  state.gateLeft={x:.28,y:.42};
+  state.gateRight={x:.72,y:.42};
+  state.dualHoldTime=0;
+  state.dualSimTime=0;
+
+  state.multitouchBins=Array(CFG.graphSeconds).fill(0);
+  state.multitouchPeakThisSecond=0;
+  state.multitouchPeakOverall=0;
+
+  state.falling={
+    circles:[],
+    spawnTimer:0,
+    spawned:0,
+    hits:0,
+    misses:0,
+    slow:{spawned:0,hits:0},
+    medium:{spawned:0,hits:0},
+    fast:{spawned:0,hits:0},
+    small:{spawned:0,hits:0},
+    mediumSize:{spawned:0,hits:0},
+    large:{spawned:0,hits:0}
+  };
+
+  state.lightscene={};
+
+  state.trace={
+    activeId:null,
+    points:[],
+    path:buildSinePath(state.cx, state.vh * 0.64, state.vh * 0.08, state.vw * 0.58, 90),
+    progress:0,
+    covered:0,
+    deviationSum:0,
+    deviationMax:0,
+    deviationSamples:0,
+    breaks:0,
+    completed:false
+  };
+
+  state.dualpaths={
+    left:{activeId:null,progress:0,covered:0,deviationSum:0,deviationSamples:0,maxDeviation:0,breaks:0},
+    right:{activeId:null,progress:0,covered:0,deviationSum:0,deviationSamples:0,maxDeviation:0,breaks:0},
+    leftPath:buildDualPath('left'),
+    rightPath:buildDualPath('right')
+  };
+}
+
+
 function startRun(){ resetMetrics(); overlay.classList.add('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.remove('hidden'); state.started=true; state.phaseIndex=0; state.phase=STAGES[0]; spawnLatencyTarget(true); }
 function resetRun(){ if(state.finishSent) return; state.started=false; state.phase='intro'; state.summary=null; showIntro(); }
 function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
@@ -236,27 +477,86 @@ function finishGame(result){ if(state.finishSent) return; state.finishSent=true;
 function advanceStage(){
   if(!state.started || state.phase==='summary') return;
   if(state.phaseIndex >= STAGES.length-1){ finishStages(); return; }
-  state.phaseIndex += 1; state.phase = STAGES[state.phaseIndex]; state.phaseElapsed = 0; releasePointers();
+
+  state.phaseIndex += 1;
+  state.phase = STAGES[state.phaseIndex];
+  state.phaseElapsed = 0;
+  releasePointers();
+
+  if(state.phase === 'tracepath') resetTraceStage();
+  if(state.phase === 'dualpaths') resetDualPathsStage();
 }
 function finishStages(){ state.summary=summarize(false); state.phase='summary'; showSummary(); }
+function resetTraceStage(){
+  state.trace.activeId = null;
+  state.pointers.clear();
+  state.pointerCountNow = 0;
+  state.trace.points = [];
+  state.trace.progress = 0;
+  state.trace.covered = 0;
+  state.trace.deviationSum = 0;
+  state.trace.deviationMax = 0;
+  state.trace.deviationSamples = 0;
+  state.trace.breaks = 0;
+  state.trace.completed = false;
+}
+
+function resetDualPathsStage(){
+  state.dualpaths.left.activeId = null;
+  state.dualpaths.right.activeId = null;
+  state.pointers.clear();
+  state.pointerCountNow = 0;
+
+  state.dualpaths.left.progress = 0;
+  state.dualpaths.left.covered = 0;
+  state.dualpaths.left.deviationSum = 0;
+  state.dualpaths.left.deviationSamples = 0;
+  state.dualpaths.left.maxDeviation = 0;
+  state.dualpaths.left.breaks = 0;
+
+  state.dualpaths.right.progress = 0;
+  state.dualpaths.right.covered = 0;
+  state.dualpaths.right.deviationSum = 0;
+  state.dualpaths.right.deviationSamples = 0;
+  state.dualpaths.right.maxDeviation = 0;
+  state.dualpaths.right.breaks = 0;
+}
+
 function showSummary(){
-  overlay.classList.add('hidden'); summaryLayer.classList.remove('hidden'); stageControls.classList.add('hidden');
-  const s=state.summary, pass=s.result===1; sum.title.textContent=pass?'ИСПЫТАНИЕ ПРОЙДЕНО':'НУЖНА ПРОВЕРКА ЖЕЛЕЗА';
-  sum.title.style.color=pass?'var(--good)':'var(--bad)';
-  sum.subtitle.textContent=pass?'Экран подходит для активных интерактивных сцен и мини-игр.':'Есть ограничения, которые стоит учитывать перед интеграцией игр.';
-  sum.body.textContent=[
+  overlay.classList.add('hidden');
+  summaryLayer.classList.remove('hidden');
+  stageControls.classList.add('hidden');
+
+  const s = state.summary, pass = s.result === 1;
+
+  sum.title.textContent = pass ? 'ИСПЫТАНИЕ ПРОЙДЕНО' : 'НУЖНА ПРОВЕРКА ЖЕЛЕЗА';
+  sum.title.style.color = pass ? 'var(--good)' : 'var(--bad)';
+  sum.subtitle.textContent = pass
+    ? 'Экран подходит для активных интерактивных сцен и мини-игр.'
+    : 'Есть ограничения, которые стоит учитывать перед интеграцией игр.';
+
+  sum.body.textContent = [
     `• Медианная задержка: ${fmtMs(s.medianLatency)} (P95 ${fmtMs(s.p95Latency)})`,
-    `• Средний FPS: ${fmtFps(s.avgFps)} | минимум: ${fmtFps(s.minFps)} | длинные кадры: ${s.longFrames}`,
-    `• Макс. одновременных касаний: ${s.maxPointers}`,
-    `• Удержание двух кругов в зонах: ${Math.round(s.dualHoldRatio*100)}% этапа`,
+    `• Средний FPS: ${fmtFps(s.avgFps)} | минимум: ${fmtFps(s.minFps)} | P95 кадра: ${fmtMs(s.p95Frame)}`,
+    `• Макс. касаний: ${s.maxPointers} | стабильно 1 сек: ${s.stablePointers}`,
+    `• Удержание двух кругов: ${Math.round(s.dualHoldRatio * 100)}% этапа`,
+    `• Lag L/R: ${Math.round(s.leftLagAvg)} px / ${Math.round(s.rightLagAvg)} px`,
     `• Левая зона: серия ${s.leftBest}, всего ${s.leftTotal}`,
     `• Правая зона: серия ${s.rightBest}, всего ${s.rightTotal}`,
-    `• Попаданий по падающим целям: ${s.fallHits} из ${s.fallSpawned}`,
+    `• Одновременных тапов по двум зонам: ${s.simultaneousZoneHits}`,
+    `• Падающие цели: ${s.fallHits} из ${s.fallSpawned}`,
+    `• Траектория: ${Math.round(s.traceProgress * 100)}% | среднее отклонение ${Math.round(s.traceAvgDeviation)} px | разрывы ${s.traceBreaks}`,
+    `• Две траектории: ${Math.round(s.dualPathLeftProgress * 100)}% / ${Math.round(s.dualPathRightProgress * 100)}%`,
     `• Вердикт: ${s.verdict}`,
     '',
     'Нажмите «Подтвердить результат», чтобы зафиксировать итог для движка.'
   ].join('\n');
 }
+
+
+
+
+
 
 function releasePointers(){
   state.pointers.clear(); state.pointerCountNow=0; state.leftCursor.active=null; state.rightCursor.active=null;
@@ -280,10 +580,82 @@ function rollZoneBins(){ ['left','right'].forEach(side=>{ const z=state.tapZones
 function rollMultitouchBin(){ state.multitouchBins.push(state.multitouchPeakThisSecond); while(state.multitouchBins.length>CFG.graphSeconds) state.multitouchBins.shift(); state.multitouchPeakThisSecond=0; }
 function tryHitLatency(x,y){ if(hypot2(x-state.latencyTarget.x,y-state.latencyTarget.y)<=state.latencyTarget.r){ state.latencyTarget.hits+=1; spawnLatencyTarget(); } }
 function tryHitFalling(x,y){
-  const px=x*state.vw, py=y*state.vh;
-  for(let i=state.falling.circles.length-1;i>=0;i--){ const c=state.falling.circles[i]; if(hypot2(px-c.x,py-c.y)<=c.r){ state.falling.hits++; state.falling.circles.splice(i,1); return true; } }
+  const px = x * state.vw, py = y * state.vh;
+  for(let i=state.falling.circles.length-1;i>=0;i--){
+    const c = state.falling.circles[i];
+    if(hypot2(px - c.x, py - c.y) <= c.r){
+      state.falling.hits++;
+      state.falling[c.bandSpeed].hits++;
+      state.falling[c.bandSize].hits++;
+      state.falling.circles.splice(i,1);
+      return true;
+    }
+  }
   return false;
 }
+
+function distancePointToSegment(px, py, ax, ay, bx, by){
+  const abx = bx - ax, aby = by - ay;
+  const apx = px - ax, apy = py - ay;
+  const ab2 = abx * abx + aby * aby || 1;
+  const t = clamp((apx * abx + apy * aby) / ab2, 0, 1);
+  const x = ax + abx * t, y = ay + aby * t;
+  return hypot2(px - x, py - y);
+}
+
+function distanceToPolyline(px, py, path){
+  let min = Infinity;
+  for(let i=1;i<path.length;i++){
+    const a = path[i-1], b = path[i];
+    min = Math.min(min, distancePointToSegment(px, py, a.x, a.y, b.x, b.y));
+  }
+  return min;
+}
+
+function nearestPathProgress(px, py, path){
+  let bestDist = Infinity;
+  let bestIndex = 0;
+  for(let i=0;i<path.length;i++){
+    const d = hypot2(px - path[i].x, py - path[i].y);
+    if(d < bestDist){
+      bestDist = d;
+      bestIndex = i;
+    }
+  }
+  return {
+    progress: bestIndex / Math.max(1, path.length - 1),
+    dist: bestDist
+  };
+}
+
+function classifyFallCircle(c){
+  const speedBand = c.bandSpeed;
+  const sizeBand = c.bandSize;
+  return {speedBand, sizeBand};
+}
+
+function countStageSimultaneousTap(p){
+  const leftActive = p.x < 0.5;
+  const rightActive = p.x >= 0.5;
+  if(leftActive){
+    for(const other of state.pointers.values()){
+      if(other.id !== undefined && other.id !== null && other.x >= 0.5){
+        state.simultaneousZoneHits += 1;
+        break;
+      }
+    }
+  }
+  if(rightActive){
+    for(const other of state.pointers.values()){
+      if(other.id !== undefined && other.id !== null && other.x < 0.5){
+        state.simultaneousZoneHits += 1;
+        break;
+      }
+    }
+  }
+}
+
+
 function assignDragRole(pointerId,x,y){
   const hitR = (CFG.cursorR+20)*state.scale;
   const lx=state.leftCursor.x*state.vw, ly=state.leftCursor.y*state.vh;
@@ -296,59 +668,312 @@ function assignDragRole(pointerId,x,y){
 
 function onPointerDown(e){
   if(!state.initialized || state.finished) return;
-  recordLatency(e); const p=screenToNorm(e.clientX,e.clientY); dom.game.setPointerCapture?.(e.pointerId);
-  const pointer={id:e.pointerId,type:e.pointerType||'mouse',x:p.x,y:p.y,role:null}; state.pointers.set(e.pointerId,pointer); state.pointerCountNow=state.pointers.size;
-  state.maxSimultaneousPointers=Math.max(state.maxSimultaneousPointers,state.pointerCountNow); state.multitouchPeakThisSecond=Math.max(state.multitouchPeakThisSecond,state.pointerCountNow); state.multitouchPeakOverall=Math.max(state.multitouchPeakOverall,state.pointerCountNow);
-  state.totalPresses += 1; addMark(p.x,p.y,pointer.type);
+  recordLatency(e);
 
-  if(state.phase==='latency') tryHitLatency(p.x,p.y);
-  else if(state.phase==='tapzones') registerZoneTap(pointInZone(p.x,'left')?'left':'right');
-  else if(state.phase==='dualdrag') pointer.role=assignDragRole(e.pointerId,p.x,p.y);
-  else if(state.phase==='falling') tryHitFalling(p.x,p.y);
-  e.preventDefault();
-}
-function onPointerMove(e){
-  if(!state.initialized || state.finished) return; const pointer=state.pointers.get(e.pointerId); if(!pointer) return;
-  recordLatency(e); const p=screenToNorm(e.clientX,e.clientY); pointer.x=p.x; pointer.y=p.y;
-  if(state.phase==='dualdrag'){
-    if(pointer.role==='left' && state.leftCursor.active===e.pointerId){ state.leftCursor.x=clamp(p.x,.08,.92); state.leftCursor.y=clamp(p.y,.20,.92); }
-    if(pointer.role==='right' && state.rightCursor.active===e.pointerId){ state.rightCursor.x=clamp(p.x,.08,.92); state.rightCursor.y=clamp(p.y,.20,.92); }
+  const p = screenToNorm(e.clientX, e.clientY);
+  dom.game.setPointerCapture?.(e.pointerId);
+
+  const pointer = {id:e.pointerId, type:e.pointerType || 'mouse', x:p.x, y:p.y, role:null};
+  state.pointers.set(e.pointerId, pointer);
+  state.pointerCountNow = state.pointers.size;
+
+  state.maxSimultaneousPointers = Math.max(state.maxSimultaneousPointers, state.pointerCountNow);
+  state.multitouchPeakThisSecond = Math.max(state.multitouchPeakThisSecond, state.pointerCountNow);
+  state.multitouchPeakOverall = Math.max(state.multitouchPeakOverall, state.pointerCountNow);
+
+  state.totalPresses += 1;
+  addMark(p.x, p.y, pointer.type);
+
+  if(state.phase === 'latency'){
+    if(!tryHitLatency(p.x, p.y)) state.latencyTarget.misses++;
   }
+  else if(state.phase === 'tapzones'){
+    registerZoneTap(pointInZone(p.x,'left') ? 'left' : 'right');
+    countStageSimultaneousTap(pointer);
+  }
+  else if(state.phase === 'dualdrag'){
+    pointer.role = assignDragRole(e.pointerId, p.x, p.y);
+  }
+  else if(state.phase === 'falling'){
+    tryHitFalling(p.x, p.y);
+  }
+  else if(state.phase === 'tracepath'){
+    state.trace.activeId = e.pointerId;
+    state.trace.points.push({x:e.clientX, y:e.clientY});
+  }
+  else if(state.phase === 'dualpaths'){
+    if(p.x < 0.5 && state.dualpaths.left.activeId === null) state.dualpaths.left.activeId = e.pointerId;
+    else if(p.x >= 0.5 && state.dualpaths.right.activeId === null) state.dualpaths.right.activeId = e.pointerId;
+  }
+
   e.preventDefault();
 }
+
+function onPointerMove(e){
+  if(!state.initialized || state.finished) return;
+  const pointer = state.pointers.get(e.pointerId);
+  if(!pointer) return;
+
+  recordLatency(e);
+  const p = screenToNorm(e.clientX, e.clientY);
+  pointer.x = p.x;
+  pointer.y = p.y;
+
+  state.totalMoves += 1;
+  state.moveCounter += 1;
+
+  if(state.phase === 'dualdrag'){
+    if(pointer.role === 'left' && state.leftCursor.active === e.pointerId){
+      state.leftCursor.x = clamp(p.x,.08,.92);
+      state.leftCursor.y = clamp(p.y,.20,.92);
+
+      const lag = hypot2(e.clientX - state.leftCursor.x * state.vw, e.clientY - state.leftCursor.y * state.vh);
+      state.leftCursor.lastFingerLag = lag;
+      state.leftCursor.maxFingerLag = Math.max(state.leftCursor.maxFingerLag, lag);
+      state.leftCursor.sumFingerLag += lag;
+      state.leftCursor.samples += 1;
+    }
+    if(pointer.role === 'right' && state.rightCursor.active === e.pointerId){
+      state.rightCursor.x = clamp(p.x,.08,.92);
+      state.rightCursor.y = clamp(p.y,.20,.92);
+
+      const lag = hypot2(e.clientX - state.rightCursor.x * state.vw, e.clientY - state.rightCursor.y * state.vh);
+      state.rightCursor.lastFingerLag = lag;
+      state.rightCursor.maxFingerLag = Math.max(state.rightCursor.maxFingerLag, lag);
+      state.rightCursor.sumFingerLag += lag;
+      state.rightCursor.samples += 1;
+    }
+  }
+  else if(state.phase === 'tracepath' && state.trace.activeId === e.pointerId){
+    const px = e.clientX, py = e.clientY;
+    state.trace.points.push({x:px, y:py});
+
+    const dist = distanceToPolyline(px, py, state.trace.path);
+    state.trace.deviationSum += dist;
+    state.trace.deviationMax = Math.max(state.trace.deviationMax, dist);
+    state.trace.deviationSamples += 1;
+    if(dist > CFG.traceBreakDist * state.scale) state.trace.breaks += 1;
+
+    const prog = nearestPathProgress(px, py, state.trace.path);
+    state.trace.progress = Math.max(state.trace.progress, prog.progress);
+    state.trace.covered = state.trace.progress;
+    if(state.trace.progress >= 0.97) state.trace.completed = true;
+  }
+  else if(state.phase === 'dualpaths'){
+    if(state.dualpaths.left.activeId === e.pointerId){
+      const path = state.dualpaths.leftPath;
+      const prog = nearestPathProgress(e.clientX, e.clientY, path);
+      const d = distanceToPolyline(e.clientX, e.clientY, path);
+      state.dualpaths.left.progress = Math.max(state.dualpaths.left.progress, prog.progress);
+      state.dualpaths.left.covered = state.dualpaths.left.progress;
+      state.dualpaths.left.deviationSum += d;
+      state.dualpaths.left.deviationSamples += 1;
+      state.dualpaths.left.maxDeviation = Math.max(state.dualpaths.left.maxDeviation, d);
+      if(d > CFG.traceBreakDist * state.scale) state.dualpaths.left.breaks += 1;
+    }
+    if(state.dualpaths.right.activeId === e.pointerId){
+      const path = state.dualpaths.rightPath;
+      const prog = nearestPathProgress(e.clientX, e.clientY, path);
+      const d = distanceToPolyline(e.clientX, e.clientY, path);
+      state.dualpaths.right.progress = Math.max(state.dualpaths.right.progress, prog.progress);
+      state.dualpaths.right.covered = state.dualpaths.right.progress;
+      state.dualpaths.right.deviationSum += d;
+      state.dualpaths.right.deviationSamples += 1;
+      state.dualpaths.right.maxDeviation = Math.max(state.dualpaths.right.maxDeviation, d);
+      if(d > CFG.traceBreakDist * state.scale) state.dualpaths.right.breaks += 1;
+    }
+  }
+
+  e.preventDefault();
+}
+
 function onPointerUp(e){
-  const pointer=state.pointers.get(e.pointerId); if(pointer){ if(pointer.role==='left'&&state.leftCursor.active===e.pointerId) state.leftCursor.active=null; if(pointer.role==='right'&&state.rightCursor.active===e.pointerId) state.rightCursor.active=null; }
-  state.pointers.delete(e.pointerId); state.pointerCountNow=state.pointers.size; e.preventDefault();
+  const pointer = state.pointers.get(e.pointerId);
+  if(pointer){
+    if(pointer.role === 'left' && state.leftCursor.active === e.pointerId){
+      state.leftCursor.active = null;
+      state.leftCursor.lost += 1;
+    }
+    if(pointer.role === 'right' && state.rightCursor.active === e.pointerId){
+      state.rightCursor.active = null;
+      state.rightCursor.lost += 1;
+    }
+  }
+
+  if(state.phase === 'tracepath' && state.trace.activeId === e.pointerId){
+    state.trace.activeId = null;
+  }
+  if(state.phase === 'dualpaths'){
+    if(state.dualpaths.left.activeId === e.pointerId) state.dualpaths.left.activeId = null;
+    if(state.dualpaths.right.activeId === e.pointerId) state.dualpaths.right.activeId = null;
+  }
+
+  state.pointers.delete(e.pointerId);
+  state.pointerCountNow = state.pointers.size;
+  e.preventDefault();
 }
 
 function update(dt){
-  if(!state.initialized) return; state.totalElapsed+=dt; if(state.started&&state.phase!=='summary'&&state.phase!=='intro') state.phaseElapsed+=dt;
-  const fps = dt>0 ? 1/dt : 0; state.fpsValue=fps; state.fpsSamples.push(fps); if(state.fpsSamples.length>240) state.fpsSamples.shift(); state.fpsMin=Math.min(state.fpsMin,fps); state.fpsMax=Math.max(state.fpsMax,fps); if(dt>.05) state.longFrames++; if(state.pointers.size>=2) state.dualSimTime += dt;
-  for(const p of state.particles){ p.y += p.s*dt; if(p.y>state.vh+p.r){ p.y=-p.r; p.x=Math.random()*state.vw; } }
-  const now=performance.now(); updateZoneCombos(now); while(state.inputMarks.length && now-state.inputMarks[0].t>CFG.touchMarkMs) state.inputMarks.shift();
-  const prevSec=Math.floor(state.phaseElapsed-dt), currSec=Math.floor(state.phaseElapsed); if(currSec!==prevSec){ rollZoneBins(); rollMultitouchBin(); }
+  if(!state.initialized) return;
 
-  if(state.phase==='latency'){
-    state.latencyTarget.x += Math.sin(state.phaseElapsed*0.28)*0.0007*state.difficulty;
-    state.latencyTarget.y += Math.cos(state.phaseElapsed*0.21)*0.0005*state.difficulty;
-    state.latencyTarget.x = clamp(state.latencyTarget.x,.14,.86); state.latencyTarget.y = clamp(state.latencyTarget.y,.24,.84);
+  state.totalElapsed += dt;
+  if(state.started && state.phase !== 'summary' && state.phase !== 'intro') state.phaseElapsed += dt;
+
+  const fps = dt > 0 ? 1 / dt : 0;
+  const frameMs = dt * 1000;
+
+  state.fpsValue = fps;
+  state.lastFrameTimeMs = frameMs;
+
+  state.fpsSamples.push(fps);
+  if(state.fpsSamples.length > 240) state.fpsSamples.shift();
+
+  state.frameTimeSamples.push(frameMs);
+  if(state.frameTimeSamples.length > 240) state.frameTimeSamples.shift();
+
+  state.fpsMin = Math.min(state.fpsMin, fps);
+  state.fpsMax = Math.max(state.fpsMax, fps);
+
+  if(dt > .05) state.longFrames++;
+
+  if(state.pointers.size >= 2) state.dualSimTime += dt;
+
+  if(state.pointerCountNow > 0){
+    state.multiTouchHoldTimer += dt;
+    if(state.multiTouchHoldTimer >= CFG.stableMultiHoldSec){
+      state.stableMultiTouchMax = Math.max(state.stableMultiTouchMax, state.pointerCountNow);
+    }
+  } else {
+    state.multiTouchHoldTimer = 0;
   }
-  if(state.phase==='dualdrag'){
-    const t=state.totalElapsed; state.gateLeft.x=.25+Math.sin(t*0.95)*0.03; state.gateLeft.y=.44+Math.cos(t*1.10)*0.035; state.gateRight.x=.75+Math.sin(t*1.02+1.2)*0.03; state.gateRight.y=.44+Math.cos(t*1.25+.6)*0.035;
-    const gateR=.11; const li=hypot2(state.leftCursor.x-state.gateLeft.x,state.leftCursor.y-state.gateLeft.y)<=gateR*.92; const ri=hypot2(state.rightCursor.x-state.gateRight.x,state.rightCursor.y-state.gateRight.y)<=gateR*.92;
-    state.leftCursor.overGate=li; state.rightCursor.overGate=ri; if(li&&ri) state.dualHoldTime += dt;
+
+  for(const p of state.particles){
+    p.y += p.s * dt;
+    if(p.y > state.vh + p.r){
+      p.y = -p.r;
+      p.x = Math.random() * state.vw;
+    }
   }
-  if(state.phase==='falling'){
-    state.falling.spawnTimer += dt; const interval=Math.max(.22, CFG.fallingSpawn - state.difficulty*0.04);
-    while(state.falling.spawnTimer>=interval){ state.falling.spawnTimer-=interval; spawnFallingCircle(); }
-    for(let i=state.falling.circles.length-1;i>=0;i--){ const c=state.falling.circles[i]; c.y += c.speed*dt; if(c.y-c.r>state.vh){ state.falling.misses++; state.falling.circles.splice(i,1); } }
+
+  const now = performance.now();
+  updateZoneCombos(now);
+  while(state.inputMarks.length && now - state.inputMarks[0].t > CFG.touchMarkMs) state.inputMarks.shift();
+
+  const prevSec = Math.floor(state.phaseElapsed - dt);
+  const currSec = Math.floor(state.phaseElapsed);
+  if(currSec !== prevSec){
+    rollZoneBins();
+    rollMultitouchBin();
+
+    state.moveBins.push(state.moveCounter);
+    while(state.moveBins.length > CFG.graphSeconds) state.moveBins.shift();
+    state.moveCounter = 0;
+
+    state.frameTimeBins.push(Math.round(avg(state.frameTimeSamples.slice(-60))));
+    while(state.frameTimeBins.length > CFG.graphSeconds) state.frameTimeBins.shift();
+  }
+
+  if(state.phase === 'latency'){
+    state.latencyTarget.x += Math.sin(state.phaseElapsed * 0.28) * 0.0007 * state.difficulty;
+    state.latencyTarget.y += Math.cos(state.phaseElapsed * 0.21) * 0.0005 * state.difficulty;
+    state.latencyTarget.x = clamp(state.latencyTarget.x,.14,.86);
+    state.latencyTarget.y = clamp(state.latencyTarget.y,.24,.84);
+  }
+
+  if(state.phase === 'dualdrag'){
+    const t = state.totalElapsed;
+    state.gateLeft.x = .25 + Math.sin(t * 0.95) * 0.03;
+    state.gateLeft.y = .44 + Math.cos(t * 1.10) * 0.035;
+    state.gateRight.x = .75 + Math.sin(t * 1.02 + 1.2) * 0.03;
+    state.gateRight.y = .44 + Math.cos(t * 1.25 + .6) * 0.035;
+
+    const gateR = .11;
+    const li = hypot2(state.leftCursor.x - state.gateLeft.x, state.leftCursor.y - state.gateLeft.y) <= gateR * .92;
+    const ri = hypot2(state.rightCursor.x - state.gateRight.x, state.rightCursor.y - state.gateRight.y) <= gateR * .92;
+
+    state.leftCursor.overGate = li;
+    state.rightCursor.overGate = ri;
+    if(li && ri) state.dualHoldTime += dt;
+  }
+
+  if(state.phase === 'falling'){
+    state.falling.spawnTimer += dt;
+    const interval = Math.max(.22, CFG.fallingSpawn - state.difficulty * 0.04);
+    while(state.falling.spawnTimer >= interval){
+      state.falling.spawnTimer -= interval;
+      spawnFallingCircle();
+    }
+    for(let i=state.falling.circles.length-1;i>=0;i--){
+      const c = state.falling.circles[i];
+      c.y += c.speed * dt;
+      if(c.y - c.r > state.vh){
+        state.falling.misses++;
+        state.falling.circles.splice(i,1);
+      }
+    }
   }
 }
-function spawnFallingCircle(){ const xNorm=.08+Math.random()*.84; const r=(CFG.fallingMinR + Math.random()*(CFG.fallingMaxR-CFG.fallingMinR))*state.scale; const speed=lerp(CFG.fallingSpeedMin,CFG.fallingSpeedMax,xNorm)*(1+(state.difficulty-3)*.06); state.falling.circles.push({x:xNorm*state.vw,y:-80*state.scale,r,speed}); state.falling.spawned++; }
+function spawnFallingCircle(){
+  const xNorm = .08 + Math.random() * .84;
+  const r = (CFG.fallingMinR + Math.random() * (CFG.fallingMaxR - CFG.fallingMinR)) * state.scale;
+  const speed = lerp(CFG.fallingSpeedMin, CFG.fallingSpeedMax, xNorm) * (1 + (state.difficulty - 3) * .06);
+
+  let bandSpeed = 'medium';
+  if(xNorm < 0.33) bandSpeed = 'slow';
+  else if(xNorm > 0.66) bandSpeed = 'fast';
+
+  let bandSize = 'mediumSize';
+  const minR = CFG.fallingMinR * state.scale;
+  const maxR = CFG.fallingMaxR * state.scale;
+  const t = (r - minR) / Math.max(1, maxR - minR);
+  if(t < 0.33) bandSize = 'small';
+  else if(t > 0.66) bandSize = 'large';
+
+  state.falling.circles.push({
+    x:xNorm * state.vw,
+    y:-80 * state.scale,
+    r,
+    speed,
+    bandSpeed,
+    bandSize
+  });
+
+  state.falling.spawned++;
+  state.falling[bandSpeed].spawned++;
+  state.falling[bandSize].spawned++;
+}
+
+
 
 function draw(){ drawStars(); drawWorld(); drawHud(); }
-function drawStars(){ sctx.clearRect(0,0,state.vw,state.vh); for(const p of state.particles){ sctx.globalAlpha=p.a; sctx.fillStyle='#d9eeff'; sctx.beginPath(); sctx.arc(p.x,p.y,p.r,0,Math.PI*2); sctx.fill(); } sctx.globalAlpha=1; }
-function drawWorld(){ wctx.clearRect(0,0,state.vw,state.vh); if(state.phase==='latency') drawLatencyWorld(); if(state.phase==='tapzones') drawTapZonesWorld(); if(state.phase==='dualdrag') drawDualWorld(); if(state.phase==='multitouch') drawMultitouchWorld(); if(state.phase==='falling') drawFallingWorld(); }
+function drawStars(){
+  sctx.clearRect(0,0,state.vw,state.vh);
+  if(state.phase === 'lightscene') return;
+
+  for(const p of state.particles){
+    sctx.globalAlpha = p.a;
+    sctx.fillStyle = '#d9eeff';
+    sctx.beginPath();
+    sctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    sctx.fill();
+  }
+  sctx.globalAlpha = 1;
+}
+
+
+function drawWorld(){
+  wctx.clearRect(0,0,state.vw,state.vh);
+  if(state.phase==='latency') drawLatencyWorld();
+  if(state.phase==='tapzones') drawTapZonesWorld();
+  if(state.phase==='dualdrag') drawDualWorld();
+  if(state.phase==='multitouch') drawMultitouchWorld();
+  if(state.phase==='falling') drawFallingWorld();
+  if(state.phase==='lightscene') drawLightSceneWorld();
+  if(state.phase==='tracepath') drawTracePathWorld();
+  if(state.phase==='dualpaths') drawDualPathsWorld();
+}
+
+
 function roundRect(ctx,x,y,w,h,r,fill,stroke){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(1,state.scale*2);ctx.stroke();} }
 function drawLatencyWorld(){ const tx=state.latencyTarget.x*state.vw, ty=state.latencyTarget.y*state.vh, r=state.latencyTarget.r*Math.min(state.vw,state.vh); const alpha=.22+.20*Math.sin(state.phaseElapsed*5.5); wctx.beginPath(); wctx.strokeStyle=`rgba(255,209,102,${alpha})`; wctx.lineWidth=16*state.scale; wctx.arc(tx,ty,r*1.35,0,Math.PI*2); wctx.stroke(); const g=wctx.createRadialGradient(tx,ty,r*.1,tx,ty,r*1.05); g.addColorStop(0,'rgba(255,255,255,.98)'); g.addColorStop(.3,'rgba(255,230,160,.96)'); g.addColorStop(1,'rgba(255,170,50,.12)'); wctx.fillStyle=g; wctx.beginPath(); wctx.arc(tx,ty,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(255,255,255,.6)'; wctx.lineWidth=3*state.scale; wctx.beginPath(); wctx.arc(tx,ty,r*.63,0,Math.PI*2); wctx.stroke(); }
 function drawTapZonesWorld(){ const mid=state.vw/2, top=220*state.scale, bottom=state.vh-190*state.scale; roundRect(wctx,20*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(102,222,255,.08)','rgba(102,222,255,.20)'); roundRect(wctx,mid+4*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(255,135,220,.08)','rgba(255,135,220,.20)'); drawZoneCaption(0.25,'ЛЕВАЯ ЗОНА','#66deff'); drawZoneCaption(0.75,'ПРАВАЯ ЗОНА','#ff87dc'); }
@@ -357,19 +982,372 @@ function drawDualWorld(){ drawGate(state.gateLeft.x*state.vw,state.gateLeft.y*st
 function drawGate(x,y,r,color,active){ wctx.fillStyle=active?hexToRgba(color,.26):'rgba(255,255,255,.04)'; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle=active?hexToRgba('#ffffff',.9):'rgba(255,255,255,.22)'; wctx.lineWidth=10*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.88,0,Math.PI*2); wctx.stroke(); wctx.strokeStyle=active?color:'rgba(255,255,255,.12)'; wctx.lineWidth=2.4*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.58,0,Math.PI*2); wctx.stroke(); }
 function drawCursor(x,y,r,color,label,active){ wctx.fillStyle=active?hexToRgba('#ffffff',.85):color; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.fillStyle=active?hexToRgba(color,.65):'rgba(255,255,255,.22)'; wctx.beginPath(); wctx.arc(x-r*.22,y-r*.22,r*.34,0,Math.PI*2); wctx.fill(); wctx.fillStyle='#09111c'; wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.textBaseline='middle'; wctx.fillText(label,x,y+state.scale); wctx.textAlign='left'; wctx.textBaseline='alphabetic'; }
 function drawMultitouchWorld(){ const cx=state.cx, cy=state.cy+60*state.scale, r=180*state.scale; const glow=Math.min(1,state.pointerCountNow/Math.max(1,state.multitouchPeakOverall||1)); wctx.fillStyle=`rgba(181,140,255,${.10+.18*glow})`; wctx.beginPath(); wctx.arc(cx,cy,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(181,140,255,.45)'; wctx.lineWidth=10*state.scale; wctx.beginPath(); wctx.arc(cx,cy,r*.82,0,Math.PI*2); wctx.stroke(); wctx.fillStyle='#eef6ff'; wctx.font=`900 ${Math.round(34*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.fillText('Поставьте много пальцев сразу',cx,cy-r-26*state.scale); wctx.font=`900 ${Math.round(92*state.scale)}px Inter,system-ui,sans-serif`; wctx.fillText(String(state.pointerCountNow),cx,cy+16*state.scale); wctx.font=`800 ${Math.round(24*state.scale)}px Inter,system-ui,sans-serif`; wctx.fillText(`максимум: ${state.maxSimultaneousPointers}`,cx,cy+74*state.scale); wctx.textAlign='left'; }
-function drawFallingWorld(){ for(const c of state.falling.circles){ const g=wctx.createRadialGradient(c.x,c.y,c.r*.14,c.x,c.y,c.r); g.addColorStop(0,'rgba(255,255,255,.98)'); g.addColorStop(.32,'rgba(255,215,140,.95)'); g.addColorStop(1,'rgba(255,160,70,.16)'); wctx.fillStyle=g; wctx.beginPath(); wctx.arc(c.x,c.y,c.r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(255,255,255,.55)'; wctx.lineWidth=2.4*state.scale; wctx.beginPath(); wctx.arc(c.x,c.y,c.r*.63,0,Math.PI*2); wctx.stroke(); } const y=220*state.scale; wctx.fillStyle='rgba(255,255,255,.55)'; wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='left'; wctx.fillText('МЕДЛЕННО',24*state.scale,y); wctx.textAlign='right'; wctx.fillText('ОЧЕНЬ БЫСТРО',state.vw-24*state.scale,y); wctx.textAlign='left'; }
 
-function drawHud(){ hctx.clearRect(0,0,state.vw,state.vh); if(state.phase==='intro') return; drawTopHud(); drawStageHeader(); if(state.phase==='tapzones') drawTapZoneCounters(); drawCharts(); drawPointerMarks(); if(state.phase==='dualdrag') drawDualProgress(); }
+
+function drawFallingWorld(){
+  for(const c of state.falling.circles){
+    const g = wctx.createRadialGradient(c.x,c.y,c.r*.14,c.x,c.y,c.r);
+    g.addColorStop(0,'rgba(255,255,255,.98)');
+    g.addColorStop(.32,'rgba(255,215,140,.95)');
+    g.addColorStop(1,'rgba(255,160,70,.16)');
+    wctx.fillStyle = g;
+    wctx.beginPath();
+    wctx.arc(c.x,c.y,c.r,0,Math.PI*2);
+    wctx.fill();
+
+    wctx.strokeStyle = 'rgba(255,255,255,.55)';
+    wctx.lineWidth = 2.4 * state.scale;
+    wctx.beginPath();
+    wctx.arc(c.x,c.y,c.r*.63,0,Math.PI*2);
+    wctx.stroke();
+  }
+
+  const y = 290 * state.scale;
+  wctx.fillStyle='rgba(255,255,255,.55)';
+  wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`;
+  wctx.textAlign='left';
+  wctx.fillText('МЕДЛЕННО',24*state.scale,y);
+  wctx.textAlign='center';
+  wctx.fillText('СРЕДНЕ',state.cx,y);
+  wctx.textAlign='right';
+  wctx.fillText('ОЧЕНЬ БЫСТРО',state.vw-24*state.scale,y);
+  wctx.textAlign='left';
+}
+
+function drawLightSceneWorld(){
+  const cx = state.cx;
+  const cy = state.cy + 40 * state.scale;
+  wctx.fillStyle='rgba(255,255,255,.06)';
+  wctx.beginPath();
+  wctx.arc(cx, cy, 160 * state.scale, 0, Math.PI * 2);
+  wctx.fill();
+
+  wctx.strokeStyle='rgba(255,255,255,.15)';
+  wctx.lineWidth = 8 * state.scale;
+  wctx.beginPath();
+  wctx.arc(cx, cy, 124 * state.scale, 0, Math.PI * 2);
+  wctx.stroke();
+
+  wctx.fillStyle='#eef6ff';
+  wctx.font=`900 ${Math.round(34*state.scale)}px Inter,system-ui,sans-serif`;
+  wctx.textAlign='center';
+  wctx.fillText('Пустая сцена', cx, cy - 14 * state.scale);
+  wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`;
+  wctx.fillText('Для проверки системного потолка FPS', cx, cy + 28 * state.scale);
+  wctx.textAlign='left';
+}
+
+function drawPathLine(path, color, width){
+  wctx.strokeStyle = color;
+  wctx.lineWidth = width;
+  wctx.lineCap = 'round';
+  wctx.lineJoin = 'round';
+  wctx.beginPath();
+  for(let i=0;i<path.length;i++){
+    const p = path[i];
+    if(i === 0) wctx.moveTo(p.x, p.y);
+    else wctx.lineTo(p.x, p.y);
+  }
+  wctx.stroke();
+}
+
+function drawTracePathWorld(){
+  drawPathLine(state.trace.path, 'rgba(102,222,255,.14)', CFG.traceGuideWidth * state.scale);
+  drawPathLine(state.trace.path, 'rgba(255,255,255,.72)', 4 * state.scale);
+
+  for(let i=0;i<state.trace.path.length;i+=6){
+    const p = state.trace.path[i];
+    wctx.fillStyle='rgba(255,255,255,.9)';
+    wctx.beginPath();
+    wctx.arc(p.x, p.y, 6 * state.scale, 0, Math.PI * 2);
+    wctx.fill();
+  }
+
+  if(state.trace.points.length > 1){
+    drawPathLine(state.trace.points, 'rgba(255,184,107,.95)', 6 * state.scale);
+  }
+
+  const start = state.trace.path[0];
+  const end = state.trace.path[state.trace.path.length - 1];
+
+  wctx.fillStyle='rgba(127,244,181,.95)';
+  wctx.beginPath();
+  wctx.arc(start.x, start.y, 18 * state.scale, 0, Math.PI * 2);
+  wctx.fill();
+
+  wctx.fillStyle='rgba(255,107,122,.95)';
+  wctx.beginPath();
+  wctx.arc(end.x, end.y, 18 * state.scale, 0, Math.PI * 2);
+  wctx.fill();
+
+  if(state.trace.points.length){
+    const last = state.trace.points[state.trace.points.length - 1];
+    const d = distanceToPolyline(last.x, last.y, state.trace.path);
+
+    wctx.strokeStyle = d <= CFG.traceGuideWidth * 0.5 * state.scale ? 'rgba(127,244,181,.9)' : 'rgba(255,107,122,.9)';
+    wctx.lineWidth = 3 * state.scale;
+    wctx.beginPath();
+    wctx.arc(last.x, last.y, 22 * state.scale, 0, Math.PI * 2);
+    wctx.stroke();
+  }
+}
+
+function drawDualPathsWorld(){
+  drawPathLine(state.dualpaths.leftPath, 'rgba(102,222,255,.20)', CFG.dualPathHitWidth * state.scale);
+  drawPathLine(state.dualpaths.leftPath, 'rgba(255,255,255,.55)', 4 * state.scale);
+
+  drawPathLine(state.dualpaths.rightPath, 'rgba(255,135,220,.20)', CFG.dualPathHitWidth * state.scale);
+  drawPathLine(state.dualpaths.rightPath, 'rgba(255,255,255,.55)', 4 * state.scale);
+
+  const lp = state.dualpaths.leftPath[Math.floor(state.dualpaths.left.progress * (state.dualpaths.leftPath.length - 1))];
+  const rp = state.dualpaths.rightPath[Math.floor(state.dualpaths.right.progress * (state.dualpaths.rightPath.length - 1))];
+
+  if(lp){
+    wctx.fillStyle='rgba(102,222,255,.95)';
+    wctx.beginPath();
+    wctx.arc(lp.x, lp.y, CFG.dualPathRadius * state.scale, 0, Math.PI * 2);
+    wctx.fill();
+  }
+  if(rp){
+    wctx.fillStyle='rgba(255,135,220,.95)';
+    wctx.beginPath();
+    wctx.arc(rp.x, rp.y, CFG.dualPathRadius * state.scale, 0, Math.PI * 2);
+    wctx.fill();
+  }
+}
+
+
+
+function drawHud(){
+  hctx.clearRect(0,0,state.vw,state.vh);
+  if(state.phase==='intro') return;
+  
+  stageBtns.resetTrace.style.display = state.phase === 'tracepath' ? 'inline-flex' : 'none';
+  stageBtns.resetDualPaths.style.display = state.phase === 'dualpaths' ? 'inline-flex' : 'none';
+
+  drawTopHud();
+  drawStageHeader();
+
+  if(state.phase==='tapzones') drawTapZoneCounters();
+  if(state.phase==='dualdrag') drawDualProgress();
+
+  drawCharts();
+  drawPointerMarks();
+
+  if(state.phase==='multitouch'){
+    const s = state.scale;
+    let boxX = state.vw - 260*s;
+    let boxY = state.vh - 140*s - 118*s;
+    const fit = fitAuxPanelRect(boxX, boxY, 236*s, 118*s, 1);
+    boxX = fit.x;
+    boxY = fit.y;
+
+    drawGlass(boxX, boxY, 236*s, 118*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText('СТАБИЛЬНО 1 СЕК', boxX + 14*s, boxY + 24*s);
+    hctx.fillStyle='#eef6ff';
+    hctx.font=`900 ${Math.round(34*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(String(state.stableMultiTouchMax), boxX + 14*s, boxY + 70*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(`cancel: ${state.pointerCancelCount}`, boxX + 14*s, boxY + 100*s);
+  }
+
+  if(state.phase==='falling'){
+    const s = state.scale;
+    drawGlass(state.vw - 286*s, 230*s, 262*s, 146*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(`медл.: ${state.falling.slow.hits}/${state.falling.slow.spawned}`, state.vw - 270*s, 254*s);
+    hctx.fillText(`сред.: ${state.falling.medium.hits}/${state.falling.medium.spawned}`, state.vw - 270*s, 280*s);
+    hctx.fillText(`быстр.: ${state.falling.fast.hits}/${state.falling.fast.spawned}`, state.vw - 270*s, 306*s);
+    hctx.fillText(`мал.: ${state.falling.small.hits}/${state.falling.small.spawned}`, state.vw - 270*s, 332*s);
+    hctx.fillText(`крупн.: ${state.falling.large.hits}/${state.falling.large.spawned}`, state.vw - 270*s, 358*s);
+  }
+
+  if(state.phase==='tracepath'){
+    const s = state.scale;
+    const avgDev = state.trace.deviationSamples ? state.trace.deviationSum / state.trace.deviationSamples : 0;
+    drawGlass(state.vw - 286*s, 230*s, 262*s, 118*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText('ОТКЛОНЕНИЕ', state.vw - 270*s, 254*s);
+    hctx.fillStyle='#eef6ff';
+    hctx.font=`900 ${Math.round(28*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(`${Math.round(avgDev)} px`, state.vw - 270*s, 294*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(`разрывы: ${state.trace.breaks}`, state.vw - 270*s, 326*s);
+  }
+
+  if(state.phase==='dualpaths'){
+    const s = state.scale;
+    const lAvg = state.dualpaths.left.deviationSamples ? state.dualpaths.left.deviationSum / state.dualpaths.left.deviationSamples : 0;
+    const rAvg = state.dualpaths.right.deviationSamples ? state.dualpaths.right.deviationSum / state.dualpaths.right.deviationSamples : 0;
+    drawGlass(state.vw - 286*s, 230*s, 262*s, 118*s);
+    hctx.fillStyle='rgba(159,180,204,.96)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(`лев. откл.: ${Math.round(lAvg)} px`, state.vw - 270*s, 258*s);
+    hctx.fillText(`прав. откл.: ${Math.round(rAvg)} px`, state.vw - 270*s, 286*s);
+    hctx.fillText(`лев. разрывы: ${state.dualpaths.left.breaks}`, state.vw - 270*s, 314*s);
+    hctx.fillText(`прав. разрывы: ${state.dualpaths.right.breaks}`, state.vw - 270*s, 342*s);
+  }
+}
+
+
+
+
 function drawGlass(x,y,w,h){ roundRect(hctx,x,y,w,h,20*state.scale,'rgba(7,17,31,.56)','rgba(255,255,255,.10)'); }
-function drawTopHud(){ const s=state.scale, pad=24*s, y=24*s, w=158*s, h=90*s, gap=14*s; const items=[ ['FPS',fmtFps(state.fpsValue)], ['ОТКЛИК',fmtMs(state.lastInputLatency)], ['КАСАНИЙ',String(state.pointerCountNow)], ['ВСЕГО',String(state.totalPresses)] ]; items.forEach((it,i)=>{ const x=pad+i*(w+gap); drawGlass(x,y,w,h); hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(it[0],x+14*s,y+26*s); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(32*s)}px Inter,system-ui,sans-serif`; hctx.fillText(it[1],x+14*s,y+64*s); }); }
+
+
+function drawTopHud(){
+  const s = state.scale, pad = 24*s, y = 24*s, w = 144*s, h = 90*s, gap = 12*s;
+  const items = [
+    ['FPS', fmtFps(state.fpsValue)],
+    ['КАДР', fmtMs(state.lastFrameTimeMs)],
+    ['ОТКЛИК', fmtMs(state.lastInputLatency)],
+    ['КАСАНИЙ', String(state.pointerCountNow)],
+    ['ДВИЖ/С', String(state.moveBins.at(-1) || state.moveCounter)],
+    ['ВСЕГО', String(state.totalPresses)]
+  ];
+  items.forEach((it,i)=>{
+    const x = pad + i * (w + gap);
+    drawGlass(x,y,w,h);
+    hctx.fillStyle='rgba(159,180,204,.95)';
+    hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(it[0],x+14*s,y+26*s);
+    hctx.fillStyle='#eef6ff';
+    hctx.font=`900 ${Math.round(28*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText(it[1],x+14*s,y+64*s);
+  });
+}
+
+
 function drawStageHeader(){ const s=state.scale; const narrow=isNarrowScreen(); const titleMaxW=state.vw-(narrow?80*s:120*s); const titleSize=narrow?32*s:38*s; const hintSize=narrow?20*s:22*s; const titleLineH=titleSize*1.12; const hintLineH=hintSize*1.34; hctx.textAlign='center'; hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(titleSize)}px Inter,system-ui,sans-serif`; const titleY=156*s; const titleLines=wrapCenteredText(hctx,STAGE_TITLES[state.phase]||'',state.cx,titleY,titleMaxW,titleLineH); hctx.fillStyle='rgba(159,180,204,.96)'; hctx.font=`800 ${Math.round(hintSize)}px Inter,system-ui,sans-serif`; const hintY=titleY + titleLines*titleLineH + (narrow?18*s:12*s); wrapCenteredText(hctx,STAGE_HINTS[state.phase]||'',state.cx,hintY,state.vw-(narrow?76*s:70*s),hintLineH); hctx.textAlign='left'; }
 function wrapCenteredText(ctx,text,cx,y,maxW,lineH){ const tokens=text.split(' '); let line='', yy=y, lines=0; for(let i=0;i<tokens.length;i++){ let word=tokens[i]; if(ctx.measureText(word).width>maxW){ let part=''; for(const ch of word){ const test=part+ch; if(part && ctx.measureText(test).width>maxW){ const rendered=line?line+' '+part:part; ctx.fillText(rendered,cx,yy); lines++; yy+=lineH; line=''; part=ch; } else part=test; } word=part; } const test=line?line+' '+word:word; if(ctx.measureText(test).width>maxW && line){ ctx.fillText(line,cx,yy); lines++; yy+=lineH; line=word; } else line=test; } if(line){ ctx.fillText(line,cx,yy); lines++; } return lines; }
-function drawCharts(){ const s=state.scale, baseW=248*s, h=130*s, gap=14*s, x=24*s; const narrow=isNarrowScreen(); const w=narrow?Math.min(baseW,(state.vw-3*gap-2*x)/2):baseW; const y=state.vh-h-140*s; drawLineChart(x,y,w,h,'FPS',state.fpsSamples,0,Math.max(60,state.fpsMax||60),'#66deff','fps'); drawLineChart(x+w+gap,y,w,h,'ОТКЛИК',state.latencySamples,0,120,'#ff87dc','ms'); if(state.phase==='tapzones'){ if(narrow){ drawBarChart(x,y-(h+16*s),w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff'); drawBarChart(x+w+gap,y-(h+16*s),w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc'); } else { drawBarChart(x+(w+gap)*2,y,w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff'); drawBarChart(x+(w+gap)*3,y,w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc'); } } else if(state.phase==='multitouch'){ drawBarChart(x+(w+gap)*2,y,w,h,'ОДНОВР. КАСАНИЯ',state.multitouchBins,state.multitouchPeakThisSecond,'#b58cff'); } else if(state.phase==='falling'){ drawMiniBox(x+(w+gap)*2,y,w,h,'ПОПАДАНИЯ',`${state.falling.hits}/${state.falling.spawned}`,'#ffb86b'); } else if(state.phase==='dualdrag'){ drawMiniBox(x+(w+gap)*2,y,w,h,'УДЕРЖАНИЕ',`${Math.round((state.dualHoldTime/Math.max(.001,state.phaseElapsed||1))*100)}%`,'#7ff4b5'); } }
+
+
+
+function drawCharts(){
+  const s = state.scale, baseW = 228*s, h = 130*s, gap = 14*s, x = 24*s;
+  const narrow = isNarrowScreen();
+  const w = narrow ? Math.min(baseW,(state.vw-3*gap-2*x)/2) : baseW;
+  const y = state.vh - h - 140*s;
+
+  drawLineChart(x,y,w,h,'FPS',state.fpsSamples,0,Math.max(60,state.fpsMax||60),'#66deff','fps');
+  drawLineChart(x+w+gap,y,w,h,'КАДР, МС',state.frameTimeSamples,0,50,'#ffd166','ms');
+  drawLineChart(x+(w+gap)*2,y,w,h,'ОТКЛИК',state.latencySamples,0,120,'#ff87dc','ms');
+
+  if(state.phase==='tapzones'){
+    if(narrow){
+      drawBarChart(x,y-(h+16*s),w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff');
+      drawBarChart(x+w+gap,y-(h+16*s),w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc');
+    } else {
+      drawBarChart(x+(w+gap)*3,y,w,h,'ЛЕВАЯ ЗОНА',state.tapZones.left.secBins,state.tapZones.left.secCounter,'#66deff');
+      drawBarChart(x+(w+gap)*4,y,w,h,'ПРАВАЯ ЗОНА',state.tapZones.right.secBins,state.tapZones.right.secCounter,'#ff87dc');
+    }
+  } else if(state.phase==='multitouch'){
+    drawBarChart(x+(w+gap)*3,y,w,h,'ОДНОВР. КАСАНИЯ',state.multitouchBins,state.multitouchPeakThisSecond,'#b58cff',1);
+  } else if(state.phase==='falling'){
+    drawMiniBox(x+(w+gap)*3,y,w,h,'ПОПАДАНИЯ',`${state.falling.hits}/${state.falling.spawned}`,'#ffb86b',1);
+  } else if(state.phase==='dualdrag'){
+    drawMiniBox(x+(w+gap)*3,y,w,h,'УДЕРЖАНИЕ',`${Math.round((state.dualHoldTime/Math.max(.001,state.phaseElapsed||1))*100)}%`,'#7ff4b5',1);
+  } else if(state.phase==='lightscene'){
+    drawBarChart(x+(w+gap)*3,y,w,h,'ДВИЖЕНИЯ / СЕК',state.moveBins,state.moveCounter,'#b58cff',1);
+  } else if(state.phase==='tracepath'){
+    drawMiniBox(x+(w+gap)*3,y,w,h,'ПРОГРЕСС',`${Math.round(state.trace.progress * 100)}%`,'#ffb86b',1);
+  } else if(state.phase==='dualpaths'){
+    drawMiniBox(x+(w+gap)*3,y,w,h,'ЛЕВ / ПРАВ',`${Math.round(state.dualpaths.left.progress*100)} / ${Math.round(state.dualpaths.right.progress*100)}`,'#7ff4b5',1);
+  }
+}
+
+
+
+
+
 function drawLineChart(x,y,w,h,title,data,min,max,color,unit){ drawGlass(x,y,w,h); const s=state.scale, px=x+14*s, py=y+36*s, pw=w-28*s, ph=h-50*s; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); hctx.strokeStyle='rgba(255,255,255,.08)'; hctx.lineWidth=Math.max(1,1.4*s); for(let i=0;i<3;i++){ const yy=py + (ph/2)*i; hctx.beginPath(); hctx.moveTo(px,yy); hctx.lineTo(px+pw,yy); hctx.stroke(); } const arr=data.slice(-80); if(arr.length>1){ hctx.beginPath(); arr.forEach((v,i)=>{ const xx=px+(i/Math.max(1,arr.length-1))*pw; const norm=clamp((v-min)/Math.max(1e-6,max-min),0,1); const yy=py+ph-norm*ph; if(i===0) hctx.moveTo(xx,yy); else hctx.lineTo(xx,yy); }); hctx.strokeStyle=color; hctx.lineWidth=Math.max(2,2.8*s); hctx.stroke(); } hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='right'; hctx.fillText(`${Math.round(arr.at(-1)||0)} ${unit}`,x+w-12*s,y+24*s); hctx.textAlign='left'; }
-function drawBarChart(x,y,w,h,title,bins,current,color){ drawGlass(x,y,w,h); const s=state.scale, px=x+14*s, py=y+36*s, pw=w-28*s, ph=h-50*s; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); const arr=[...bins.slice(-(CFG.graphSeconds-1)), current]; const max=Math.max(3,...arr); const barW=pw/arr.length*.72; arr.forEach((v,i)=>{ const xx=px+i*(pw/arr.length)+(pw/arr.length-barW)/2; const bh=(v/max)*ph; hctx.fillStyle=hexToRgba(color,.8); hctx.fillRect(xx,py+ph-bh,barW,bh); }); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='right'; hctx.fillText(`${current}/сек`,x+w-12*s,y+24*s); hctx.textAlign='left'; }
-function drawMiniBox(x,y,w,h,title,value,color){ drawGlass(x,y,w,h); const s=state.scale; hctx.fillStyle='rgba(159,180,204,.95)'; hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`; hctx.fillText(title,x+14*s,y+24*s); hctx.fillStyle=color; hctx.font=`900 ${Math.round(42*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='center'; hctx.fillText(value,x+w/2,y+82*s); hctx.textAlign='left'; }
+function drawBarChart(x,y,w,h,title,bins,current,color,rowIndex=0){
+  const pos = fitAuxPanelRect(x,y,w,h,rowIndex);
+  x = pos.x; y = pos.y;
+
+  drawGlass(x,y,w,h);
+  const s=state.scale, px=x+14*s, py=y+36*s, pw=w-28*s, ph=h-50*s;
+  hctx.fillStyle='rgba(159,180,204,.95)';
+  hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(title,x+14*s,y+24*s);
+
+  const arr=[...bins.slice(-(CFG.graphSeconds-1)), current];
+  const max=Math.max(3,...arr);
+  const barW=pw/arr.length*.72;
+
+  arr.forEach((v,i)=>{
+    const xx=px+i*(pw/arr.length)+(pw/arr.length-barW)/2;
+    const bh=(v/max)*ph;
+    hctx.fillStyle=hexToRgba(color,.8);
+    hctx.fillRect(xx,py+ph-bh,barW,bh);
+  });
+
+  hctx.fillStyle='#eef6ff';
+  hctx.font=`900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`;
+  hctx.textAlign='right';
+  hctx.fillText(`${current}/сек`,x+w-12*s,y+24*s);
+  hctx.textAlign='left';
+}
+function fitAuxPanelRect(x,y,w,h,rowIndex=0){
+  const s = state.scale;
+  const topLimit = 230 * s;
+  const fallbackY = y - rowIndex * (h + 16 * s);
+  if(x + w > state.vw - 20 * s){
+    return {x:24*s, y:Math.max(topLimit, fallbackY)};
+  }
+  return {x, y};
+}
+
+function drawMiniBox(x,y,w,h,title,value,color,rowIndex=0){
+  const pos = fitAuxPanelRect(x,y,w,h,rowIndex);
+  x = pos.x; y = pos.y;
+  drawGlass(x,y,w,h);
+  const s=state.scale;
+  hctx.fillStyle='rgba(159,180,204,.95)';
+  hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(title,x+14*s,y+24*s);
+  hctx.fillStyle=color;
+  hctx.font=`900 ${Math.round(42*s)}px Inter,system-ui,sans-serif`;
+  hctx.textAlign='center';
+  hctx.fillText(value,x+w/2,y+82*s);
+  hctx.textAlign='left';
+}
 function drawPointerMarks(){ const s=state.scale; for(const m of state.inputMarks){ drawTouchMarker(m.x*state.vw,m.y*state.vh,'rgba(255,255,255,.95)','rgba(255,255,255,.5)','rgba(255,255,255,.28)'); } if(state.phase==='multitouch'){ for(const p of state.pointers.values()){ drawTouchMarker(p.x*state.vw,p.y*state.vh,'rgba(181,140,255,.98)','rgba(181,140,255,.55)','rgba(181,140,255,.32)'); } } function drawTouchMarker(x,y,c1,c2,c3){ hctx.strokeStyle=c1; hctx.lineWidth=3.2*s; hctx.beginPath(); hctx.arc(x,y,26*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c2; hctx.lineWidth=4.6*s; hctx.beginPath(); hctx.arc(x,y,54*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c3; hctx.lineWidth=5.2*s; hctx.beginPath(); hctx.arc(x,y,94*s,0,Math.PI*2); hctx.stroke(); } }
-function drawDualProgress(){ const s=state.scale, w=520*s, h=24*s, x=state.cx-w/2, y=state.vh-134*s; drawGlass(x-8*s,y-8*s,w+16*s,h+16*s); roundRect(hctx,x,y,w,h,999*s,'rgba(255,255,255,.07)','rgba(255,255,255,.1)'); const ratio=clamp(state.dualHoldTime/Math.max(.001,state.phaseElapsed||1),0,1); roundRect(hctx,x,y,w*ratio,h,999*s,'rgba(127,244,181,.88)',null); hctx.fillStyle='#eef6ff'; hctx.font=`900 ${Math.round(20*s)}px Inter,system-ui,sans-serif`; hctx.textAlign='center'; hctx.fillText(`Совместное удержание: ${Math.round(ratio*100)}%`,state.cx,y-14*s); hctx.textAlign='left'; }
+
+
+
+
+function drawDualProgress(){
+  const s=state.scale, w=520*s, h=24*s, x=state.cx-w/2, y=state.vh-134*s;
+  drawGlass(x-8*s,y-8*s,w+16*s,h+16*s);
+  roundRect(hctx,x,y,w,h,999*s,'rgba(255,255,255,.07)','rgba(255,255,255,.1)');
+  const ratio=clamp(state.dualHoldTime/Math.max(.001,state.phaseElapsed||1),0,1);
+  roundRect(hctx,x,y,w*ratio,h,999*s,'rgba(127,244,181,.88)',null);
+
+  const leftAvg = state.leftCursor.samples ? state.leftCursor.sumFingerLag / state.leftCursor.samples : 0;
+  const rightAvg = state.rightCursor.samples ? state.rightCursor.sumFingerLag / state.rightCursor.samples : 0;
+
+  hctx.fillStyle='#eef6ff';
+  hctx.font=`900 ${Math.round(20*s)}px Inter,system-ui,sans-serif`;
+  hctx.textAlign='center';
+  hctx.fillText(`Совместное удержание: ${Math.round(ratio*100)}%`,state.cx,y-14*s);
+
+  hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(`Lag L: ${Math.round(leftAvg)} px · Lag R: ${Math.round(rightAvg)} px`,state.cx,y+52*s);
+  hctx.textAlign='left';
+}
+
+
+
+
+
+
 
 
 function drawTapZoneCounters(){
@@ -378,7 +1356,17 @@ function drawTapZoneCounters(){
   const left=state.tapZones.left, right=state.tapZones.right;
   drawZoneCounterBox(x,y,w,h,'ЛЕВАЯ','#66deff',left);
   drawZoneCounterBox(x,y+h+gap,w,h,'ПРАВАЯ','#ff87dc',right);
+
+  drawGlass(x, y + (h + gap) * 2, w, 94*s);
+  hctx.fillStyle='rgba(159,180,204,.96)';
+  hctx.font=`800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText('ОДНОВРЕМЕННО', x + 14*s, y + (h + gap) * 2 + 24*s);
+  hctx.fillStyle='#eef6ff';
+  hctx.font=`900 ${Math.round(34*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText(String(state.simultaneousZoneHits), x + 14*s, y + (h + gap) * 2 + 66*s);
 }
+
+
 function drawZoneCounterBox(x,y,w,h,label,color,z){
   drawGlass(x,y,w,h);
   const s=state.scale;
@@ -396,26 +1384,89 @@ function drawZoneCounterBox(x,y,w,h,label,color,z){
 }
 
 function summarize(forcedFail){
-  const med=median(state.latencySamples), p95=percentile(state.latencySamples,.95), avgF=avg(state.fpsSamples), minF=state.fpsMin===Infinity?0:state.fpsMin;
-  const dualRatio = state.phase==='dualdrag' ? state.dualHoldTime/Math.max(.001,state.phaseElapsed||1) : state.dualHoldTime/Math.max(1,state.totalElapsed);
-  const fallRatio = state.falling.spawned ? state.falling.hits/state.falling.spawned : 0;
-  const latencyScore = med<=CFG.goodLatency ? 1 : med<=CFG.okLatency ? .5 : 0;
-  const fpsScore = avgF>=CFG.goodFps ? 1 : avgF>=CFG.okFps ? .5 : 0;
-  const jankScore = state.longFrames<=CFG.goodLongFrames ? 1 : state.longFrames<=CFG.okLongFrames ? .5 : 0;
-  const dualScore = (state.maxSimultaneousPointers>=2 && state.dualSimTime>=CFG.dualNeedSimSec && dualRatio>=CFG.dualNeedRatio) ? 1 : 0;
-  const tapScore = (Math.max(...state.tapZones.left.secBins,state.tapZones.left.secCounter)>=5 && Math.max(...state.tapZones.right.secBins,state.tapZones.right.secCounter)>=5) ? 1 : .5;
-  const multiScore = state.maxSimultaneousPointers>=CFG.touchGood ? 1 : state.maxSimultaneousPointers>=2 ? .5 : 0;
-  const fallScore = fallRatio>=CFG.fallNeedRatio ? 1 : fallRatio>=.2 ? .5 : 0;
-  const final = forcedFail ? 0 : latencyScore*.18 + fpsScore*.16 + jankScore*.12 + tapScore*.14 + dualScore*.18 + multiScore*.10 + fallScore*.12;
-  const result = (!forcedFail && dualScore===1 && final>=.66) ? 1 : 0;
-  let verdict='Недостаточно данных.';
-  if(result===1) verdict='Хороший кандидат для активных мини-игр, drag-механик и одновременной игры нескольких людей.';
-  else if(state.maxSimultaneousPointers<2) verdict='Мало подтверждений multitouch: стоит проверить поддержку одновременных касаний.';
-  else if(med>CFG.okLatency) verdict='Задержка ввода заметна: быстрые сцены могут ощущаться вязко.';
-  else if(avgF<CFG.okFps || state.longFrames>CFG.okLongFrames) verdict='Есть просадки кадров или длинные кадры: устройству нужен запас производительности.';
-  else if(fallRatio<.2) verdict='Быстрые цели справа ловятся с трудом: возможна задержка тача или нехватка точности.';
-  else verdict='Устройство близко к допустимому, но лучше проверить на финальной сцене игры.';
-  return {result, medianLatency:med, p95Latency:p95, avgFps:avgF, minFps:minF, longFrames:state.longFrames, maxPointers:state.maxSimultaneousPointers, dualHoldRatio:dualRatio, leftBest:state.tapZones.left.best, rightBest:state.tapZones.right.best, leftTotal:state.tapZones.left.total, rightTotal:state.tapZones.right.total, fallHits:state.falling.hits, fallSpawned:state.falling.spawned, verdict};
+  const med = median(state.latencySamples);
+  const p95 = percentile(state.latencySamples,.95);
+  const avgF = avg(state.fpsSamples);
+  const minF = state.fpsMin === Infinity ? 0 : state.fpsMin;
+  const p95Frame = percentile(state.frameTimeSamples,.95);
+
+  const dualRatio = state.dualHoldTime / Math.max(1e-6, state.phaseElapsed || state.totalElapsed || 1);
+  const fallRatio = state.falling.spawned ? state.falling.hits / state.falling.spawned : 0;
+
+  const leftLagAvg = state.leftCursor.samples ? state.leftCursor.sumFingerLag / state.leftCursor.samples : 0;
+  const rightLagAvg = state.rightCursor.samples ? state.rightCursor.sumFingerLag / state.rightCursor.samples : 0;
+
+  const traceAvgDev = state.trace.deviationSamples ? state.trace.deviationSum / state.trace.deviationSamples : 999;
+  const dualLeftAvg = state.dualpaths.left.deviationSamples ? state.dualpaths.left.deviationSum / state.dualpaths.left.deviationSamples : 999;
+  const dualRightAvg = state.dualpaths.right.deviationSamples ? state.dualpaths.right.deviationSum / state.dualpaths.right.deviationSamples : 999;
+
+  const latencyScore = med <= CFG.goodLatency ? 1 : med <= CFG.okLatency ? .5 : 0;
+  const fpsScore = avgF >= CFG.goodFps ? 1 : avgF >= CFG.okFps ? .5 : 0;
+  const jankScore = state.longFrames <= CFG.goodLongFrames ? 1 : state.longFrames <= CFG.okLongFrames ? .5 : 0;
+  const dualScore = (state.maxSimultaneousPointers >= 2 && state.dualSimTime >= CFG.dualNeedSimSec && dualRatio >= CFG.dualNeedRatio) ? 1 : 0;
+  const tapScore = (Math.max(...state.tapZones.left.secBins, state.tapZones.left.secCounter) >= 5 && Math.max(...state.tapZones.right.secBins, state.tapZones.right.secCounter) >= 5) ? 1 : .5;
+  const multiScore = state.stableMultiTouchMax >= CFG.touchGood ? 1 : state.maxSimultaneousPointers >= 2 ? .5 : 0;
+  const fallScore = fallRatio >= CFG.fallNeedRatio ? 1 : fallRatio >= .2 ? .5 : 0;
+  const traceScore = state.trace.completed && traceAvgDev < 80 * state.scale ? 1 : state.trace.progress > .65 ? .5 : 0;
+  const dualPathScore = (state.dualpaths.left.progress > .65 && state.dualpaths.right.progress > .65 && dualLeftAvg < 90 * state.scale && dualRightAvg < 90 * state.scale) ? 1 : .5;
+
+  const final = forcedFail ? 0 :
+    latencyScore * .14 +
+    fpsScore * .12 +
+    jankScore * .10 +
+    tapScore * .12 +
+    dualScore * .14 +
+    multiScore * .10 +
+    fallScore * .10 +
+    traceScore * .09 +
+    dualPathScore * .09;
+
+  const result = (!forcedFail && dualScore === 1 && final >= .66) ? 1 : 0;
+
+  let verdict = 'Недостаточно данных.';
+  if(result === 1) verdict = 'Хороший кандидат для активных мини-игр, drag-механик и одновременной игры нескольких людей.';
+  else if(state.maxSimultaneousPointers < 2) verdict = 'Мало подтверждений multitouch: стоит проверить поддержку одновременных касаний.';
+  else if(med > CFG.okLatency) verdict = 'Задержка ввода заметна: быстрые сцены могут ощущаться вязко.';
+  else if(avgF < CFG.okFps || state.longFrames > CFG.okLongFrames) verdict = 'Есть просадки кадров или длинные кадры: устройству нужен запас производительности.';
+  else if(fallRatio < .2) verdict = 'Быстрые цели справа ловятся с трудом: возможна задержка тача или нехватка точности.';
+  else if(traceAvgDev > 100 * state.scale) verdict = 'Палец ведётся неточно: drag-сцены могут ощущаться рваными.';
+  else verdict = 'Устройство близко к допустимому, но лучше проверить на финальной сцене игры.';
+
+  return {
+    result,
+    medianLatency:med,
+    p95Latency:p95,
+    avgFps:avgF,
+    minFps:minF,
+    p95Frame,
+    longFrames:state.longFrames,
+    maxPointers:state.maxSimultaneousPointers,
+    stablePointers:state.stableMultiTouchMax,
+    dualHoldRatio:dualRatio,
+
+    leftBest:state.tapZones.left.best,
+    rightBest:state.tapZones.right.best,
+    leftTotal:state.tapZones.left.total,
+    rightTotal:state.tapZones.right.total,
+    simultaneousZoneHits:state.simultaneousZoneHits,
+
+    fallHits:state.falling.hits,
+    fallSpawned:state.falling.spawned,
+
+    leftLagAvg,
+    rightLagAvg,
+
+    traceProgress:state.trace.progress,
+    traceAvgDeviation:traceAvgDev,
+    traceBreaks:state.trace.breaks,
+
+    dualPathLeftProgress:state.dualpaths.left.progress,
+    dualPathRightProgress:state.dualpaths.right.progress,
+    dualPathLeftDeviation:dualLeftAvg,
+    dualPathRightDeviation:dualRightAvg,
+
+    verdict
+  };
 }
 
 function loop(ts){ if(!state.lastFrame) state.lastFrame=ts; let dt=(ts-state.lastFrame)/1000; state.lastFrame=ts; dt=clamp(dt,.001,.05); update(dt); draw(); requestAnimationFrame(loop); }
@@ -423,7 +1474,16 @@ window.addEventListener('resize', resize);
 dom.game.addEventListener('pointerdown', onPointerDown, {passive:false});
 dom.game.addEventListener('pointermove', onPointerMove, {passive:false});
 dom.game.addEventListener('pointerup', onPointerUp, {passive:false});
-dom.game.addEventListener('pointercancel', onPointerUp, {passive:false});
+
+
+dom.game.addEventListener('pointercancel', e => {
+  state.pointerCancelCount += 1;
+  onPointerUp(e);
+}, {passive:false});
+
+
+
+
 dom.game.addEventListener('pointerleave', onPointerUp, {passive:false});
 window.addEventListener('message', e => { if(e.data && e.data.type==='gameInit') initFromParams(e.data); });
 window.addEventListener('beforeunload', () => { if(!state.finishSent){ try{ parent.postMessage({type:'gameResult', result:0},'*'); }catch(_){} } });
