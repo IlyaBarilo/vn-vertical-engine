@@ -1040,11 +1040,15 @@ function drawLightSceneWorld(){
   wctx.textAlign='left';
 }
 
-function drawPathLine(path, color, width){
+function drawPathLine(path, color, width, crisp = false){
+  if(!path || path.length < 2) return;
+
   wctx.strokeStyle = color;
   wctx.lineWidth = width;
-  wctx.lineCap = 'round';
-  wctx.lineJoin = 'round';
+  wctx.lineCap = crisp ? 'butt' : 'round';
+  wctx.lineJoin = crisp ? 'miter' : 'round';
+  wctx.miterLimit = 2;
+
   wctx.beginPath();
   for(let i=0;i<path.length;i++){
     const p = path[i];
@@ -1059,9 +1063,9 @@ function drawTracePathWorld(){
   drawPathLine(state.trace.path, 'rgba(255,255,255,.72)', 4 * state.scale);
 
   if(state.trace.points.length > 1){
-    drawPathLine(state.trace.points, 'rgba(255,184,107,.95)', 6 * state.scale);
+    drawPathLine(state.trace.points, 'rgba(255,184,107,.95)', 4 * state.scale, true);
 
-    for(let i=0;i<state.trace.points.length;i+=4){
+    for(let i=0;i<state.trace.points.length;i++){
       const p = state.trace.points[i];
       wctx.fillStyle='rgba(255,245,220,.95)';
       wctx.beginPath();
@@ -1167,14 +1171,21 @@ function drawHud(){
 
   if(state.phase==='falling'){
     const s = state.scale;
-    drawGlass(state.vw - 286*s, 230*s, 262*s, 146*s);
+
+    let boxX = state.vw - 286*s;
+    let boxY = 330*s;
+    const fit = fitAuxPanelRect(boxX, boxY, 262*s, 146*s, 0);
+    boxX = fit.x;
+    boxY = fit.y;
+
+    drawGlass(boxX, boxY, 262*s, 146*s);
     hctx.fillStyle='rgba(159,180,204,.96)';
     hctx.font=`800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
-    hctx.fillText(`медл.: ${state.falling.slow.hits}/${state.falling.slow.spawned}`, state.vw - 270*s, 254*s);
-    hctx.fillText(`сред.: ${state.falling.medium.hits}/${state.falling.medium.spawned}`, state.vw - 270*s, 280*s);
-    hctx.fillText(`быстр.: ${state.falling.fast.hits}/${state.falling.fast.spawned}`, state.vw - 270*s, 306*s);
-    hctx.fillText(`мал.: ${state.falling.small.hits}/${state.falling.small.spawned}`, state.vw - 270*s, 332*s);
-    hctx.fillText(`крупн.: ${state.falling.large.hits}/${state.falling.large.spawned}`, state.vw - 270*s, 358*s);
+    hctx.fillText(`медл.: ${state.falling.slow.hits}/${state.falling.slow.spawned}`, boxX + 16*s, boxY + 24*s);
+    hctx.fillText(`сред.: ${state.falling.medium.hits}/${state.falling.medium.spawned}`, boxX + 16*s, boxY + 50*s);
+    hctx.fillText(`быстр.: ${state.falling.fast.hits}/${state.falling.fast.spawned}`, boxX + 16*s, boxY + 76*s);
+    hctx.fillText(`мал.: ${state.falling.small.hits}/${state.falling.small.spawned}`, boxX + 16*s, boxY + 102*s);
+    hctx.fillText(`крупн.: ${state.falling.large.hits}/${state.falling.large.spawned}`, boxX + 16*s, boxY + 128*s);
   }
 
   if(state.phase==='tracepath'){
