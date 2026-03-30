@@ -135,6 +135,7 @@ const state = {
 
   fpsSamples:[],
   fpsValue:0,
+  fpsDisplay:0,
   fpsMin:Infinity,
   fpsMax:0,
   longFrames:0,
@@ -865,6 +866,10 @@ function update(dt){
   state.fpsSamples.push(fps);
   if(state.fpsSamples.length > 240) state.fpsSamples.shift();
 
+  // Сглаженный FPS по последним ~12 кадрам
+  const fpsWindow = state.fpsSamples.slice(-12);
+  state.fpsDisplay = fpsWindow.length ? avg(fpsWindow) : fps;
+
   state.frameTimeSamples.push(frameMs);
   if(state.frameTimeSamples.length > 240) state.frameTimeSamples.shift();
 
@@ -1307,7 +1312,7 @@ function drawGlass(x,y,w,h){ roundRect(hctx,x,y,w,h,20*state.scale,'rgba(7,17,31
 function drawTopHud(){
   const s = state.scale, pad = 24*s, y = 24*s, w = 115*s, h = 90*s, gap = 12*s;
   const items = [
-    ['FPS', fmtFps(state.fpsValue)],
+    ['FPS', fmtFps(state.fpsDisplay || state.fpsValue)],
     ['КАДР', fmtMs(state.lastFrameTimeMs)],
     ['ОТКЛИК', fmtMs(state.lastInputLatency)],
     ['КАСАНИЙ', String(state.pointerCountNow)],
