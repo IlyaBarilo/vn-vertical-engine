@@ -111,6 +111,7 @@ const CFG = {
 
 const state = {
   initialized:false, started:false, finished:false, finishSent:false,
+  starsEnabled:true,
   gameId:'screenBenchmark', difficulty:3,
   vw:0,vh:0,cx:0,cy:0,scale:1,textScale:1,hudScale:1,
   phase:'intro', phaseIndex:0, phaseElapsed:0, totalElapsed:0, lastFrame:0,
@@ -246,6 +247,7 @@ const sum = {
   retry:mkButton('ПОВТОРИТЬ ТЕСТ', summaryCard, resetRun)
 };
 const stageBtns = {
+  bg:mkButton('ФОН: ВКЛ', stageControls, toggleStarsBackground),
   resetTrace:mkButton('ОЧИСТИТЬ ТРАЕКТОРИЮ', stageControls, resetTraceStage),
   resetDualPaths:mkButton('СБРОСИТЬ ЭТАП', stageControls, resetDualPathsStage),
   next:mkButton('СЛЕДУЮЩИЙ ЭТАП', stageControls, advanceStage),
@@ -283,6 +285,13 @@ function layoutStageControls(){
     flexWrap:'wrap'
   });
 
+  style(stageBtns.bg,{
+    display:'inline-flex',
+    width:px(150),
+    height:px(CFG.buttonH),
+    fontSize:px(20,'text')
+  });
+
   style(stageBtns.resetTrace,{
     display:'none',
     width:px(270),
@@ -299,7 +308,7 @@ function layoutStageControls(){
 
   style(stageBtns.next,{
     flex:'1 1 auto',
-    minWidth:px(250),
+    minWidth:px(220),
     height:px(CFG.buttonH),
     fontSize:px(24,'text')
   });
@@ -470,8 +479,28 @@ function resetMetrics(){
 }
 
 
-function startRun(){ resetMetrics(); overlay.classList.add('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.remove('hidden'); state.started=true; state.phaseIndex=0; state.phase=STAGES[0]; spawnLatencyTarget(true); }
-function resetRun(){ if(state.finishSent) return; state.started=false; state.phase='intro'; state.summary=null; showIntro(); }
+function startRun(){
+  resetMetrics();
+  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
+  overlay.classList.add('hidden');
+  summaryLayer.classList.add('hidden');
+  stageControls.classList.remove('hidden');
+  state.started=true;
+  state.phaseIndex=0;
+  state.phase=STAGES[0];
+  spawnLatencyTarget(true);
+}
+
+
+function resetRun(){
+  if(state.finishSent) return;
+  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
+  state.started=false;
+  state.phase='intro';
+  state.summary=null;
+  showIntro();
+}
+
 function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
 function commitResult(){ if(!state.finishSent) finishGame(state.summary ? state.summary.result : 0); }
 function finishGame(result){ if(state.finishSent) return; state.finishSent=true; state.finished=true; try{ parent.postMessage({type:'gameResult', result:Number(result)||0},'*'); }catch(_){} dom.game.style.pointerEvents='none'; }
@@ -501,6 +530,11 @@ function resetTraceStage(){
   state.trace.breaks = 0;
   state.trace.capturePoints = 0;
   state.trace.completed = false;
+}
+
+function toggleStarsBackground(){
+  state.starsEnabled = !state.starsEnabled;
+  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
 }
 
 function resetDualPathsStage(){
@@ -961,9 +995,12 @@ function spawnFallingCircle(){
 
 
 function draw(){ drawStars(); drawWorld(); drawHud(); }
+
+
 function drawStars(){
   sctx.clearRect(0,0,state.vw,state.vh);
   if(state.phase === 'lightscene') return;
+  if(!state.starsEnabled) return;
 
   for(const p of state.particles){
     sctx.globalAlpha = p.a;
@@ -974,6 +1011,8 @@ function drawStars(){
   }
   sctx.globalAlpha = 1;
 }
+
+
 
 
 function drawWorld(){
