@@ -18,7 +18,24 @@
   .panel{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:24px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.25);pointer-events:auto}
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
   .hidden{display:none!important}
-  .button{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));color:var(--text);font-weight:800;letter-spacing:.02em;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 14px rgba(0,0,0,.16)}
+  .button{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
+    color:var(--text);
+    font-weight:800;
+    letter-spacing:.02em;
+    cursor:pointer;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 14px rgba(0,0,0,.16);
+
+    white-space:normal;        /* было по умолчанию в одну строку */
+    text-align:center;
+    line-height:1.15;
+    padding:0 12px;
+  }
   .button:active{transform:translateY(1px) scale(.99)}
   .t,.s,.b{position:absolute;white-space:pre-line}
   .t{font-weight:900}.s{font-weight:700;color:var(--muted)}.b{line-height:1.35}
@@ -288,36 +305,47 @@ function layoutStageControls(){
 
   style(stageBtns.bg,{
     display:'inline-flex',
-    width:px(150),
+    flex:'0 1 auto',
+    width:px(132),
+    minWidth:px(118),
     height:px(CFG.buttonH),
-    fontSize:px(20,'text')
+    fontSize:px(18,'text')
   });
 
   style(stageBtns.resetTrace,{
     display:'none',
-    width:px(270),
+    flex:'0 1 auto',
+    width:px(156),
+    minWidth:px(136),
+    maxWidth:px(156),
     height:px(CFG.buttonH),
-    fontSize:px(20,'text')
+    fontSize:px(16,'text')
   });
 
   style(stageBtns.resetDualPaths,{
     display:'none',
-    width:px(240),
+    flex:'1 1 auto',
+    width:'auto',
+    minWidth:px(170),
+    maxWidth:px(220),
     height:px(CFG.buttonH),
-    fontSize:px(20,'text')
+    fontSize:px(18,'text')
   });
 
   style(stageBtns.next,{
     flex:'1 1 auto',
-    minWidth:px(220),
+    width:'auto',
+    minWidth:px(170),
     height:px(CFG.buttonH),
-    fontSize:px(24,'text')
+    fontSize:px(20,'text')
   });
 
   style(stageBtns.finish,{
-    width:px(264),
+    flex:'0 1 auto',
+    width:px(172),
+    minWidth:px(152),
     height:px(CFG.buttonH),
-    fontSize:px(22,'text')
+    fontSize:px(17,'text')
   });
 }
 
