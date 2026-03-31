@@ -304,7 +304,7 @@ game coffeeRush difficulty=3 result=resultCoffee
 
 Дополнительно:
 - могут передаваться любые другие параметры (например: speed, time, targetScore)
-- игра должна игнорировать неизвестные параметры
+- игра не должна делать предположений о единственной модели пользовательского ввода; одна и та же игра должна корректно обрабатывать запуск на touch-устройствах, интерактивных экранах и при управлении мышью в рамках требований раздела UX
 
 ---
 
@@ -342,7 +342,25 @@ parent.postMessage({
 7. НЕ менять location
 8. Поле result ОБЯЗАТЕЛЬНО должно быть числом
 9. Если result отсутствует → считается 0
-10. После отправки результата игра должна прекратить взаимодействие с пользователем. До отправки результата игра может показывать промежуточные экраны попытки, включая победу/поражение и кнопку повторной попытки, если это предусмотрено дизайном.
+10. После отправки результата игра должна полностью прекратить взаимодействие с пользователем.
+10.1. Должны быть отключены:
+- игровые обработчики ввода
+- UI-кнопки
+- панели управления
+- drag / joystick / жесты
+- любые другие интерактивные элементы, способные изменить состояние игры
+10.2. После отправки `gameResult` запрещены:
+- повторная попытка
+- повторная отправка результата
+- изменение уже зафиксированного результата
+- любое действие пользователя, способное повлиять на итог игры
+10.3. Блокировка взаимодействия должна применяться независимо от того, был результат зафиксирован через:
+- экран победы
+- экран поражения
+- досрочное завершение
+- выход по ошибке
+- иной финальный сценарий
+10.4. До отправки результата игра может показывать промежуточные экраны попытки, включая победу/поражение и кнопку повторной попытки, если это предусмотрено дизайном.
 
 ---
 
@@ -486,6 +504,36 @@ game coffeeRush difficulty=4 speed=2 result=resultCoffee
 
 ---
 
+### ❌ Обработка событий и совместимость ввода
+
+- отсутствие проверки `event.target` в игровых обработчиках
+- отсутствие проверки родителей цели события через `closest(...)`
+- игровые обработчики реагируют на нажатия по UI-элементам
+- UI-элементы не вызывают `stopPropagation()`
+- глобальные обработчики на общем контейнере, `window` или `document` работают без фильтрации UI
+- использование только `click` для механик, где требуется мгновенная реакция на касание, удержание или drag
+- использование только одного типа событий, если из-за этого игра теряет работоспособность хотя бы на одном целевом типе устройств
+- отсутствие обработки `pointercancel`
+- отсутствие обработки `touchcancel`
+- использование `pointer-events: none` на UI-контейнерах, через которые должен приниматься пользовательский ввод
+- отсутствие явного приоритета UI над игровым слоем
+- игра отправляет `gameResult`, но элементы управления остаются активными
+
+---
+
+### ❌ Несовместимость между типами устройств
+
+- игра корректно работает только мышью, но не работает через touch
+- игра корректно работает на смартфоне, но не работает на интерактивном экране
+- игра корректно работает на интерактивном экране, но не работает на обычном компьютере
+- одна и та же механика ведёт себя принципиально по-разному на разных типах устройств
+- drag, multitouch, joystick или быстрые касания работают только на части целевых устройств
+- UI можно нажать мышью, но нельзя нажать пальцем
+- игровые действия работают пальцем, но не работают мышью
+- игра требует конкретной модели браузерных событий и из-за этого ломается на части целевых устройств
+
+---
+
 ### 🧠 Итог
 
 Если игра содержит один или несколько пунктов выше — она считается реализованной некорректно и может работать нестабильно в рамках движка.
@@ -509,10 +557,92 @@ parent.postMessage({
 - обязательный экран с пояснением перед началом должен быть коротким, не содержать искусственной задержки и вести к началу игры одним явным действием пользователя
 - после получения параметров игра должна начинаться без искусственной задержки; допустима только минимальная техническая пауза, необходимая для инициализации интерфейса и игровых объектов
 - управление должно поддерживать:
-  - touch
   - mouse
-- управление и движение объектов должны ощущаться сопоставимо при touch и mouse и не должны заметно меняться из-за различий в FPS или частоте обновления экрана на разных устройствах
+  - touch
+  - интерактивные экраны / touch panels / kiosk screens
+- одна и та же игра обязана быть играбельной на всех указанных типах устройств, а не только на одном из них
+- управление и движение объектов должны ощущаться сопоставимо:
+  - при управлении мышью
+  - при управлении пальцем на смартфоне / планшете
+  - при управлении на интерактивном экране
+- различия в модели ввода между устройствами не должны приводить к полной неработоспособности, потере основного управления, невозможности нажать UI или невозможности завершить игру
 - интерфейс должен быть оптимизирован под вертикальную ориентацию экрана
+
+---
+
+### 🖐 Обработка ввода и совместимость устройств (ОБЯЗАТЕЛЬНО)
+
+Одна и та же игра ОБЯЗАНА корректно работать на всех целевых типах устройств:
+- компьютеры и ноутбуки с мышью / тачпадом
+- смартфоны
+- планшеты
+- интерактивные экраны / touch panels / kiosk screens
+- иные совместимые устройства с pointer-, mouse- или touch-вводом
+
+Недопустима реализация, которая корректно работает только на одном классе устройств и нестабильна или неработоспособна на остальных.
+
+Требования:
+- игра обязана поддерживать mouse-ввод
+- игра обязана поддерживать touch-ввод
+- игра обязана корректно работать в средах, где touch может приходить через Pointer Events, Touch Events или иную браузерно-совместимую модель
+- если механика использует удержание, drag, multitouch, joystick, непрерывное движение, ведение по траектории или быстрые касания, такая механика обязана корректно работать на всех перечисленных выше типах устройств
+- запрещено проектировать игру только под мышь
+- запрещено проектировать игру только под телефонный touch
+- запрещено проектировать игру только под интерактивный экран
+- запрещено полагаться на единственный тип событий, если это приводит к неработоспособности на части целевых устройств
+- запрещено использовать `click` как единственный механизм ввода там, где требуется мгновенная реакция, удержание или непрерывное движение
+- обязательно должна обрабатываться отмена ввода (`pointercancel`, `touchcancel` или эквивалентное завершение взаимодействия)
+- управление должно ощущаться сопоставимо на всех целевых устройствах и не должно заметно ломаться из-за различий в модели ввода, FPS, частоте обновления экрана или производительности устройства
+
+Практический смысл требования:
+- реализация считается корректной только в том случае, если одна и та же игра реально работоспособна и мышью, и пальцем на смартфоне, и на интерактивном экране
+- если игра работает только мышью, но не работает пальцем — это нарушение спецификации
+- если игра работает на смартфоне, но не работает на интерактивном экране — это нарушение спецификации
+- если игра работает на интерактивном экране, но ломается на обычном компьютере — это нарушение спецификации
+
+Игра считается соответствующей спецификации только в том случае, если одна и та же реализация корректно работает на всех целевых типах устройств, перечисленных в спецификации.
+
+---
+
+### 🔒 Изоляция UI от игровой логики (ОБЯЗАТЕЛЬНО)
+
+Все UI-элементы (кнопки, панели, контролы, overlay-экраны, модальные окна, drag-handle, служебные панели и др.) должны быть полностью изолированы от игровой механики.
+
+1. Проверка цели событий
+- Все обработчики игровой логики (`pointerdown`, `pointermove`, `pointerup`, `touchstart`, `touchmove`, `touchend`, `mousedown`, `mousemove`, `mouseup` и др.) должны начинаться с проверки `event.target`
+- Если `event.target` или его родитель относится к UI, обработчик игровой логики должен немедленно завершаться
+- Рекомендуется использовать проверку вида:
+  `event.target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]')`
+
+2. Блокировка всплытия
+- Все интерактивные UI-элементы должны вызывать `event.stopPropagation()` в своих обработчиках
+- Для кнопок и других интерактивных элементов обязательно блокировать всплытие как минимум в:
+  - `click`
+  - `pointerdown`
+  - `pointerup`
+  - `touchstart`
+  - `touchend`
+  - `mousedown`
+  - `mouseup`
+- Если UI-элемент поддерживает перетаскивание, должны быть изолированы и его move-события
+
+3. Слои и приоритет
+- UI должен находиться выше игрового слоя и визуально, и по приоритету ввода
+- UI-слой должен иметь z-index, гарантированно больший, чем у canvas и игрового контейнера
+- Для активного UI рекомендуется отдельный верхний слой; рекомендуется использовать z-index не ниже 100 для интерактивного UI-слоя
+- При наложении UI на игровую область приоритет ввода всегда должен быть у UI
+
+4. Pointer events
+- Запрещено использовать `pointer-events: none` на контейнерах, через которые должен приниматься ввод интерактивных UI-элементов
+- `pointer-events: none` допустим только на чисто декоративных элементах, не участвующих в обработке пользовательского ввода
+- Если нужен прозрачный контейнер поверх игры, интерактивные дочерние элементы должны быть вынесены в слой, гарантированно принимающий ввод
+
+5. Общий запрет на смешивание UI и игровой логики
+- Нажатия по UI не должны запускать игровую механику
+- Глобальные обработчики на `window`, `document` или общем контейнере не должны реагировать на события, пришедшие из UI
+- Игровая логика не должна реагировать на нажатия по кнопкам, панелям, overlay-экранам и другим элементам интерфейса
+
+---
 
 ### 📐 Масштабирование интерфейса (ОБЯЗАТЕЛЬНО)
 
@@ -596,34 +726,264 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
 
 ## 🧩 ШАБЛОН ДЛЯ AI
 
+Шаблон ниже иллюстрирует только обязательные интеграционные и input-требования и не навязывает конкретную игровую механику.
+
 ```html
 <!doctype html>
-<html>
+<html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  :root { --scale: 1; }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  #gameRoot {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #uiRoot {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+  }
+
+  .overlay,
+  .panel,
+  .button,
+  .ui-control,
+  [data-ui="true"] {
+    pointer-events: auto;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+</style>
 </head>
 <body>
+<div id="gameRoot">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="uiRoot">
+    <div id="startOverlay" class="overlay" data-ui="true">
+      <div class="panel" data-ui="true">
+        <button id="startButton" class="button">Начать</button>
+      </div>
+    </div>
+
+    <div id="finishOverlay" class="overlay hidden" data-ui="true">
+      <div class="panel" data-ui="true">
+        <button id="finishButton" class="button">Подтвердить результат</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 let difficulty = 3;
+let resultSent = false;
+let gameStarted = false;
 
-window.addEventListener("message", (event) => {
-  if (!event.data || event.data.type !== "gameInit") return;
-  difficulty = event.data.difficulty ?? 3;
-  startGame();
-});
+const BASE_W = 810;
+const BASE_H = 1440;
 
-function startGame(){}
+const gameRoot = document.getElementById('gameRoot');
+const uiRoot = document.getElementById('uiRoot');
+const startOverlay = document.getElementById('startOverlay');
+const finishOverlay = document.getElementById('finishOverlay');
+const startButton = document.getElementById('startButton');
+const finishButton = document.getElementById('finishButton');
 
-function finishGame(result){
+function applyScale() {
+  const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+  document.documentElement.style.setProperty('--scale', scale.toFixed(5));
+}
+
+function isUiTarget(target) {
+  return !!(
+    target &&
+    target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]')
+  );
+}
+
+function hideAllOverlays() {
+  startOverlay.classList.add('hidden');
+  finishOverlay.classList.add('hidden');
+}
+
+function startGame() {
+  if (resultSent) return;
+  hideAllOverlays();
+  gameStarted = true;
+}
+
+function showFinish(result) {
+  if (resultSent) return;
+  gameStarted = false;
+  finishButton.dataset.result = String(Number(result) || 0);
+  hideAllOverlays();
+  finishOverlay.classList.remove('hidden');
+}
+
+function blockAllInteraction() {
+  gameRoot.style.pointerEvents = 'none';
+  uiRoot.style.pointerEvents = 'none';
+}
+
+function finishGame(result) {
+  if (resultSent) return;
+  resultSent = true;
+  gameStarted = false;
+
+  blockAllInteraction();
+
   parent.postMessage({
     type: "gameResult",
-    result: result
+    result: Number.isFinite(result) ? result : 0
   }, "*");
 }
-</script>
 
+function onGameInputStart(event, x, y) {
+  if (!gameStarted || resultSent) return;
+  if (isUiTarget(event.target)) return;
+  if (event.cancelable) event.preventDefault();
+
+  // игровая логика начала ввода
+}
+
+function onGameInputMove(event, x, y) {
+  if (!gameStarted || resultSent) return;
+  if (isUiTarget(event.target)) return;
+  if (event.cancelable) event.preventDefault();
+
+  // игровая логика движения
+}
+
+function onGameInputEnd(event) {
+  if (resultSent) return;
+  if (event.cancelable) event.preventDefault();
+
+  // игровая логика завершения ввода
+}
+
+function bindUiButton(button, handler) {
+  const stop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup']
+    .forEach(type => button.addEventListener(type, stop, { passive: false }));
+
+  button.addEventListener('click', (event) => {
+    stop(event);
+    if (!resultSent) handler();
+  });
+}
+
+function bindInput() {
+  // Pointer Events
+  gameRoot.addEventListener('pointerdown', (event) => {
+    onGameInputStart(event, event.clientX, event.clientY);
+  }, { passive: false });
+
+  gameRoot.addEventListener('pointermove', (event) => {
+    onGameInputMove(event, event.clientX, event.clientY);
+  }, { passive: false });
+
+  gameRoot.addEventListener('pointerup', (event) => {
+    onGameInputEnd(event);
+  }, { passive: false });
+
+  gameRoot.addEventListener('pointercancel', (event) => {
+    onGameInputEnd(event);
+  }, { passive: false });
+
+  // Mouse fallback
+  gameRoot.addEventListener('mousedown', (event) => {
+    onGameInputStart(event, event.clientX, event.clientY);
+  }, { passive: false });
+
+  window.addEventListener('mousemove', (event) => {
+    onGameInputMove(event, event.clientX, event.clientY);
+  }, { passive: false });
+
+  window.addEventListener('mouseup', (event) => {
+    onGameInputEnd(event);
+  }, { passive: false });
+
+  // Touch fallback
+  gameRoot.addEventListener('touchstart', (event) => {
+    if (isUiTarget(event.target)) {
+      event.preventDefault();
+      return;
+    }
+
+    for (const touch of event.changedTouches) {
+      onGameInputStart(event, touch.clientX, touch.clientY);
+    }
+  }, { passive: false });
+
+  gameRoot.addEventListener('touchmove', (event) => {
+    if (isUiTarget(event.target)) {
+      event.preventDefault();
+      return;
+    }
+
+    for (const touch of event.changedTouches) {
+      onGameInputMove(event, touch.clientX, touch.clientY);
+    }
+  }, { passive: false });
+
+  gameRoot.addEventListener('touchend', (event) => {
+    onGameInputEnd(event);
+  }, { passive: false });
+
+  gameRoot.addEventListener('touchcancel', (event) => {
+    onGameInputEnd(event);
+  }, { passive: false });
+}
+
+window.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'gameInit') return;
+
+  difficulty = Number(event.data.difficulty ?? 3) || 3;
+  applyScale();
+
+  // инициализация игры после gameInit
+});
+
+window.addEventListener('resize', applyScale);
+
+bindUiButton(startButton, startGame);
+bindUiButton(finishButton, () => {
+  finishGame(Number(finishButton.dataset.result) || 0);
+});
+
+applyScale();
+
+// При совмещении pointer + mouse + touch необходимо избегать двойной обработки одного ввода.
+bindInput();
+
+</script>
 </body>
 </html>
 ```
