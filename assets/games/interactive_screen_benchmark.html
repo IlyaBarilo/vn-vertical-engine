@@ -14,7 +14,19 @@
   html,body{width:100%;height:100%;margin:0;overflow:hidden;background:radial-gradient(circle at 50% 18%, #22497a 0%, var(--bg1) 35%, var(--bg0) 100%);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;touch-action:none}
   #game{position:relative;width:100%;height:100%;overflow:hidden}
   canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  #ui{position:absolute;inset:0;pointer-events:none}
+  #ui{
+    position:absolute;
+    inset:0;
+    z-index:100;
+    pointer-events:none;
+  }
+
+  .overlay,
+  .panel,
+  .button,
+  [data-ui="true"]{
+    pointer-events:auto;
+  }
   .panel{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:24px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.25);pointer-events:auto}
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
   .hidden{display:none!important}
@@ -221,15 +233,44 @@ const state = {
 
 const $ = id => document.getElementById(id);
 const dom = { game:$('game'), stars:$('stars'), world:$('world'), hud:$('hud'), ui:$('ui') };
+
+function isUiTarget(target){
+  return !!(
+    target &&
+    target.closest &&
+    target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]')
+  );
+}
+
 const sctx = dom.stars.getContext('2d');
 const wctx = dom.world.getContext('2d');
 const hctx = dom.hud.getContext('2d');
 
-const overlay = document.createElement('div'); overlay.className='overlay';
-const introCard = document.createElement('div'); introCard.className='panel'; overlay.appendChild(introCard); dom.ui.appendChild(overlay);
-const summaryLayer = document.createElement('div'); summaryLayer.className='overlay hidden';
-const summaryCard = document.createElement('div'); summaryCard.className='panel'; summaryLayer.appendChild(summaryCard); dom.ui.appendChild(summaryLayer);
-const stageControls = document.createElement('div'); stageControls.className='panel hidden'; stageControls.style.position='absolute'; dom.ui.appendChild(stageControls);
+const overlay = document.createElement('div');
+overlay.className = 'overlay';
+overlay.dataset.ui = 'true';
+
+const introCard = document.createElement('div');
+introCard.className = 'panel';
+introCard.dataset.ui = 'true';
+overlay.appendChild(introCard);
+dom.ui.appendChild(overlay);
+
+const summaryLayer = document.createElement('div');
+summaryLayer.className = 'overlay hidden';
+summaryLayer.dataset.ui = 'true';
+
+const summaryCard = document.createElement('div');
+summaryCard.className = 'panel';
+summaryCard.dataset.ui = 'true';
+summaryLayer.appendChild(summaryCard);
+dom.ui.appendChild(summaryLayer);
+
+const stageControls = document.createElement('div');
+stageControls.className = 'panel hidden';
+stageControls.dataset.ui = 'true';
+stageControls.style.position = 'absolute';
+dom.ui.appendChild(stageControls);
 
 function px(v,k='ui'){ const m=k==='text'?state.textScale:k==='hud'?state.hudScale:state.scale; return `${Math.round(v*m)}px`; }
 function sc(v,k='ui'){ const m=k==='text'?state.textScale:k==='hud'?state.hudScale:state.scale; return v*m; }
@@ -246,11 +287,43 @@ function isNarrowScreen(){ return state.vw/state.vh < NARROW_SCREEN_RATIO; }
 
 function mkText(cls,parent){ const e=document.createElement('div'); e.className=cls; parent.appendChild(e); return e; }
 function mkButton(label,parent,fn){
-  const e=document.createElement('button'); e.className='button'; e.textContent=label;
-  const fire = ev => { ev.preventDefault(); ev.stopPropagation(); fn(); };
-  e.addEventListener('click', fire);
-  e.addEventListener('pointerdown', ev => ev.stopPropagation());
-  parent.appendChild(e); return e;
+  const e = document.createElement('button');
+  e.className = 'button';
+  e.dataset.ui = 'true';
+  e.type = 'button';
+  e.textContent = label;
+
+  let activated = false;
+
+  const stop = ev => {
+    if(ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
+  };
+
+  const run = ev => {
+    stop(ev);
+    if(activated || state.finishSent) return;
+    activated = true;
+    fn();
+    requestAnimationFrame(() => { activated = false; });
+  };
+
+  e.addEventListener('pointerdown', stop, { passive:false });
+  e.addEventListener('pointermove', stop, { passive:false });
+  e.addEventListener('pointerup', run, { passive:false });
+
+  e.addEventListener('touchstart', stop, { passive:false });
+  e.addEventListener('touchmove', stop, { passive:false });
+  e.addEventListener('touchend', run, { passive:false });
+  e.addEventListener('touchcancel', stop, { passive:false });
+
+  e.addEventListener('mousedown', stop, { passive:false });
+  e.addEventListener('mouseup', run, { passive:false });
+
+  e.addEventListener('click', run, { passive:false });
+
+  parent.appendChild(e);
+  return e;
 }
 function style(el,obj){ Object.assign(el.style,obj); }
 
@@ -532,7 +605,28 @@ function resetRun(){
 
 function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
 function commitResult(){ if(!state.finishSent) finishGame(state.summary ? state.summary.result : 0); }
-function finishGame(result){ if(state.finishSent) return; state.finishSent=true; state.finished=true; try{ parent.postMessage({type:'gameResult', result:Number(result)||0},'*'); }catch(_){} dom.game.style.pointerEvents='none'; }
+function finishGame(result){
+  if(state.finishSent) return;
+
+  state.finishSent = true;
+  state.finished = true;
+  state.started = false;
+
+  releasePointers();
+
+  dom.game.style.pointerEvents = 'none';
+  dom.ui.style.pointerEvents = 'none';
+  overlay.style.pointerEvents = 'none';
+  summaryLayer.style.pointerEvents = 'none';
+  stageControls.style.pointerEvents = 'none';
+
+  try{
+    parent.postMessage({
+      type:'gameResult',
+      result: Number.isFinite(Number(result)) ? Number(result) : 0
+    }, '*');
+  }catch(_){}
+}
 function advanceStage(){
   if(!state.started || state.phase==='summary') return;
   if(state.phaseIndex >= STAGES.length-1){ finishStages(); return; }
@@ -732,11 +826,16 @@ function assignDragRole(pointerId,x,y){
 }
 
 function onPointerDown(e){
-  if(!state.initialized || state.finished) return;
+  if(!state.initialized || state.finished || state.finishSent) return;
+  if(isUiTarget(e.target)) return;
   recordLatency(e);
 
   const p = screenToNorm(e.clientX, e.clientY);
-  dom.game.setPointerCapture?.(e.pointerId);
+  if(e.target && e.target.setPointerCapture){
+    try{ e.target.setPointerCapture(e.pointerId); }catch(_){}
+  } else if(dom.game.setPointerCapture){
+    try{ dom.game.setPointerCapture(e.pointerId); }catch(_){}
+  }
 
   const pointer = {id:e.pointerId, type:e.pointerType || 'mouse', x:p.x, y:p.y, role:null};
   state.pointers.set(e.pointerId, pointer);
@@ -775,7 +874,8 @@ function onPointerDown(e){
 }
 
 function onPointerMove(e){
-  if(!state.initialized || state.finished) return;
+  if(!state.initialized || state.finished || state.finishSent) return;
+  if(isUiTarget(e.target)) return;
   const pointer = state.pointers.get(e.pointerId);
   if(!pointer) return;
 
@@ -854,6 +954,9 @@ function onPointerMove(e){
 }
 
 function onPointerUp(e){
+  if(state.finishSent) return;
+  if(isUiTarget(e.target)) return;
+
   const pointer = state.pointers.get(e.pointerId);
   if(pointer){
     if(pointer.role === 'left' && state.leftCursor.active === e.pointerId){
@@ -1608,23 +1711,93 @@ function summarize(forcedFail){
 
 function loop(ts){ if(!state.lastFrame) state.lastFrame=ts; let dt=(ts-state.lastFrame)/1000; state.lastFrame=ts; dt=clamp(dt,.001,.05); update(dt); draw(); requestAnimationFrame(loop); }
 window.addEventListener('resize', resize);
-dom.game.addEventListener('pointerdown', onPointerDown, {passive:false});
-dom.game.addEventListener('pointermove', onPointerMove, {passive:false});
-dom.game.addEventListener('pointerup', onPointerUp, {passive:false});
 
-
+dom.game.addEventListener('pointerdown', onPointerDown, { passive:false });
+dom.game.addEventListener('pointermove', onPointerMove, { passive:false });
+dom.game.addEventListener('pointerup', onPointerUp, { passive:false });
 dom.game.addEventListener('pointercancel', e => {
   state.pointerCancelCount += 1;
   onPointerUp(e);
-}, {passive:false});
+}, { passive:false });
+dom.game.addEventListener('pointerleave', onPointerUp, { passive:false });
 
+function makeTouchPointerEvent(nativeEvent, touch){
+  return {
+    target: document.elementFromPoint(touch.clientX, touch.clientY) || dom.game,
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    pointerId: `touch-${touch.identifier}`,
+    pointerType: 'touch',
+    timeStamp: typeof nativeEvent.timeStamp === 'number' ? nativeEvent.timeStamp : performance.now(),
+    cancelable: !!nativeEvent.cancelable,
+    preventDefault(){},
+    stopPropagation(){}
+  };
+}
 
+dom.game.addEventListener('touchstart', e => {
+  if(isUiTarget(e.target)){
+    if(e.cancelable) e.preventDefault();
+    return;
+  }
+  if(e.cancelable) e.preventDefault();
+  for(const touch of e.changedTouches){
+    onPointerDown(makeTouchPointerEvent(e, touch));
+  }
+}, { passive:false });
 
+dom.game.addEventListener('touchmove', e => {
+  if(isUiTarget(e.target)){
+    if(e.cancelable) e.preventDefault();
+    return;
+  }
+  if(e.cancelable) e.preventDefault();
+  for(const touch of e.changedTouches){
+    onPointerMove(makeTouchPointerEvent(e, touch));
+  }
+}, { passive:false });
 
-dom.game.addEventListener('pointerleave', onPointerUp, {passive:false});
-window.addEventListener('message', e => { if(e.data && e.data.type==='gameInit') initFromParams(e.data); });
-window.addEventListener('beforeunload', () => { if(!state.finishSent){ try{ parent.postMessage({type:'gameResult', result:0},'*'); }catch(_){} } });
-resize(); showIntro(); requestAnimationFrame(loop); setTimeout(()=>{ if(!state.initialized) initFromParams({type:'gameInit',gameId:'screenBenchmark',difficulty:3}); },80);
+dom.game.addEventListener('touchend', e => {
+  if(e.cancelable) e.preventDefault();
+  for(const touch of e.changedTouches){
+    onPointerUp(makeTouchPointerEvent(e, touch));
+  }
+}, { passive:false });
+
+dom.game.addEventListener('touchcancel', e => {
+  if(e.cancelable) e.preventDefault();
+  state.pointerCancelCount += e.changedTouches.length || 1;
+  for(const touch of e.changedTouches){
+    onPointerUp(makeTouchPointerEvent(e, touch));
+  }
+}, { passive:false });
+
+window.addEventListener('message', e => {
+  if(!e.data || e.data.type !== 'gameInit') return;
+  initFromParams(e.data);
+});
+
+window.addEventListener('beforeunload', () => {
+  if(!state.finishSent){
+    try{
+      parent.postMessage({ type:'gameResult', result:0 }, '*');
+    }catch(_){}
+  }
+});
+
+resize();
+requestAnimationFrame(loop);
+
+// fallback для прямого запуска файла без движка новеллы
+setTimeout(() => {
+  if(state.initialized) return;
+
+  initFromParams({
+    type: 'gameInit',
+    gameId: 'screenBenchmark',
+    difficulty: 3
+  });
+}, 60);
 })();
 </script>
 </body>
