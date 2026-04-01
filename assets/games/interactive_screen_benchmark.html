@@ -11,9 +11,40 @@
     --cyan:#66deff; --pink:#ff87dc; --violet:#b58cff; --orange:#ffb86b;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
-  html,body{width:100%;height:100%;margin:0;overflow:hidden;background:radial-gradient(circle at 50% 18%, #22497a 0%, var(--bg1) 35%, var(--bg0) 100%);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;touch-action:none}
-  #game{position:relative;width:100%;height:100%;overflow:hidden}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+    html,body{
+    width:100%;
+    height:100%;
+    margin:0;
+    overflow:hidden;
+    background:radial-gradient(circle at 50% 18%, #22497a 0%, var(--bg1) 35%, var(--bg0) 100%);
+    color:var(--text);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    overscroll-behavior:none;
+  }
+
+  #game{
+    position:relative;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    touch-action:none;
+  }
+
+  canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+    touch-action:none;
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+    .panel{
+      background:rgba(8,18,32,.94);
+    }
+  }
+
   #ui{
     position:absolute;
     inset:0;
@@ -187,6 +218,7 @@ const state = {
   gateRight:{x:.72,y:.42},
   dualHoldTime:0,
   dualSimTime:0,
+  dualdragElapsed:0,
 
   multitouchBins:Array(CFG.graphSeconds).fill(0),
   multitouchPeakThisSecond:0,
@@ -233,6 +265,7 @@ const state = {
 
 const $ = id => document.getElementById(id);
 const dom = { game:$('game'), stars:$('stars'), world:$('world'), hud:$('hud'), ui:$('ui') };
+const HAS_POINTER_EVENTS = 'PointerEvent' in window;
 
 function isUiTarget(target){
   return !!(
@@ -308,19 +341,16 @@ function mkButton(label,parent,fn){
     requestAnimationFrame(() => { activated = false; });
   };
 
-  e.addEventListener('pointerdown', stop, { passive:false });
-  e.addEventListener('pointermove', stop, { passive:false });
-  e.addEventListener('pointerup', run, { passive:false });
-
-  e.addEventListener('touchstart', stop, { passive:false });
-  e.addEventListener('touchmove', stop, { passive:false });
-  e.addEventListener('touchend', run, { passive:false });
-  e.addEventListener('touchcancel', stop, { passive:false });
-
-  e.addEventListener('mousedown', stop, { passive:false });
-  e.addEventListener('mouseup', run, { passive:false });
-
-  e.addEventListener('click', run, { passive:false });
+  if(HAS_POINTER_EVENTS){
+    e.addEventListener('pointerdown', stop, { passive:false });
+    e.addEventListener('pointerup', run, { passive:false });
+    e.addEventListener('pointercancel', stop, { passive:false });
+  } else {
+    e.addEventListener('touchstart', stop, { passive:false });
+    e.addEventListener('touchend', run, { passive:false });
+    e.addEventListener('touchcancel', stop, { passive:false });
+    e.addEventListener('click', run, { passive:false });
+  }
 
   parent.appendChild(e);
   return e;
@@ -537,6 +567,7 @@ function resetMetrics(){
   state.gateRight={x:.72,y:.42};
   state.dualHoldTime=0;
   state.dualSimTime=0;
+  state.dualdragElapsed=0;
 
   state.multitouchBins=Array(CFG.graphSeconds).fill(0);
   state.multitouchPeakThisSecond=0;
@@ -889,20 +920,26 @@ function onPointerMove(e){
 
   if(state.phase === 'dualdrag'){
     if(pointer.role === 'left' && state.leftCursor.active === e.pointerId){
+      const prevX = state.leftCursor.x * state.vw;
+      const prevY = state.leftCursor.y * state.vh;
+
       state.leftCursor.x = clamp(p.x,.08,.92);
       state.leftCursor.y = clamp(p.y,.20,.92);
 
-      const lag = hypot2(e.clientX - state.leftCursor.x * state.vw, e.clientY - state.leftCursor.y * state.vh);
+      const lag = hypot2(e.clientX - prevX, e.clientY - prevY);
       state.leftCursor.lastFingerLag = lag;
       state.leftCursor.maxFingerLag = Math.max(state.leftCursor.maxFingerLag, lag);
       state.leftCursor.sumFingerLag += lag;
       state.leftCursor.samples += 1;
     }
     if(pointer.role === 'right' && state.rightCursor.active === e.pointerId){
+      const prevX = state.rightCursor.x * state.vw;
+      const prevY = state.rightCursor.y * state.vh;
+
       state.rightCursor.x = clamp(p.x,.08,.92);
       state.rightCursor.y = clamp(p.y,.20,.92);
 
-      const lag = hypot2(e.clientX - state.rightCursor.x * state.vw, e.clientY - state.rightCursor.y * state.vh);
+      const lag = hypot2(e.clientX - prevX, e.clientY - prevY);
       state.rightCursor.lastFingerLag = lag;
       state.rightCursor.maxFingerLag = Math.max(state.rightCursor.maxFingerLag, lag);
       state.rightCursor.sumFingerLag += lag;
@@ -957,6 +994,18 @@ function onPointerUp(e){
   if(state.finishSent) return;
   if(isUiTarget(e.target)) return;
 
+  const captureTarget =
+    (e.target && e.target.releasePointerCapture) ? e.target :
+    (dom.game && dom.game.releasePointerCapture ? dom.game : null);
+
+  if(HAS_POINTER_EVENTS && captureTarget){
+    try{
+      if(captureTarget.hasPointerCapture && captureTarget.hasPointerCapture(e.pointerId)){
+        captureTarget.releasePointerCapture(e.pointerId);
+      }
+    }catch(_){}
+  }
+
   const pointer = state.pointers.get(e.pointerId);
   if(pointer){
     if(pointer.role === 'left' && state.leftCursor.active === e.pointerId){
@@ -982,14 +1031,14 @@ function onPointerUp(e){
   e.preventDefault();
 }
 
-function update(dt){
+function update(dt, rawDt = dt){
   if(!state.initialized) return;
 
   state.totalElapsed += dt;
   if(state.started && state.phase !== 'summary' && state.phase !== 'intro') state.phaseElapsed += dt;
 
-  const fps = dt > 0 ? 1 / dt : 0;
-  const frameMs = dt * 1000;
+  const fps = rawDt > 0 ? 1 / rawDt : 0;
+  const frameMs = rawDt * 1000;
 
   state.fpsValue = fps;
   state.lastFrameTimeMs = frameMs;
@@ -997,7 +1046,6 @@ function update(dt){
   state.fpsSamples.push(fps);
   if(state.fpsSamples.length > 240) state.fpsSamples.shift();
 
-  // Сглаженный FPS по последним ~12 кадрам
   const fpsWindow = state.fpsSamples.slice(-12);
   state.fpsDisplay = fpsWindow.length ? avg(fpsWindow) : fps;
 
@@ -1007,9 +1055,12 @@ function update(dt){
   state.fpsMin = Math.min(state.fpsMin, fps);
   state.fpsMax = Math.max(state.fpsMax, fps);
 
-  if(dt > .05) state.longFrames++;
+  if(rawDt > .05) state.longFrames++;
 
-  if(state.pointers.size >= 2) state.dualSimTime += dt;
+  if(state.phase === 'dualdrag'){
+    state.dualdragElapsed += dt;
+    if(state.pointers.size >= 2) state.dualSimTime += dt;
+  }
 
   if(state.pointerCountNow > 0){
     state.multiTouchHoldTimer += dt;
@@ -1491,7 +1542,7 @@ function drawCharts(){
   } else if(state.phase==='falling'){
     drawMiniBox(x+(w+gap)*3,y,w,h,'ПОПАДАНИЯ',`${state.falling.hits}/${state.falling.spawned}`,'#ffb86b',1);
   } else if(state.phase==='dualdrag'){
-    drawMiniBox(x+(w+gap)*3,y,w,h,'УДЕРЖАНИЕ',`${Math.round((state.dualHoldTime/Math.max(.001,state.phaseElapsed||1))*100)}%`,'#7ff4b5',1);
+    drawMiniBox(x+(w+gap)*3,y,w,h,'УДЕРЖАНИЕ',`${Math.round((state.dualHoldTime/Math.max(.001,state.dualdragElapsed||1))*100)}%`,'#7ff4b5',1);
   } else if(state.phase==='lightscene'){
     drawBarChart(x+(w+gap)*3,y,w,h,'ДВИЖЕНИЯ / СЕК',state.moveBins,state.moveCounter,'#b58cff',1);
   } else if(state.phase==='tracepath'){
@@ -1566,7 +1617,7 @@ function drawDualProgress(){
   const s=state.scale, w=520*s, h=24*s, x=state.cx-w/2, y=state.vh-134*s;
   drawGlass(x-8*s,y-8*s,w+16*s,h+16*s);
   roundRect(hctx,x,y,w,h,999*s,'rgba(255,255,255,.07)','rgba(255,255,255,.1)');
-  const ratio=clamp(state.dualHoldTime/Math.max(.001,state.phaseElapsed||1),0,1);
+  const ratio=clamp(state.dualHoldTime/Math.max(.001,state.dualdragElapsed||1),0,1);
   roundRect(hctx,x,y,w*ratio,h,999*s,'rgba(127,244,181,.88)',null);
 
   const leftAvg = state.leftCursor.samples ? state.leftCursor.sumFingerLag / state.leftCursor.samples : 0;
@@ -1629,7 +1680,7 @@ function summarize(forcedFail){
   const minF = state.fpsMin === Infinity ? 0 : state.fpsMin;
   const p95Frame = percentile(state.frameTimeSamples,.95);
 
-  const dualRatio = state.dualHoldTime / Math.max(1e-6, state.phaseElapsed || state.totalElapsed || 1);
+  const dualRatio = state.dualHoldTime / Math.max(1e-6, state.dualdragElapsed || 1);
   const fallRatio = state.falling.spawned ? state.falling.hits / state.falling.spawned : 0;
 
   const leftLagAvg = state.leftCursor.samples ? state.leftCursor.sumFingerLag / state.leftCursor.samples : 0;
@@ -1709,17 +1760,20 @@ function summarize(forcedFail){
   };
 }
 
-function loop(ts){ if(!state.lastFrame) state.lastFrame=ts; let dt=(ts-state.lastFrame)/1000; state.lastFrame=ts; dt=clamp(dt,.001,.05); update(dt); draw(); requestAnimationFrame(loop); }
-window.addEventListener('resize', resize);
+function loop(ts){
+  if(!state.lastFrame) state.lastFrame = ts;
 
-dom.game.addEventListener('pointerdown', onPointerDown, { passive:false });
-dom.game.addEventListener('pointermove', onPointerMove, { passive:false });
-dom.game.addEventListener('pointerup', onPointerUp, { passive:false });
-dom.game.addEventListener('pointercancel', e => {
-  state.pointerCancelCount += 1;
-  onPointerUp(e);
-}, { passive:false });
-dom.game.addEventListener('pointerleave', onPointerUp, { passive:false });
+  const rawDt = Math.max(0.001, (ts - state.lastFrame) / 1000);
+  state.lastFrame = ts;
+
+  const simDt = clamp(rawDt, .001, .05);
+
+  update(simDt, rawDt);
+  draw();
+  requestAnimationFrame(loop);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('resize', resize);
 
 function makeTouchPointerEvent(nativeEvent, touch){
   return {
@@ -1735,43 +1789,79 @@ function makeTouchPointerEvent(nativeEvent, touch){
   };
 }
 
-dom.game.addEventListener('touchstart', e => {
-  if(isUiTarget(e.target)){
+function makeMousePointerEvent(nativeEvent){
+  return {
+    target: nativeEvent.target || dom.game,
+    clientX: nativeEvent.clientX,
+    clientY: nativeEvent.clientY,
+    pointerId: 'mouse',
+    pointerType: 'mouse',
+    timeStamp: typeof nativeEvent.timeStamp === 'number' ? nativeEvent.timeStamp : performance.now(),
+    cancelable: !!nativeEvent.cancelable,
+    preventDefault(){},
+    stopPropagation(){}
+  };
+}
+
+if(HAS_POINTER_EVENTS){
+  dom.game.addEventListener('pointerdown', onPointerDown, { passive:false });
+  dom.game.addEventListener('pointermove', onPointerMove, { passive:false });
+  dom.game.addEventListener('pointerup', onPointerUp, { passive:false });
+  dom.game.addEventListener('pointercancel', e => {
+    state.pointerCancelCount += 1;
+    onPointerUp(e);
+  }, { passive:false });
+} else {
+  dom.game.addEventListener('touchstart', e => {
+    if(isUiTarget(e.target)){
+      if(e.cancelable) e.preventDefault();
+      return;
+    }
     if(e.cancelable) e.preventDefault();
-    return;
-  }
-  if(e.cancelable) e.preventDefault();
-  for(const touch of e.changedTouches){
-    onPointerDown(makeTouchPointerEvent(e, touch));
-  }
-}, { passive:false });
+    for(const touch of e.changedTouches){
+      onPointerDown(makeTouchPointerEvent(e, touch));
+    }
+  }, { passive:false });
 
-dom.game.addEventListener('touchmove', e => {
-  if(isUiTarget(e.target)){
+  dom.game.addEventListener('touchmove', e => {
+    if(isUiTarget(e.target)){
+      if(e.cancelable) e.preventDefault();
+      return;
+    }
     if(e.cancelable) e.preventDefault();
-    return;
-  }
-  if(e.cancelable) e.preventDefault();
-  for(const touch of e.changedTouches){
-    onPointerMove(makeTouchPointerEvent(e, touch));
-  }
-}, { passive:false });
+    for(const touch of e.changedTouches){
+      onPointerMove(makeTouchPointerEvent(e, touch));
+    }
+  }, { passive:false });
 
-dom.game.addEventListener('touchend', e => {
-  if(e.cancelable) e.preventDefault();
-  for(const touch of e.changedTouches){
-    onPointerUp(makeTouchPointerEvent(e, touch));
-  }
-}, { passive:false });
+  dom.game.addEventListener('touchend', e => {
+    if(e.cancelable) e.preventDefault();
+    for(const touch of e.changedTouches){
+      onPointerUp(makeTouchPointerEvent(e, touch));
+    }
+  }, { passive:false });
 
-dom.game.addEventListener('touchcancel', e => {
-  if(e.cancelable) e.preventDefault();
-  state.pointerCancelCount += e.changedTouches.length || 1;
-  for(const touch of e.changedTouches){
-    onPointerUp(makeTouchPointerEvent(e, touch));
-  }
-}, { passive:false });
+  dom.game.addEventListener('touchcancel', e => {
+    if(e.cancelable) e.preventDefault();
+    state.pointerCancelCount += e.changedTouches.length || 1;
+    for(const touch of e.changedTouches){
+      onPointerUp(makeTouchPointerEvent(e, touch));
+    }
+  }, { passive:false });
 
+  dom.game.addEventListener('mousedown', e => {
+    if(e.cancelable) e.preventDefault();
+    onPointerDown(makeMousePointerEvent(e));
+  }, { passive:false });
+
+  window.addEventListener('mousemove', e => {
+    onPointerMove(makeMousePointerEvent(e));
+  }, { passive:false });
+
+  window.addEventListener('mouseup', e => {
+    onPointerUp(makeMousePointerEvent(e));
+  }, { passive:false });
+}
 window.addEventListener('message', e => {
   if(!e.data || e.data.type !== 'gameInit') return;
   initFromParams(e.data);
