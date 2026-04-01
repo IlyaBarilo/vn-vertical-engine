@@ -74,17 +74,23 @@ jobs:
           mkdir -p "build/$APP_NAME/assets/audio"
           mkdir -p "build/$APP_NAME/assets/games"
           mkdir -p "build/$APP_NAME/lib"
+          mkdir -p "build/$APP_NAME/engine"
+          mkdir -p "build/$APP_NAME/docs/specs"
 
           # Копируем основные файлы проекта
-          [ -f engine.css ] && cp engine.css "build/$APP_NAME/"
-          [ -f engine.js ] && cp engine.js "build/$APP_NAME/"
           [ -f index.html ] && cp index.html "build/$APP_NAME/"
           [ -f story.js ] && cp story.js "build/$APP_NAME/"
-          [ -f story-loader.js ] && cp story-loader.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
-          [ -f SPECIFICATION.md ] && cp SPECIFICATION.md "build/$APP_NAME/"
           [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
+
+          [ -f engine/engine.css ] && cp engine/engine.css "build/$APP_NAME/engine/"
+          [ -f engine/engine.js ] && cp engine/engine.js "build/$APP_NAME/engine/"
+          [ -f engine/story-loader.js ] && cp engine/story-loader.js "build/$APP_NAME/engine/"
+
+          [ -f docs/specs/SPEC_STORY.md ] && cp docs/specs/SPEC_STORY.md "build/$APP_NAME/docs/specs/"
+          [ -f docs/specs/SPEC_GAME.md ] && cp docs/specs/SPEC_GAME.md "build/$APP_NAME/docs/specs/"
+
           [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
@@ -130,16 +136,16 @@ jobs:
           mkdir -p build/site
           cp -r build/$APP_NAME/* build/site/
 
-      - name: Inject version into engine.js
+      - name: Inject version into engine/engine.js
         shell: bash
         run: |
 
-          # Подставляем номер версии в engine.js
+          # Подставляем номер версии в engine/engine.js
           VERSION_SAFE=$(printf '%s' "$VERSION" | sed 's/[\/&]/\\&/g')
 
           for TARGET in \
-            "build/$APP_NAME/engine.js" \
-            "build/site/engine.js"
+            "build/$APP_NAME/engine/engine.js" \
+            "build/site/engine/engine.js"
           do
             if [ -f "$TARGET" ]; then
               sed -i "0,/__VERSION__/s/__VERSION__/$VERSION_SAFE/" "$TARGET"
