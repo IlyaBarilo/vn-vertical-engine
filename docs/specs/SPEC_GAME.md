@@ -265,6 +265,9 @@ parent.postMessage({
 - глобальные обработчики на общем контейнере, `window` или `document` работают без фильтрации UI
 - использование только `click` для механик, где требуется мгновенная реакция на касание, удержание или drag
 - использование только одного типа событий, если из-за этого игра теряет работоспособность хотя бы на одном целевом типе устройств
+- одновременное навешивание Pointer Events, Touch Events и Mouse Events на одну и ту же игровую механику без явной дедупликации одного физического ввода
+- ситуация, при которой одно касание или одно нажатие мыши может породить несколько игровых действий из-за параллельной обработки pointer/touch/mouse
+- использование шаблона "поддержать всё сразу" без явного описания приоритета событий или fallback-стратегии
 - отсутствие обработки `pointercancel`
 - отсутствие обработки `touchcancel`
 - использование `pointer-events: none` на UI-контейнерах, через которые должен приниматься пользовательский ввод
@@ -312,7 +315,12 @@ parent.postMessage({
 - игра обязана поддерживать mouse-ввод
 - игра обязана поддерживать touch-ввод
 - игра обязана корректно работать в средах, где touch может приходить через Pointer Events, Touch Events или иную браузерно-совместимую модель
+- если среда поддерживает Pointer Events, они должны считаться основным каналом игрового ввода
+- Mouse Events и Touch Events в среде с поддержкой Pointer Events должны использоваться только как fallback при явном отсутствии нужного поведения через Pointer Events либо при наличии явной дедупликации одного физического ввода.
+- запрещено одновременно обрабатывать один и тот же физический ввод через Pointer Events и через Touch/Mouse Events без явной защиты от двойного срабатывания
+- реализация должна явно определять стратегию маршрутизации ввода: `Pointer Events first`, либо `fallback-only`, либо эквивалентную схему без дублей
 - если механика использует удержание, drag, multitouch, joystick, непрерывное движение, ведение по траектории или быстрые касания, такая механика обязана корректно работать на всех перечисленных выше типах устройств
+- если механика использует drag, удержание или непрерывное ведение указателя, реализация должна обеспечивать сохранение управления до завершения взаимодействия (например, через Pointer Capture или эквивалентную fallback-логику)
 - запрещено проектировать игру только под мышь
 - запрещено проектировать игру только под телефонный touch
 - запрещено проектировать игру только под интерактивный экран
@@ -367,6 +375,8 @@ parent.postMessage({
 5. Общий запрет на смешивание UI и игровой логики
 - Нажатия по UI не должны запускать игровую механику
 - Глобальные обработчики на `window`, `document` или общем контейнере не должны реагировать на события, пришедшие из UI
+- если для mouse fallback используются обработчики на `window` (`mousemove`, `mouseup` и т.п.), они не должны дублировать уже обрабатываемый pointer-ввод в средах с поддержкой Pointer Events
+- глобальные fallback-обработчики должны включаться только при отсутствии основного канала ввода либо должны быть логически изолированы от него
 - Игровая логика не должна реагировать на нажатия по кнопкам, панелям, overlay-экранам и другим элементам интерфейса
 
 ---
@@ -457,6 +467,12 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
 
 Шаблон ниже показывает минимальный каркас совместимой мини-игры и иллюстрирует обязательные требования к интеграции, вводу, масштабированию и завершению игры.
 
+Важно для AI-генерации:
+- если в среде доступны Pointer Events, шаблон должен использовать их как основной канал ввода
+- Touch Events и Mouse Events не должны безусловно навешиваться параллельно на ту же игровую механику
+- fallback для mouse/touch должен включаться только при отсутствии Pointer Events либо при наличии явной дедупликации
+- недопустим шаблон, в котором одно физическое касание или один клик может пройти в игровую логику несколько раз через разные типы событий
+
 ```html
 <!doctype html>
 <html lang="ru">
@@ -478,6 +494,7 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
     position: relative;
     width: 100%;
     height: 100%;
+    touch-action: none;
   }
 
   canvas {
@@ -486,6 +503,7 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
     width: 100%;
     height: 100%;
     display: block;
+    touch-action: none;
   }
 
   #uiRoot {
@@ -531,6 +549,7 @@ let difficulty = 3;
 let resultSent = false;
 let gameStarted = false;
 let initReceived = false;
+let mouseActive = false;
 
 const BASE_W = 810;
 const BASE_H = 1440;
@@ -596,6 +615,9 @@ function onGameInputStart(event, x, y) {
   if (isUiTarget(event.target)) return;
   if (event.cancelable) event.preventDefault();
 
+  // для drag/hold-механик можно сохранить управление через Pointer Capture
+  tryCapturePointer(event);
+
   // игровая логика начала ввода
 }
 
@@ -610,6 +632,8 @@ function onGameInputMove(event, x, y) {
 function onGameInputEnd(event) {
   if (resultSent) return;
   if (event.cancelable) event.preventDefault();
+
+  tryReleasePointer(event);
 
   // игровая логика завершения ввода
 }
@@ -629,34 +653,72 @@ function bindUiButton(button, handler) {
   });
 }
 
+const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+
+let activePointerId = null;
+
+function tryCapturePointer(event) {
+  if (!HAS_POINTER_EVENTS) return;
+  if (!event || event.pointerId == null) return;
+  if (!event.target || !event.target.setPointerCapture) return;
+
+  try {
+    event.target.setPointerCapture(event.pointerId);
+    activePointerId = event.pointerId;
+  } catch (_) {}
+}
+
+function tryReleasePointer(event) {
+  if (!HAS_POINTER_EVENTS) return;
+  if (!event || event.pointerId == null) return;
+  if (!event.target || !event.target.releasePointerCapture) return;
+
+  try {
+    if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
+      event.target.releasePointerCapture(event.pointerId);
+    }
+  } catch (_) {}
+
+  if (activePointerId === event.pointerId) {
+    activePointerId = null;
+  }
+}
+
 function bindInput() {
-  // Pointer Events
-  gameRoot.addEventListener('pointerdown', (event) => {
-    onGameInputStart(event, event.clientX, event.clientY);
-  }, { passive: false });
+  if (HAS_POINTER_EVENTS) {
+    gameRoot.addEventListener('pointerdown', (event) => {
+      onGameInputStart(event, event.clientX, event.clientY);
+    }, { passive: false });
 
-  gameRoot.addEventListener('pointermove', (event) => {
-    onGameInputMove(event, event.clientX, event.clientY);
-  }, { passive: false });
+    gameRoot.addEventListener('pointermove', (event) => {
+      onGameInputMove(event, event.clientX, event.clientY);
+    }, { passive: false });
 
-  gameRoot.addEventListener('pointerup', (event) => {
-    onGameInputEnd(event);
-  }, { passive: false });
+    gameRoot.addEventListener('pointerup', (event) => {
+      onGameInputEnd(event);
+    }, { passive: false });
 
-  gameRoot.addEventListener('pointercancel', (event) => {
-    onGameInputEnd(event);
-  }, { passive: false });
+    gameRoot.addEventListener('pointercancel', (event) => {
+      onGameInputEnd(event);
+    }, { passive: false });
+
+    return;
+  }
 
   // Mouse fallback
   gameRoot.addEventListener('mousedown', (event) => {
+    mouseActive = true;
     onGameInputStart(event, event.clientX, event.clientY);
   }, { passive: false });
 
   window.addEventListener('mousemove', (event) => {
+    if (!mouseActive) return;
     onGameInputMove(event, event.clientX, event.clientY);
   }, { passive: false });
 
   window.addEventListener('mouseup', (event) => {
+    if (!mouseActive) return;
+    mouseActive = false;
     onGameInputEnd(event);
   }, { passive: false });
 
@@ -720,7 +782,8 @@ bindUiButton(finishButton, () => {
 
 applyScale();
 
-// При совмещении pointer + mouse + touch необходимо избегать двойной обработки одного ввода.
+// Pointer Events имеют приоритет как основной канал ввода.
+// Mouse/Touch используются только как fallback при отсутствии Pointer Events.
 bindInput();
 
 </script>
@@ -739,6 +802,7 @@ bindInput();
 - не перезагружает страницу
 - отправляет `gameResult` один раз
 - блокирует ввод после результата
+- не допускает двойной обработки одного физического ввода при совмещении pointer / mouse / touch
 
 ---
 
