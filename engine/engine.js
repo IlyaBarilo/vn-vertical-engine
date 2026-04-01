@@ -961,8 +961,6 @@ btnCloseGame.addEventListener("pointerup", function (e) {
   // Сброс от случайного "следующего клика" после закрытия
   lastNextTime = Date.now();
 
-  suppressAutoRunOnce = true;
-
   closeGame({ manualClose: true, result: 0 });
 
   console.log("[LOG] after closeGame", {
@@ -999,6 +997,12 @@ restart();
 function restart() {
   // Сбрасываем ошибки парсинга
   window.PARSE_ERRORS = [];
+
+  suppressAutoRunOnce = false;
+  lastNextTime = 0;
+  state.currentGame = null;
+  state.waitingNext = false;
+  state.nextLocked = false;
 
   // Никаких сохранений: просто сбрасываем переменные и идём в start.
   state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
