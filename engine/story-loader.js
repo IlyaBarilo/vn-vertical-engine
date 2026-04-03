@@ -75,6 +75,14 @@
       target: 'bottomSpacing',
       type: 'int'
     },
+    leftSpacing: {
+      target: 'leftSpacing',
+      type: 'int'
+    },
+    rightSpacing: {
+      target: 'rightSpacing',
+      type: 'int'
+    },
     blurBackground: {
       target: 'blurBackground',
       type: 'bool'

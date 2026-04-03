@@ -311,8 +311,22 @@ const UI_STYLE_CONFIG = {
     type: 'int',
     min: 0
   },
+  rightSpacing: {
+    cssVar: '--rightSpacing',
+    default: 0,
+    unit: 'px',
+    type: 'int',
+    min: 0
+  },
   bottomSpacing: {
     cssVar: '--bottomSpacing',
+    default: 0,
+    unit: 'px',
+    type: 'int',
+    min: 0
+  },
+  leftSpacing: {
+    cssVar: '--leftSpacing',
     default: 0,
     unit: 'px',
     type: 'int',
@@ -342,9 +356,12 @@ const UI_STYLE_CONFIG = {
   }
 };
 
+const MAX_NOVEL_ASPECT_W = 10;
+const MAX_NOVEL_ASPECT_H = 16;
 
 // ---------- DOM ----------
 var elTitle = document.getElementById("title");
+var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elChar = document.getElementById("charLayer");
 
@@ -430,6 +447,7 @@ var elStage = document.getElementById("stage");
 function isUiClick(target) {
   return !!(target.closest &&
     (target.closest(".topbar") ||
+    target.closest("#dialog") ||
     target.closest("#choices") ||
     target.closest("#gameModal")));
 }
@@ -2683,7 +2701,7 @@ setTimeout(function() {
 // Также добавляем логи для события resize
 window.addEventListener("resize", function() {
   applyUiScale();
-  adjustCharacterScale();
+  applySpacingSettings();
 });
 
 
@@ -2704,14 +2722,10 @@ function adjustCharacterScale() {
   var char = document.getElementById('charLayer');
   if (!char) return;
   
-  var topSpacing = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--topSpacing')) || 0;
-  var bottomSpacing = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--bottomSpacing')) || 0;
-  
-  // Высота доступная для персонажа (с учетом отступов)
-  var availableHeight = window.innerHeight - topSpacing - bottomSpacing;
-  
-  // Максимальная высота персонажа (не более 85% экрана)
-  var targetCharHeight = Math.min(availableHeight * 0.85, window.innerHeight * 0.85);
+  var availableHeight = elNovelWindow ? elNovelWindow.clientHeight : window.innerHeight;
+
+  // Максимальная высота персонажа внутри окна новеллы
+  var targetCharHeight = Math.max(0, availableHeight * 0.85);
   
   // Применяем к персонажу
   char.style.height = targetCharHeight + 'px';
@@ -2728,8 +2742,7 @@ function adjustCharacterScale() {
   
   console.log('[Engine] Character scale applied:', {
     windowHeight: window.innerHeight,
-    topSpacing: topSpacing,
-    bottomSpacing: bottomSpacing,
+    novelWindowHeight: elNovelWindow ? elNovelWindow.clientHeight : null,
     availableHeight: availableHeight,
     targetCharHeight: targetCharHeight,
     actualHeight: char.offsetHeight
@@ -2742,7 +2755,7 @@ function adjustCharacterScale() {
 }
 
 // Также вызываем при изменении размера
-window.addEventListener("resize", adjustCharacterScale);
+// adjustCharacterScale() вызывается из applySpacingSettings()
 
   
 // =========================================================
@@ -4942,8 +4955,6 @@ function getUIOverridesFromQuery() {
 
 function applySpacingSettings() {
   var storyMeta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
-  
-
   var queryOverrides = {};
   var urlParams = new URLSearchParams(window.location.search);
   var normalizedUrlParams = {};
@@ -4952,44 +4963,79 @@ function applySpacingSettings() {
     normalizedUrlParams[String(key).toLowerCase()] = value;
   });
 
-  if (Object.prototype.hasOwnProperty.call(normalizedUrlParams, 'topspacing')) {
-    var topSpacingRaw = normalizedUrlParams.topspacing;
-    
+  ['topSpacing', 'rightSpacing', 'bottomSpacing', 'leftSpacing'].forEach(function(key) {
+    var raw = normalizedUrlParams[key.toLowerCase()];
+    if (raw === undefined) return;
 
-    if (/^\d+$/.test(String(topSpacingRaw).trim())) {
-      queryOverrides.topSpacing = parseInt(topSpacingRaw, 10);
+    if (/^\d+$/.test(String(raw).trim())) {
+      queryOverrides[key] = parseInt(raw, 10);
     } else {
-      console.log('[URL DIRECT] ignored invalid topSpacing =', topSpacingRaw);
+      console.log('[URL DIRECT] ignored invalid ' + key + ' =', raw);
     }
-  }
+  });
 
-  if (Object.prototype.hasOwnProperty.call(normalizedUrlParams, 'bottomspacing')) {
-    var bottomSpacingRaw = normalizedUrlParams.bottomspacing;
-
-    if (/^\d+$/.test(String(bottomSpacingRaw).trim())) {
-      queryOverrides.bottomSpacing = parseInt(bottomSpacingRaw, 10);
-    } else {
-      console.log('[URL DIRECT] ignored invalid bottomSpacing =', bottomSpacingRaw);
-    }
-  }
-
-  // URL имеет приоритет над story.js
   var finalMeta = Object.assign({}, storyMeta, queryOverrides);
 
-  // Важно: записываем финальные значения обратно в STORY.meta,
-  // чтобы их использовали все остальные расчёты движка
-  if (window.STORY && window.STORY.meta) {
-    if (finalMeta.topSpacing !== undefined) {
-      window.STORY.meta.topSpacing = finalMeta.topSpacing;
+  var hasExplicitTop =
+    Object.prototype.hasOwnProperty.call(storyMeta, 'topSpacing') ||
+    Object.prototype.hasOwnProperty.call(queryOverrides, 'topSpacing');
+
+  var hasExplicitRight =
+    Object.prototype.hasOwnProperty.call(storyMeta, 'rightSpacing') ||
+    Object.prototype.hasOwnProperty.call(queryOverrides, 'rightSpacing');
+
+  var hasExplicitBottom =
+    Object.prototype.hasOwnProperty.call(storyMeta, 'bottomSpacing') ||
+    Object.prototype.hasOwnProperty.call(queryOverrides, 'bottomSpacing');
+
+  var hasExplicitLeft =
+    Object.prototype.hasOwnProperty.call(storyMeta, 'leftSpacing') ||
+    Object.prototype.hasOwnProperty.call(queryOverrides, 'leftSpacing');
+
+  // Если задан ЛЮБОЙ отступ — ручной режим.
+  var manualMode =
+    hasExplicitTop || hasExplicitRight || hasExplicitBottom || hasExplicitLeft;
+
+  var effectiveTop = 0;
+  var effectiveRight = 0;
+  var effectiveBottom = 0;
+  var effectiveLeft = 0;
+
+  if (manualMode) {
+    effectiveTop = num(finalMeta.topSpacing, 0);
+    effectiveRight = num(finalMeta.rightSpacing, 0);
+    effectiveBottom = num(finalMeta.bottomSpacing, 0);
+    effectiveLeft = num(finalMeta.leftSpacing, 0);
+  } else {
+    var availableHeight = Math.max(0, window.innerHeight);
+    var maxAllowedWidth = availableHeight * MAX_NOVEL_ASPECT_W / MAX_NOVEL_ASPECT_H;
+    var autoSide = 0;
+
+    if (window.innerWidth > maxAllowedWidth) {
+      autoSide = (window.innerWidth - maxAllowedWidth) / 2;
     }
-    if (finalMeta.bottomSpacing !== undefined) {
-      window.STORY.meta.bottomSpacing = finalMeta.bottomSpacing;
-    }
+
+    effectiveLeft = autoSide;
+    effectiveRight = autoSide;
   }
+
+  var novelWidth = Math.max(0, window.innerWidth - effectiveLeft - effectiveRight);
+  var novelHeight = Math.max(0, window.innerHeight - effectiveTop - effectiveBottom);
 
   applyUIStyleVariables(finalMeta);
 
-  // blur_background — отдельный логический флаг
+  document.documentElement.style.setProperty('--topSpacing', effectiveTop + 'px');
+  document.documentElement.style.setProperty('--rightSpacing', effectiveRight + 'px');
+  document.documentElement.style.setProperty('--bottomSpacing', effectiveBottom + 'px');
+  document.documentElement.style.setProperty('--leftSpacing', effectiveLeft + 'px');
+
+  if (elNovelWindow) {
+    elNovelWindow.style.left = effectiveLeft + 'px';
+    elNovelWindow.style.top = effectiveTop + 'px';
+    elNovelWindow.style.width = novelWidth + 'px';
+    elNovelWindow.style.height = novelHeight + 'px';
+  }
+
   var blurBackground = (typeof finalMeta.blurBackground === 'boolean')
     ? finalMeta.blurBackground
     : true;
@@ -4998,11 +5044,14 @@ function applySpacingSettings() {
     elBlurBgLayer.style.display = blurBackground ? 'block' : 'none';
   }
 
-  console.log('[Engine] UI settings applied:', {
-    storyMeta: storyMeta,
-    queryOverrides: queryOverrides,
-    finalTopSpacing: getComputedStyle(document.documentElement).getPropertyValue('--topSpacing').trim(),
-    finalBottomSpacing: getComputedStyle(document.documentElement).getPropertyValue('--bottomSpacing').trim()
+  console.log('[Engine] novel window applied:', {
+    manualMode: manualMode,
+    effectiveTop: effectiveTop,
+    effectiveRight: effectiveRight,
+    effectiveBottom: effectiveBottom,
+    effectiveLeft: effectiveLeft,
+    novelWidth: novelWidth,
+    novelHeight: novelHeight
   });
 
   adjustCharacterScale();

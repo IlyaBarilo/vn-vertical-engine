@@ -65,17 +65,27 @@
     </div>
 
     <div id="stage" class="stage">
-      <img id="bgLayer" class="bg" alt="" />
-
-      <!-- ДОБАВЬТЕ ЭТИ СТРОКИ -->
       <div id="blurBgLayer" class="blur-bg-layer hidden">
         <img id="blurBgImage" class="blur-bg-image" alt="" />
       </div>
-      <!-- КОНЕЦ ДОБАВЛЕННОГО БЛОКА -->
-       
-      <img id="charLayer" class="char hidden" alt="" />
-      <div id="overlay" class="overlay hidden"></div>
+
+      <div id="novelWindow" class="novel-window">
+        <img id="bgLayer" class="bg" alt="" />
+        <img id="charLayer" class="char hidden" alt="" />
+        <div id="overlay" class="overlay hidden"></div>
+
+        <!-- Диалоговое окно -->
+        <div id="dialog" class="dialog" role="button" tabindex="0" aria-label="Next">
+          <div id="nameBox" class="name hidden"></div>
+          <div id="textBox" class="text"></div>
+          <div class="hint">Click to continue</div>
+        </div>
+
+        <!-- Контейнер выбора -->
+        <div id="choices" class="choices hidden" aria-label="Choices"></div>
+      </div>
     </div>
+
 
     <!-- Верхняя панель -->
     <div class="topbar">
@@ -97,16 +107,6 @@
         <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
       </div>
     </div>
-
-    <!-- Диалоговое окно -->
-    <div id="dialog" class="dialog" role="button" tabindex="0" aria-label="Next">
-      <div id="nameBox" class="name hidden"></div>
-      <div id="textBox" class="text"></div>
-      <div class="hint">Click to continue</div>
-    </div>
-
-    <!-- Контейнер выбора -->
-    <div id="choices" class="choices hidden" aria-label="Choices"></div>
 
     <!-- Контейнер мини-игры (iframe) -->
     <div id="gameModal" class="gameModal hidden" aria-label="Game">
