@@ -74,6 +74,29 @@
         <img id="charLayer" class="char hidden" alt="" />
         <div id="overlay" class="overlay hidden"></div>
 
+
+        <!-- Верхняя панель -->
+        <div class="topbar">
+          <div class="topbar-left">
+            
+          </div>
+
+          <div class="topbar-right">
+            <!-- Mute -->
+            <button id="btnMute" class="btn icon-btn" type="button" aria-label="Mute"><span class="btn-icon">🔊</span></button>
+
+            <!-- Volume -->
+            <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
+
+            <!-- НОВОЕ: статистика/настройки -->
+            <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
+
+            <!-- Restart -->
+            <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
+          </div>
+        </div>
+
+
         <!-- Диалоговое окно -->
         <div id="dialog" class="dialog" role="button" tabindex="0" aria-label="Next">
           <div id="nameBox" class="name hidden"></div>
@@ -87,26 +110,7 @@
     </div>
 
 
-    <!-- Верхняя панель -->
-    <div class="topbar">
-      <div class="topbar-left">
-        
-      </div>
-
-      <div class="topbar-right">
-        <!-- Mute -->
-        <button id="btnMute" class="btn icon-btn" type="button" aria-label="Mute"><span class="btn-icon">🔊</span></button>
-
-        <!-- Volume -->
-        <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
-
-        <!-- НОВОЕ: статистика/настройки -->
-        <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
-
-        <!-- Restart -->
-        <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
-      </div>
-    </div>
+    
 
     <!-- Контейнер мини-игры (iframe) -->
     <div id="gameModal" class="gameModal hidden" aria-label="Game">

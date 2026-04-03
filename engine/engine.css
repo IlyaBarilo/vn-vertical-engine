@@ -712,13 +712,6 @@ body {
   z-index: 2;
 }
 
-/*
-   Верхнюю панель оставляем привязанной к topSpacing, как и раньше.
-*/
-.topbar {
-  top: var(--topSpacing);
-}
-
 /* Для очень узких экранов */
 @media (max-aspect-ratio: 9/16) {
   .choices {
