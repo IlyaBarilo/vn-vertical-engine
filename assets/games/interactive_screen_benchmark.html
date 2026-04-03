@@ -152,9 +152,9 @@ const CFG = {
 
   fallingMinR:18,
   fallingMaxR:68,
-  fallingSpawn:0.55,
-  fallingSpeedMin:5,
-  fallingSpeedMax:2500,
+  fallingSpawn:0.35, // Частота появления шаров. Чем меньше, тем больше
+  fallingSpeedMinPercent: 2,   // % высоты экрана в секунду (медленно, левая часть)
+  fallingSpeedMaxPercent: 50,   // % высоты экрана в секунду (очень быстро, правая часть)
 
   starMin:14,
   starMax:42,
@@ -462,6 +462,12 @@ function resize(){
   state.textScale=state.scale*TEXT_SCALE; state.hudScale=state.scale*HUD_SCALE;
   [dom.stars,dom.world,dom.hud].forEach(c=>{ c.width=state.vw; c.height=state.vh; });
   layoutIntro(); layoutSummary(); layoutStageControls(); buildStars();
+  // Пересчёт скоростей падающих кругов при изменении размера экрана
+  for(const c of state.falling.circles){
+    if(c.percentPerSec !== undefined){
+      c.speed = (c.percentPerSec / 100) * state.vh;
+    }
+  }
 }
 
 function showIntro(){
@@ -1129,6 +1135,7 @@ function update(dt, rawDt = dt){
     }
     for(let i=state.falling.circles.length-1;i>=0;i--){
       const c = state.falling.circles[i];
+      // speed уже в пикселях в секунду (пересчитан при спавне)
       c.y += c.speed * dt;
       if(c.y - c.r > state.vh){
         state.falling.misses++;
@@ -1142,16 +1149,18 @@ function spawnFallingCircle(){
   const safeMax = 0.92;
   const safeSpan = safeMax - safeMin;
 
-  // Смещаем распределение вправо, чтобы быстрые зоны получали больше целей.
-  // Чем больше exponent < 1, тем сильнее смещение вправо.
-  const speedBiasExponent = 0.65;
-
+  // Смещаем распределение вправо, чтобы быстрые зоны получали больше целей. Значение 0.65. Пока сделал 0.5 для более равного распределения. левая зона ~33% целей
+  const speedBiasExponent = 0.5;
   const biased = Math.pow(Math.random(), speedBiasExponent);
   const xSafeNorm = biased;
   const xNorm = safeMin + xSafeNorm * safeSpan;
 
   const r = (CFG.fallingMinR + Math.random() * (CFG.fallingMaxR - CFG.fallingMinR)) * state.scale;
-  const speed = lerp(CFG.fallingSpeedMin, CFG.fallingSpeedMax, xSafeNorm) * (1 + (state.difficulty - 3) * .06);
+
+  // СКОРОСТЬ В ПРОЦЕНТАХ ВЫСОТЫ ЭКРАНА В СЕКУНДУ
+  const percentPerSec = CFG.fallingSpeedMinPercent + xSafeNorm * (CFG.fallingSpeedMaxPercent - CFG.fallingSpeedMinPercent);
+  // Преобразуем в пиксели в секунду с учётом текущей высоты экрана
+  const speed = (percentPerSec / 100) * state.vh;
 
   let bandSpeed = 'medium';
   if(xSafeNorm < 0.33) bandSpeed = 'slow';
@@ -1169,6 +1178,7 @@ function spawnFallingCircle(){
     y: -80 * state.scale,
     r,
     speed,
+    percentPerSec,  // сохраняем для отображения
     bandSpeed,
     bandSize,
     xSafeNorm
@@ -1246,7 +1256,8 @@ function drawFallingWorld(){
     wctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
     wctx.fill();
 
-    const speedPercentPerSec = Math.round((c.speed / Math.max(1, state.vh)) * 100);
+    // Используем сохранённый percentPerSec, т.к. speed уже в px/сек
+    const speedPercentPerSec = Math.round(c.percentPerSec);
 
     wctx.fillStyle = 'rgba(255,255,255,.92)';
     wctx.font = `900 ${Math.round(16 * state.scale)}px Inter,system-ui,sans-serif`;
