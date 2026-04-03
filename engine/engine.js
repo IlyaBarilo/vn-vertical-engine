@@ -83,6 +83,24 @@ var profiler = {
 // Ставим первую метку
 profiler.mark('The script has started loading');
 
+
+
+
+// === ЗАЩИТА ОТ СИСТЕМНЫХ МЕНЮ И ВЫДЕЛЕНИЯ ===
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('selectstart', (e) => e.preventDefault());
+document.addEventListener('dragstart', (e) => {
+  if (e.target.tagName === 'IMG' || e.target.closest('img')) e.preventDefault();
+});
+if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+  document.body.style.webkitTouchCallout = 'none';
+}
+
+
+
+
+
+
 let __charSeq = 0;
 let __activeCharSeq = 0;
 

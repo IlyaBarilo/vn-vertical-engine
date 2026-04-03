@@ -1418,3 +1418,29 @@ body {
 .game-thumbnail {
   object-fit: contain !important;
 }
+
+
+
+
+
+/* Защита от системных меню, выделения и перетаскивания */
+* {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+html, body, .app, .stage {
+  touch-action: pan-y; /* запрещает пинч-зум, разрешает вертикальный скролл */
+}
+
+img, .bg, .char, .blur-bg-image {
+  -webkit-user-drag: none;
+  user-drag: none;
+  draggable: false;
+}
+
+.gameFrame {
+  touch-action: none !important;
+}
+
