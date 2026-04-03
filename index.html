@@ -106,21 +106,24 @@
 
         <!-- Контейнер выбора -->
         <div id="choices" class="choices hidden" aria-label="Choices"></div>
+
+        <!-- Контейнер мини-игры (iframe) -->
+        <div id="gameModal" class="gameModal hidden" aria-label="Game">
+          <div class="gameFrameWrap">
+            <iframe id="gameFrame" class="gameFrame" title="Mini game" src="about:blank"></iframe>
+            <div class="gameControls">
+              <button id="btnCloseGame" class="btn" type="button">Close Game</button>
+            </div>
+          </div>
+        </div>
+        
       </div>
     </div>
 
 
     
 
-    <!-- Контейнер мини-игры (iframe) -->
-    <div id="gameModal" class="gameModal hidden" aria-label="Game">
-      <div class="gameFrameWrap">
-        <iframe id="gameFrame" class="gameFrame" title="Mini game" src="about:blank"></iframe>
-        <div class="gameControls">
-          <button id="btnCloseGame" class="btn" type="button">Close Game</button>
-        </div>
-      </div>
-    </div>
+    
 
   </div>
 
