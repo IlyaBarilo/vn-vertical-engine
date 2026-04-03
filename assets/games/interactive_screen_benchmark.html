@@ -82,6 +82,12 @@
   .button:active{transform:translateY(1px) scale(.99)}
   .t,.s,.b{position:absolute;white-space:pre-line}
   .t{font-weight:900}.s{font-weight:700;color:var(--muted)}.b{line-height:1.35}
+
+
+ *{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important;-webkit-tap-highlight-color:transparent}
+  canvas,img,div,button,span,touch-action:none;user-select:none}
+  body{-webkit-touch-callout:none}
+
 </style>
 </head>
 <body>
@@ -266,6 +272,13 @@ const state = {
 const $ = id => document.getElementById(id);
 const dom = { game:$('game'), stars:$('stars'), world:$('world'), hud:$('hud'), ui:$('ui') };
 const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('selectstart',e=>e.preventDefault());
+document.addEventListener('dragstart',e=>e.preventDefault());
+document.body.style.userSelect='none';
+document.body.style.webkitUserSelect='none';
+if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) document.body.style.webkitTouchCallout='none';
 
 function isUiTarget(target){
   return !!(
