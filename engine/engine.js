@@ -131,7 +131,15 @@ const UI_I18N = {
     parseErrorHint: "Please fix the errors in the story.js file",
     statsRenderError: "Error generating statistics:",
     statsFileError: "File verification error:",
-    mermaidRenderError: "Mermaid graph rendering error:"
+    mermaidRenderError: "Mermaid graph rendering error:",
+    gamesButton: "🎮 Games",
+    gamesButtonTitle: "Show/hide games",
+    gamesNoCover: "No preview",
+    gamesLastLaunchNone: "Last launch: —",
+    gamesLastLaunchClosed: "Last launch: {title}, difficulty {difficulty}, closed manually",
+    gamesLastLaunchResult: "Last launch: {title}, difficulty {difficulty}, result {result}",
+    gamesLaunchFailed: "Unable to launch the game",
+    gamesNoGames: "No games found"
   },
   ru: {
     mute: "Звук",
@@ -159,7 +167,15 @@ const UI_I18N = {
     parseErrorHint: "Исправьте ошибки в файле story.js",
     statsRenderError: "Ошибка генерации статистики:",
     statsFileError: "Ошибка проверки файлов:",
-    mermaidRenderError: "Ошибка рендера графа Mermaid:"
+    mermaidRenderError: "Ошибка рендера графа Mermaid:",
+    gamesButton: "🎮 Игры",
+    gamesButtonTitle: "Показать/скрыть игры",
+    gamesNoCover: "Нет превью",
+    gamesLastLaunchNone: "Последний запуск: —",
+    gamesLastLaunchClosed: "Последний запуск: {title}, сложность {difficulty}, игра закрыта вручную",
+    gamesLastLaunchResult: "Последний запуск: {title}, сложность {difficulty}, результат {result}",
+    gamesLaunchFailed: "Не удалось запустить игру",
+    gamesNoGames: "Игры не найдены"
   }
 };
 
@@ -200,8 +216,14 @@ function applyUiLanguage() {
   var gameModal = document.getElementById("gameModal");
   if (gameModal) gameModal.setAttribute("aria-label", t("game"));
 
+  var statsGameModal = document.getElementById("statsGameModal");
+  if (statsGameModal) statsGameModal.setAttribute("aria-label", t("game"));
+
   var btnCloseGame = document.getElementById("btnCloseGame");
   if (btnCloseGame) btnCloseGame.textContent = t("closeGame");
+
+  var btnCloseStatsGame = document.getElementById("btnCloseStatsGame");
+  if (btnCloseStatsGame) btnCloseStatsGame.textContent = t("closeGame");
 
   var hint = document.querySelector(".hint");
   if (hint) hint.textContent = t("hintContinue");
@@ -237,6 +259,18 @@ function applyUiLanguage() {
 
   var btnRefreshGraph = document.getElementById("btnRefreshGraph");
   if (btnRefreshGraph) btnRefreshGraph.textContent = t("refresh");
+
+  var btnShowGames = document.getElementById("btnShowGames");
+  if (btnShowGames) {
+    if (window.showingGames) {
+      btnShowGames.textContent = t("textButton");
+      btnShowGames.title = t("textButtonTitle");
+    } else {
+      btnShowGames.textContent = t("gamesButton");
+      btnShowGames.title = t("gamesButtonTitle");
+    }
+  }
+
 }
 
 window.showingGraph = false;
@@ -388,6 +422,10 @@ var elGameModal = document.getElementById("gameModal");
 var elGameFrame = document.getElementById("gameFrame");
 var btnCloseGame = document.getElementById("btnCloseGame");
 
+var elStatsGameModal = document.getElementById("statsGameModal");
+var elStatsGameFrame = document.getElementById("statsGameFrame");
+var btnCloseStatsGame = document.getElementById("btnCloseStatsGame");
+
 function swallowEvent(e) {
   if (!e) return;
   e.preventDefault();
@@ -403,6 +441,17 @@ function swallowEvent(e) {
     // Разрешаем события только внутри iframe и кнопки Close Game
     if (e.target === elGameFrame || elGameFrame.contains(e.target)) return;
     if (e.target === btnCloseGame || btnCloseGame.contains(e.target)) return;
+
+    swallowEvent(e);
+  }, true);
+});
+
+["pointerdown", "pointerup", "click", "touchstart", "touchend", "mousedown", "mouseup"].forEach(function (type) {
+  if (!elStatsGameModal) return;
+
+  elStatsGameModal.addEventListener(type, function (e) {
+    if (e.target === elStatsGameFrame || elStatsGameFrame.contains(e.target)) return;
+    if (e.target === btnCloseStatsGame || btnCloseStatsGame.contains(e.target)) return;
 
     swallowEvent(e);
   }, true);
@@ -449,7 +498,8 @@ function isUiClick(target) {
     (target.closest(".topbar") ||
     target.closest("#dialog") ||
     target.closest("#choices") ||
-    target.closest("#gameModal")));
+    target.closest("#gameModal") ||
+    target.closest("#statsGameModal")));
 }
 
 elStage.addEventListener("click", function (e) {
@@ -481,22 +531,34 @@ profiler.mark('DOM has been loaded');
 
 // Элементы управления графиком
 var btnToggleGraph = document.getElementById("btnToggleGraph");
+var btnShowGames = document.getElementById("btnShowGames");
 var graphContainer = document.getElementById("graphContainer");
+var gamesContainer = document.getElementById("gamesContainer");
+var gamesGrid = document.getElementById("gamesGrid");
+var gamesStatus = document.getElementById("gamesStatus");
 var graphControls = document.getElementById("graphControls");
 var btnCopyMermaid = document.getElementById("btnCopyMermaid");
 var btnRefreshGraph = document.getElementById("btnRefreshGraph");
 var mermaidGraph = document.getElementById("mermaidGraph");
 
-// Состояние отображения (текст или график)
+// Состояние отображения
 var showingGraph = false;
+var showingGames = false;
 
 // Переменная для хранения текущего кода графа
 var currentMermaidCode = "";
+var lastStandaloneGameInfo = null;
 
 // Обработчик кнопки переключения
 if (btnToggleGraph) {
   btnToggleGraph.addEventListener("click", function() {
     toggleGraphView();
+  });
+}
+
+if (btnShowGames) {
+  btnShowGames.addEventListener("click", function() {
+    toggleGamesView();
   });
 }
 
@@ -528,41 +590,51 @@ if (btnRefreshGraph) {
 }
 
 // Функция переключения между текстом и графиком
-function toggleGraphView() {
+function setStatsView(view) {
   var statsBody = document.getElementById("statsBody");
-  
-  if (!showingGraph) {
-    // Переключаемся на график
-    statsBody.classList.add("hidden");
-    graphContainer.classList.remove("hidden");
-    graphControls.classList.remove("hidden");
-    btnToggleGraph.textContent = t("textButton");
-    btnToggleGraph.title = t("textButtonTitle");
-    showingGraph = true;
-    window.showingGraph = true;
-    
-    // Генерируем и отображаем граф
+
+  showingGraph = (view === "graph");
+  showingGames = (view === "games");
+  window.showingGraph = showingGraph;
+  window.showingGames = showingGames;
+
+  if (statsBody) {
+    statsBody.classList.toggle("hidden", view !== "text");
+  }
+
+  if (graphContainer) {
+    graphContainer.classList.toggle("hidden", view !== "graph");
+  }
+
+  if (graphControls) {
+    graphControls.classList.toggle("hidden", view !== "graph");
+  }
+
+  if (gamesContainer) {
+    gamesContainer.classList.toggle("hidden", view !== "games");
+  }
+
+  if (view === "graph") {
     renderMermaidGraph();
-    
-    // Сбрасываем масштаб при входе в граф
-    // ВАЖНО: сбрасываем масштаб дважды с разными задержками
     setTimeout(resetPanzoom, 200);
-    
     setTimeout(function() {
       resetPanzoom();
     }, 500);
-
-  } else {
-    // Переключаемся на текст
-    statsBody.classList.remove("hidden");
-    graphContainer.classList.add("hidden");
-    graphControls.classList.add("hidden");
-    btnToggleGraph.textContent = t("graphButton");
-    btnToggleGraph.title = t("graphButtonTitle");
-    showingGraph = false;
-    window.showingGraph = false;
   }
+
+  if (view === "games") {
+    renderGamesCatalog();
+  }
+
   applyUiLanguage();
+}
+
+function toggleGraphView() {
+  setStatsView(showingGraph ? "text" : "graph");
+}
+
+function toggleGamesView() {
+  setStatsView(showingGames ? "text" : "games");
 }
 
 // Функция рендеринга графа Mermaid
@@ -1008,6 +1080,16 @@ btnCloseGame.addEventListener("pointerup", function (e) {
 });
 
 btnCloseGame.addEventListener("click", function (e) {
+  swallowEvent(e);
+});
+
+btnCloseStatsGame.addEventListener("pointerup", function (e) {
+  swallowEvent(e);
+  lastNextTime = Date.now();
+  closeGame({ manualClose: true, result: 0 });
+});
+
+btnCloseStatsGame.addEventListener("click", function (e) {
   swallowEvent(e);
 });
 
@@ -2232,59 +2314,75 @@ function openGame(action) {
 }
 
 function closeGame(resultData) {
-  // закрываем iframe и модалку
-  closeGameFrameVisualOnly();
-  state.inGame = false;
+  var finishedGame = state.currentGame;
+  var manualClose = !!(resultData && resultData.manualClose === true);
+  var resultValue = 0;
 
-  // Сохраняем только result
-  if (
-    resultData &&
-    state.currentGame &&
-    state.currentGame.resultVar
-  ) {
-    var resultValue = 0;
-
-    if (typeof resultData.result === 'number') {
+  if (resultData) {
+    if (typeof resultData.result === "number") {
       resultValue = resultData.result;
     } else if (!isNaN(Number(resultData.result))) {
       resultValue = Number(resultData.result);
     }
-
-    state.vars[state.currentGame.resultVar] = resultValue;
-    console.log('[GAME] result saved:', state.currentGame.resultVar, '=', resultValue);
   }
 
-  state.currentGame = null;
+  if (finishedGame && finishedGame.mode === "stats") {
+    closeStatsGameFrameVisualOnly();
+  } else {
+    closeGameFrameVisualOnly();
+  }
+  state.inGame = false;
 
-  var manualClose = !!(resultData && resultData.manualClose === true);
-
-  if (manualClose) {
-    // Игра закрыта вручную: считаем это завершением с текущим result
-    // и сразу продолжаем сценарий без дополнительного клика.
-    state.currentGame = null;
+  if (!finishedGame) {
     state.waitingNext = false;
-    state.nextLocked = true;
-    console.log("[GAME] manualClose -> continue scene immediately");
-
-    setTimeout(function() {
-      state.nextLocked = false;
-      runCurrent();
-    }, 0);
-
+    state.nextLocked = false;
     return;
   }
 
-  // Игра завершилась обычным образом (gameResult) — продолжаем сценарий
+  // Standalone запуск из панели "Игры" не должен влиять на сценарий
+  if (finishedGame.mode === "stats") {
+    lastStandaloneGameInfo = {
+      gameId: finishedGame.gameId,
+      title: finishedGame.title || finishedGame.gameId,
+      difficulty: finishedGame.difficulty,
+      result: resultValue,
+      manualClose: manualClose
+    };
+
+    state.currentGame = null;
+    state.waitingNext = false;
+    state.nextLocked = false;
+
+    renderGamesCatalog();
+    return;
+  }
+
+  // Обычный сюжетный режим игры
+  if (finishedGame.resultVar) {
+    state.vars[finishedGame.resultVar] = resultValue;
+    console.log("[GAME] result saved:", finishedGame.resultVar, "=", resultValue);
+  }
+
   state.currentGame = null;
   state.waitingNext = false;
-  state.nextLocked = false;
-  runCurrent();
+  state.nextLocked = true;
+
+  setTimeout(function() {
+    state.nextLocked = false;
+    runCurrent();
+  }, 0);
 }
 
 function closeGameFrameVisualOnly() {
   elGameModal.classList.add("hidden");
   elGameFrame.onload = null;
   elGameFrame.src = "about:blank";
+}
+
+function closeStatsGameFrameVisualOnly() {
+  elStatsGameModal.classList.add("hidden");
+  elStatsGameFrame.onload = null;
+  elStatsGameFrame.src = "about:blank";
 }
 
 // =========================================================
@@ -2805,25 +2903,11 @@ function toggleStatsPanel() {
 }
 
 function showStatsPanel() {
-  // Сбрасываем состояние на текстовое при каждом открытии
-  if (showingGraph) {
-    // Если был показан график, переключаем обратно на текст
-    var statsBody = document.getElementById("statsBody");
-    if (statsBody) {
-      statsBody.classList.remove("hidden");
-      graphContainer.classList.add("hidden");
-      graphControls.classList.add("hidden");
-      btnToggleGraph.textContent = "📊 Граф";
-      btnToggleGraph.title = "Показать граф сценария";
-      showingGraph = false;
-    }
-  }
+  setStatsView("text");
 
   // Принудительно сбрасываем panzoom состояние
   resetPanzoom();
-  
-  // если открыта игра — не мешаем, можно запретить или просто показывать
-  // здесь оставим показывать (по вашему желанию можно блокировать)
+
   renderStats();
   elStatsPanel.classList.remove("hidden");
 }
@@ -2831,6 +2915,208 @@ function showStatsPanel() {
 function hideStatsPanel() {
   elStatsPanel.classList.add("hidden");
 }
+
+
+function getGamesCatalogItems() {
+  var games = (STORY && STORY.assets && STORY.assets.games) ? STORY.assets.games : {};
+  var gameIds = Object.keys(games);
+
+  var items = [];
+  for (var i = 0; i < gameIds.length; i++) {
+    var gameId = gameIds[i];
+    var raw = games[gameId];
+    var item = {
+      id: gameId,
+      file: "",
+      title: gameId,
+      description: "",
+      cover: ""
+    };
+
+    if (typeof raw === "string") {
+      item.file = raw;
+    } else if (raw && typeof raw === "object") {
+      item.file = typeof raw.file === "string" ? raw.file : "";
+      item.title = raw.title || gameId;
+      item.description = raw.description || "";
+      item.cover = raw.cover || "";
+    }
+
+    items.push(item);
+  }
+
+  return items;
+}
+
+function renderGamesLaunchStatus() {
+  if (!gamesStatus) return;
+
+  gamesStatus.classList.remove("ok", "warn");
+
+  if (!lastStandaloneGameInfo) {
+    gamesStatus.textContent = t("gamesLastLaunchNone");
+    return;
+  }
+
+  var text;
+  if (lastStandaloneGameInfo.manualClose) {
+    text = t("gamesLastLaunchClosed")
+      .replace("{title}", lastStandaloneGameInfo.title)
+      .replace("{difficulty}", String(lastStandaloneGameInfo.difficulty));
+    gamesStatus.classList.add("warn");
+  } else {
+    text = t("gamesLastLaunchResult")
+      .replace("{title}", lastStandaloneGameInfo.title)
+      .replace("{difficulty}", String(lastStandaloneGameInfo.difficulty))
+      .replace("{result}", String(lastStandaloneGameInfo.result));
+    gamesStatus.classList.add("ok");
+  }
+
+  gamesStatus.textContent = text;
+}
+
+function renderGamesCatalog() {
+  if (!gamesGrid) return;
+
+  var items = getGamesCatalogItems();
+  gamesGrid.innerHTML = "";
+  renderGamesLaunchStatus();
+
+  if (!items.length) {
+    var empty = document.createElement("div");
+    empty.className = "gameCatalogNoCover";
+    empty.textContent = t("gamesNoGames") || "(none)";
+    gamesGrid.appendChild(empty);
+    return;
+  }
+
+  items.forEach(function(item) {
+    var card = document.createElement("div");
+    card.className = "gameCatalogCard";
+
+    var coverWrap = document.createElement("div");
+    coverWrap.className = "gameCatalogCoverWrap";
+
+    if (item.cover) {
+      var img = document.createElement("img");
+      img.className = "gameCatalogCover";
+      img.src = item.cover;
+      img.alt = item.title;
+      img.loading = "lazy";
+      img.onerror = function() {
+        coverWrap.innerHTML = "";
+        var noCover = document.createElement("div");
+        noCover.className = "gameCatalogNoCover";
+        noCover.textContent = t("gamesNoCover");
+        coverWrap.appendChild(noCover);
+      };
+      coverWrap.appendChild(img);
+    } else {
+      var noCover = document.createElement("div");
+      noCover.className = "gameCatalogNoCover";
+      noCover.textContent = t("gamesNoCover");
+      coverWrap.appendChild(noCover);
+    }
+
+    var body = document.createElement("div");
+    body.className = "gameCatalogBody";
+
+    var title = document.createElement("div");
+    title.className = "gameCatalogTitle";
+    title.textContent = item.title;
+
+    var id = document.createElement("div");
+    id.className = "gameCatalogId";
+    id.textContent = item.id;
+
+    var desc = document.createElement("div");
+    desc.className = "gameCatalogDescription";
+    desc.textContent = item.description || "";
+
+    var actions = document.createElement("div");
+    actions.className = "gameCatalogActions";
+
+    for (var difficulty = 1; difficulty <= 5; difficulty++) {
+      (function(level) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "gameCatalogLaunchBtn";
+        btn.textContent = String(level);
+        btn.disabled = !item.file;
+
+        if (
+          lastStandaloneGameInfo &&
+          lastStandaloneGameInfo.gameId === item.id &&
+          lastStandaloneGameInfo.difficulty === level
+        ) {
+          btn.classList.add("is-active");
+        }
+
+        btn.addEventListener("click", function() {
+          openStatsGame(item, level);
+        });
+
+        actions.appendChild(btn);
+      })(difficulty);
+    }
+
+    body.appendChild(title);
+    body.appendChild(id);
+    body.appendChild(desc);
+    body.appendChild(actions);
+
+    card.appendChild(coverWrap);
+    card.appendChild(body);
+    gamesGrid.appendChild(card);
+  });
+}
+
+function openStatsGame(item, difficulty) {
+  if (!item || !item.file) {
+    if (gamesStatus) {
+      gamesStatus.textContent = t("gamesLaunchFailed");
+      gamesStatus.classList.remove("ok");
+      gamesStatus.classList.add("warn");
+    }
+    return;
+  }
+
+  state.inGame = true;
+  state.currentGame = {
+    mode: "stats",
+    gameId: item.id,
+    title: item.title || item.id,
+    difficulty: difficulty,
+    resultVar: null,
+    params: {
+      difficulty: difficulty,
+      source: "statsGamesPanel"
+    }
+  };
+
+  elStatsGameModal.classList.remove("hidden");
+
+  elStatsGameFrame.onload = function () {
+    if (!state.currentGame) return;
+
+    var payload = {
+      type: "gameInit",
+      gameId: state.currentGame.gameId,
+      difficulty: state.currentGame.difficulty,
+      source: "statsGamesPanel"
+    };
+
+    try {
+      elStatsGameFrame.contentWindow.postMessage(payload, "*");
+      console.log("[GAME] stats gameInit sent:", payload);
+    } catch (e) {
+      console.error("[GAME] failed to send stats gameInit", e);
+    }
+  };
+
+  elStatsGameFrame.src = item.file;
+}
+
 
 // Генерация статистики по STORY.
 // Сделано так, чтобы потом легко дописывать новые показатели: просто добавляете новые строки в statsLines.
@@ -3244,16 +3530,22 @@ function renderStats() {
       elStatsBody.scrollTop = 0;
 
 
-      // Модифицируем существующую функцию renderStats для обновления графа при переключении
-      // Добавьте ЭТИ строки в конец функции renderStats:
-      // Если сейчас показывается граф, обновляем его
       if (showingGraph && window.STORY) {
-        // Небольшая задержка, чтобы дать время обновиться DOM
         setTimeout(function() {
           try {
             renderMermaidGraph();
           } catch (e) {
             console.error("[STATS] Mermaid graph rendering error:", e);
+          }
+        }, 100);
+      }
+
+      if (showingGames && window.STORY) {
+        setTimeout(function() {
+          try {
+            renderGamesCatalog();
+          } catch (e) {
+            console.error("[STATS] Games catalog rendering error:", e);
           }
         }, 100);
       }

@@ -555,7 +555,8 @@ body {
 
 .gameFrame,
 .gameControls,
-#btnCloseGame {
+#btnCloseGame,
+#btnCloseStatsGame {
   touch-action: auto;
 }
 
@@ -773,7 +774,7 @@ body {
   background: rgba(0,0,0,0.6);
 }
 
-.statsBody, .graphContainer {
+.statsBody, .graphContainer, .gamesContainer {
   width: 100%;
   height: 100%;
   position: absolute;
@@ -812,6 +813,140 @@ body {
     height: calc(100% - 2rem); /* Отступы 1rem сверху и снизу */
   } 
 }
+
+
+
+.gamesContainer {
+  padding: var(--modal-padding);
+  background: rgba(0,0,0,0.6);
+}
+
+.gamesStatus {
+  margin-bottom: var(--modal-padding);
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.92);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.gamesStatus.ok {
+  border-color: rgba(101,213,157,0.42);
+  color: #d8ffe8;
+}
+
+.gamesStatus.warn {
+  border-color: rgba(255,201,107,0.42);
+  color: #ffe5ae;
+}
+
+.gamesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--modal-padding);
+  align-content: start;
+}
+
+.gameCatalogCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  border-radius: calc(var(--modal-radius) + 0.1rem);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  overflow: hidden;
+}
+
+.gameCatalogCoverWrap {
+  aspect-ratio: 16 / 9;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.gameCatalogCover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gameCatalogNoCover {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: rgba(255,255,255,0.55);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.gameCatalogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: var(--modal-padding);
+}
+
+.gameCatalogTitle {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.gameCatalogId {
+  font-size: 0.78rem;
+  opacity: 0.65;
+  word-break: break-word;
+}
+
+.gameCatalogDescription {
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: rgba(255,255,255,0.82);
+  min-height: 3.6em;
+}
+
+.gameCatalogActions {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.gameCatalogLaunchBtn {
+  min-height: 2.6rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gameCatalogLaunchBtn:hover {
+  background: rgba(255,255,255,0.16);
+}
+
+.gameCatalogLaunchBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gameCatalogLaunchBtn.is-active {
+  border-color: rgba(122,162,255,0.6);
+  background: rgba(122,162,255,0.18);
+}
+
+
+
+
+
+
 
 /* Замените существующие стили для Mermaid на эти */
 

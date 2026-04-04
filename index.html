@@ -25,6 +25,7 @@
           <div class="statsTitle">Script Statistics</div>
           <div style="display: flex; gap: 0.5rem;">
             <button id="btnToggleGraph" class="btn" type="button" title="Show/hide graph">📊 Graph</button>
+            <button id="btnShowGames" class="btn" type="button" title="Show/hide games">🎮 Games</button>
             <button id="btnCloseStats" class="btn" type="button" aria-label="Close stats">✕</button>
           </div>
         </div>
@@ -53,6 +54,13 @@
                 <button id="zoomResetBtn" class="graph-zoom-btn graph-zoom-reset" title="Reset zoom">⟲</button>
               </div>
           </div>
+
+          <!-- Каталог игр -->
+          <div id="gamesContainer" class="gamesContainer hidden">
+            <div id="gamesStatus" class="gamesStatus">Last launch: —</div>
+            <div id="gamesGrid" class="gamesGrid"></div>
+          </div>
+
         </div>
         
         <!-- Панель управления графиком (изначально скрыта) -->
@@ -60,6 +68,16 @@
           <button id="btnCopyMermaid" class="btn" type="button">📋 Copy code</button>
           <!-- <a href="https://mermaid.live/" target="_blank" class="btn" style="text-decoration: none;">🔗 Mermaid Live</a> -->
           <button id="btnRefreshGraph" class="btn" type="button">🔄 Refresh</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Контейнер standalone-игры из вкладки "Игры" -->
+    <div id="statsGameModal" class="gameModal hidden" aria-label="Game">
+      <div class="gameFrameWrap">
+        <iframe id="statsGameFrame" class="gameFrame" title="Standalone mini game" src="about:blank"></iframe>
+        <div class="gameControls">
+          <button id="btnCloseStatsGame" class="btn" type="button">Close Game</button>
         </div>
       </div>
     </div>
