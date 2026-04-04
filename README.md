@@ -58,7 +58,7 @@ No setup. No dependencies. Just open `index.html` and start.
 -   🔀 **branching storylines**
 -   🎵 background music support
 -   📊 built-in **resource loading statistics**
--   📘 **Specifications:** [Story scripting](SPEC_STORY.md), [Mini-games](SPEC_GAME.md)
+-   📘 **Specifications:** [Story scripting](SPEC-STORY.md), [Mini-games](SPEC-GAME.md)
 
 ---
 
@@ -129,8 +129,8 @@ This engine is suitable for:
     │
     ├── docs/
     │    └── specs/
-    │         ├── SPEC_STORY.md      ← scripting specification
-    │         └── SPEC_GAME.md       ← mini-game specification
+    │         ├── SPEC-STORY.md      ← scripting specification
+    │         └── SPEC-GAME.md       ← mini-game specification
     │
     ├── lib/
     └── assets/
@@ -181,24 +181,24 @@ startScene = intro
 lang = en
 
 [bg]
-campusHall file=assets/backgrounds/bg_campus_hall.jpg
+campusHall file=assets/backgrounds/bg-campus-hall.jpg
 
 [char]
-anna emotion=neutral file=assets/characters/ch_anna_neutral.png name="Анна" color=#0F0
-anna emotion=smile file=assets/characters/ch_anna.png  # добавление эмоций персонажу anna
-igor emotion=neutral file=assets/characters/ch_igor_neutral.png name="Игорь" color=#F00
+anna emotion=neutral file=assets/characters/ch-anna-neutral.png name="Анна" color=#0F0
+anna emotion=smile file=assets/characters/ch-anna.png  # добавление эмоций персонажу anna
+igor emotion=neutral file=assets/characters/ch-igor-neutral.png name="Игорь" color=#F00
 
-igor name="Игорь" file=assets/characters/ch_igor_smile.png  # Если не указана эмоция, то считается neutral
+igor name="Игорь" file=assets/characters/ch-igor-smile.png  # Если не указана эмоция, то считается neutral
 igor color=#F00  # можно отдельно дополнять значения для персонажа
 
 [audio]
-bgmDay file=assets/audio/bgm_campus_day.mp3
+bgmDay file=assets/audio/bgm-campus-day.mp3
 
 [var]
 resultGame = 0
 
 [game]
-gameCoffeeRush file=assets/games/coffee_rush.html
+gameCoffeeRush file=assets/games/coffee-rush.html
 
 [scene]
 scene intro
@@ -229,11 +229,11 @@ if resultGame == 0 -> bad_end
 
 ### Story Scripting
 
-See [docs/specs/SPEC_STORY.md](docs/specs/SPEC_STORY.md).
+See [docs/specs/SPEC-STORY.md](docs/specs/SPEC-STORY.md).
 
 ### Mini-games
 
-See [docs/specs/SPEC_GAME.md](docs/specs/SPEC_GAME.md).
+See [docs/specs/SPEC-GAME.md](docs/specs/SPEC-GAME.md).
 
 ---
 
@@ -287,7 +287,7 @@ The engine supports embedding mini-games via iframe.
 ⚠️ Important:
 Mini-games must follow the strict communication protocol described in:
 
-👉 [docs/specs/SPEC_GAME.md](docs/specs/SPEC_GAME.md)
+👉 [docs/specs/SPEC-GAME.md](docs/specs/SPEC-GAME.md)
 
 This includes:
 - initialization via `gameInit`
