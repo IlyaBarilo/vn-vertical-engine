@@ -168,6 +168,36 @@ body {
   --graph-label-color: #000000;
   --graph-label-font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   
+  /* 
+  МАСШТАБ ПАНЕЛИ УПРАВЛЕНИЯ ГРАФОМ
+  graph-zoom-ui-scale
+  1    = базовый размер
+  0.85 = чуть меньше
+  1.15 = чуть больше
+   */
+  --graph-zoom-ui-scale: 0.85;
+
+  --graph-zoom-panel-offset: calc(1.25rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-panel-gap: calc(0.5rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-panel-padding: calc(0.5rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-panel-radius: calc(2.5rem * var(--graph-zoom-ui-scale));
+
+  --graph-zoom-btn-size: calc(2.5rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-btn-font-size: calc(1.25rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-btn-radius: 50%;
+
+  --graph-zoom-reset-padding-x: calc(0.95rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-pill-font-size: calc(0.95rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-pill-padding-x: calc(0.65rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-pill-radius: calc(2.5rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-pill-margin-right: calc(0.3rem * var(--graph-zoom-ui-scale));
+
+  --graph-zoom-backdrop-blur: calc(0.25rem * var(--graph-zoom-ui-scale));
+  --graph-zoom-hover-scale: 1.1;
+  --graph-zoom-active-scale: 0.95;
+
+
+
   /* Настройки для текста над линиями */
   --graph-edgeLabel-bg: #ffffff;
   --graph-edgeLabel-border: 1px solid #999;
@@ -914,26 +944,26 @@ body {
 /* Панель управления масштабом */
 .graph-zoom-controls {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  bottom: var(--graph-zoom-panel-offset);
+  right: var(--graph-zoom-panel-offset);
   display: flex;
-  gap: 8px;
+  gap: var(--graph-zoom-panel-gap);
   z-index: 100;
   background: rgba(0,0,0,0.7);
-  padding: 8px;
-  border-radius: 40px;
-  backdrop-filter: blur(4px);
+  padding: var(--graph-zoom-panel-padding);
+  border-radius: var(--graph-zoom-panel-radius);
+  backdrop-filter: blur(var(--graph-zoom-backdrop-blur));
   border: 1px solid rgba(255,255,255,0.2);
 }
 
 .graph-zoom-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: var(--graph-zoom-btn-size);
+  height: var(--graph-zoom-btn-size);
+  border-radius: var(--graph-zoom-btn-radius);
   background: rgba(255,255,255,0.2);
   color: white;
   border: 1px solid rgba(255,255,255,0.3);
-  font-size: 20px;
+  font-size: var(--graph-zoom-btn-font-size);
   font-weight: bold;
   cursor: pointer;
   display: flex;
@@ -944,30 +974,30 @@ body {
 
 .graph-zoom-btn:hover {
   background: rgba(255,255,255,0.3);
-  transform: scale(1.1);
+  transform: scale(var(--graph-zoom-hover-scale));
 }
 
 .graph-zoom-btn:active {
-  transform: scale(0.95);
+  transform: scale(var(--graph-zoom-active-scale));
 }
 
 .graph-zoom-reset {
   width: auto;
-  padding: 0 15px;
-  border-radius: 40px;
-  font-size: 14px;
+  padding: 0 var(--graph-zoom-reset-padding-x);
+  border-radius: var(--graph-zoom-panel-radius);
+  font-size: var(--graph-zoom-pill-font-size);
 }
 
 /* Индикатор масштаба */
 .graph-zoom-level {
   color: white;
-  font-size: 14px;
-  padding: 0 10px;
+  font-size: var(--graph-zoom-pill-font-size);
+  padding: 0 var(--graph-zoom-pill-padding-x);
   display: flex;
   align-items: center;
   background: rgba(255,255,255,0.1);
-  border-radius: 40px;
-  margin-right: 5px;
+  border-radius: var(--graph-zoom-pill-radius);
+  margin-right: var(--graph-zoom-pill-margin-right);
 }
 
 
