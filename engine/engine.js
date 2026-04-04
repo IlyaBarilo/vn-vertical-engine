@@ -3460,10 +3460,21 @@ function checkAssetsFiles() {
 
     // Игры
     if (STORY.assets.games) {
-      Object.entries(STORY.assets.games).forEach(([id, path]) => {
-        if (typeof path !== "string" || path.trim() === "") {
+      Object.entries(STORY.assets.games).forEach(([id, game]) => {
+        var gamePath = "";
+
+        // Новый формат: объект { file, title, description, cover }
+        if (game && typeof game === "object") {
+          gamePath = typeof game.file === "string" ? game.file.trim() : "";
+        }
+        // На всякий случай поддержка старого формата, если где-то остался
+        else if (typeof game === "string") {
+          gamePath = game.trim();
+        }
+
+        if (!gamePath) {
           result.missing.push({
-            path: `[invalid path: ${String(path)}]`,
+            path: `[invalid path: ${String(game)}]`,
             refs: [`game: ${id}`]
           });
           return;
@@ -3471,7 +3482,7 @@ function checkAssetsFiles() {
 
         allFiles.push({
           id: id,
-          path: path.trim(),
+          path: gamePath,
           type: 'game',
           category: 'game',
           ref: id
