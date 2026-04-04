@@ -1,0 +1,1306 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game Tester</title>
+  <style>
+    :root{
+      --panel:#121933;
+      --panel2:#182243;
+      --border:#2c3763;
+      --text:#eef2ff;
+      --muted:#aeb8df;
+      --accent:#7aa2ff;
+      --good:#65d59d;
+      --warn:#ffc96b;
+      --bad:#ff8585;
+      --shadow:0 14px 28px rgba(0,0,0,.24);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      color:var(--text);
+      font:14px/1.45 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(122,162,255,.14), transparent 28%),
+        linear-gradient(180deg, #0a0f1d 0%, #0f1630 100%);
+      overflow:hidden;
+    }
+
+    .app{
+      height:100vh;
+      padding:12px;
+      display:grid;
+      grid-template-columns: 320px 360px minmax(320px,1fr);
+      gap:12px;
+    }
+
+    .panel{
+      min-width:0;
+      min-height:0;
+      background:rgba(18,25,51,.96);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+
+    .panel-header{
+      padding:14px 16px 10px;
+      border-bottom:1px solid rgba(255,255,255,.07);
+      flex:0 0 auto;
+    }
+
+    .panel-title{
+      margin:0;
+      font-size:18px;
+      line-height:1.2;
+    }
+
+    .panel-sub{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .panel-body{
+      min-height:0;
+      overflow:auto;
+      padding:12px;
+      display:grid;
+      gap:12px;
+      align-content:stretch;
+    }
+
+    .section{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:14px;
+      padding:12px;
+      display:grid;
+      gap:10px;
+    }
+
+    .section h2{
+      margin:0;
+      font-size:13px;
+      line-height:1.2;
+    }
+
+    .muted{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .small{
+      font-size:11px;
+    }
+
+    .grid{
+      display:grid;
+      gap:10px;
+    }
+
+    .grid.two{
+      grid-template-columns:1fr 1fr;
+    }
+
+    label{
+      display:grid;
+      gap:6px;
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    input, select, textarea, button{
+      font:inherit;
+    }
+
+    input, select, textarea{
+      width:100%;
+      color:var(--text);
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:9px 10px;
+      outline:none;
+    }
+
+    textarea{
+      resize:vertical;
+      min-height:160px;
+      max-height:240px;
+      font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      line-height:1.4;
+    }
+
+    input:focus, select:focus, textarea:focus{
+      border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(122,162,255,.16);
+    }
+
+    .actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+
+    button{
+      border:0;
+      border-radius:12px;
+      padding:10px 12px;
+      cursor:pointer;
+      background:#2b3768;
+      color:var(--text);
+      transition:transform .12s ease, background .12s ease;
+    }
+
+    button:hover{transform:translateY(-1px)}
+    button:active{transform:translateY(0)}
+    button.primary{background:var(--accent);color:#091228;font-weight:700}
+    button.good{background:var(--good);color:#0c2418;font-weight:700}
+    button.warn{background:var(--warn);color:#342300;font-weight:700}
+    button.bad{background:var(--bad);color:#300808;font-weight:700}
+
+    .status{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.4;
+    }
+    .status.ok{color:#d8ffe8;border-color:rgba(101,213,157,.42)}
+    .status.warn{color:#ffe5ae;border-color:rgba(255,201,107,.42)}
+    .status.err{color:#ffd6d6;border-color:rgba(255,133,133,.42)}
+
+    .pill-row{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .pill{
+      border-radius:999px;
+      padding:5px 9px;
+      font-size:11px;
+      color:var(--muted);
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .log{
+      min-height:220px;
+      height:100%;
+      overflow:auto;
+      background:#0b1020;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    }
+
+    .log-entry{margin:0 0 10px}
+    .log-time{color:#87a1ff}
+    .log-dir{color:#8be9fd}
+    .log-type{color:#f1fa8c}
+
+    .preview-panel{
+      overflow:hidden;
+    }
+
+    .preview-top{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.07);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex:0 0 auto;
+    }
+
+    .preview-meta{
+      color:var(--muted);
+      font-size:12px;
+      text-align:right;
+      white-space:pre-line;
+    }
+
+
+    .preview-wrap{
+      min-height:0;
+      flex:1 1 auto;
+      position:relative;
+      overflow:hidden;
+      background:var(--panel2);
+    }
+
+    .frame-viewport{
+      position:absolute;
+      inset:0;
+      overflow:hidden;
+      background:var(--panel2);
+    }
+
+    iframe{
+      position:absolute;
+      top:50%;
+      left:50%;
+      width:var(--virtual-width, 360px);
+      height:var(--virtual-height, 640px);
+      border:0;
+      display:block;
+      background:#000;
+      transform-origin:center center;
+      transform:translate(-50%, -50%) scale(var(--frame-scale, 1));
+    }
+
+    .info-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .info-card{
+      border-radius:12px;
+      padding:8px 10px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.07);
+    }
+
+    .info-label{
+      font-size:11px;
+      color:var(--muted);
+      margin-bottom:4px;
+    }
+
+    .info-value{
+      font-size:12px;
+      line-height:1.35;
+    }
+
+    @media (max-width: 1280px){
+      .app{ grid-template-columns: 300px 330px minmax(280px,1fr); }
+    }
+
+    @media (max-width: 1080px){
+      body{overflow:auto}
+      .app{
+        height:auto;
+        min-height:100vh;
+        grid-template-columns:1fr;
+      }
+      .preview-panel{ min-height:70vh; }
+    }
+
+
+    .actions-log-body{
+      align-content:start;
+    }
+
+    .actions-log-body .section:nth-last-child(2){
+      min-height:0;
+      height:auto;
+    }
+
+    .log{
+      min-height:0;
+      height:100%;
+      overflow:auto;
+      background:#0b1020;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    }
+
+
+
+    .diag-pill{
+      transition:background .12s ease, border-color .12s ease, color .12s ease;
+    }
+
+    .diag-pill.ok{
+      color:#d8ffe8;
+      background:rgba(101,213,157,.14);
+      border-color:rgba(101,213,157,.42);
+    }
+
+    .diag-pill.warn{
+      color:#ffe5ae;
+      background:rgba(255,201,107,.14);
+      border-color:rgba(255,201,107,.42);
+    }
+
+    .diag-pill.err{
+      color:#ffd6d6;
+      background:rgba(255,133,133,.14);
+      border-color:rgba(255,133,133,.42);
+    }
+
+    .diag-log{
+      min-height:110px;
+      height:110px;
+    }
+
+
+    .left-column-log{
+      min-height:220px;
+      max-height:420px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <div class="panel-header">
+        <h1 class="panel-title">Тестер мини-игр</h1>
+        <div class="panel-sub">
+          Оставлены только настройки виртуального разрешения. Предпросмотр автоматически вписывает игру в доступную область по центру с сохранением пропорций.
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="section">
+          <h2>Игра и контракт</h2>
+          <label>
+            Путь к HTML мини-игры
+            <input id="gameUrl" type="text" placeholder="Например: games/coffee_rush.html" />
+          </label>
+          <label>
+            Локальный HTML-файл игры для диагностики (запуск сразу после выбора)
+            <input id="gameFile" type="file" accept=".html,.htm,text/html" />
+          </label>
+          <div class="small muted">
+            Используйте этот вариант для глубокой диагностики без сервера. Лучше всего подходит для игр, собранных в один HTML-файл.
+          </div>
+          <div class="grid two">
+            <label>
+              Game ID
+              <input id="gameId" type="text" value="coffeeRush" />
+            </label>
+            <label>
+              Difficulty
+              <input id="difficulty" type="number" min="0" step="1" value="3" />
+            </label>
+          </div>
+          <div class="pill-row">
+            <span class="pill">iframe</span>
+            <span class="pill">postMessage</span>
+            <span class="pill">auto fit</span>
+            <span class="pill">portrait</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Виртуальное разрешение</h2>
+          <div class="grid two">
+            <label>
+              Виртуальная ширина, px
+              <input id="virtualWidth" type="number" min="120" step="1" value="360" />
+            </label>
+            <label>
+              Виртуальная высота, px
+              <input id="virtualHeight" type="number" min="200" step="1" value="640" />
+            </label>
+          </div>
+          <label>
+            Вертикальный пресет
+            <select id="resolutionPreset">
+              <option value="360x640">360 × 640</option>
+              <option value="390x844">390 × 844</option>
+              <option value="412x915">412 × 915</option>
+              <option value="720x1280">720 × 1280</option>
+              <option value="1080x1920">1080 × 1920</option>
+              <option value="1440x2560">1440 × 2560</option>
+              <option value="1720x1080">1720 × 1080</option>
+              <option value="2160x3840">2160 × 3840 (4K vertical)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="muted">
+            Область просмотра заполняется максимально. Игра упирается в края preview по большей стороне и остаётся по центру без декоративной рамки.
+          </div>
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="info-label">Автоматический scale</div>
+              <div class="info-value" id="fitScaleInfo">—</div>
+            </div>
+            <div class="info-card">
+              <div class="info-label">Итоговый размер в области</div>
+              <div class="info-value" id="renderedSizeInfo">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Payload для gameInit</h2>
+          <label>
+            JSON
+            <textarea id="payloadEditor">{
+  "type": "gameInit",
+  "gameId": "coffeeRush",
+  "difficulty": 3,
+  "targetScore": 10
+}</textarea>
+          </label>
+          <div class="small muted">
+            <code>gameId</code> и <code>difficulty</code> синхронизируются автоматически.
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Лог сообщений</h2>
+          <div id="messageLog" class="log left-column-log"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h1 class="panel-title">Действия и диагностика</h1>
+        <div class="panel-sub">
+          Здесь находятся кнопки управления, статус и диагностика ввода. Лог сообщений перенесён в левую колонку.
+        </div>
+      </div>
+      <div class="panel-body actions-log-body">
+        <div class="section">
+          <h2>Управление</h2>
+          <div class="actions">
+            <button id="loadGameBtn" class="primary">Загрузить игру</button>
+            <button id="loadGameDiagBtn">Загрузить файл с диагностикой</button>
+            <button id="sendInitBtn">Отправить gameInit</button>
+            <button id="saveSettingsBtn" class="good">Сохранить настройки</button>
+            <button id="resetSettingsBtn" class="warn">Сбросить настройки</button>
+            <button id="recalcBtn">Пересчитать fit</button>
+            <button id="clearLogBtn" class="bad">Очистить лог</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Статус</h2>
+          <div id="status" class="status">Готово к работе.</div>
+          <div class="small muted">
+            Проверяется строгий контракт: один <code>gameResult</code>, числовой <code>result</code>.
+          </div>
+        </div>
+
+
+
+
+        <div class="section">
+          <h2>Диагностика ввода</h2>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="info-label">Последняя цель</div>
+              <div class="info-value" id="diagTarget">—</div>
+            </div>
+            <div class="info-card">
+              <div class="info-label">Слушатели на пути события</div>
+              <div class="info-value" id="diagListeners">—</div>
+            </div>
+          </div>
+
+          <div class="pill-row">
+            <span id="diagEvtPointerDown" class="pill diag-pill">pointerdown</span>
+            <span id="diagEvtPointerUp" class="pill diag-pill">pointerup</span>
+            <span id="diagEvtPointerCancel" class="pill diag-pill">pointercancel</span>
+            <span id="diagEvtMouseDown" class="pill diag-pill">mousedown</span>
+            <span id="diagEvtMouseUp" class="pill diag-pill">mouseup</span>
+            <span id="diagEvtTouchStart" class="pill diag-pill">touchstart</span>
+            <span id="diagEvtTouchEnd" class="pill diag-pill">touchend</span>
+            <span id="diagEvtClick" class="pill diag-pill">click</span>
+          </div>
+
+          <div id="diagRisk" class="status">Риск пока не оценён.</div>
+          <div id="diagNote" class="muted small">
+            Для глубокой диагностики без сервера загружайте игру через локальный HTML-файл.
+          </div>
+
+          <div id="diagEventLog" class="log diag-log"></div>
+        </div>
+
+
+
+
+        
+      </div>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-top">
+        <div>
+          <div class="panel-title" style="font-size:16px;">Предпросмотр игры</div>
+          <div class="panel-sub">Игра занимает максимум доступного места с сохранением пропорций.</div>
+        </div>
+        <div id="viewerMeta" class="preview-meta">—</div>
+      </div>
+      <div class="preview-wrap">
+        <div class="frame-viewport" id="frameViewport">
+          <iframe id="gameFrame" title="Mini-game frame" src="about:blank" allow="autoplay"></iframe>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'vn-game-tester-settings-v4';
+
+    const els = {
+      gameUrl: document.getElementById('gameUrl'),
+      gameId: document.getElementById('gameId'),
+      difficulty: document.getElementById('difficulty'),
+      virtualWidth: document.getElementById('virtualWidth'),
+      virtualHeight: document.getElementById('virtualHeight'),
+      resolutionPreset: document.getElementById('resolutionPreset'),
+      payloadEditor: document.getElementById('payloadEditor'),
+      frameViewport: document.getElementById('frameViewport'),
+      gameFrame: document.getElementById('gameFrame'),
+      viewerMeta: document.getElementById('viewerMeta'),
+      fitScaleInfo: document.getElementById('fitScaleInfo'),
+      renderedSizeInfo: document.getElementById('renderedSizeInfo'),
+      status: document.getElementById('status'),
+      messageLog: document.getElementById('messageLog'),
+      loadGameBtn: document.getElementById('loadGameBtn'),
+      sendInitBtn: document.getElementById('sendInitBtn'),
+      saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+      resetSettingsBtn: document.getElementById('resetSettingsBtn'),
+      recalcBtn: document.getElementById('recalcBtn'),
+      clearLogBtn: document.getElementById('clearLogBtn'),
+      gameFile: document.getElementById('gameFile'),
+      loadGameDiagBtn: document.getElementById('loadGameDiagBtn'),
+      diagTarget: document.getElementById('diagTarget'),
+      diagListeners: document.getElementById('diagListeners'),
+      diagRisk: document.getElementById('diagRisk'),
+      diagNote: document.getElementById('diagNote'),
+      diagEventLog: document.getElementById('diagEventLog'),
+      diagEvtPointerDown: document.getElementById('diagEvtPointerDown'),
+      diagEvtPointerUp: document.getElementById('diagEvtPointerUp'),
+      diagEvtPointerCancel: document.getElementById('diagEvtPointerCancel'),
+      diagEvtMouseDown: document.getElementById('diagEvtMouseDown'),
+      diagEvtMouseUp: document.getElementById('diagEvtMouseUp'),
+      diagEvtTouchStart: document.getElementById('diagEvtTouchStart'),
+      diagEvtTouchEnd: document.getElementById('diagEvtTouchEnd'),
+      diagEvtClick: document.getElementById('diagEvtClick')
+    };
+
+    let gameResultCount = 0;
+
+
+
+
+    const inputDiag = {
+      ready: false,
+      expected: false,
+      fallback: false,
+      lastEventAt: 0,
+      pendingClickTimer: 0,
+      lines: []
+    };
+
+    function setDiagRisk(text, mode=''){
+      els.diagRisk.textContent = text;
+      els.diagRisk.className = 'status' + (mode ? ' ' + mode : '');
+    }
+
+    function setDiagNote(text){
+      els.diagNote.textContent = text;
+    }
+
+    function setDiagPill(el, mode=''){
+      if (!el) return;
+      el.className = 'pill diag-pill' + (mode ? ' ' + mode : '');
+    }
+
+    function resetDiagPills(){
+      setDiagPill(els.diagEvtPointerDown, '');
+      setDiagPill(els.diagEvtPointerUp, '');
+      setDiagPill(els.diagEvtPointerCancel, '');
+      setDiagPill(els.diagEvtMouseDown, '');
+      setDiagPill(els.diagEvtMouseUp, '');
+      setDiagPill(els.diagEvtTouchStart, '');
+      setDiagPill(els.diagEvtTouchEnd, '');
+      setDiagPill(els.diagEvtClick, '');
+    }
+
+    function resetInputDiag(){
+      inputDiag.ready = false;
+      inputDiag.expected = false;
+      inputDiag.fallback = false;
+      inputDiag.lastEventAt = 0;
+
+      if (inputDiag.pendingClickTimer){
+        clearTimeout(inputDiag.pendingClickTimer);
+        inputDiag.pendingClickTimer = 0;
+      }
+
+      inputDiag.lines = [];
+      els.diagTarget.textContent = '—';
+      els.diagListeners.textContent = '—';
+      els.diagEventLog.textContent = '';
+      resetDiagPills();
+      setDiagRisk('Риск пока не оценён.', '');
+      setDiagNote('Для глубокой диагностики без сервера загружайте игру через локальный HTML-файл.');
+    }
+
+    function appendDiagLine(text){
+      inputDiag.lines.unshift(text);
+      inputDiag.lines = inputDiag.lines.slice(0, 40);
+      els.diagEventLog.textContent = inputDiag.lines.join('\n');
+    }
+
+    function diagPillByType(type){
+      const map = {
+        pointerdown: els.diagEvtPointerDown,
+        pointerup: els.diagEvtPointerUp,
+        pointercancel: els.diagEvtPointerCancel,
+        mousedown: els.diagEvtMouseDown,
+        mouseup: els.diagEvtMouseUp,
+        touchstart: els.diagEvtTouchStart,
+        touchend: els.diagEvtTouchEnd,
+        click: els.diagEvtClick
+      };
+      return map[type] || null;
+    }
+
+    function describeListenerSummary(summary){
+      if (!summary) return '—';
+      return [
+        'click:' + (summary.click ? 'yes' : 'no'),
+        'pointer:' + (summary.pointer ? 'yes' : 'no'),
+        'touch:' + (summary.touch ? 'yes' : 'no'),
+        'mouse:' + (summary.mouse ? 'yes' : 'no')
+      ].join(' · ');
+    }
+
+    const INPUT_DIAG_SCRIPT = `
+    (() => {
+      const registered = new WeakMap();
+      const origAdd = EventTarget.prototype.addEventListener;
+
+      function remember(target, type){
+        let set = registered.get(target);
+        if (!set){
+          set = new Set();
+          registered.set(target, set);
+        }
+        set.add(String(type));
+      }
+
+      EventTarget.prototype.addEventListener = function(type, listener, options){
+        try { remember(this, type); } catch (_) {}
+        return origAdd.call(this, type, listener, options);
+      };
+
+      function nodeLabel(node){
+        try{
+          if (node === window) return 'window';
+          if (node === document) return 'document';
+          if (!node) return 'null';
+          if (node.nodeType !== 1){
+            return node.nodeName ? String(node.nodeName).toLowerCase() : 'node';
+          }
+
+          let label = node.tagName.toLowerCase();
+          if (node.id) label += '#' + node.id;
+          if (node.classList && node.classList.length){
+            label += '.' + Array.from(node.classList).slice(0, 3).join('.');
+          }
+          return label;
+        } catch (_) {
+          return 'unknown';
+        }
+      }
+
+      function collectSummaryForNode(node){
+        const summary = {
+          click: false,
+          pointer: false,
+          touch: false,
+          mouse: false,
+          types: []
+        };
+
+        if (!node || node.nodeType !== 1){
+          return summary;
+        }
+
+        try{
+          if (typeof node.onclick === 'function') summary.click = true;
+          if (typeof node.onpointerdown === 'function' || typeof node.onpointerup === 'function') summary.pointer = true;
+          if (typeof node.ontouchstart === 'function' || typeof node.ontouchend === 'function') summary.touch = true;
+          if (typeof node.onmousedown === 'function' || typeof node.onmouseup === 'function') summary.mouse = true;
+        } catch (_) {}
+
+        const set = registered.get(node);
+        if (set){
+          for (const type of set){
+            if (type === 'click') summary.click = true;
+            if (type.indexOf('pointer') === 0) summary.pointer = true;
+            if (type.indexOf('touch') === 0) summary.touch = true;
+            if (type.indexOf('mouse') === 0) summary.mouse = true;
+            summary.types.push(nodeLabel(node) + ':' + type);
+          }
+        }
+
+        summary.types = Array.from(new Set(summary.types)).slice(0, 12);
+        return summary;
+      }
+
+
+
+
+      function findInteractiveNode(start){
+        if (!start || start.nodeType !== 1) return null;
+
+        const selector = [
+          'button',
+          '[role="button"]',
+          'a',
+          'input',
+          'select',
+          'textarea',
+          '[onclick]',
+          '[onpointerdown]',
+          '[onpointerup]',
+          '[ontouchstart]',
+          '[ontouchend]'
+        ].join(',');
+
+        return start.closest(selector) || start;
+      }
+
+      function flashProblemNode(node, color){
+        if (!node || node.nodeType !== 1) return;
+
+        const prevOutline = node.style.outline;
+        const prevOutlineOffset = node.style.outlineOffset;
+        const prevBoxShadow = node.style.boxShadow;
+        const prevTransition = node.style.transition;
+
+        node.style.transition = 'outline .12s ease, box-shadow .12s ease';
+        node.style.outline = '4px solid ' + color;
+        node.style.outlineOffset = '2px';
+        node.style.boxShadow = '0 0 0 6px rgba(255, 80, 80, .22)';
+
+        setTimeout(() => {
+          node.style.outline = prevOutline;
+          node.style.outlineOffset = prevOutlineOffset;
+          node.style.boxShadow = prevBoxShadow;
+          node.style.transition = prevTransition;
+        }, 900);
+      }
+
+
+
+
+      function send(payload){
+        try{
+          parent.postMessage(Object.assign({ __testerDiag: true }, payload), '*');
+        } catch (_) {}
+      }
+
+      function onAnyEvent(e){
+        const interactiveNode = findInteractiveNode(e.target);
+        const summary = collectSummaryForNode(interactiveNode || e.target);
+
+        if (
+          interactiveNode &&
+          e.type === 'click' &&
+          (e.pointerType === 'mouse' || e.pointerType === '' || e.pointerType == null) &&
+          summary.click &&
+          !summary.pointer &&
+          !summary.touch
+        ){
+          flashProblemNode(interactiveNode, '#ff5c5c');
+        }
+
+        send({
+          kind: 'event',
+          eventType: e.type,
+          pointerType: e.pointerType || (e.type.indexOf('touch') === 0 ? 'touch' : e.type.indexOf('mouse') === 0 ? 'mouse' : 'unknown'),
+          isTrusted: !!e.isTrusted,
+          target: nodeLabel(e.target),
+          interactiveTarget: nodeLabel(interactiveNode || e.target),
+          listenerSummary: summary,
+          timeStamp: typeof e.timeStamp === 'number' ? e.timeStamp : 0
+        });
+      }
+
+      ['pointerdown','pointerup','pointercancel','mousedown','mouseup','touchstart','touchend','click'].forEach((type) => {
+        origAdd.call(document, type, onAnyEvent, true);
+      });
+
+      send({ kind: 'ready' });
+    })();
+    `;
+
+    function buildInstrumentedSrcdoc(html){
+      const closeTag = '</scr' + 'ipt>';
+      const openTag = '<scr' + 'ipt>';
+      const escapedCloseTag = '<\\\\/scr' + 'ipt>';
+
+      const safeScript = INPUT_DIAG_SCRIPT.split(closeTag).join(escapedCloseTag);
+      const injected = openTag + safeScript + closeTag;
+
+      if (/<head[\s>]/i.test(html)){
+        return html.replace(/<head([^>]*)>/i, '<head$1>' + injected);
+      }
+
+      if (/<html[\s>]/i.test(html)){
+        return html.replace(/<html([^>]*)>/i, '<html$1><head>' + injected + '</head>');
+      }
+
+      return '<head>' + injected + '</head>' + html;
+    }
+
+    function handleDiagEvent(data){
+      const now = performance.now();
+
+      if (!inputDiag.lastEventAt || now - inputDiag.lastEventAt > 700){
+        resetDiagPills();
+      }
+
+      inputDiag.lastEventAt = now;
+
+      const pill = diagPillByType(data.eventType);
+      setDiagPill(pill, data.eventType === 'pointercancel' ? 'err' : 'ok');
+
+      els.diagTarget.textContent = (data.interactiveTarget || data.target || '—') + ' [' + (data.pointerType || 'unknown') + ']';
+      els.diagListeners.textContent = describeListenerSummary(data.listenerSummary);
+
+      appendDiagLine(
+        '[' + new Date().toLocaleTimeString() + '] ' +
+        data.eventType + ' / ' + (data.pointerType || 'unknown') +
+        ' / target=' + (data.target || '—')
+      );
+
+      const summary = data.listenerSummary || {};
+      const clickOnly = !!summary.click && !summary.pointer && !summary.touch;
+
+      if (inputDiag.pendingClickTimer){
+        clearTimeout(inputDiag.pendingClickTimer);
+        inputDiag.pendingClickTimer = 0;
+      }
+
+      if (data.eventType === 'pointercancel'){
+        setDiagRisk('pointercancel: цепочка ввода оборвалась.', 'err');
+        setDiagNote('Это сильный сигнал риска для реального тач-экрана.');
+        return;
+      }
+
+      if (data.eventType === 'click'){
+        if (clickOnly){
+          setDiagRisk('КРАСНЫЙ ФЛАГ: элемент сработал мышью через click, но у него нет touch/pointer-реакции.', 'err');
+          setDiagNote('Подсвеченный элемент потенциально не подходит для тач-экрана.');
+        } else {
+          setDiagRisk('Цепочка дошла до click без явного click-only риска.', 'ok');
+          setDiagNote('Базовая браузерная проверка пройдена.');
+        }
+        return;
+      }
+
+      if (data.eventType === 'pointerup' || data.eventType === 'touchend'){
+        inputDiag.pendingClickTimer = setTimeout(() => {
+          setDiagRisk('Есть завершение касания, но click не появился.', 'err');
+          setDiagNote('Это похоже на проблему touch → click.');
+        }, 260);
+        return;
+      }
+
+      if (data.eventType === 'pointerdown' && data.pointerType === 'mouse' && clickOnly){
+        setDiagRisk('Пока видна только мышиная цепочка. Ждём завершения.', 'warn');
+        setDiagNote('Если завершится только click мыши, будет отмечен риск.');
+        return;
+      }
+
+      if (data.eventType === 'touchstart' || data.eventType === 'touchend'){
+        setDiagNote('Идёт touch-цепочка. Смотрите, появится ли затем click.');
+      }
+    }
+
+    function handleInputDiagMessage(data){
+      if (!data || !data.__testerDiag) return false;
+
+      if (data.kind === 'ready'){
+        inputDiag.ready = true;
+        inputDiag.fallback = false;
+        setDiagRisk('Встроенная диагностика активна. Проверяйте кнопки и сцену.', 'ok');
+        setDiagNote('Нажимайте мышью или включите Force touch в DevTools.');
+        appendDiagLine('[ready] instrumentation active');
+        return true;
+      }
+
+      if (data.kind === 'event'){
+        handleDiagEvent(data);
+        return true;
+      }
+
+      return true;
+    }
+
+
+
+
+
+
+    function num(value, fallback){
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function setStatus(text, mode=''){
+      els.status.textContent = text;
+      els.status.className = 'status' + (mode ? ' ' + mode : '');
+    }
+
+    function escapeHtml(value){
+      return String(value)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;');
+    }
+
+    function stringifyPayload(payload){
+      if (typeof payload === 'string') return payload;
+      try { return JSON.stringify(payload, null, 2); }
+      catch { return String(payload); }
+    }
+
+    function logMessage(direction, payload, extra=''){
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const time = new Date().toLocaleTimeString();
+      const type = payload && typeof payload === 'object' ? (payload.type || 'unknown') : typeof payload;
+      entry.innerHTML =
+        '<span class="log-time">[' + time + ']</span> ' +
+        '<span class="log-dir">' + direction + '</span> ' +
+        '<span class="log-type">' + type + '</span>' +
+        (extra ? ' ' + escapeHtml(extra) : '') + '\n' +
+        escapeHtml(stringifyPayload(payload));
+      els.messageLog.prepend(entry);
+    }
+
+    function syncPayloadWithControls(){
+      let payload = {};
+      try { payload = JSON.parse(els.payloadEditor.value || '{}'); }
+      catch { payload = {}; }
+
+      payload.type = 'gameInit';
+      payload.gameId = els.gameId.value.trim() || 'game';
+      payload.difficulty = num(els.difficulty.value, 3);
+
+      els.payloadEditor.value = JSON.stringify(payload, null, 2);
+    }
+
+    function getSettings(){
+      return {
+        gameUrl: els.gameUrl.value.trim(),
+        gameId: els.gameId.value.trim(),
+        difficulty: els.difficulty.value,
+        virtualWidth: els.virtualWidth.value,
+        virtualHeight: els.virtualHeight.value,
+        resolutionPreset: els.resolutionPreset.value,
+        payloadEditor: els.payloadEditor.value
+      };
+    }
+
+    function applySettings(settings){
+      els.gameUrl.value = settings.gameUrl ?? '';
+      els.gameId.value = settings.gameId ?? 'coffeeRush';
+      els.difficulty.value = settings.difficulty ?? '3';
+      els.virtualWidth.value = settings.virtualWidth ?? '360';
+      els.virtualHeight.value = settings.virtualHeight ?? '640';
+      els.resolutionPreset.value = settings.resolutionPreset ?? '360x640';
+      els.payloadEditor.value = settings.payloadEditor || '{\n  "type": "gameInit",\n  "gameId": "coffeeRush",\n  "difficulty": 3,\n  "targetScore": 10\n}';
+
+      syncPayloadWithControls();
+      updateFramePresentation(false);
+    }
+
+    function saveSettings(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(getSettings()));
+      setStatus('Настройки сохранены в localStorage.', 'ok');
+    }
+
+    function loadSettings(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw){
+        syncPayloadWithControls();
+        updateFramePresentation(false);
+        return;
+      }
+
+      try{
+        applySettings(JSON.parse(raw));
+        setStatus('Настройки загружены из localStorage.', 'ok');
+      } catch (error){
+        console.error(error);
+        syncPayloadWithControls();
+        updateFramePresentation(false);
+        setStatus('Не удалось прочитать настройки из localStorage.', 'warn');
+      }
+    }
+
+    function resetSettings(){
+      localStorage.removeItem(STORAGE_KEY);
+      applySettings({
+        gameUrl: '',
+        gameId: 'coffeeRush',
+        difficulty: '3',
+        virtualWidth: '360',
+        virtualHeight: '640',
+        resolutionPreset: '360x640',
+        payloadEditor: '{\n  "type": "gameInit",\n  "gameId": "coffeeRush",\n  "difficulty": 3,\n  "targetScore": 10\n}'
+      });
+      setStatus('Настройки сброшены.', 'warn');
+    }
+
+    function applyResolutionPreset(){
+      const value = els.resolutionPreset.value;
+      if (!value || value === 'custom') return;
+      const [w, h] = value.split('x').map(Number);
+      if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+
+      els.virtualWidth.value = String(w);
+      els.virtualHeight.value = String(h);
+      updateFramePresentation(true);
+    }
+
+    function updateFramePresentation(setOkStatus = true){
+      const virtualWidth = Math.max(120, num(els.virtualWidth.value, 360));
+      const virtualHeight = Math.max(200, num(els.virtualHeight.value, 640));
+
+      const viewportRect = els.frameViewport.getBoundingClientRect();
+      const viewportWidth = Math.max(1, Math.floor(viewportRect.width));
+      const viewportHeight = Math.max(1, Math.floor(viewportRect.height));
+
+      const fitScale = Math.min(viewportWidth / virtualWidth, viewportHeight / virtualHeight);
+      const renderedWidth = Math.round(virtualWidth * fitScale);
+      const renderedHeight = Math.round(virtualHeight * fitScale);
+
+      els.gameFrame.style.setProperty('--virtual-width', virtualWidth + 'px');
+      els.gameFrame.style.setProperty('--virtual-height', virtualHeight + 'px');
+      els.gameFrame.style.setProperty('--frame-scale', String(fitScale));
+
+      els.fitScaleInfo.textContent = fitScale.toFixed(6) + ' (' + (fitScale * 100).toFixed(2) + '%)';
+      els.renderedSizeInfo.textContent = renderedWidth + ' × ' + renderedHeight + ' px';
+      els.viewerMeta.textContent =
+        'Viewport: ' + viewportWidth + ' × ' + viewportHeight + ' px\n' +
+        'Virtual: ' + virtualWidth + ' × ' + virtualHeight + ' px\n' +
+        'Rendered: ' + renderedWidth + ' × ' + renderedHeight + ' px';
+
+      if (setOkStatus) {
+        setStatus('Масштаб автоматически пересчитан для максимального заполнения области просмотра.', 'ok');
+      }
+    }
+
+    function buildPayload(){
+      syncPayloadWithControls();
+
+      let payload;
+      try{
+        payload = JSON.parse(els.payloadEditor.value);
+      } catch (error){
+        throw new Error('JSON payload некорректен: ' + error.message);
+      }
+
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)){
+        throw new Error('Payload должен быть JSON-объектом.');
+      }
+
+      payload.type = 'gameInit';
+      payload.gameId = els.gameId.value.trim() || payload.gameId || 'game';
+      payload.difficulty = num(els.difficulty.value, 3);
+      return payload;
+    }
+
+    function loadGame(){
+      const url = els.gameUrl.value.trim();
+      if (!url){
+        setStatus('Укажите путь к HTML игры.', 'err');
+        return;
+      }
+
+      gameResultCount = 0;
+      resetInputDiag();
+      inputDiag.expected = false;
+      inputDiag.fallback = true;
+
+      els.gameFrame.removeAttribute('srcdoc');
+      els.gameFrame.src = url;
+
+      logMessage('system', { type: 'loadGame', url, diagnostic: false });
+      setStatus('Обычная загрузка по пути без сервера может работать нестабильно. Для диагностики используйте локальный файл.', 'warn');
+      setDiagRisk('Глубокая диагностика не активна.', 'warn');
+      setDiagNote('Без сервера используйте именно кнопку «Загрузить файл с диагностикой».');
+    }
+
+
+
+
+
+    function loadGameWithDiagnostics(){
+      const file = els.gameFile.files && els.gameFile.files[0];
+      if (!file){
+        setStatus('Выберите локальный HTML-файл игры.', 'err');
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        try{
+          const html = String(reader.result || '');
+
+          gameResultCount = 0;
+          resetInputDiag();
+          inputDiag.expected = true;
+          inputDiag.fallback = false;
+
+          els.gameFrame.src = 'about:blank';
+          els.gameFrame.removeAttribute('src');
+          els.gameFrame.srcdoc = buildInstrumentedSrcdoc(html);
+
+          logMessage('system', {
+            type: 'loadGameDiag',
+            fileName: file.name,
+            diagnostic: true
+          });
+
+          setStatus('Игра загружена из локального файла с диагностикой ввода.', 'ok');
+          setDiagRisk('Ожидается запуск встроенной диагностики…', 'warn');
+          setDiagNote('После загрузки нажимайте на кнопки игры и смотрите цепочку событий.');
+        } catch (error){
+          console.error(error);
+          setStatus('Не удалось собрать диагностическую версию игры: ' + error.message, 'err');
+        }
+      };
+
+      reader.onerror = () => {
+        setStatus('Не удалось прочитать локальный файл игры.', 'err');
+      };
+
+      reader.readAsText(file, 'utf-8');
+    }
+
+
+
+
+    function sendInit(){
+      if (!els.gameFrame.contentWindow){
+        setStatus('iframe ещё не готов.', 'warn');
+        return;
+      }
+
+      let payload;
+      try{
+        payload = buildPayload();
+      } catch (error){
+        setStatus(error.message, 'err');
+        return;
+      }
+
+      els.gameFrame.contentWindow.postMessage(payload, '*');
+      logMessage('→ frame', payload);
+      setStatus('Сообщение gameInit отправлено.', 'ok');
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== els.gameFrame.contentWindow) return;
+
+      const data = event.data;
+
+      if (handleInputDiagMessage(data)){
+        return;
+      }
+
+      logMessage('← frame', data, event.origin ? '(' + event.origin + ')' : '');
+
+      if (data && data.type === 'gameResult'){
+        gameResultCount += 1;
+        const resultValue = Number((data && 'result' in data) ? data.result : 0);
+
+        if (gameResultCount > 1){
+          setStatus('Игра отправила gameResult больше одного раза. Это нарушает контракт.', 'err');
+          return;
+        }
+
+        if (!Number.isFinite(resultValue)){
+          setStatus('Игра прислала gameResult с нечисловым result. Это нарушает контракт.', 'err');
+          return;
+        }
+
+        setStatus('Получен gameResult: ' + resultValue, 'ok');
+      }
+    });
+
+    els.gameFrame.addEventListener('load', () => {
+      logMessage('system', { type: 'iframeLoaded', src: els.gameFrame.src || 'srcdoc' });
+      setStatus('Игра загружена в iframe. Отправка gameInit…', 'ok');
+
+      setTimeout(() => {
+        try {
+          sendInit();
+        } catch (error) {
+          setStatus('Не удалось автоматически отправить gameInit: ' + error.message, 'err');
+        }
+      }, 0);
+
+      setTimeout(() => {
+        if (inputDiag.expected && !inputDiag.ready){
+          setDiagRisk('Игра загрузилась, но диагностика не ответила.', 'warn');
+          setDiagNote('Для этого режима используйте именно локальный HTML-файл игры в один файл.');
+        }
+      }, 700);
+    });
+
+    [els.gameId, els.difficulty].forEach((el) => {
+      el.addEventListener('input', syncPayloadWithControls);
+    });
+
+    [els.virtualWidth, els.virtualHeight].forEach((el) => {
+      el.addEventListener('input', () => {
+        els.resolutionPreset.value = 'custom';
+        updateFramePresentation(true);
+      });
+    });
+
+    els.resolutionPreset.addEventListener('change', applyResolutionPreset);
+    els.loadGameBtn.addEventListener('click', loadGame);
+    els.loadGameDiagBtn.addEventListener('click', loadGameWithDiagnostics);
+    els.gameFile.addEventListener('change', () => {
+      if (els.gameFile.files && els.gameFile.files[0]){
+        loadGameWithDiagnostics();
+      }
+    });
+    els.sendInitBtn.addEventListener('click', sendInit);
+    els.saveSettingsBtn.addEventListener('click', saveSettings);
+    els.resetSettingsBtn.addEventListener('click', resetSettings);
+    els.recalcBtn.addEventListener('click', () => updateFramePresentation(true));
+    els.clearLogBtn.addEventListener('click', () => {
+      els.messageLog.textContent = '';
+      setStatus('Лог очищен.', '');
+    });
+
+    window.addEventListener('resize', () => updateFramePresentation(false));
+
+    loadSettings();
+    requestAnimationFrame(() => updateFramePresentation(false));
+  </script>
+</body>
+</html>
