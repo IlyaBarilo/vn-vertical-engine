@@ -17,6 +17,21 @@
       --bad: #ff7b72;
       --shadow: rgba(0,0,0,0.28);
       --ui-scale: 1;
+
+       --line-1: calc(1px * var(--ui-scale));
+      --line-2: calc(2px * var(--ui-scale));
+      --blur-6: calc(6px * var(--ui-scale));
+      --blur-10: calc(10px * var(--ui-scale));
+      --shadow-y-4: calc(4px * var(--ui-scale));
+      --shadow-y-8: calc(8px * var(--ui-scale));
+      --shadow-y-10: calc(10px * var(--ui-scale));
+      --shadow-y-12: calc(12px * var(--ui-scale));
+      --shadow-y-20: calc(20px * var(--ui-scale));
+      --shadow-b-12: calc(12px * var(--ui-scale));
+      --shadow-b-20: calc(20px * var(--ui-scale));
+      --shadow-b-24: calc(24px * var(--ui-scale));
+      --shadow-b-30: calc(30px * var(--ui-scale));
+      --shadow-b-40: calc(40px * var(--ui-scale));
     }
 
     * { box-sizing: border-box; }
@@ -56,10 +71,10 @@
 
     .card {
       background: var(--panel);
-      border: 1px solid var(--panel-border);
+      border: var(--line-1) solid var(--panel-border);
       border-radius: calc(18px * var(--ui-scale));
-      box-shadow: 0 10px 30px var(--shadow);
-      backdrop-filter: blur(10px);
+      box-shadow: 0 var(--shadow-y-10) var(--shadow-b-30) var(--shadow);
+      backdrop-filter: blur(var(--blur-10));
       padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
     }
 
@@ -132,8 +147,8 @@
       height: calc(32px * var(--ui-scale));
       border-radius: 999px;
       background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
-      border: 1px solid rgba(255,255,255,0.18);
-      box-shadow: 0 12px 20px rgba(0,0,0,0.28);
+      border: var(--line-1) solid rgba(255,255,255,0.18);
+      box-shadow: 0 var(--shadow-y-12) var(--shadow-b-20) rgba(0,0,0,0.28);
       position: relative;
       overflow: hidden;
     }
@@ -144,7 +159,7 @@
       width: 0%;
       border-radius: inherit;
       background: linear-gradient(90deg, rgba(255,198,124,0.92), rgba(255,172,69,0.92));
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
+      box-shadow: inset 0 0 0 var(--line-1) rgba(255,255,255,0.14);
       transition: width 140ms ease-out;
     }
 
@@ -183,8 +198,8 @@
       display: grid;
       place-items: center;
       font-size: calc(28px * var(--ui-scale));
-      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
-      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 var(--shadow-y-8) var(--shadow-b-24) rgba(0,0,0,0.22);
+      border: var(--line-1) solid rgba(255,255,255,0.16);
       will-change: transform, top, left;
       cursor: pointer;
     }
@@ -205,7 +220,7 @@
       z-index: 6;
       font-size: calc(18px * var(--ui-scale));
       font-weight: 800;
-      text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      text-shadow: 0 var(--shadow-y-4) var(--shadow-b-12) rgba(0,0,0,0.4);
       opacity: 0;
       transition: opacity 120ms ease;
     }
@@ -219,7 +234,7 @@
       inset: 0;
       z-index: 10;
       background: rgba(10, 8, 12, 0.7);
-      backdrop-filter: blur(6px);
+      backdrop-filter: blur(var(--blur-6));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -229,11 +244,11 @@
     .overlay.hidden { display: none; }
 
     .dialog {
-      width: calc(460px * var(--ui-scale));
+      width: min(92vw, calc(460px * var(--ui-scale)));
       background: rgba(22,18,24,0.9);
-      border: 1px solid rgba(255,255,255,0.12);
+      border: var(--line-1) solid rgba(255,255,255,0.12);
       border-radius: calc(24px * var(--ui-scale));
-      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      box-shadow: 0 var(--shadow-y-20) var(--shadow-b-40) rgba(0,0,0,0.35);
       padding: calc(18px * var(--ui-scale));
     }
 
@@ -264,12 +279,12 @@
     }
 
     .badge {
-      width: calc(56px * var(--ui-scale));
+      min-width: calc(56px * var(--ui-scale));
       height: calc(56px * var(--ui-scale));
       border-radius: calc(16px * var(--ui-scale));
       display: grid;
       place-items: center;
-      border: 1px solid rgba(255,255,255,0.14);
+      border: var(--line-1) solid rgba(255,255,255,0.14);
     }
 
     .badge.good { background: rgba(255,180,92,0.18); }
@@ -408,7 +423,7 @@
     <div class="overlay" id="startOverlay">
       <div class="dialog">
         <h1>Удержи кофейный поток</h1>
-        <p>Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов.</p>
+        <p>Лови заказы на кофе и не нажимай на помехи. Чем выше сложность, тем быстрее поток и больше лишних объектов.</p>
         <div class="legend">
           <div class="legend-row">
             <div class="badge good">
@@ -431,10 +446,10 @@
           <div class="legend-row">
             <div class="badge bad">
               <svg class="badge-icon" viewBox="0 0 200 200" aria-hidden="true">
-                <use href="#icon-trash"></use>
+                <use href="#icon-swirl"></use>
               </svg>
             </div>
-            <div>Не трогай мусор — это штраф.</div>
+            <div>Спираль сбивает внимание — это штраф.</div>
           </div>
 
           <div class="legend-row">
@@ -523,40 +538,92 @@
       </symbol>
 
       <symbol id="icon-swirl" viewBox="0 0 200 200">
-      <path d="M128 48c-36-18-85-4-94 37-7 31 15 61 48 66 34 5 66-16 71-48 5-27-14-51-40-54-22-2-40 12-44 31-4 18 9 34 27 37 16 2 30-7 33-20" fill="none" stroke="#B24DFF" stroke-width="18" stroke-linecap="round"/>
-      <path d="M122 68c-18-8-40-1-45 16-5 15 7 30 23 31 14 1 25-8 27-19" fill="none" stroke="#E3B3FF" stroke-width="10" stroke-linecap="round"/>
-      <circle cx="128" cy="48" r="9" fill="#B24DFF"/>
-    </symbol>
+        <path d="M126 48
+                C96 34 55 43 42 76
+                C31 104 45 136 73 146
+                C101 156 131 142 141 117
+                C149 97 140 75 121 68
+                C104 62 85 70 80 86
+                C76 99 83 112 96 116
+                C108 120 121 113 125 103"
+              fill="none"
+              stroke="#A64DFF"
+              stroke-width="20"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+
+        <path d="M121 66
+                C104 58 82 62 70 78
+                C58 94 59 116 74 127
+                C88 137 109 136 123 124
+                C135 114 141 97 136 82"
+              fill="none"
+              stroke="#D9B3FF"
+              stroke-width="9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              opacity="0.95"/>
+
+        <circle cx="126" cy="48" r="10" fill="#A64DFF"/>
+        <circle cx="125" cy="102" r="6" fill="#E9CCFF"/>
+      </symbol>
 
       <symbol id="icon-sleep" viewBox="0 0 200 200">
-        <path d="M60 132c26 22 68 20 92-8-7 2-15 3-23 2-37-4-63-38-59-74 1-6 2-12 5-18-33 15-50 58-37 98 4 12 11 23 22 32z" fill="#B9C4FF"/>
-        <path d="M118 54h22l-18 24h22" fill="none" stroke="#FFF4E8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M142 30h14l-12 16h14" fill="none" stroke="#FFF4E8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="96" cy="110" r="54" fill="#D9C6FF"/>
+        <circle cx="118" cy="96" r="46" fill="#2E1A30"/>
+
+        <circle cx="66" cy="74" r="6" fill="#FFF4E8"/>
+        <circle cx="84" cy="58" r="4" fill="#FFF4E8"/>
+        <circle cx="88" cy="82" r="3" fill="#FFF4E8"/>
+
+        <path d="M124 54h22l-18 24h22" fill="none" stroke="#FFF4E8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M148 30h14l-12 16h14" fill="none" stroke="#FFF4E8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
       </symbol>
 
       <symbol id="icon-trash" viewBox="0 0 200 200">
         <defs>
-          <clipPath id="trash-basket-clip">
-            <path d="M62 56h76l-10 96c-2 16-14 28-30 28h-4c-16 0-28-12-30-28L62 56z"/>
+          <clipPath id="trash-iso-front-clip">
+            <path d="M62 74L126 74L120 158L72 158Q64 158 63 150L62 74z"/>
+          </clipPath>
+          <clipPath id="trash-iso-side-clip">
+            <path d="M126 74L146 64L140 148Q139 157 130 158L120 158L126 74z"/>
           </clipPath>
         </defs>
 
-        <ellipse cx="100" cy="56" rx="38" ry="10" fill="#DCE3E8"/>
-        <path d="M62 56h76l-10 96c-2 16-14 28-30 28h-4c-16 0-28-12-30-28L62 56z" fill="#AEB8C0"/>
+        <!-- верхний край -->
+        <path d="M62 74L82 62H146L126 74H62z" fill="#DCE4EA"/>
+        <path d="M62 74L82 62H146" fill="none" stroke="#F7FAFC" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M62 74H126L146 62" fill="none" stroke="#BFC9D1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
 
-        <g clip-path="url(#trash-basket-clip)" opacity="0.95">
-          <rect x="54" y="52" width="92" height="132" fill="#9EABB5"/>
+        <!-- корпус -->
+        <path d="M62 74L126 74L120 158L72 158Q64 158 63 150L62 74z" fill="#A9B4BD"/>
+        <path d="M126 74L146 62L140 148Q139 157 130 158L120 158L126 74z" fill="#8F9BA5"/>
 
-          <path d="M46 74L154 118M42 96L150 140M44 52L152 96M50 118L144 156" stroke="#E9EEF2" stroke-width="6" stroke-linecap="round"/>
-          <path d="M154 74L46 118M158 96L50 140M156 52L48 96M150 118L56 156" stroke="#7E8A94" stroke-width="6" stroke-linecap="round"/>
-
-          <path d="M78 52v132M100 52v132M122 52v132" stroke="#D8E0E6" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+        <!-- сетка спереди -->
+        <g clip-path="url(#trash-iso-front-clip)">
+          <rect x="60" y="72" width="68" height="90" fill="#A3AEB7"/>
+          <path d="M74 70V162M88 70V162M102 70V162M116 70V162"
+                stroke="#EDF3F7" stroke-width="3.6" stroke-linecap="round"/>
+          <path d="M58 88H128M58 104H128M58 120H128M58 136H128M58 152H128"
+                stroke="#6F7B85" stroke-width="3.6" stroke-linecap="round"/>
         </g>
 
-        <path d="M62 56h76" stroke="#F4F7FA" stroke-width="8" stroke-linecap="round"/>
-        <ellipse cx="100" cy="56" rx="38" ry="10" fill="none" stroke="#F4F7FA" stroke-width="6"/>
-        <path d="M72 167c8 8 17 13 28 13h0c11 0 20-5 28-13" fill="none" stroke="#7A8791" stroke-width="6" stroke-linecap="round"/>
+        <!-- сетка справа -->
+        <g clip-path="url(#trash-iso-side-clip)">
+          <rect x="122" y="60" width="28" height="100" fill="#96A1AB"/>
+          <path d="M130 60L124 160M138 58L132 160M146 56L140 158"
+                stroke="#E7EEF3" stroke-width="3.2" stroke-linecap="round"/>
+          <path d="M124 86L148 74M123 102L147 90M122 118L146 106M121 134L145 122M120 150L144 138"
+                stroke="#6E7983" stroke-width="3.2" stroke-linecap="round"/>
+        </g>
+
+        <!-- контуры -->
+        <path d="M62 74L126 74L120 158L72 158Q64 158 63 150L62 74z"
+              fill="none" stroke="#73808A" stroke-width="4.5" stroke-linejoin="round"/>
+        <path d="M126 74L146 62L140 148Q139 157 130 158L120 158"
+              fill="none" stroke="#68747D" stroke-width="4.5" stroke-linejoin="round"/>
       </symbol>
+
     </defs>
   </svg>
 
@@ -567,8 +634,8 @@
 
       //const GOOD_EMOJIS = ['☕', '🥤', '🧋'];
       //const BAD_EMOJIS = ['🌀', '💤', '📄'];
-      const GOOD_ICONS = ['coffee', 'iced', 'bubbleTea'];
-      const BAD_ICONS = ['swirl', 'sleep', 'trash'];
+      const GOOD_ICONS = ['coffee', 'bubbleTea'];
+      const BAD_ICONS = ['swirl', 'sleep'];
 
       const ICON_SYMBOL = {
         coffee: '#icon-coffee',
@@ -637,13 +704,13 @@
       function buildConfig(input) {
         const difficulty = clamp(parseInt((input && input.difficulty) || 3, 10) || 3, 1, 5);
         const durationMs = [22000, 21000, 20000, 18500, 17000][difficulty - 1];
-        const targetScore = [10, 13, 16, 20, 24][difficulty - 1];
+        const targetScore = [10, 13, 16, 20, 22][difficulty - 1];
         const spawnEveryMs = [900, 760, 650, 560, 480][difficulty - 1];
 
         // Скорость падения в долях высоты игрового поля в секунду.
         // Так время прохождения одинаковой относительной дистанции
         // будет одинаковым на разных разрешениях.
-        const fallSpeedScreenFrac = [0.18, 0.22, 0.26, 0.315, 0.38][difficulty - 1];
+        const fallSpeedScreenFrac = [0.08, 0.12, 0.16, 0.215, 0.28][difficulty - 1];
 
         const badChance = [0.12, 0.18, 0.24, 0.30, 0.36][difficulty - 1];
 
@@ -709,7 +776,7 @@
         const arenaHeight = els.arena.clientHeight;
         const scale = state.uiScale || 1;
         const isBad = Math.random() < state.config.badChance;
-        const isBonus = !isBad && Math.random() < 0.16;
+        const isBonus = !isBad && Math.random() < 0.08;
         const size = (Math.random() < 0.35 ? 54 : 64) * scale;
         const margin = 16 * scale;
         const x = rand(margin, Math.max(margin, width - size - margin));
@@ -717,7 +784,7 @@
         
         const iconKey = isBad
           ? pick(BAD_ICONS)
-          : (isBonus ? 'bubbleTea' : pick(['coffee', 'iced']));
+          : (isBonus ? 'bubbleTea' : 'coffee');
 
         const item = {
           id: Math.random().toString(36).slice(2),
@@ -728,7 +795,9 @@
           bad: isBad,
           bonus: isBonus,
           iconKey,
-          points: isBad ? -2 : (isBonus ? 3 : 1),
+          points: isBad
+            ? (iconKey === 'swirl' ? -1 : -2)
+            : (isBonus ? 2 : 1),
           el: document.createElement('div')
         };
 
@@ -756,10 +825,10 @@
         if (!item || !state.running) return;
 
         if (item.bad) {
-          state.score = Math.max(0, state.score - 2);
+          state.score = Math.max(0, state.score + item.points);
           state.falseHits += 1;
           state.misses += 1;
-          showFeedback('−2 Ошибка', 'bad');
+          showFeedback(String(item.points) + ' Ошибка', 'bad');
         } else {
           state.score += item.points;
           state.hits += 1;
