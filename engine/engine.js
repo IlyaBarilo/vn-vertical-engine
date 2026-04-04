@@ -423,8 +423,41 @@ var elGameFrame = document.getElementById("gameFrame");
 var btnCloseGame = document.getElementById("btnCloseGame");
 
 var elStatsGameModal = document.getElementById("statsGameModal");
+var elStatsGameFrameWrap = document.getElementById("statsGameFrameWrap");
 var elStatsGameFrame = document.getElementById("statsGameFrame");
 var btnCloseStatsGame = document.getElementById("btnCloseStatsGame");
+
+function syncStatsGameFrameWrapToStoryGameWindow() {
+  if (!elNovelWindow || !elGameModal || !elStatsGameModal || !elStatsGameFrameWrap) return;
+
+  var novelRect = elNovelWindow.getBoundingClientRect();
+  var statsModalRect = elStatsGameModal.getBoundingClientRect();
+  var storyGameModalStyle = window.getComputedStyle(elGameModal);
+
+  var padLeft = parseFloat(storyGameModalStyle.paddingLeft) || 0;
+  var padTop = parseFloat(storyGameModalStyle.paddingTop) || 0;
+  var padRight = parseFloat(storyGameModalStyle.paddingRight) || 0;
+  var padBottom = parseFloat(storyGameModalStyle.paddingBottom) || 0;
+
+  // Это и есть геометрия сюжетного gameFrameWrap:
+  // он занимает весь content-box gameModal.
+  var left = (novelRect.left - statsModalRect.left) + padLeft;
+  var top = (novelRect.top - statsModalRect.top) + padTop;
+  var width = Math.max(0, novelRect.width - padLeft - padRight);
+  var height = Math.max(0, novelRect.height - padTop - padBottom);
+
+  elStatsGameFrameWrap.style.left = left + "px";
+  elStatsGameFrameWrap.style.top = top + "px";
+  elStatsGameFrameWrap.style.width = width + "px";
+  elStatsGameFrameWrap.style.height = height + "px";
+
+  console.log("[GAME] syncStatsGameFrameWrapToStoryGameWindow", {
+    left: left,
+    top: top,
+    width: width,
+    height: height
+  });
+}
 
 function swallowEvent(e) {
   if (!e) return;
@@ -2381,6 +2414,14 @@ function closeGameFrameVisualOnly() {
 
 function closeStatsGameFrameVisualOnly() {
   elStatsGameModal.classList.add("hidden");
+
+  if (elStatsGameFrameWrap) {
+    elStatsGameFrameWrap.style.left = "";
+    elStatsGameFrameWrap.style.top = "";
+    elStatsGameFrameWrap.style.width = "";
+    elStatsGameFrameWrap.style.height = "";
+  }
+
   elStatsGameFrame.onload = null;
   elStatsGameFrame.src = "about:blank";
 }
@@ -2806,6 +2847,10 @@ setTimeout(function() {
 window.addEventListener("resize", function() {
   applyUiScale();
   applySpacingSettings();
+
+  if (elStatsGameModal && !elStatsGameModal.classList.contains("hidden")) {
+    syncStatsGameFrameWrapToStoryGameWindow();
+  }
 });
 
 
@@ -3095,6 +3140,7 @@ function openStatsGame(item, difficulty) {
   };
 
   elStatsGameModal.classList.remove("hidden");
+  syncStatsGameFrameWrapToStoryGameWindow();
 
   elStatsGameFrame.onload = function () {
     if (!state.currentGame) return;

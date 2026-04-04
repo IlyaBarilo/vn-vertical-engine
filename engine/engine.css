@@ -568,6 +568,10 @@ body {
   gap: var(--modal-gap);
 }
 
+.statsGameFrameWrap {
+  position: absolute;
+}
+
 .gameFrame {
   width: 100%;
   flex: 1;
