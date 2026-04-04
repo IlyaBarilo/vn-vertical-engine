@@ -44,7 +44,7 @@
       right: 0;
       top: 0;
       z-index: 5;
-      padding: max(calc(12px * var(--ui-scale)), env(safe-area-inset-top)) calc(12px * var(--ui-scale)) 0;
+      padding: calc(env(safe-area-inset-top) + (12px * var(--ui-scale))) calc(12px * var(--ui-scale)) 0;
     }
 
     .hud-grid {
@@ -69,6 +69,7 @@
       justify-content: space-between;
       gap: calc(12px * var(--ui-scale));
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .title {
@@ -117,9 +118,9 @@
     .player {
       position: absolute;
       left: 50%;
-      bottom: calc(max(calc(18px * var(--ui-scale)), env(safe-area-inset-bottom)) + calc(26px * var(--ui-scale)));
+      bottom: calc(env(safe-area-inset-bottom) + (44px * var(--ui-scale)));
       transform: translateX(-50%);
-      width: min(78vw, calc(420px * var(--ui-scale)));
+      width: calc(420px * var(--ui-scale));
       z-index: 3;
       display: flex;
       justify-content: center;
@@ -162,12 +163,6 @@
       text-shadow: 0 1px 10px rgba(0,0,0,0.35);
       z-index: 1;
       white-space: nowrap;
-    }
-
-    .tray-label::before {
-      content: "☕";
-      font-size: calc(18px * var(--ui-scale));
-      line-height: 1;
     }
 
     .touch-zone {
@@ -234,7 +229,7 @@
     .overlay.hidden { display: none; }
 
     .dialog {
-      width: min(92vw, calc(460px * var(--ui-scale)));
+      width: calc(460px * var(--ui-scale));
       background: rgba(22,18,24,0.9);
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: calc(24px * var(--ui-scale));
@@ -265,16 +260,15 @@
     .legend-row {
       display: flex;
       align-items: center;
-      gap: calc(10px * var(--ui-scale));
+      gap: calc(12px * var(--ui-scale));
     }
 
     .badge {
-      min-width: calc(38px * var(--ui-scale));
-      height: calc(38px * var(--ui-scale));
-      border-radius: calc(12px * var(--ui-scale));
+      width: calc(56px * var(--ui-scale));
+      height: calc(56px * var(--ui-scale));
+      border-radius: calc(16px * var(--ui-scale));
       display: grid;
       place-items: center;
-      font-size: calc(22px * var(--ui-scale));
       border: 1px solid rgba(255,255,255,0.14);
     }
 
@@ -335,9 +329,36 @@
 
     .final-stats .card { padding: calc(12px * var(--ui-scale)); }
 
-    @media (max-width: 420px) {
-      .dialog { width: min(94vw, calc(460px * var(--ui-scale))); }
+
+    .icon-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
     }
+
+    .item-icon {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .badge-icon {
+      width: 86%;
+      height: 86%;
+      display: block;
+      pointer-events: none;
+    }
+
+    .tray-icon {
+      width: calc(18px * var(--ui-scale));
+      height: calc(18px * var(--ui-scale));
+      display: block;
+      flex: 0 0 auto;
+      pointer-events: none;
+    }
+
+
   </style>
 </head>
 <body>
@@ -349,7 +370,7 @@
             <div class="title">Бариста: кофейный поток</div>
             <div class="subtitle" id="difficultyLabel">Сложность: 3 / 5</div>
           </div>
-          <div style="text-align:right; min-width: 94px;">
+          <div style="text-align:right; min-width: calc(94px * var(--ui-scale));">
             <div class="stat-label">Цель</div>
             <div class="stat-value" id="targetValue">12</div>
           </div>
@@ -367,7 +388,19 @@
 
     <div id="arena">
       <div class="lane-glow"></div>
-      <div class="player"><div class="tray"><div class="tray-fill" id="trayFill"></div><div class="tray-label" id="trayLabel">0 / 12</div></div></div>
+      
+      <div class="player">
+        <div class="tray">
+          <div class="tray-fill" id="trayFill"></div>
+          <div class="tray-label" id="trayLabel">
+            <svg class="tray-icon" viewBox="0 0 200 200" aria-hidden="true">
+              <use href="#icon-coffee"></use>
+            </svg>
+            <span id="trayLabelText">0 / 12</span>
+          </div>
+        </div>
+      </div>
+
       <div class="feedback" id="feedback"></div>
       <div class="touch-zone" id="touchZone" aria-label="Игровая зона"></div>
     </div>
@@ -377,10 +410,41 @@
         <h1>Удержи кофейный поток</h1>
         <p>Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов.</p>
         <div class="legend">
-          <div class="legend-row"><div class="badge good">☕</div><div>Лови кофейные заказы — это очки.</div></div>
-          <div class="legend-row"><div class="badge good">🧋</div><div>Редкий бонус — даёт больше очков.</div></div>
-          <div class="legend-row"><div class="badge bad">🗑️</div><div>Не трогай мусор — это штраф.</div></div>
-          <div class="legend-row"><div class="badge bad">💤</div><div>Сонливость — тоже помеха.</div></div>
+          <div class="legend-row">
+            <div class="badge good">
+              <svg class="badge-icon" viewBox="0 0 200 200" aria-hidden="true">
+                <use href="#icon-coffee"></use>
+              </svg>
+            </div>
+            <div>Лови кофейные заказы — это очки.</div>
+          </div>
+
+          <div class="legend-row">
+            <div class="badge good">
+              <svg class="badge-icon" viewBox="0 0 200 200" aria-hidden="true">
+                <use href="#icon-bubble-tea"></use>
+              </svg>
+            </div>
+            <div>Редкий бонус — даёт больше очков.</div>
+          </div>
+
+          <div class="legend-row">
+            <div class="badge bad">
+              <svg class="badge-icon" viewBox="0 0 200 200" aria-hidden="true">
+                <use href="#icon-trash"></use>
+              </svg>
+            </div>
+            <div>Не трогай мусор — это штраф.</div>
+          </div>
+
+          <div class="legend-row">
+            <div class="badge bad">
+              <svg class="badge-icon" viewBox="0 0 200 200" aria-hidden="true">
+                <use href="#icon-sleep"></use>
+              </svg>
+            </div>
+            <div>Сонливость — тоже помеха.</div>
+          </div>
         </div>
         <div class="btn-row">
           <button class="primary" id="startBtn">Начать</button>
@@ -420,12 +484,110 @@
     </div>
   </div>
 
+
+
+
+  
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="icon-coffee" viewBox="0 0 200 200">
+        <path d="M58 76h74v46c0 19-15 34-34 34H92c-19 0-34-15-34-34V76z" fill="#FFF4E8"/>
+        <ellipse cx="95" cy="76" rx="37" ry="8" fill="#8B5737"/>
+        <path d="M132 88h10c15 0 27 12 27 27s-12 27-27 27h-10" fill="none" stroke="#FFF4E8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M54 160h94" stroke="#E3C29A" stroke-width="10" stroke-linecap="round"/>
+        <path d="M79 44c-10 10-3 18 0 23 4 6 8 13-2 23" fill="none" stroke="#FFF4E8" stroke-width="8" stroke-linecap="round"/>
+        <path d="M105 38c-10 10-3 18 0 23 4 6 8 13-2 23" fill="none" stroke="#FFF4E8" stroke-width="8" stroke-linecap="round"/>
+      </symbol>
+
+      <symbol id="icon-bubble-tea" viewBox="0 0 200 200">
+        <path d="M72 56h56l14 98H58z" fill="#FF5A5F"/>
+        <path d="M66 46h68l8 12H58z" fill="#FFF4E8"/>
+        <path d="M108 26l14 84" fill="none" stroke="#FFD54A" stroke-width="10" stroke-linecap="round"/>
+        <path d="M72 56h56" stroke="#B71C1C" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="80" cy="134" r="8" fill="#2E1A12"/>
+        <circle cx="96" cy="142" r="8" fill="#2E1A12"/>
+        <circle cx="113" cy="134" r="8" fill="#2E1A12"/>
+        <circle cx="128" cy="142" r="8" fill="#2E1A12"/>
+        <path d="M80 82c12-8 30-8 40 0" fill="none" stroke="#FFB3B3" stroke-width="6" stroke-linecap="round"/>
+        <path d="M82 108c10 6 28 8 36 2" fill="none" stroke="#FFD0D0" stroke-width="6" stroke-linecap="round"/>
+      </symbol>
+
+      <symbol id="icon-iced-drink" viewBox="0 0 200 200">
+        <path d="M70 54h60l14 102H56z" fill="#FF4D4D"/>
+        <path d="M64 44h72l10 12H54z" fill="#FFF4E8"/>
+        <path d="M102 26l20 92" fill="none" stroke="#FFD54A" stroke-width="10" stroke-linecap="round"/>
+        <path d="M79 88l14 14M95 78l18 18M111 90l10 10" stroke="#FFECEC" stroke-width="8" stroke-linecap="round"/>
+        <path d="M70 54h60" stroke="#B82020" stroke-width="6" stroke-linecap="round"/>
+        <path d="M74 66c10-8 42-8 52 0" fill="none" stroke="#FF8B8B" stroke-width="6" stroke-linecap="round"/>
+        <path d="M82 118c10 8 28 10 40 2" fill="none" stroke="#FFB3B3" stroke-width="6" stroke-linecap="round"/>
+      </symbol>
+
+      <symbol id="icon-swirl" viewBox="0 0 200 200">
+      <path d="M128 48c-36-18-85-4-94 37-7 31 15 61 48 66 34 5 66-16 71-48 5-27-14-51-40-54-22-2-40 12-44 31-4 18 9 34 27 37 16 2 30-7 33-20" fill="none" stroke="#B24DFF" stroke-width="18" stroke-linecap="round"/>
+      <path d="M122 68c-18-8-40-1-45 16-5 15 7 30 23 31 14 1 25-8 27-19" fill="none" stroke="#E3B3FF" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="128" cy="48" r="9" fill="#B24DFF"/>
+    </symbol>
+
+      <symbol id="icon-sleep" viewBox="0 0 200 200">
+        <path d="M60 132c26 22 68 20 92-8-7 2-15 3-23 2-37-4-63-38-59-74 1-6 2-12 5-18-33 15-50 58-37 98 4 12 11 23 22 32z" fill="#B9C4FF"/>
+        <path d="M118 54h22l-18 24h22" fill="none" stroke="#FFF4E8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M142 30h14l-12 16h14" fill="none" stroke="#FFF4E8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+
+      <symbol id="icon-trash" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="trash-basket-clip">
+            <path d="M62 56h76l-10 96c-2 16-14 28-30 28h-4c-16 0-28-12-30-28L62 56z"/>
+          </clipPath>
+        </defs>
+
+        <ellipse cx="100" cy="56" rx="38" ry="10" fill="#DCE3E8"/>
+        <path d="M62 56h76l-10 96c-2 16-14 28-30 28h-4c-16 0-28-12-30-28L62 56z" fill="#AEB8C0"/>
+
+        <g clip-path="url(#trash-basket-clip)" opacity="0.95">
+          <rect x="54" y="52" width="92" height="132" fill="#9EABB5"/>
+
+          <path d="M46 74L154 118M42 96L150 140M44 52L152 96M50 118L144 156" stroke="#E9EEF2" stroke-width="6" stroke-linecap="round"/>
+          <path d="M154 74L46 118M158 96L50 140M156 52L48 96M150 118L56 156" stroke="#7E8A94" stroke-width="6" stroke-linecap="round"/>
+
+          <path d="M78 52v132M100 52v132M122 52v132" stroke="#D8E0E6" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+        </g>
+
+        <path d="M62 56h76" stroke="#F4F7FA" stroke-width="8" stroke-linecap="round"/>
+        <ellipse cx="100" cy="56" rx="38" ry="10" fill="none" stroke="#F4F7FA" stroke-width="6"/>
+        <path d="M72 167c8 8 17 13 28 13h0c11 0 20-5 28-13" fill="none" stroke="#7A8791" stroke-width="6" stroke-linecap="round"/>
+      </symbol>
+    </defs>
+  </svg>
+
+
   <script>
     (function () {
       'use strict';
 
-      const GOOD_EMOJIS = ['☕', '🥤', '🧋'];
-      const BAD_EMOJIS = ['🌀', '💤', '📄'];
+      //const GOOD_EMOJIS = ['☕', '🥤', '🧋'];
+      //const BAD_EMOJIS = ['🌀', '💤', '📄'];
+      const GOOD_ICONS = ['coffee', 'iced', 'bubbleTea'];
+      const BAD_ICONS = ['swirl', 'sleep', 'trash'];
+
+      const ICON_SYMBOL = {
+        coffee: '#icon-coffee',
+        iced: '#icon-iced-drink',
+        bubbleTea: '#icon-bubble-tea',
+        swirl: '#icon-swirl',
+        sleep: '#icon-sleep',
+        trash: '#icon-trash'
+      };
+
+      function makeIconSvg(symbolId, className = 'item-icon') {
+        return (
+          '<svg class="' + className + '" viewBox="0 0 200 200" aria-hidden="true">' +
+            '<use href="' + symbolId + '"></use>' +
+          '</svg>'
+        );
+      }
+
+
       const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
       const rand = (min, max) => Math.random() * (max - min) + min;
       const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -516,7 +678,7 @@
         els.scoreValue.textContent = String(state.score);
         const progress = clamp(state.score / Math.max(1, cfg.targetScore), 0, 1);
         els.trayFill.style.width = (progress * 100).toFixed(2) + '%';
-        els.trayLabel.textContent = state.score + ' / ' + cfg.targetScore;
+        document.getElementById('trayLabelText').textContent = state.score + ' / ' + cfg.targetScore;
         const remaining = Math.max(0, Math.ceil((cfg.durationMs - state.elapsedMs) / 1000));
         els.timeValue.textContent = String(remaining);
       }
@@ -524,13 +686,13 @@
       function updateUiScale() {
         const baseW = 810;
         const baseH = 1440;
-        const scale = Math.min(
-          window.innerWidth / baseW,
-          window.innerHeight / baseH
-        );
-        const clamped = clamp(scale, 0.75, 3);
-        state.uiScale = clamped;
-        document.documentElement.style.setProperty('--ui-scale', clamped.toFixed(4));
+
+        const scaleX = window.innerWidth / baseW;
+        const scaleY = window.innerHeight / baseH;
+        const scale = Math.min(scaleX, scaleY);
+
+        state.uiScale = scale;
+        document.documentElement.style.setProperty('--ui-scale', String(scale));
       }
 
       function showFeedback(text, kind) {
@@ -548,10 +710,15 @@
         const scale = state.uiScale || 1;
         const isBad = Math.random() < state.config.badChance;
         const isBonus = !isBad && Math.random() < 0.16;
-        const size = (Math.random() < 0.35 ? 48 : 54) * scale;
+        const size = (Math.random() < 0.35 ? 54 : 64) * scale;
         const margin = 16 * scale;
         const x = rand(margin, Math.max(margin, width - size - margin));
         const speed = arenaHeight * state.config.fallSpeedScreenFrac * rand(0.92, 1.18);
+        
+        const iconKey = isBad
+          ? pick(BAD_ICONS)
+          : (isBonus ? 'bubbleTea' : pick(['coffee', 'iced']));
+
         const item = {
           id: Math.random().toString(36).slice(2),
           x,
@@ -560,7 +727,7 @@
           speed,
           bad: isBad,
           bonus: isBonus,
-          emoji: isBad ? pick(BAD_EMOJIS) : (isBonus ? '🧋' : '☕'),
+          iconKey,
           points: isBad ? -2 : (isBonus ? 3 : 1),
           el: document.createElement('div')
         };
@@ -568,7 +735,8 @@
         item.el.className = 'item ' + (isBad ? 'bad' : 'good');
         item.el.style.width = size + 'px';
         item.el.style.height = size + 'px';
-        item.el.textContent = item.emoji;
+        item.el.innerHTML = makeIconSvg(ICON_SYMBOL[iconKey]);
+
         item.el.dataset.id = item.id;
         item.el.addEventListener('pointerdown', onItemTap, { passive: false });
         item.el.addEventListener('click', onItemTap, { passive: false });
