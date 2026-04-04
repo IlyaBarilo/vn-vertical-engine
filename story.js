@@ -17,15 +17,15 @@ startScene=intro_01
 
 [bg]
 # Формат описания для фона:
-# имя_фона = путь_и_название_файла
-campusHall file=assets/backgrounds/bg_campus_hall.jpg
-libraryEvening file=assets/backgrounds/bg_library_evening.jpg
-branchCafe file=assets/backgrounds/bg_campus_cafe.jpg
-branchCafe2 file=assets/backgrounds/bg_campus_cafe2.jpg
-branchCafe3 file=assets/backgrounds/bg_campus_cafe3.jpg
-branchLab file=assets/backgrounds/bg_it_lab.jpg
-branchYard file=assets/backgrounds/bg_uni_yard_night.jpg
-branchYardTest file=assets/backgrounds/bg_uni_yard_night.jpg
+# имя-фона = путь_и_название_файла
+campusHall file=assets/backgrounds/bg-campus-hall.jpg
+libraryEvening file=assets/backgrounds/bg-library-evening.jpg
+branchCafe file=assets/backgrounds/bg-campus-cafe.jpg
+branchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
+branchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
+branchLab file=assets/backgrounds/bg-it-lab.jpg
+branchYard file=assets/backgrounds/bg-uni-yard-night.jpg
+branchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
 [char]
 # Формат описания для персонажа:
@@ -34,23 +34,23 @@ branchYardTest file=assets/backgrounds/bg_uni_yard_night.jpg
 # - image - изображение персонажа
 # - name - имя персонажа
 # - color - цвет подсветки имени персонажа
-anna file=assets/characters/ch_anna_neutral.png name="Анна" color=#0F0  # По умолчанию emotion=neutral
-igor emotion=smile file=assets/characters/ch_igor_smile.png
-igor emotion=neutral file=assets/characters/ch_igor_neutralTest.png name="Игорь" color=#F00
-ivan emotion=neutral file=assets/characters/ch_ivan_smileTest.png name="Иван" color=#060
+anna file=assets/characters/ch-anna-neutral.png name="Анна" color=#0F0  # По умолчанию emotion=neutral
+igor emotion=smile file=assets/characters/ch-igor-smile.png
+igor emotion=neutral file=assets/characters/ch-igor-neutral-test.png name="Игорь" color=#F00
+ivan emotion=neutral file=assets/characters/ch-ivan-smile-test.png name="Иван" color=#060
 
 [audio] 
 # Формат описания для музыки:
 # название_музыки = путь_и_название_файла
-bgmDay file=assets/audio/bgm_campus_day.mp3
-# bgmMysteryTest file=assets/audio/bgm_library_mystery.mp3
-# sfxClickTest file=assets/audio/sfx_button_click.mp3
+bgmDay file=assets/audio/bgm-campus-day.mp3
+# bgmMysteryTest file=assets/audio/bgm-library-mystery.mp3
+# sfxClickTest file=assets/audio/sfx-button-click.mp3
 
 [game]
-gameCoffeeRush file=assets/games/coffee_rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee_rush.jpg
-spaceDebris file=assets/games/space_debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space_debris.jpg
-screenBenchmark file=assets/games/interactive_screen_benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive_screen_benchmark.jpg
-gameTestMiss file=assets/games/space_debrisTestMiss.html
+gameCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
+spaceDebris file=assets/games/space-debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space-debris.jpg
+screenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
+gameTestMiss file=assets/games/space-debris-test-miss.html
 
 [var]
 x = 10 # объявление переменных
