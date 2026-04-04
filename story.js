@@ -11,21 +11,21 @@ window.STORY_TEXT = `
 [meta]
 title=Вуз: демо-новелла с выбором
 lang=ru                  # Язык инфтерфейса программы. Возможны значения: en, ru
-startScene=intro_01
+startScene=scIntro01
 # topSpacing=500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
 
 [bg]
 # Формат описания для фона:
 # имя-фона = путь_и_название_файла
-campusHall file=assets/backgrounds/bg-campus-hall.jpg
-libraryEvening file=assets/backgrounds/bg-library-evening.jpg
-branchCafe file=assets/backgrounds/bg-campus-cafe.jpg
-branchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
-branchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
-branchLab file=assets/backgrounds/bg-it-lab.jpg
-branchYard file=assets/backgrounds/bg-uni-yard-night.jpg
-branchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
+bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg
+bgLibraryEvening file=assets/backgrounds/bg-library-evening.jpg
+bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
+bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
+bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
+bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
+bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
+bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
 [char]
 # Формат описания для персонажа:
@@ -47,10 +47,10 @@ bgmDay file=assets/audio/bgm-campus-day.mp3
 # sfxClickTest file=assets/audio/sfx-button-click.mp3
 
 [game]
-gameCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
-spaceDebris file=assets/games/space-debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space-debris.jpg
-screenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
-gameTestMiss file=assets/games/space-debris-test-miss.html
+gmCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
+gmSpaceDebris file=assets/games/space-debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space-debris.jpg
+gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
+gmTestMiss file=assets/games/space-debris-test-miss.html
 
 [var]
 x = 10 # объявление переменных
@@ -63,12 +63,12 @@ benchmarkResult = 0
 
 [scene]
 # Формат описания сцен:
-# scene название_сцены
-scene intro_01
+# scene названиеCцены
+scene scIntro01
 
 # Показ фона:
 # bg название_фона
-bg campusHall
+bg bgCampusHall
 
 # Проигрывание музыки:
 # bgm название_музыки
@@ -83,7 +83,7 @@ bgm bgmDay loop
 
 
 # Проверка работы игры
-# game gameCoffeeRush difficulty=1 result=coffeeResult x=1 y=100
+# game gmCoffeeRush difficulty=1 result=coffeeResult x=1 y=100
 # anna: "coffee={coffeeResult}"
 # if coffeeResult == 1 -> cafeGood
 # if coffeeResult == 0 -> cafeBad
@@ -107,11 +107,11 @@ anna: "Плюс можно добавлять мини-игры и возвра�
 show igor smile
 igor: "Тогда давай сделаем выбор: пусть посетитель решит, куда пойдём дальше!"
 
-goto scene_02
+goto scScene02
 
-scene scene_02
+scene scScene02
 
-bg libraryEvening
+bg bgLibraryEvening
 
 show igor smile
 
@@ -129,19 +129,19 @@ anna: "Есть вопрос: куда ведём посетителя даль�
 
 
 menu
-"Зайти в кафе и услышать студенческие байки" -> branch_cafe_01
-"Заглянуть в IT-лабораторию и увидеть магию технологий" -> branch_lab_01
-"Выйти во двор и поймать ночное настроение университета" -> branch_yard_01
+"Зайти в кафе и услышать студенческие байки" -> scBranchCafe01
+"Заглянуть в IT-лабораторию и увидеть магию технологий" -> scBranchLab01
+"Выйти во двор и поймать ночное настроение университета" -> scBranchYard01
 
-scene branch_cafe_01
+scene scBranchCafe01
 
-bg branchCafe
+bg bgBranchCafe
 hide all
 
 "Кафе шумит: кружки звенят, кто-то обсуждает проекты и дедлайны, кто-то — мемы недели."
 "В воздухе пахнет кофе и свежими идеями. Кажется, отсюда начинаются лучшие командные истории."
 
-bg branchCafe2
+bg bgBranchCafe2
 
 # Диалоги персонажей без показа на экране
 anna: "Кофе здесь просто божественный! Особенно тот латте с карамелью."
@@ -151,30 +151,30 @@ anna: "Ой, не напоминай! Мы потом неделю смеяли�
 
 anna: "Кажется, бариста не справляется с наплывом. Хочешь помочь?"
 
-game gameCoffeeRush difficulty=3 result=coffeeResult
+game gmCoffeeRush difficulty=3 result=coffeeResult
 
-if coffeeResult == 1 -> cafeGood
-if coffeeResult == 0 -> cafeBad
+if coffeeResult == 1 -> scCafeGood
+if coffeeResult == 0 -> scCafeBad
 
-goto finale_01
+goto scFinale01
 
 
 
-scene cafeGood
-bg branchCafe3
+scene scCafeGood
+bg bgBranchCafe3
 "Ты отлично справился с потоком заказов."
-goto finale_01
+goto scFinale01
 
-scene cafeBad
-bg branchCafe3
+scene scCafeBad
+bg bgBranchCafe3
 "Поток оказался слишком быстрым, но атмосфера всё равно запомнилась."
-goto finale_01
+goto scFinale01
 
 
 
-scene branch_lab_01
+scene scBranchLab01
 
-bg branchLab
+bg bgBranchLab
 hide all
 
 "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
@@ -187,17 +187,17 @@ show igor smile
 igor: "Можно прогнать расчёт, как раньше. А можно проверить сенсорный экран и понять, готов ли он для игровых сцен."
 
 menu
-"Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> branch_lab_calc
-"Провести калибровку сенсорной панели" -> branch_lab_benchmark
+"Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
+"Провести калибровку сенсорной панели" -> scBranchLabBenchmark
 
 
 
 
 
 
-scene branch_lab_calc
+scene scBranchLabCalc
 
-bg branchLab
+bg bgBranchLab
 hide all
 
 set labStep = labStep + 1
@@ -212,21 +212,21 @@ igor: "Смотри, я снова запустил модель. Теперь x
 show anna neutral
 anna: "А производный параметр уже равен {z}. Похоже, система постепенно выходит на устойчивый режим."
 
-if labStep > 2 -> finale_01
+if labStep > 2 -> scFinale01
 
 anna: "Это ещё не финал. Давай прогоним расчёт ещё раз."
 
-goto branch_lab_calc
+goto scBranchLabCalc
 
 
 
 
 
 
-scene branch_lab_benchmark
+scene scBranchLabBenchmark
 
 
-bg branchLab
+bg bgBranchLab
 hide all
 
 "На одном из стендов уже открыт режим калибровки. Система предлагает проверить, насколько быстро экран реагирует на касания и как держит нагрузку."
@@ -240,15 +240,15 @@ igor: "Отлично. Если панель справится, потом сю
 
 "Ты подходишь к экрану и запускаешь диагностику."
 
-game screenBenchmark difficulty=3 result=benchmarkResult
+game gmScreenBenchmark difficulty=3 result=benchmarkResult
 
-if benchmarkResult == 1 -> branch_lab_benchmark_good
-if benchmarkResult == 0 -> branch_lab_benchmark_bad
+if benchmarkResult == 1 -> scBranchLabBenchmarkGood
+if benchmarkResult == 0 -> scBranchLabBenchmarkBad
 
 
 
-scene branch_lab_benchmark_good
-bg branchLab
+scene scBranchLabBenchmarkGood
+bg bgBranchLab
 hide all
 
 "Диагностика завершена успешно. Экран уверенно реагирует на касания, поддерживает multitouch и подходит для интерактивных сцен."
@@ -259,13 +259,13 @@ anna: "Отлично. Значит, такие механики можно см
 show igor smile
 igor: "Вот теперь лаборатория выглядит не просто как декорация, а как место, где рождаются игровые идеи."
 
-goto finale_01
+goto scFinale01
 
 
 
-scene branch_lab_benchmark_bad
+scene scBranchLabBenchmarkBad
 
-bg branchLab
+bg bgbranchLab
 hide all
 
 "Диагностика показала, что системе ещё есть куда расти: часть проверок оказалась нестабильной."
@@ -276,15 +276,15 @@ anna: "Ничего страшного. Зато теперь понятно, ч
 show igor neutral
 igor: "Это тоже полезный результат. Любая хорошая система начинается с честной проверки."
 
-goto finale_01
+goto scFinale01
 
 
 
 
 
-scene branch_yard_01
+scene scBranchYard01
 
-bg branchYard
+bg bgBranchYard
 hide all
 
 "Во дворе тихо: фонари рисуют дорожки света, и даже шаги звучат как часть саундтрека."
@@ -299,19 +299,19 @@ igor: "Мне нравится. Если пройдём маршрут чист�
 
 "Ты сосредотачиваешься на экране и берёшь управление."
 
-game spaceDebris difficulty=3 result=spaceResult
+game gmSpaceDebris difficulty=3 result=spaceResult
 
-if spaceResult == 1 -> yardGood
-if spaceResult == 0 -> yardBad
+if spaceResult == 1 -> scYardGood
+if spaceResult == 0 -> scYardBad
 
-goto finale_01
-
-
+goto scFinale01
 
 
-scene yardGood
 
-bg branchYard
+
+scene scYardGood
+
+bg bgBranchYard
 hide all
 
 "Траектория пройдена идеально — ни одного столкновения."
@@ -323,14 +323,14 @@ anna: "Вот это было красиво. Такой вечер хочетс
 show igor smile
 igor: "Пожалуй, лучший маршрут на сегодня мы уже нашли."
 
-goto finale_01
+goto scFinale01
 
 
 
 
-scene yardBad
+scene scYardBad
 
-bg branchYard
+bg bgBranchYard
 hide all
 
 "Маршрут оказался сложнее, чем казалось, и несколько опасных обломков всё-таки сбили темп."
@@ -342,13 +342,13 @@ anna: "Ничего, не идеальный маршрут тоже остаё�
 show igor neutral
 igor: "Согласен. Иногда вечер запоминается именно потому, что не идёт по плану."
 
-goto finale_01
+goto scFinale01
 
 
 
-scene finale_01
+scene scFinale01
 
-bg libraryEvening
+bg bgLibraryEvening
 hide all
 
 "Демо завершено. Это пример ветвления: три пути сошлись в одну финальную сцену."
@@ -356,9 +356,9 @@ hide all
 
 
 
-scene branch_lab_02
+scene scBranchLab02
 
-bg branchLab
+bg bgBranchLab
 hide all
 
 "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
