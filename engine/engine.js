@@ -2259,12 +2259,18 @@ function closeGame(resultData) {
   var manualClose = !!(resultData && resultData.manualClose === true);
 
   if (manualClose) {
-    // Игра закрыта вручную: просто выходим из режима игры,
-    // но НЕ продолжаем сцену автоматически.
+    // Игра закрыта вручную: считаем это завершением с текущим result
+    // и сразу продолжаем сценарий без дополнительного клика.
     state.currentGame = null;
-    state.waitingNext = true;
-    state.nextLocked = false;
-    console.log("[GAME] manualClose -> stay on current dialog");
+    state.waitingNext = false;
+    state.nextLocked = true;
+    console.log("[GAME] manualClose -> continue scene immediately");
+
+    setTimeout(function() {
+      state.nextLocked = false;
+      runCurrent();
+    }, 0);
+
     return;
   }
 
