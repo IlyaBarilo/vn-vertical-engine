@@ -3417,17 +3417,17 @@ function renderStats() {
 
       text += "=== LOADING THE NOVEL ===\n";
 
-      if (profiler.marks['First screen ready'] !== undefined) {
+      if (profiler.marks['First screen is ready'] !== undefined) {
         text += "  To first screen: " +
-          profiler.marks['First Screen Ready'] + "ms (" +
-          (profiler.marks['First Screen Ready'] / 1000).toFixed(2) + "с)\n";
+          profiler.marks['First screen is ready'] + "ms (" +
+          (profiler.marks['First screen is ready'] / 1000).toFixed(2) + "с)\n";
       } else {
         text += "  To first screen: not yet measured\n";
       }
 
-      if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['First screen ready'] !== undefined) {
+      if (window.LOADER_STATS && window.LOADER_STATS.startTime && profiler.marks['First screen is ready'] !== undefined) {
         var firstScreenFromLoaderStart =
-          (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['First screen ready'];
+          (profiler.startTime - window.LOADER_STATS.startTime) + profiler.marks['First screen is ready'];
 
         text += "  From loader start to first screen: " +
           firstScreenFromLoaderStart + "ms (" +
