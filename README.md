@@ -58,7 +58,7 @@ No setup. No dependencies. Just open `index.html` and start.
 -   🔀 **branching storylines**
 -   🎵 background music support
 -   📊 built-in **resource loading statistics**
--   📘 **Specifications:** [Story scripting](SPEC-STORY.md), [Mini-games](SPEC-GAME.md)
+-   📘 **Specifications:** [Story scripting](docs/specs/SPEC-STORY.md), [Mini-games](docs/specs/SPEC-GAME.md)
 
 ---
 
