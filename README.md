@@ -155,6 +155,27 @@ The engine runs completely **offline**.
 
 ---
 
+## 💬 Discussions and Feedback
+
+Use **GitHub Discussions** for questions, ideas, feedback, and showcase posts.
+
+### Categories
+
+- **Q&A** — setup help, scripting questions, engine behavior, and unexpected errors
+- **Ideas** — feature suggestions, scripting improvements, and workflow ideas
+- **Show and Tell** — projects, demos, experiments, and screenshots made with the engine
+
+### Repository Policy
+
+- **Issues** are disabled by design
+- **Projects** are disabled by design
+- Use **Discussions** instead of issue reports for questions, feedback, and unexpected problems
+- Pull requests are disabled by design
+
+For versioned updates and downloads, see **Releases**.
+
+---
+
 ## 📏 Vertical Screen Adjustment
 
 To add top and bottom margins (useful for floor-mounted displays), use
