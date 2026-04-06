@@ -121,6 +121,8 @@ This engine is suitable for:
     ├── README.md
     ├── LICENSE
     ├── NOTICE.md
+    ├── FIRST-STEPS.md
+    ├── FIRST-STEPS-RU.md
     │
     ├── engine/
     │    ├── engine.css
@@ -152,6 +154,16 @@ This engine is suitable for:
 3.  Open **index.html** in your browser.
 
 The engine runs completely **offline**.
+
+---
+
+## 📚 First Steps
+
+- [First Steps (EN)](FIRST-STEPS.md)
+- [First Steps (RU)](FIRST-STEPS-RU.md)
+
+Use these guides for the recommended workflow:
+story idea → draft script → optional mini-games → integration → testing.
 
 ---
 
@@ -205,12 +217,12 @@ lang = en
 campusHall file=assets/backgrounds/bg-campus-hall.jpg
 
 [char]
-anna emotion=neutral file=assets/characters/ch-anna-neutral.png name="Анна" color=#0F0
-anna emotion=smile file=assets/characters/ch-anna.png  # добавление эмоций персонажу anna
-igor emotion=neutral file=assets/characters/ch-igor-neutral.png name="Игорь" color=#F00
+anna emotion=neutral file=assets/characters/ch-anna-neutral.png name="Anna" color=#0F0
+anna emotion=smile file=assets/characters/ch-anna.png  # add another emotion for anna
+igor emotion=neutral file=assets/characters/ch-igor-neutral.png name="Igor" color=#F00
 
-igor name="Игорь" file=assets/characters/ch-igor-smile.png  # Если не указана эмоция, то считается neutral
-igor color=#F00  # можно отдельно дополнять значения для персонажа
+igor name="Igor" file=assets/characters/ch-igor-smile.png  # if emotion is omitted, neutral is used
+igor color=#F00  # values can also be extended in separate lines
 
 [audio]
 bgmDay file=assets/audio/bgm-campus-day.mp3
@@ -248,13 +260,8 @@ if resultGame == 0 -> bad_end
 
 ## 📘 Specifications
 
-### Story Scripting
-
-See [docs/specs/SPEC-STORY.md](docs/specs/SPEC-STORY.md).
-
-### Mini-games
-
-See [docs/specs/SPEC-GAME.md](docs/specs/SPEC-GAME.md).
+- [Story Scripting](docs/specs/SPEC-STORY.md)
+- [Mini-games](docs/specs/SPEC-GAME.md)
 
 ---
 
