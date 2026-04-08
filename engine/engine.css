@@ -395,7 +395,10 @@ body {
   position: absolute;
   left: var(--dialog-side-offset);
   right: var(--dialog-side-offset);
-  bottom: calc(var(--uiBottomOffset) + var(--dialog-bottom-gap));
+  
+  bottom: var(--dialog-bottom-gap); 
+  /* bottom: calc(var(--uiBottomOffset) + var(--dialog-bottom-gap)); */
+
   padding: var(--dialog-padding);
   border-radius: var(--dialog-radius);
   background: rgba(0,0,0,0.60);
@@ -464,7 +467,10 @@ body {
   position: absolute;
   left: var(--choices-side-offset);
   right: var(--choices-side-offset);
-  bottom: calc(var(--uiBottomOffset) + var(--dialog-bottom-gap));
+
+  bottom: var(--dialog-bottom-gap);
+  /* bottom: calc(var(--uiBottomOffset) + var(--dialog-bottom-gap)); */
+  
   z-index: 30;
 }
 
@@ -587,12 +593,6 @@ body {
 
 /* Утилиты */
 .hidden { display: none !important; }
-
-/* Для очень узких/высоких окон можно чуть уменьшить текст */
-@media (max-aspect-ratio: 9/16) {
-  .text { font-size: 0.97em; }
-  .choices { bottom: calc(var(--uiBottomOffset) + var(--bottomSpacing) + var(--dialog-bottom-gap)); }
-}
 
 /* ===== Панель статистики ===== */
 
@@ -738,21 +738,16 @@ body {
 
 /* Окно визуальной новеллы */
 .novel-window {
-  position: absolute;
-  left: 0;
+  position: relative;  /* НОВОЕ */
+  left: var(--leftSpacing);
   top: var(--topSpacing);
-  width: 100%;
+  width: calc(100% - var(--leftSpacing) - var(--rightSpacing));
   height: calc(100% - var(--topSpacing) - var(--bottomSpacing));
   overflow: hidden;
   z-index: 2;
 }
 
-/* Для очень узких экранов */
-@media (max-aspect-ratio: 9/16) {
-  .choices {
-    z-index: 10;
-  }
-}
+
 
 /* Состояния диалога: отдельные токены для ручной правки */
 .dialog.has-name {
