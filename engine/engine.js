@@ -306,21 +306,25 @@ function markFirstScreenReady(reason) {
 // Упрощенная инициализация Mermaid
 if (window.mermaid) {
   window.mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'loose',
+    suppressErrorRendering: false,
+
+    // главное для больших графов
+    maxTextSize: 200000,
+    maxEdges: 5000,
+
     theme: 'default',
     flowchart: {
-      useMaxWidth: true,
+      useMaxWidth: false,
       htmlLabels: true,
       curve: 'basis',
-      padding: 4,           // Внутренние отступы в узлах (было 15)
-      nodeSpacing: 60,       // Расстояние между узлами (было 50)
-      rankSpacing: 100,       // Расстояние между уровнями (было 50)
-      borderRadius: 10
-    },
-    securityLevel: 'loose',
-    startOnLoad: false
+      padding: 4,
+      nodeSpacing: 60,
+      rankSpacing: 100
+    }
   });
 }
-
 
 
 
@@ -669,52 +673,6 @@ function toggleGraphView() {
 function toggleGamesView() {
   setStatsView(showingGames ? "text" : "games");
 }
-
-// Функция рендеринга графа Mermaid
-function renderMermaidGraph() {
-  if (!window.STORY) return;
-  
-  // Получаем данные о недостижимых сценах
-  var reach = findUnreachableScenes(window.STORY);
-  
-  // Генерируем код Mermaid
-  currentMermaidCode = buildMermaidGraph(window.STORY, reach.unreachable);
-  
-  // Вставляем код в контейнер
-  if (mermaidGraph) {
-    mermaidGraph.innerHTML = currentMermaidCode;
-    
-    // Инициализируем Mermaid
-    if (window.mermaid) {
-      try {
-        // Очищаем предыдущую инициализацию
-        mermaidGraph.removeAttribute('data-processed');
-        window.mermaid.init(undefined, mermaidGraph);
-
-        // ВАЖНО: сбрасываем масштаб ПОСЛЕ полной отрисовки
-        setTimeout(function() {
-          resetPanzoom();
-          console.log('[Panzoom] Сброс после рендера');
-        }, 300);
-
-      } catch (e) {
-        console.error("Ошибка инициализации Mermaid:", e);
-        mermaidGraph.innerHTML = '<div style="color: red; padding: 1rem;">Ошибка отображения графа. Проверьте консоль.</div>';
-      }
-    } else {
-      mermaidGraph.innerHTML = '<div style="color: orange; padding: 1rem;">Библиотека Mermaid не загружена</div>';
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
 
 
 
@@ -4264,7 +4222,11 @@ function findCyclesSCC(story) {
 
 // engine.js - обновленная функция buildMermaidGraph
 
-function buildMermaidGraph(story, unreachableList) {
+function buildMermaidGraph(story, unreachableList, options) {
+  options = options || {};
+
+  var compact = !!options.compact;
+  
   var scenes = story.scenes || [];
   var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
   
@@ -4466,16 +4428,16 @@ function buildMermaidGraph(story, unreachableList) {
   mermaid += "classDef game-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
 
   // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
-  var charGraphData = buildCharactersGraph(story);
+  var charGraphData = buildCharactersGraph(story, options);
   mermaid += charGraphData.mermaid;
   mermaid += "\n";
 
   // ДОБАВЛЯЕМ УЗЕЛ "ФОНЫ"
-  mermaid += buildBackgroundsGraph(story);
+  mermaid += buildBackgroundsGraph(story, options);
   mermaid += "\n";
 
   // ДОБАВЛЯЕМ УЗЕЛ "ИГРЫ"
-  mermaid += buildGamesGraph(story);
+  mermaid += buildGamesGraph(story, options);
   mermaid += "\n";
 
   // Создаем узлы с многострочными метками
@@ -4492,24 +4454,26 @@ function buildMermaidGraph(story, unreachableList) {
     var imageGap = 2;             // Расстояние между миниатюрами
     var containerPadding = 8;     // Внутренние отступы контейнера
 
-    if (node.allBgImages && node.allBgImages.length > 0) {
-      var sceneBgCountClass = getImgCountClass(node.allBgImages.length);
+    if(!compact) {
+      if (node.allBgImages && node.allBgImages.length > 0) {
+        var sceneBgCountClass = getImgCountClass(node.allBgImages.length);
 
-      label += '<div class="bg-images-container ' + sceneBgCountClass + '" style="padding: 4px;">';
-      
-      for (var b = 0; b < node.allBgImages.length; b++) {
-        var bg = node.allBgImages[b];
-        var imgSrc = bg.src.replace(/"/g, '&quot;');
+        label += '<div class="bg-images-container ' + sceneBgCountClass + '" style="padding: 4px;">';
         
-        label += '<img src="' + imgSrc + '" ' +
-                'class="bg-thumbnail ' + sceneBgCountClass + '" ' +
-                'data-id="' + bg.id + '" ' +
-                'data-index="' + b + '" ' +
-                'title="' + bg.id + '" ' +
-                'alt="" /> ';
+        for (var b = 0; b < node.allBgImages.length; b++) {
+          var bg = node.allBgImages[b];
+          var imgSrc = bg.src.replace(/"/g, '&quot;');
+          
+          label += '<img src="' + imgSrc + '" ' +
+                  'class="bg-thumbnail ' + sceneBgCountClass + '" ' +
+                  'data-id="' + bg.id + '" ' +
+                  'data-index="' + b + '" ' +
+                  'title="' + bg.id + '" ' +
+                  'alt="" /> ';
+        }
+        
+        label += '</div>';
       }
-      
-      label += '</div>';
     }
 
     // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
@@ -4616,7 +4580,10 @@ function getImgCountClass(count) {
 
 // Добавьте после функции buildMermaidGraph или в любое место перед ее вызовом
 
-function buildCharactersGraph(story) {
+function buildCharactersGraph(story, options) {
+  options = options || {};
+  var compact = !!options.compact;
+
   var mermaid = "";
   var characters = story.assets.characters || {};
   var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
@@ -4647,11 +4614,14 @@ function buildCharactersGraph(story) {
         var imgSrc = char.images[emotion].replace(/"/g, '&quot;');
 
         emotionsHtml += '<img src="' + imgSrc + '" ' +
-                        'class="char-emotion-thumbnail ' + emotionCountClass + '" ' +
-                        'style="object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
-                        'onmouseover="this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;" ' +
-                        'onmouseout="this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;" ' +
-                        'title="' + emotion + '" alt="" /> ';
+                        'class="char-emotion-thumbnail ' + emotionCountClass + '" ';
+
+        if (!compact) {
+          emotionsHtml += 'style="object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
+          'onmouseover="this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;" ' +
+          'onmouseout="this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;" ';
+        }
+        emotionsHtml += 'title="' + emotion + '" alt="" /> ';
       }
 
       emotionsHtml += '</div>';
@@ -4697,7 +4667,10 @@ function buildCharactersGraph(story) {
 }
 
 // Функция для создания элемента "Фоны" со всеми уникальными фонами
-function buildBackgroundsGraph(story) {
+function buildBackgroundsGraph(story, options) {
+  options = options || {};
+  var compact = !!options.compact;
+
   var mermaid = "";
   var backgrounds = story.assets.backgrounds || {};
   var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
@@ -4757,7 +4730,10 @@ function buildBackgroundsGraph(story) {
   return mermaid;
 }
 
-function buildGamesGraph(story) {
+function buildGamesGraph(story, options) {
+  options = options || {};
+  var compact = !!options.compact;
+
   var mermaid = "";
   var games = (story.assets && story.assets.games) ? story.assets.games : {};
   var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
@@ -5691,16 +5667,62 @@ function initPanzoom() {
   resetPanzoom();
 }
 
-// Модифицируйте функцию renderMermaidGraph для сброса масштаба при новой загрузке
 
+
+function shouldUseCompactMermaid(fullCode, stats) {
+  if (!fullCode) return false;
+
+  if (fullCode.length > 35000) return true;
+  //35000
+
+  if (stats && stats.sceneCount > 120) return true;
+  if (stats && stats.edgeCount > 400) return true;
+
+  return false;
+}
+
+// Модифицируйте функцию renderMermaidGraph для сброса масштаба при новой загрузке
 function renderMermaidGraph() {
   if (!window.STORY) return;
   
   // Получаем данные о недостижимых сценах
   var reach = findUnreachableScenes(window.STORY);
   
+
+  // 1. Сначала собираем полный вариант
+  var fullCode = buildMermaidGraph(window.STORY, reach.unreachable, {
+    compact: false
+  });
+
+  // 2. Здесь ваши будущие пороги
+  var useCompact = shouldUseCompactMermaid(fullCode);
+
+  console.log('fullCode.length=' + fullCode.length)
+  console.log('useCompact=' + useCompact)
+
+  // 3. Если превышен порог — собираем компактный вариант
+  currentMermaidCode = useCompact
+    ? buildMermaidGraph(window.STORY, reach.unreachable, { compact: true })
+    : fullCode;
+
+  console.log("[MERMAID MODE]", {
+    mode: useCompact ? "compact" : "full",
+    fullLength: fullCode.length,
+    finalLength: currentMermaidCode.length
+  });
+
+
   // Генерируем код Mermaid
-  currentMermaidCode = buildMermaidGraph(window.STORY, reach.unreachable);
+  var fullCode = buildMermaidGraph(window.STORY, reach.unreachable, {
+    compact: false
+  });
+
+  var useCompact = shouldUseCompactMermaid(fullCode);
+
+  currentMermaidCode = useCompact
+    ? buildMermaidGraph(window.STORY, reach.unreachable, { compact: true })
+    : fullCode;
+
   console.log('[IMGCOUNT PRE-RENDER SNIPPETS]', {
     chars: currentMermaidCode.match(/char-emotions-container[^>]*imgcount[1-4][\s\S]{0,300}/g),
     bgs: currentMermaidCode.match(/bg-images-container[^>]*imgcount[1-4][\s\S]{0,300}/g),
