@@ -2341,8 +2341,9 @@ function closeGame(resultData) {
     };
 
     state.currentGame = null;
-    state.waitingNext = false;
-    state.nextLocked = false;
+    // ⚠️ НЕ сбрасываем waitingNext и nextLocked – они не относятся к игре из статистики
+    // state.waitingNext = false;
+    // state.nextLocked = false;
 
     renderGamesCatalog();
     return;
