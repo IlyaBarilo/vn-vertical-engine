@@ -1492,6 +1492,13 @@ function executeAction(action) {
 
         firstScreenMetrics.waitingForCharacter = false;
 
+        // ✅ Если ожидаем клик пользователя – не продолжаем автоматически
+        if (state.waitingNext) {
+          console.log('[FLOW] char(new):done callback but waiting for user click, skipping runCurrent');
+          state.nextLocked = false;      // снимаем блокировку, если была
+          return;
+        }
+
         state.nextLocked = false;
         state.waitingNext = false;
 
@@ -1897,8 +1904,8 @@ function setCharacter(src, pos, charId, done) {
 
   // Если это тот же персонаж с той же эмоцией и он уже видим
   if (currentSrc === normalizedSrc && !elChar.classList.contains('hidden')) {
-    console.log('[Engine setCharacter] Same image already visible, skipping');
-    if (done) done();
+    console.log('[Engine setCharacter] Same image already visible, scheduling done asynchronously');
+    if (done) setTimeout(done, 0);  // ← асинхронный вызов
     return;
   }
 
