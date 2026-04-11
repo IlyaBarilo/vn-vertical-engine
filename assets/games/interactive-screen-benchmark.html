@@ -178,6 +178,7 @@ const CFG = {
 const state = {
   initialized:false, started:false, finished:false, finishSent:false,
   starsEnabled:true,
+  simpleMode:false,
   gameId:'screenBenchmark', difficulty:3,
   vw:0,vh:0,cx:0,cy:0,scale:1,textScale:1,hudScale:1,
   phase:'intro', phaseIndex:0, phaseElapsed:0, totalElapsed:0, lastFrame:0,
@@ -427,12 +428,86 @@ const sum = {
   retry:mkButton('ПОВТОРИТЬ ТЕСТ', summaryCard, resetRun)
 };
 const stageBtns = {
-  bg:mkButton('ФОН: ВКЛ', stageControls, toggleStarsBackground),
+  bg:mkButton('РЕЖИМ: КРАСИВО', stageControls, toggleSimpleMode),
   resetTrace:mkButton('ОЧИСТИТЬ ТРАЕКТОРИЮ', stageControls, resetTraceStage),
   resetDualPaths:mkButton('СБРОСИТЬ ЭТАП', stageControls, resetDualPathsStage),
   next:mkButton('СЛЕДУЮЩИЙ ЭТАП', stageControls, advanceStage),
   finish:mkButton('ЗАВЕРШИТЬ ТЕСТ', stageControls, finishStages)
 };
+
+function getVisualModeConfig(){
+  if(state.simpleMode){
+    return {
+      label:'РЕЖИМ: ПРОСТО',
+      starsEnabled:false,
+      blurEnabled:false,
+      gradientsEnabled:false,
+      textsEnabled:false,
+      pointerMarksEnabled:false,
+      hudEnabled:false,
+      renderScale:0.5
+    };
+  }
+
+  return {
+    label:'РЕЖИМ: КРАСИВО',
+    starsEnabled:true,
+    blurEnabled:true,
+    gradientsEnabled:true,
+    textsEnabled:true,
+    pointerMarksEnabled:true,
+    hudEnabled:true,
+    renderScale:1
+  };
+}
+
+function updateModeButtonLabel(){
+  const cfg = getVisualModeConfig();
+  if(stageBtns && stageBtns.bg) stageBtns.bg.textContent = cfg.label;
+}
+
+function applyBlurSetting(){
+  const cfg = getVisualModeConfig();
+  const value = cfg.blurEnabled ? 'blur(14px)' : 'none';
+
+  [introCard, summaryCard, stageControls].forEach(el => {
+    el.style.backdropFilter = value;
+    el.style.webkitBackdropFilter = value;
+  });
+}
+
+function applyCanvasResolution(){
+  const cfg = getVisualModeConfig();
+  const rs = cfg.renderScale || 1;
+
+  const width = Math.max(1, Math.round(state.vw * rs));
+  const height = Math.max(1, Math.round(state.vh * rs));
+
+  [dom.stars, dom.world, dom.hud].forEach(c => {
+    c.width = width;
+    c.height = height;
+    c.style.width = `${state.vw}px`;
+    c.style.height = `${state.vh}px`;
+  });
+
+  [sctx, wctx, hctx].forEach(ctx => {
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
+    ctx.imageSmoothingEnabled = rs >= 0.99;
+  });
+}
+
+function applyVisualMode(){
+  applyBlurSetting();
+  applyCanvasResolution();
+  updateModeButtonLabel();
+}
+
+function toggleSimpleMode(){
+  state.simpleMode = !state.simpleMode;
+  applyVisualMode();
+}
+
+
 
 function layoutIntro(){
   style(introCard,{width:px(690),height:px(900),padding:px(34),position:'relative'});
@@ -519,7 +594,7 @@ function resize(){
   state.vw=innerWidth; state.vh=innerHeight; state.cx=state.vw/2; state.cy=state.vh/2;
   state.scale=Math.min(state.vw/BASE_W,state.vh/BASE_H)*GLOBAL_UI_SCALE;
   state.textScale=state.scale*TEXT_SCALE; state.hudScale=state.scale*HUD_SCALE;
-  [dom.stars,dom.world,dom.hud].forEach(c=>{ c.width=state.vw; c.height=state.vh; });
+  applyCanvasResolution();
   layoutIntro(); layoutSummary(); layoutStageControls(); buildStars();
   // Пересчёт скоростей падающих кругов при изменении размера экрана
   for(const c of state.falling.circles){
@@ -527,6 +602,8 @@ function resize(){
       c.speed = (c.percentPerSec / 100) * state.vh;
     }
   }
+  applyBlurSetting();
+  updateModeButtonLabel();
 }
 
 function showIntro(){
@@ -680,7 +757,7 @@ function resetMetrics(){
 
 function startRun(){
   resetMetrics();
-  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
+  updateModeButtonLabel();
   overlay.classList.add('hidden');
   summaryLayer.classList.add('hidden');
   stageControls.classList.remove('hidden');
@@ -693,7 +770,7 @@ function startRun(){
 
 function resetRun(){
   if(state.finishSent) return;
-  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
+  updateModeButtonLabel();
   state.started=false;
   state.phase='intro';
   state.summary=null;
@@ -754,7 +831,7 @@ function resetTraceStage(){
 
 function toggleStarsBackground(){
   state.starsEnabled = !state.starsEnabled;
-  stageBtns.bg.textContent = state.starsEnabled ? 'ФОН: ВКЛ' : 'ФОН: ВЫКЛ';
+  updateModeButtonLabel();
 }
 
 function resetDualPathsStage(){
@@ -1255,13 +1332,26 @@ function spawnFallingCircle(){
 
 
 
-function draw(){ drawStars(); drawWorld(); drawHud(); }
+function draw(){
+  const cfg = getVisualModeConfig();
+
+  drawStars();
+  drawWorld();
+
+  if(cfg.hudEnabled){
+    drawHud();
+  } else {
+    hctx.clearRect(0,0,state.vw,state.vh);
+  }
+}
 
 
 function drawStars(){
   sctx.clearRect(0,0,state.vw,state.vh);
+
+  const cfg = getVisualModeConfig();
   if(state.phase === 'lightscene') return;
-  if(!state.starsEnabled) return;
+  if(!cfg.starsEnabled) return;
 
   for(const p of state.particles){
     sctx.globalAlpha = p.a;
@@ -1290,9 +1380,53 @@ function drawWorld(){
 
 
 function roundRect(ctx,x,y,w,h,r,fill,stroke){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(1,state.scale*2);ctx.stroke();} }
-function drawLatencyWorld(){ const tx=state.latencyTarget.x*state.vw, ty=state.latencyTarget.y*state.vh, r=state.latencyTarget.r*Math.min(state.vw,state.vh); const alpha=.22+.20*Math.sin(state.phaseElapsed*5.5); wctx.beginPath(); wctx.strokeStyle=`rgba(255,209,102,${alpha})`; wctx.lineWidth=16*state.scale; wctx.arc(tx,ty,r*1.35,0,Math.PI*2); wctx.stroke(); const g=wctx.createRadialGradient(tx,ty,r*.1,tx,ty,r*1.05); g.addColorStop(0,'rgba(255,255,255,.98)'); g.addColorStop(.3,'rgba(255,230,160,.96)'); g.addColorStop(1,'rgba(255,170,50,.12)'); wctx.fillStyle=g; wctx.beginPath(); wctx.arc(tx,ty,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle='rgba(255,255,255,.6)'; wctx.lineWidth=3*state.scale; wctx.beginPath(); wctx.arc(tx,ty,r*.63,0,Math.PI*2); wctx.stroke(); }
+function drawLatencyWorld(){
+  const cfg = getVisualModeConfig();
+
+  const tx = state.latencyTarget.x * state.vw;
+  const ty = state.latencyTarget.y * state.vh;
+  const r = state.latencyTarget.r * Math.min(state.vw, state.vh);
+  const alpha = .22 + .20 * Math.sin(state.phaseElapsed * 5.5);
+
+  wctx.beginPath();
+  wctx.strokeStyle = `rgba(255,209,102,${alpha})`;
+  wctx.lineWidth = 16 * state.scale;
+  wctx.arc(tx, ty, r * 1.35, 0, Math.PI * 2);
+  wctx.stroke();
+
+  if(cfg.gradientsEnabled){
+    const g = wctx.createRadialGradient(tx,ty,r*.1,tx,ty,r*1.05);
+    g.addColorStop(0,'rgba(255,255,255,.98)');
+    g.addColorStop(.3,'rgba(255,230,160,.96)');
+    g.addColorStop(1,'rgba(255,170,50,.12)');
+    wctx.fillStyle = g;
+  } else {
+    wctx.fillStyle = 'rgba(255,210,120,.95)';
+  }
+
+  wctx.beginPath();
+  wctx.arc(tx,ty,r,0,Math.PI*2);
+  wctx.fill();
+
+  wctx.strokeStyle='rgba(255,255,255,.6)';
+  wctx.lineWidth=3*state.scale;
+  wctx.beginPath();
+  wctx.arc(tx,ty,r*.63,0,Math.PI*2);
+  wctx.stroke();
+}
+
 function drawTapZonesWorld(){ const mid=state.vw/2, top=220*state.scale, bottom=state.vh-190*state.scale; roundRect(wctx,20*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(102,222,255,.08)','rgba(102,222,255,.20)'); roundRect(wctx,mid+4*state.scale,top,mid-24*state.scale,bottom-top,30*state.scale,'rgba(255,135,220,.08)','rgba(255,135,220,.20)'); drawZoneCaption(0.25,'ЛЕВАЯ ЗОНА','#66deff'); drawZoneCaption(0.75,'ПРАВАЯ ЗОНА','#ff87dc'); }
-function drawZoneCaption(nx,text,color){ wctx.fillStyle=color; wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.fillText(text,nx*state.vw,260*state.scale); wctx.textAlign='left'; }
+function drawZoneCaption(nx,text,color){
+  const cfg = getVisualModeConfig();
+  if(!cfg.textsEnabled) return;
+
+  wctx.fillStyle=color;
+  wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`;
+  wctx.textAlign='center';
+  wctx.fillText(text,nx*state.vw,260*state.scale);
+  wctx.textAlign='left';
+}
+
 function drawDualWorld(){ drawGate(state.gateLeft.x*state.vw,state.gateLeft.y*state.vh,CFG.gateR*state.scale,'#66deff',state.leftCursor.overGate); drawGate(state.gateRight.x*state.vw,state.gateRight.y*state.vh,CFG.gateR*state.scale,'#ff87dc',state.rightCursor.overGate); drawCursor(state.leftCursor.x*state.vw,state.leftCursor.y*state.vh,CFG.cursorR*state.scale,'#66deff','L',state.leftCursor.overGate); drawCursor(state.rightCursor.x*state.vw,state.rightCursor.y*state.vh,CFG.cursorR*state.scale,'#ff87dc','R',state.rightCursor.overGate); }
 function drawGate(x,y,r,color,active){ wctx.fillStyle=active?hexToRgba(color,.26):'rgba(255,255,255,.04)'; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.strokeStyle=active?hexToRgba('#ffffff',.9):'rgba(255,255,255,.22)'; wctx.lineWidth=10*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.88,0,Math.PI*2); wctx.stroke(); wctx.strokeStyle=active?color:'rgba(255,255,255,.12)'; wctx.lineWidth=2.4*state.scale; wctx.beginPath(); wctx.arc(x,y,r*.58,0,Math.PI*2); wctx.stroke(); }
 function drawCursor(x,y,r,color,label,active){ wctx.fillStyle=active?hexToRgba('#ffffff',.85):color; wctx.beginPath(); wctx.arc(x,y,r,0,Math.PI*2); wctx.fill(); wctx.fillStyle=active?hexToRgba(color,.65):'rgba(255,255,255,.22)'; wctx.beginPath(); wctx.arc(x-r*.22,y-r*.22,r*.34,0,Math.PI*2); wctx.fill(); wctx.fillStyle='#09111c'; wctx.font=`900 ${Math.round(28*state.scale)}px Inter,system-ui,sans-serif`; wctx.textAlign='center'; wctx.textBaseline='middle'; wctx.fillText(label,x,y+state.scale); wctx.textAlign='left'; wctx.textBaseline='alphabetic'; }
@@ -1300,52 +1434,58 @@ function drawMultitouchWorld(){ const cx=state.cx, cy=state.cy+60*state.scale, r
 
 
 function drawFallingWorld(){
+  const cfg = getVisualModeConfig();
+
   for(const c of state.falling.circles){
-    const g = wctx.createRadialGradient(
-      c.x, c.y, c.r * 0.10,
-      c.x, c.y, c.r * 0.98
-    );
-    g.addColorStop(0, 'rgba(255,255,255,.98)');
-    g.addColorStop(0.32, 'rgba(255,235,175,.97)');
-    g.addColorStop(0.68, 'rgba(255,215,140,.95)');
-    g.addColorStop(1, 'rgba(255,190,95,.90)');
+    if(cfg.gradientsEnabled){
+      const g = wctx.createRadialGradient(
+        c.x, c.y, c.r * 0.10,
+        c.x, c.y, c.r * 0.98
+      );
+      g.addColorStop(0, 'rgba(255,255,255,.98)');
+      g.addColorStop(0.32, 'rgba(255,235,175,.97)');
+      g.addColorStop(0.68, 'rgba(255,215,140,.95)');
+      g.addColorStop(1, 'rgba(255,190,95,.90)');
+      wctx.fillStyle = g;
+    } else {
+      wctx.fillStyle = 'rgba(255,210,130,.95)';
+    }
 
-    wctx.fillStyle = g;
     wctx.beginPath();
     wctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
     wctx.fill();
 
-    wctx.fillStyle = g;
-    wctx.beginPath();
-    wctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-    wctx.fill();
-
-    // Используем сохранённый percentPerSec, т.к. speed уже в px/сек
-    const speedPercentPerSec = Math.round(c.percentPerSec);
-
-    wctx.fillStyle = 'rgba(255,255,255,.92)';
-    wctx.font = `900 ${Math.round(16 * state.scale)}px Inter,system-ui,sans-serif`;
-    wctx.textAlign = 'center';
-    wctx.textBaseline = 'bottom';
-    wctx.fillText(`${speedPercentPerSec}%/с`, c.x, c.y - c.r - 8 * state.scale);
-    wctx.textBaseline = 'alphabetic';
+    if(cfg.textsEnabled){
+      const speedPercentPerSec = Math.round(c.percentPerSec);
+      wctx.fillStyle = 'rgba(255,255,255,.92)';
+      wctx.font = `900 ${Math.round(16 * state.scale)}px Inter,system-ui,sans-serif`;
+      wctx.textAlign = 'center';
+      wctx.textBaseline = 'bottom';
+      wctx.fillText(`${speedPercentPerSec}%/с`, c.x, c.y - c.r - 8 * state.scale);
+      wctx.textBaseline = 'alphabetic';
+    }
   }
 
-  const y = 290 * state.scale;
-  wctx.fillStyle = 'rgba(255,255,255,.55)';
-  wctx.font = `800 ${Math.round(22 * state.scale)}px Inter,system-ui,sans-serif`;
-  wctx.textAlign = 'left';
-  wctx.fillText('МЕДЛЕННО', 24 * state.scale, y);
-  wctx.textAlign = 'center';
-  wctx.fillText('СРЕДНЕ', state.cx, y);
-  wctx.textAlign = 'right';
-  wctx.fillText('ОЧЕНЬ БЫСТРО', state.vw - 24 * state.scale, y);
-  wctx.textAlign = 'left';
+  if(cfg.textsEnabled){
+    const y = 290 * state.scale;
+    wctx.fillStyle = 'rgba(255,255,255,.55)';
+    wctx.font = `800 ${Math.round(22 * state.scale)}px Inter,system-ui,sans-serif`;
+    wctx.textAlign = 'left';
+    wctx.fillText('МЕДЛЕННО', 24 * state.scale, y);
+    wctx.textAlign = 'center';
+    wctx.fillText('СРЕДНЕ', state.cx, y);
+    wctx.textAlign = 'right';
+    wctx.fillText('ОЧЕНЬ БЫСТРО', state.vw - 24 * state.scale, y);
+    wctx.textAlign = 'left';
+  }
 }
 
 function drawLightSceneWorld(){
+  const cfg = getVisualModeConfig();
+
   const cx = state.cx;
   const cy = state.cy + 40 * state.scale;
+
   wctx.fillStyle='rgba(255,255,255,.06)';
   wctx.beginPath();
   wctx.arc(cx, cy, 160 * state.scale, 0, Math.PI * 2);
@@ -1357,13 +1497,15 @@ function drawLightSceneWorld(){
   wctx.arc(cx, cy, 124 * state.scale, 0, Math.PI * 2);
   wctx.stroke();
 
-  wctx.fillStyle='#eef6ff';
-  wctx.font=`900 ${Math.round(34*state.scale)}px Inter,system-ui,sans-serif`;
-  wctx.textAlign='center';
-  wctx.fillText('Пустая сцена', cx, cy - 14 * state.scale);
-  wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`;
-  wctx.fillText('Для проверки системного потолка FPS', cx, cy + 28 * state.scale);
-  wctx.textAlign='left';
+  if(cfg.textsEnabled){
+    wctx.fillStyle='#eef6ff';
+    wctx.font=`900 ${Math.round(34*state.scale)}px Inter,system-ui,sans-serif`;
+    wctx.textAlign='center';
+    wctx.fillText('Пустая сцена', cx, cy - 14 * state.scale);
+    wctx.font=`800 ${Math.round(22*state.scale)}px Inter,system-ui,sans-serif`;
+    wctx.fillText('Для проверки системного потолка FPS', cx, cy + 28 * state.scale);
+    wctx.textAlign='left';
+  }
 }
 
 function drawPathLine(path, color, width, crisp = false){
@@ -1683,7 +1825,42 @@ function drawMiniBox(x,y,w,h,title,value,color,rowIndex=0){
   hctx.fillText(value,x+w/2,y+82*s);
   hctx.textAlign='left';
 }
-function drawPointerMarks(){ const s=state.scale; for(const m of state.inputMarks){ drawTouchMarker(m.x*state.vw,m.y*state.vh,'rgba(255,255,255,.95)','rgba(255,255,255,.5)','rgba(255,255,255,.28)'); } if(state.phase==='multitouch'){ for(const p of state.pointers.values()){ drawTouchMarker(p.x*state.vw,p.y*state.vh,'rgba(181,140,255,.98)','rgba(181,140,255,.55)','rgba(181,140,255,.32)'); } } function drawTouchMarker(x,y,c1,c2,c3){ hctx.strokeStyle=c1; hctx.lineWidth=3.2*s; hctx.beginPath(); hctx.arc(x,y,26*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c2; hctx.lineWidth=4.6*s; hctx.beginPath(); hctx.arc(x,y,54*s,0,Math.PI*2); hctx.stroke(); hctx.strokeStyle=c3; hctx.lineWidth=5.2*s; hctx.beginPath(); hctx.arc(x,y,94*s,0,Math.PI*2); hctx.stroke(); } }
+function drawPointerMarks(){
+  const cfg = getVisualModeConfig();
+  if(!cfg.pointerMarksEnabled) return;
+
+  const s=state.scale;
+
+  for(const m of state.inputMarks){
+    drawTouchMarker(m.x*state.vw,m.y*state.vh,'rgba(255,255,255,.95)','rgba(255,255,255,.5)','rgba(255,255,255,.28)');
+  }
+
+  if(state.phase==='multitouch'){
+    for(const p of state.pointers.values()){
+      drawTouchMarker(p.x*state.vw,p.y*state.vh,'rgba(181,140,255,.98)','rgba(181,140,255,.55)','rgba(181,140,255,.32)');
+    }
+  }
+
+  function drawTouchMarker(x,y,c1,c2,c3){
+    hctx.strokeStyle=c1;
+    hctx.lineWidth=3.2*s;
+    hctx.beginPath();
+    hctx.arc(x,y,26*s,0,Math.PI*2);
+    hctx.stroke();
+
+    hctx.strokeStyle=c2;
+    hctx.lineWidth=4.6*s;
+    hctx.beginPath();
+    hctx.arc(x,y,54*s,0,Math.PI*2);
+    hctx.stroke();
+
+    hctx.strokeStyle=c3;
+    hctx.lineWidth=5.2*s;
+    hctx.beginPath();
+    hctx.arc(x,y,94*s,0,Math.PI*2);
+    hctx.stroke();
+  }
+}
 
 
 
