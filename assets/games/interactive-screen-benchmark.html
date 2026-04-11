@@ -1228,15 +1228,30 @@ function drawAutoDiagWorld(){
   const s = state.scale;
   const t = state.totalElapsed;
 
+  // Верхняя зона зарезервирована под заголовок и информационный блок
+  const topSafe = 430 * s;
+  const bottomSafe = 36 * s;
+  const drawTop = topSafe;
+  const drawBottom = state.vh - bottomSafe;
+  const drawHeight = Math.max(80 * s, drawBottom - drawTop);
+
+  // Лёгкий фон только ниже интерфейса
+  wctx.save();
+  wctx.beginPath();
+  wctx.rect(0, drawTop, state.vw, drawHeight);
+  wctx.clip();
+
   wctx.strokeStyle = 'rgba(255,255,255,.06)';
   wctx.lineWidth = 1 * s;
+
   for(let x = 0; x < state.vw; x += 80 * s){
     wctx.beginPath();
-    wctx.moveTo(x, 0);
-    wctx.lineTo(x, state.vh);
+    wctx.moveTo(x, drawTop);
+    wctx.lineTo(x, drawBottom);
     wctx.stroke();
   }
-  for(let y = 0; y < state.vh; y += 80 * s){
+
+  for(let y = drawTop; y < drawBottom; y += 80 * s){
     wctx.beginPath();
     wctx.moveTo(0, y);
     wctx.lineTo(state.vw, y);
@@ -1245,8 +1260,19 @@ function drawAutoDiagWorld(){
 
   for(let i=0;i<54;i++){
     const k = i + 1;
-    const x = state.cx + Math.sin(t * (0.45 + i * 0.01) + i * 0.7) * state.vw * 0.34;
-    const y = state.cy + Math.cos(t * (0.38 + i * 0.008) + i * 0.5) * state.vh * 0.22;
+
+    const x =
+      state.cx +
+      Math.sin(t * (0.45 + i * 0.01) + i * 0.7) * state.vw * 0.34;
+
+    // Центр колебаний только внутри допустимой области
+    const yCenter = drawTop + drawHeight * 0.5;
+    const yAmplitude = drawHeight * 0.28;
+
+    const y =
+      yCenter +
+      Math.cos(t * (0.38 + i * 0.008) + i * 0.5) * yAmplitude;
+
     const r = (10 + (i % 5) * 6) * s;
 
     if(cfg.gradientsEnabled){
@@ -1275,7 +1301,7 @@ function drawAutoDiagWorld(){
   if(cfg.textsEnabled){
     for(let i=0;i<6;i++){
       const x = 40*s + (i % 3) * 250*s;
-      const y = 150*s + Math.floor(i / 3) * 110*s;
+      const y = drawTop + 24*s + Math.floor(i / 3) * 110*s;
 
       roundRect(
         wctx,
@@ -1298,7 +1324,7 @@ function drawAutoDiagWorld(){
     }
   }
 
-  drawAutoDiagOverlay();
+  wctx.restore();
 }
 
 function drawAutoDiagHud(){
@@ -1358,6 +1384,38 @@ function drawAutoDiagOverlay(){
   const boxX = state.cx - boxW / 2;
   const boxY = 245 * s;
 
+  const progress =
+    Math.max(0, state.autoDiag.caseIndex) +
+    Math.min(1, state.autoDiag.caseElapsed / CFG.autoDiagCaseSec);
+
+  const ratio = state.autoDiag.caseIndex < 0
+    ? 0
+    : progress / AUTO_DIAG_CASES.length;
+
+  // Сначала рисуем прогресс, чтобы он оказался ниже интерфейса по слою
+  roundRect(
+    hctx,
+    state.cx - 220*s,
+    boxY + boxH + 18*s,
+    440*s,
+    16*s,
+    999*s,
+    'rgba(255,255,255,.08)',
+    'rgba(255,255,255,.10)'
+  );
+
+  roundRect(
+    hctx,
+    state.cx - 220*s,
+    boxY + boxH + 18*s,
+    440*s * clamp(ratio, 0, 1),
+    16*s,
+    999*s,
+    'rgba(127,244,181,.88)',
+    null
+  );
+
+  // Потом интерфейс поверх
   roundRect(
     hctx,
     boxX,
@@ -1388,36 +1446,6 @@ function drawAutoDiagOverlay(){
     hctx.fillText(`До конца этого под-теста: ${caseLeft.toFixed(1)} с`, state.cx, boxY + 102*s);
     hctx.fillText(`Ориентировочно осталось всего: ${totalLeft.toFixed(1)} с`, state.cx, boxY + 132*s);
   }
-
-  const progress =
-    Math.max(0, state.autoDiag.caseIndex) +
-    Math.min(1, state.autoDiag.caseElapsed / CFG.autoDiagCaseSec);
-
-  const ratio = state.autoDiag.caseIndex < 0
-    ? 0
-    : progress / AUTO_DIAG_CASES.length;
-
-  roundRect(
-    hctx,
-    state.cx - 220*s,
-    boxY + boxH + 18*s,
-    440*s,
-    16*s,
-    999*s,
-    'rgba(255,255,255,.08)',
-    'rgba(255,255,255,.10)'
-  );
-
-  roundRect(
-    hctx,
-    state.cx - 220*s,
-    boxY + boxH + 18*s,
-    440*s * clamp(ratio, 0, 1),
-    16*s,
-    999*s,
-    'rgba(127,244,181,.88)',
-    null
-  );
 
   if(state.autoDiag.results.length){
     const resBoxW = 620 * s;
