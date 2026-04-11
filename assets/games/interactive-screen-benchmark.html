@@ -110,7 +110,7 @@ const HUD_SCALE = 0.90;
 const NARROW_SCREEN_RATIO = 0.64;
 
 const BASE_W = 810, BASE_H = 1440;
-const STAGES = ['latency','tapzones','dualdrag','multitouch','falling','lightscene','tracepath','dualpaths'];
+const STAGES = ['latency','tapzones','dualdrag','multitouch','falling','lightscene','autodiag','tracepath','dualpaths'];
 const STAGE_TITLES = {
   latency:'ЭТАП 1 · ОТКЛИК КАСАНИЯ',
   tapzones:'ЭТАП 2 · ПОДСЧЁТ НАЖАТИЙ В ДВУХ ЗОНАХ',
@@ -118,8 +118,9 @@ const STAGE_TITLES = {
   multitouch:'ЭТАП 4 · МНОГО ОДНОВРЕМЕННЫХ НАЖАТИЙ',
   falling:'ЭТАП 5 · ПАДАЮЩИЕ ЦЕЛИ',
   lightscene:'ЭТАП 6 · БАЗОВЫЙ FPS БЕЗ НАГРУЗКИ',
-  tracepath:'ЭТАП 7 · ВЕДЕНИЕ ПАЛЬЦА ПО ТРАЕКТОРИИ',
-  dualpaths:'ЭТАП 8 · ДВЕ ТРАЕКТОРИИ ДЛЯ ДВУХ ИГРОКОВ'
+  autodiag:'ЭТАП 7 · АВТОДИАГНОСТИКА НАГРУЗКИ',
+  tracepath:'ЭТАП 8 · ВЕДЕНИЕ ПАЛЬЦА ПО ТРАЕКТОРИИ',
+  dualpaths:'ЭТАП 9 · ДВЕ ТРАЕКТОРИИ ДЛЯ ДВУХ ИГРОКОВ'
 };
 const STAGE_HINTS = {
   latency:'Быстро касайтесь световой цели. Смотрите на задержку, FPS, frame time и точность попаданий.',
@@ -127,6 +128,7 @@ const STAGE_HINTS = {
   dualdrag:'Нажмите прямо на левый и правый круги и тяните их пальцами. Считается качество следования за пальцами.',
   multitouch:'Поставьте как можно больше пальцев одновременно. Этап показывает текущий, максимальный и устойчивый уровень касаний.',
   falling:'Касайтесь падающих кругов. Слева медленно, справа — очень быстро. Над кругом показана скорость в %/с — сколько процентов высоты экрана цель проходит за 1 секунду.',
+  autodiag:'Этап выполняется сам. Не касайтесь экрана: тест по очереди проверит blur, HUD, упрощение эффектов и снижение разрешения.',
   lightscene:'Почти пустая сцена. Ничего не делайте и просто смотрите на FPS, frame time и частоту событий движения.',
   tracepath:'Ведите палец по светящейся траектории. Проверяется плавность движения, отклонение и число разрывов.',
   dualpaths:'Двое игроков одновременно ведут свои круги по своим дорожкам. Проверяется реальная совместная игра.'
@@ -172,8 +174,73 @@ const CFG = {
   dualPathRadius:34,
   dualPathHitWidth:60,
 
-  stableMultiHoldSec:1.0
+  stableMultiHoldSec:1.0,
+
+  autoDiagIntroSec:3.0,
+  autoDiagCaseSec:4.0
 };
+
+function makeAutoDiagConfig(overrides = {}){
+  return {
+    label:'AUTO',
+    starsEnabled:true,
+    blurEnabled:true,
+    gradientsEnabled:true,
+    textsEnabled:true,
+    pointerMarksEnabled:true,
+    hudEnabled:true,
+    renderScale:1,
+    ...overrides
+  };
+}
+
+const AUTO_DIAG_CASES = [
+  {
+    id:'baseline',
+    title:'FULL',
+    config: makeAutoDiagConfig({})
+  },
+  {
+    id:'no_blur',
+    title:'NO BLUR',
+    config: makeAutoDiagConfig({ blurEnabled:false })
+  },
+  {
+    id:'hud_off',
+    title:'HUD OFF',
+    config: makeAutoDiagConfig({ blurEnabled:false, hudEnabled:false })
+  },
+  {
+    id:'flat',
+    title:'FLAT',
+    config: makeAutoDiagConfig({
+      starsEnabled:false,
+      blurEnabled:false,
+      gradientsEnabled:false,
+      textsEnabled:false,
+      pointerMarksEnabled:false,
+      hudEnabled:false
+    })
+  },
+  {
+    id:'scale_075',
+    title:'SCALE 0.75x',
+    config: makeAutoDiagConfig({
+      blurEnabled:false,
+      pointerMarksEnabled:false,
+      renderScale:0.75
+    })
+  },
+  {
+    id:'scale_050',
+    title:'SCALE 0.50x',
+    config: makeAutoDiagConfig({
+      blurEnabled:false,
+      pointerMarksEnabled:false,
+      renderScale:0.5
+    })
+  }
+];
 
 const state = {
   initialized:false, started:false, finished:false, finishSent:false,
@@ -246,6 +313,17 @@ const state = {
   },
 
   lightscene:{},
+
+  autoDiag:{
+    introElapsed:0,
+    caseIndex:-1,
+    caseElapsed:0,
+    fpsSamples:[],
+    frameSamples:[],
+    results:[],
+    verdict:'',
+    overrideConfig:null
+  },
 
   trace:{
     activeId:null,
@@ -436,6 +514,10 @@ const stageBtns = {
 };
 
 function getVisualModeConfig(){
+  if(state.autoDiag && state.autoDiag.overrideConfig){
+    return state.autoDiag.overrideConfig;
+  }
+
   if(state.simpleMode){
     return {
       label:'РЕЖИМ: ПРОСТО',
@@ -752,6 +834,18 @@ function resetMetrics(){
     leftPath:buildDualPath('left'),
     rightPath:buildDualPath('right')
   };
+  
+  state.autoDiag = {
+    introElapsed:0,
+    caseIndex:-1,
+    caseElapsed:0,
+    fpsSamples:[],
+    frameSamples:[],
+    results:[],
+    verdict:'',
+    overrideConfig:null
+  };
+
 }
 
 
@@ -809,8 +903,13 @@ function advanceStage(){
   state.phase = STAGES[state.phaseIndex];
   state.phaseElapsed = 0;
   releasePointers();
+  if(state.phase === 'autodiag' && state.autoDiag && state.autoDiag.overrideConfig){
+    state.autoDiag.overrideConfig = null;
+    applyVisualMode();
+  }
 
   if(state.phase === 'tracepath') resetTraceStage();
+  if(state.phase === 'autodiag') resetAutoDiagStage();
   if(state.phase === 'dualpaths') resetDualPathsStage();
 }
 function finishStages(){ state.summary=summarize(false); state.phase='summary'; showSummary(); }
@@ -855,6 +954,374 @@ function resetDualPathsStage(){
   state.dualpaths.right.breaks = 0;
 }
 
+function resetAutoDiagStage(){
+  state.autoDiag = {
+    introElapsed:0,
+    caseIndex:-1,
+    caseElapsed:0,
+    fpsSamples:[],
+    frameSamples:[],
+    results:[],
+    verdict:'',
+    overrideConfig:null
+  };
+  applyVisualMode();
+}
+
+function getAutoDiagCase(){
+  if(state.autoDiag.caseIndex < 0) return null;
+  return AUTO_DIAG_CASES[state.autoDiag.caseIndex] || null;
+}
+
+function applyAutoDiagOverride(config){
+  state.autoDiag.overrideConfig = config ? { ...config } : null;
+  applyVisualMode();
+}
+
+function startAutoDiagCase(){
+  const testCase = getAutoDiagCase();
+  if(!testCase) return;
+
+  state.autoDiag.caseElapsed = 0;
+  state.autoDiag.fpsSamples = [];
+  state.autoDiag.frameSamples = [];
+  applyAutoDiagOverride(testCase.config);
+}
+
+function pctGain(base, value){
+  if(!base || !Number.isFinite(base) || base <= 0) return 0;
+  return ((value - base) / base) * 100;
+}
+
+function analyzeAutoDiagResults(results){
+  if(!results || !results.length) return 'Автодиагностика не собрала данные.';
+
+  const byId = Object.fromEntries(results.map(r => [r.id, r]));
+  const base = byId.baseline?.avgFps || 0;
+
+  if(!base) return 'Не удалось вычислить базовый FPS для автодиагностики.';
+
+  const factors = [
+    {
+      id:'no_blur',
+      label:'blur/compositor',
+      gain:pctGain(base, byId.no_blur?.avgFps || 0)
+    },
+    {
+      id:'hud_off',
+      label:'HUD/оверлей',
+      gain:pctGain(base, byId.hud_off?.avgFps || 0)
+    },
+    {
+      id:'flat',
+      label:'эффекты сцены',
+      gain:pctGain(base, byId.flat?.avgFps || 0)
+    },
+    {
+      id:'scale_075',
+      label:'разрешение 0.75x',
+      gain:pctGain(base, byId.scale_075?.avgFps || 0)
+    },
+    {
+      id:'scale_050',
+      label:'разрешение 0.50x',
+      gain:pctGain(base, byId.scale_050?.avgFps || 0)
+    }
+  ].sort((a,b) => b.gain - a.gain);
+
+  const top = factors[0];
+  const strong = factors.filter(x => x.gain >= 10);
+
+  let main = '';
+  if(top.gain < 8){
+    main = 'Ни один отдельный эффект не дал большого выигрыша: проблема скорее в общей стоимости сцены, браузере или драйвере.';
+  } else if(top.id === 'scale_050' || top.id === 'scale_075'){
+    main = 'Сильнее всего влияет количество пикселей: основная проблема в 4K/fill-rate и стоимости рендера на полном разрешении.';
+  } else if(top.id === 'no_blur'){
+    main = 'Сильнее всего влияет blur/compositor: полупрозрачные DOM-панели с blur заметно нагружают систему.';
+  } else if(top.id === 'hud_off'){
+    main = 'Сильнее всего влияет HUD/оверлей: верхние панели, графики и текстовая отрисовка заметно просаживают FPS.';
+  } else if(top.id === 'flat'){
+    main = 'Сильнее всего влияют декоративные эффекты сцены: градиенты, тексты, метки и дополнительная визуальная нагрузка.';
+  }
+
+  if(!strong.length) return main;
+
+  const tail = strong
+    .map(x => `${x.label} (+${Math.round(x.gain)}%)`)
+    .join(', ');
+
+  return `${main} Сильные факторы: ${tail}.`;
+}
+
+function finishAutoDiagCase(){
+  const testCase = getAutoDiagCase();
+  if(!testCase) return;
+
+  const fpsSamples = state.autoDiag.fpsSamples.filter(v => Number.isFinite(v) && v > 0);
+  const frameSamples = state.autoDiag.frameSamples.filter(v => Number.isFinite(v) && v > 0);
+
+  state.autoDiag.results.push({
+    id:testCase.id,
+    title:testCase.title,
+    avgFps: fpsSamples.length ? avg(fpsSamples) : 0,
+    minFps: fpsSamples.length ? Math.min(...fpsSamples) : 0,
+    p95FrameMs: frameSamples.length ? percentile(frameSamples, 0.95) : 0
+  });
+
+  state.autoDiag.caseIndex += 1;
+
+  if(state.autoDiag.caseIndex >= AUTO_DIAG_CASES.length){
+    state.autoDiag.verdict = analyzeAutoDiagResults(state.autoDiag.results);
+    applyAutoDiagOverride(null);
+    advanceStage();
+    return;
+  }
+
+  startAutoDiagCase();
+}
+
+function updateAutoDiag(dt){
+  if(state.autoDiag.introElapsed < CFG.autoDiagIntroSec){
+    state.autoDiag.introElapsed += dt;
+    return;
+  }
+
+  if(state.autoDiag.caseIndex < 0){
+    state.autoDiag.caseIndex = 0;
+    startAutoDiagCase();
+  }
+
+  const testCase = getAutoDiagCase();
+  if(!testCase) return;
+
+  state.autoDiag.caseElapsed += dt;
+  state.autoDiag.fpsSamples.push(state.fpsValue);
+  state.autoDiag.frameSamples.push(state.lastFrameTimeMs);
+
+  if(state.autoDiag.caseElapsed >= CFG.autoDiagCaseSec){
+    finishAutoDiagCase();
+  }
+}
+
+function drawAutoDiagWorld(){
+  const cfg = getVisualModeConfig();
+  wctx.clearRect(0,0,state.vw,state.vh);
+
+  const s = state.scale;
+  const t = state.totalElapsed;
+
+  wctx.strokeStyle = 'rgba(255,255,255,.06)';
+  wctx.lineWidth = 1 * s;
+  for(let x = 0; x < state.vw; x += 80 * s){
+    wctx.beginPath();
+    wctx.moveTo(x, 0);
+    wctx.lineTo(x, state.vh);
+    wctx.stroke();
+  }
+  for(let y = 0; y < state.vh; y += 80 * s){
+    wctx.beginPath();
+    wctx.moveTo(0, y);
+    wctx.lineTo(state.vw, y);
+    wctx.stroke();
+  }
+
+  for(let i=0;i<54;i++){
+    const k = i + 1;
+    const x = state.cx + Math.sin(t * (0.45 + i * 0.01) + i * 0.7) * state.vw * 0.34;
+    const y = state.cy + Math.cos(t * (0.38 + i * 0.008) + i * 0.5) * state.vh * 0.22;
+    const r = (10 + (i % 5) * 6) * s;
+
+    if(cfg.gradientsEnabled){
+      const g = wctx.createRadialGradient(x, y, r * 0.1, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,.95)');
+      g.addColorStop(0.35, `rgba(${120 + (i % 80)},${170 + (i % 50)},255,.92)`);
+      g.addColorStop(1, `rgba(${80 + (i % 60)},${110 + (i % 70)},220,.28)`);
+      wctx.fillStyle = g;
+    } else {
+      wctx.fillStyle = `rgba(${120 + (i % 80)},${170 + (i % 50)},255,.72)`;
+    }
+
+    wctx.beginPath();
+    wctx.arc(x, y, r, 0, Math.PI * 2);
+    wctx.fill();
+
+    if(cfg.textsEnabled && i < 12){
+      wctx.fillStyle = 'rgba(255,255,255,.88)';
+      wctx.font = `700 ${Math.round(14*s)}px Inter,system-ui,sans-serif`;
+      wctx.textAlign = 'center';
+      wctx.fillText(`N${k}`, x, y - r - 8*s);
+      wctx.textAlign = 'left';
+    }
+  }
+
+  if(cfg.textsEnabled){
+    for(let i=0;i<6;i++){
+      const x = 40*s + (i % 3) * 250*s;
+      const y = 150*s + Math.floor(i / 3) * 110*s;
+
+      roundRect(
+        wctx,
+        x,
+        y,
+        220*s,
+        74*s,
+        18*s,
+        'rgba(7,17,31,.42)',
+        'rgba(255,255,255,.08)'
+      );
+
+      wctx.fillStyle = '#eef6ff';
+      wctx.font = `900 ${Math.round(20*s)}px Inter,system-ui,sans-serif`;
+      wctx.fillText(`SCENE ${i+1}`, x + 14*s, y + 28*s);
+
+      wctx.fillStyle = 'rgba(159,180,204,.96)';
+      wctx.font = `800 ${Math.round(14*s)}px Inter,system-ui,sans-serif`;
+      wctx.fillText(`moving objects / labels / gradients`, x + 14*s, y + 54*s);
+    }
+  }
+
+  drawAutoDiagOverlay();
+}
+
+function drawAutoDiagHud(){
+  const cfg = getVisualModeConfig();
+  hctx.clearRect(0,0,state.vw,state.vh);
+  if(!cfg.hudEnabled) return;
+
+  const s = state.scale;
+  const topY = 20*s;
+
+  for(let i=0;i<6;i++){
+    const x = 18*s + i * 118*s;
+    drawGlass(x, topY, 106*s, 76*s);
+
+    if(cfg.textsEnabled){
+      hctx.fillStyle = 'rgba(159,180,204,.96)';
+      hctx.font = `800 ${Math.round(14*s)}px Inter,system-ui,sans-serif`;
+      hctx.fillText(`P${i+1}`, x + 10*s, topY + 22*s);
+
+      hctx.fillStyle = '#eef6ff';
+      hctx.font = `900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`;
+      hctx.fillText(`${Math.round((state.fpsDisplay || state.fpsValue) + i)}`, x + 10*s, topY + 54*s);
+    }
+  }
+
+  for(let i=0;i<4;i++){
+    const x = 24*s + i * 180*s;
+    const y = state.vh - 170*s;
+
+    drawGlass(x, y, 160*s, 110*s);
+
+    const bars = 14;
+    const barW = 7*s;
+    const gap = 3*s;
+
+    for(let b=0;b<bars;b++){
+      const bh = (20 + ((b * 13 + i * 17 + Math.floor(state.totalElapsed * 30)) % 60)) * s * 0.6;
+      hctx.fillStyle = 'rgba(102,222,255,.72)';
+      hctx.fillRect(x + 12*s + b * (barW + gap), y + 88*s - bh, barW, bh);
+    }
+
+    if(cfg.textsEnabled){
+      hctx.fillStyle = 'rgba(159,180,204,.96)';
+      hctx.font = `800 ${Math.round(14*s)}px Inter,system-ui,sans-serif`;
+      hctx.fillText(`HUD ${i+1}`, x + 12*s, y + 22*s);
+    }
+  }
+}
+
+function drawAutoDiagOverlay(){
+  const s = state.scale;
+  const introLeft = Math.max(0, CFG.autoDiagIntroSec - state.autoDiag.introElapsed);
+
+  roundRect(
+    wctx,
+    20*s,
+    20*s,
+    430*s,
+    120*s,
+    20*s,
+    'rgba(7,17,31,.58)',
+    'rgba(255,255,255,.10)'
+  );
+
+  wctx.fillStyle = '#eef6ff';
+  wctx.font = `900 ${Math.round(26*s)}px Inter,system-ui,sans-serif`;
+  wctx.fillText('АВТОДИАГНОСТИКА', 38*s, 54*s);
+
+  wctx.fillStyle = 'rgba(159,180,204,.96)';
+  wctx.font = `800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+
+  if(introLeft > 0){
+    wctx.fillText(`Не касайтесь экрана. Старт через ${introLeft.toFixed(1)} с`, 38*s, 86*s);
+    wctx.fillText('Тест сам проверит blur, HUD, эффекты и снижение разрешения.', 38*s, 112*s);
+    return;
+  }
+
+  const testCase = getAutoDiagCase();
+  const left = Math.max(0, CFG.autoDiagCaseSec - state.autoDiag.caseElapsed);
+
+  wctx.fillText(`Идёт: ${testCase ? testCase.title : '-'}`, 38*s, 86*s);
+  wctx.fillText(`Осталось: ${left.toFixed(1)} с`, 38*s, 112*s);
+
+  const progress =
+    Math.max(0, state.autoDiag.caseIndex) +
+    Math.min(1, state.autoDiag.caseElapsed / CFG.autoDiagCaseSec);
+
+  const ratio = progress / AUTO_DIAG_CASES.length;
+
+  roundRect(
+    wctx,
+    20*s,
+    152*s,
+    430*s,
+    16*s,
+    999*s,
+    'rgba(255,255,255,.08)',
+    'rgba(255,255,255,.10)'
+  );
+
+  roundRect(
+    wctx,
+    20*s,
+    152*s,
+    430*s * clamp(ratio, 0, 1),
+    16*s,
+    999*s,
+    'rgba(127,244,181,.88)',
+    null
+  );
+
+  if(state.autoDiag.results.length){
+    roundRect(
+      wctx,
+      20*s,
+      186*s,
+      520*s,
+      Math.max(84*s, (state.autoDiag.results.length * 22 + 22) * s),
+      20*s,
+      'rgba(7,17,31,.52)',
+      'rgba(255,255,255,.08)'
+    );
+
+    wctx.fillStyle = '#eef6ff';
+    wctx.font = `900 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    wctx.fillText('УЖЕ ИЗМЕРЕНО:', 38*s, 214*s);
+
+    wctx.fillStyle = 'rgba(159,180,204,.96)';
+    wctx.font = `800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
+
+    state.autoDiag.results.forEach((r, i) => {
+      wctx.fillText(
+        `${r.title}: ${Math.round(r.avgFps)} FPS · min ${Math.round(r.minFps)} · p95 ${Math.round(r.p95FrameMs)} ms`,
+        38*s,
+        (238 + i * 22)*s
+      );
+    });
+  }
+}
+
 function showSummary(){
   overlay.classList.add('hidden');
   summaryLayer.classList.remove('hidden');
@@ -871,6 +1338,8 @@ function showSummary(){
   sum.body.textContent = [
     `• Медианная задержка: ${fmtMs(s.medianLatency)} (P95 ${fmtMs(s.p95Latency)})`,
     `• Средний FPS: ${fmtFps(s.avgFps)} | минимум: ${fmtFps(s.minFps)} | P95 кадра: ${fmtMs(s.p95Frame)}`,
+    s.autoDiagSummary ? `• Автодиагностика: ${s.autoDiagSummary}` : null,
+    s.autoDiagVerdict ? `• Вывод автоэтапа: ${s.autoDiagVerdict}` : null,
     `• Viewport: ${s.viewport} | screen: ${s.screen} | DPR: ${s.devicePixelRatio}`,
     `• CPU threads: ${s.hardwareConcurrency} | max touch: ${s.maxTouchPoints} | color depth: ${s.colorDepth}`,
     `• WebGL renderer: ${s.webglRenderer}`,
@@ -887,7 +1356,7 @@ function showSummary(){
     `• Вердикт: ${s.verdict}`,
     '',
     'Нажмите «Подтвердить результат», чтобы зафиксировать итог для движка.'
-  ].join('\n');
+   ].filter(Boolean).join('\n');
 }
 
 
@@ -1284,6 +1753,11 @@ function update(dt, rawDt = dt){
       }
     }
   }
+
+  if(state.phase === 'autodiag'){
+    updateAutoDiag(dt);
+  }
+
 }
 function spawnFallingCircle(){
   const safeMin = 0.08;
@@ -1333,6 +1807,19 @@ function spawnFallingCircle(){
 
 
 function draw(){
+  if(state.phase === 'autodiag'){
+    drawStars();
+    drawAutoDiagWorld();
+
+    const cfg = getVisualModeConfig();
+    if(cfg.hudEnabled){
+      drawAutoDiagHud();
+    } else {
+      hctx.clearRect(0,0,state.vw,state.vh);
+    }
+    return;
+  }
+
   const cfg = getVisualModeConfig();
 
   drawStars();
@@ -1977,6 +2464,18 @@ function summarize(forcedFail){
   else if(traceAvgDev > 100 * state.scale) verdict = 'Палец ведётся неточно: drag-сцены могут ощущаться рваными.';
   else verdict = 'Устройство близко к допустимому, но лучше проверить на финальной сцене игры.';
 
+  const autoDiagResults = (state.autoDiag && state.autoDiag.results)
+    ? state.autoDiag.results.map(r => ({ ...r }))
+    : [];
+
+  const autoDiagSummary = autoDiagResults.length
+    ? autoDiagResults.map(r => `${r.title}: ${Math.round(r.avgFps)}`).join(' | ')
+    : '';
+
+  const autoDiagVerdict = state.autoDiag?.verdict
+    ? state.autoDiag.verdict
+    : analyzeAutoDiagResults(autoDiagResults);
+
   return {
     result,
     medianLatency:med,
@@ -2022,7 +2521,11 @@ function summarize(forcedFail){
     webglVendor: env.webglVendor,
     webglRenderer: env.webglRenderer,
     refreshHzEstimate,
-    userAgent: env.userAgent
+    userAgent: env.userAgent,
+
+    autoDiagResults,
+    autoDiagSummary,
+    autoDiagVerdict
   };
 }
 
