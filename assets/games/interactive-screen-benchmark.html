@@ -266,7 +266,8 @@ const state = {
     rightPath:[]
   },
 
-  summary:null
+  summary:null,
+  envSnapshot:null
 };
 
 const $ = id => document.getElementById(id);
@@ -291,6 +292,51 @@ function isUiTarget(target){
 const sctx = dom.stars.getContext('2d');
 const wctx = dom.world.getContext('2d');
 const hctx = dom.hud.getContext('2d');
+
+function getWebGLInfo(){
+  try{
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if(!gl) return { vendor:'unavailable', renderer:'unavailable' };
+
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+    const renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+
+    return {
+      vendor: String(vendor || 'unknown'),
+      renderer: String(renderer || 'unknown')
+    };
+  }catch(_){
+    return { vendor:'error', renderer:'error' };
+  }
+}
+
+function estimateRefreshHzFromSamples(){
+  const recent = state.fpsSamples
+    .filter(v => Number.isFinite(v) && v > 0)
+    .slice(-180);
+
+  if(!recent.length) return 0;
+  return Math.round(percentile(recent, 0.90));
+}
+
+function collectEnvironmentSnapshot(){
+  const gl = getWebGLInfo();
+
+  return {
+    userAgent: navigator.userAgent,
+    hardwareConcurrency: navigator.hardwareConcurrency || 0,
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+    devicePixelRatio: Number(window.devicePixelRatio || 1),
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    screen: `${window.screen.width}x${window.screen.height}`,
+    colorDepth: window.screen.colorDepth || 0,
+    webglVendor: gl.vendor,
+    webglRenderer: gl.renderer
+  };
+}
+
 
 const overlay = document.createElement('div');
 overlay.className = 'overlay';
@@ -543,6 +589,7 @@ function buildDualPath(side){
 function resetMetrics(){
   state.finished=false;
   state.summary=null;
+  state.envSnapshot = collectEnvironmentSnapshot();
   state.phaseElapsed=0;
   state.totalElapsed=0;
   state.lastFrame=0;
@@ -747,6 +794,10 @@ function showSummary(){
   sum.body.textContent = [
     `• Медианная задержка: ${fmtMs(s.medianLatency)} (P95 ${fmtMs(s.p95Latency)})`,
     `• Средний FPS: ${fmtFps(s.avgFps)} | минимум: ${fmtFps(s.minFps)} | P95 кадра: ${fmtMs(s.p95Frame)}`,
+    `• Viewport: ${s.viewport} | screen: ${s.screen} | DPR: ${s.devicePixelRatio}`,
+    `• CPU threads: ${s.hardwareConcurrency} | max touch: ${s.maxTouchPoints} | color depth: ${s.colorDepth}`,
+    `• WebGL renderer: ${s.webglRenderer}`,
+    `• Оценка refresh: ${s.refreshHzEstimate ? s.refreshHzEstimate + ' Hz' : 'n/a'}`,
     `• Макс. касаний: ${s.maxPointers} | стабильно 1 сек: ${s.stablePointers}`,
     `• Удержание двух кругов: ${Math.round(s.dualHoldRatio * 100)}% этапа`,
     `• Lag L/R: ${Math.round(s.leftLagAvg)} px / ${Math.round(s.rightLagAvg)} px`,
@@ -1724,6 +1775,9 @@ function summarize(forcedFail){
   const traceScore = state.trace.completed && traceAvgDev < 80 * state.scale ? 1 : state.trace.progress > .65 ? .5 : 0;
   const dualPathScore = (state.dualpaths.left.progress > .65 && state.dualpaths.right.progress > .65 && dualLeftAvg < 90 * state.scale && dualRightAvg < 90 * state.scale) ? 1 : .5;
 
+  const env = state.envSnapshot || collectEnvironmentSnapshot();
+  const refreshHzEstimate = estimateRefreshHzFromSamples();
+
   const final = forcedFail ? 0 :
     latencyScore * .14 +
     fpsScore * .12 +
@@ -1780,7 +1834,18 @@ function summarize(forcedFail){
     dualPathLeftDeviation:dualLeftAvg,
     dualPathRightDeviation:dualRightAvg,
 
-    verdict
+    verdict,
+
+    viewport: env.viewport,
+    screen: env.screen,
+    devicePixelRatio: env.devicePixelRatio,
+    hardwareConcurrency: env.hardwareConcurrency,
+    maxTouchPoints: env.maxTouchPoints,
+    colorDepth: env.colorDepth,
+    webglVendor: env.webglVendor,
+    webglRenderer: env.webglRenderer,
+    refreshHzEstimate,
+    userAgent: env.userAgent
   };
 }
 
