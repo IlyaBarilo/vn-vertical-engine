@@ -81,6 +81,16 @@
   }
   .button:active{transform:translateY(1px) scale(.99)}
   .t,.s,.b{position:absolute;white-space:pre-line}
+  .intro-par{
+    margin:0 0 0.72em 0;
+  }
+  .intro-par:last-child{
+    margin-bottom:0;
+  }
+  .b{
+    overflow:hidden;
+    word-break:break-word;
+  }
   .t{font-weight:900}.s{font-weight:700;color:var(--muted)}.b{line-height:1.35}
 
 
@@ -495,6 +505,84 @@ function mkButton(label,parent,fn){
 }
 function style(el,obj){ Object.assign(el.style,obj); }
 
+function fitTextBlock(el, opts = {}){
+  const {
+    maxFont = 18,
+    minFont = 11,
+    maxLine = 1.4,
+    minLine = 1.12,
+    step = 0.5
+  } = opts;
+
+  const height = el.clientHeight;
+  if(!height) return true;
+
+  let font = maxFont;
+  let line = maxLine;
+
+  while(font >= minFont){
+    el.style.fontSize = px(font, 'text');
+    el.style.lineHeight = `${(font * line * state.textScale).toFixed(1)}px`;
+
+    if(el.scrollHeight <= height + 1){
+      return true;
+    }
+
+    font -= step;
+
+    if(line > minLine){
+      line = Math.max(minLine, line - 0.04);
+    }
+  }
+
+  el.style.fontSize = px(minFont, 'text');
+  el.style.lineHeight = `${(minFont * minLine * state.textScale).toFixed(1)}px`;
+
+  return el.scrollHeight <= height + 1;
+}
+
+function refreshCardTextLayout(){
+  requestAnimationFrame(() => {
+    fitTextBlock(sum.body, {
+      maxFont:22,
+      minFont:10.5,
+      maxLine:1.34,
+      minLine:1.06,
+      step:0.5
+    });
+  });
+}
+
+function setAdaptiveSummaryText(fullText, shortText){
+  requestAnimationFrame(() => {
+    sum.body.textContent = fullText;
+
+    const fullFits = fitTextBlock(sum.body, {
+      maxFont:22,
+      minFont:10.5,
+      maxLine:1.34,
+      minLine:1.06,
+      step:0.5
+    });
+
+    if(fullFits) return;
+
+    sum.body.textContent = shortText;
+
+    fitTextBlock(sum.body, {
+      maxFont:22,
+      minFont:10.5,
+      maxLine:1.34,
+      minLine:1.06,
+      step:0.5
+    });
+  });
+}
+
+function setAdaptiveIntroText(fullHtml, _shortHtml){
+  intro.body.innerHTML = fullHtml;
+}
+
 const intro = {
   title:mkText('t',introCard), subtitle:mkText('s',introCard), body:mkText('b',introCard),
   start:mkButton('НАЧАТЬ ДИАГНОСТИКУ', introCard, startRun),
@@ -592,18 +680,36 @@ function toggleSimpleMode(){
 
 
 function layoutIntro(){
-  style(introCard,{width:px(690),height:px(900),padding:px(34),position:'relative'});
+  style(introCard,{width:px(690),height:px(920),padding:px(34),position:'relative'});
   style(intro.title,{left:px(34),top:px(36),width:px(620),fontSize:px(48,'text'),lineHeight:px(56,'text')});
-  style(intro.subtitle,{left:px(34),top:px(140),width:px(620),fontSize:px(22,'text'),lineHeight:px(30,'text')});
-  style(intro.body,{left:px(34),top:px(212),width:px(620),fontSize:px(18,'text'),lineHeight:px(25,'text')});
-  style(intro.start,{left:px(34),bottom:px(44),width:px(380),height:px(84),fontSize:px(30,'text'),position:'absolute'});
-  style(intro.fail,{right:px(34),bottom:px(44),width:px(220),height:px(84),fontSize:px(24,'text'),position:'absolute'});
+  style(intro.subtitle,{left:px(34),top:px(138),width:px(620),fontSize:px(24,'text'),lineHeight:px(32,'text')});
+
+  style(intro.body,{
+    left:px(34),
+    top:px(210),
+    width:px(620),
+    height:px(610),
+    fontSize:px(21,'text'),
+    lineHeight:px(29,'text')
+  });
+
+  style(intro.start,{left:px(34),bottom:px(34),width:px(380),height:px(84),fontSize:px(30,'text'),position:'absolute'});
+  style(intro.fail,{right:px(34),bottom:px(34),width:px(220),height:px(84),fontSize:px(24,'text'),position:'absolute'});
 }
 function layoutSummary(){
   style(summaryCard,{width:px(700),height:px(860),padding:px(34),position:'relative'});
   style(sum.title,{left:px(34),top:px(34),width:px(630),fontSize:px(48,'text')});
   style(sum.subtitle,{left:px(34),top:px(110),width:px(630),fontSize:px(22,'text')});
-  style(sum.body,{left:px(34),top:px(170),width:px(630),fontSize:px(22,'text')});
+
+  style(sum.body,{
+    left:px(34),
+    top:px(170),
+    width:px(630),
+    height:px(560),
+    fontSize:px(22,'text'),
+    lineHeight:px(30,'text')
+  });
+
   style(sum.confirm,{left:px(34),bottom:px(44),width:px(360),height:px(84),fontSize:px(26,'text'),position:'absolute'});
   style(sum.retry,{right:px(34),bottom:px(44),width:px(240),height:px(84),fontSize:px(24,'text'),position:'absolute'});
 }
@@ -686,29 +792,27 @@ function resize(){
   }
   applyBlurSetting();
   updateModeButtonLabel();
+  refreshCardTextLayout();
 }
 
 function showIntro(){
   overlay.classList.remove('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.add('hidden');
   intro.title.textContent='ДИАГНОСТИКА ИНТЕРАКТИВНОГО ЭКРАНА';
   intro.subtitle.textContent='Мини-игра проверяет тач-ввод, FPS, multitouch и пригодность экрана для других игр.';
-  intro.body.textContent=[
-  'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
-  '',
-  'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
-  '',
-  'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',
-  '',
-  'Этап 4 — подсчёт количества одновременных касаний. Можно проверить, сколько пальцев поддерживается сразу.',
-  '',
-  'Этап 5 — падающие круги разных размеров и скоростей: слева медленно, справа очень быстро.',
-  '',
-  'Этап 6 — почти пустая сцена для проверки базового FPS и частоты событий движения без нагрузки.',
-  '',
-  'Этап 7 — ведение пальца по траектории: проверяется отклонение от линии, разрывы и прогресс прохождения.',
-  '',
-  'Этап 8 — две отдельные траектории для двух игроков: можно проверить одновременное совместное ведение.'
-].join('\n');
+  intro.body.innerHTML = [
+    'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
+    'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
+    'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',
+    'Этап 4 — подсчёт количества одновременных касаний. Можно проверить, сколько пальцев поддерживается сразу.',
+    'Этап 5 — падающие круги разных размеров и скоростей: слева медленно, справа очень быстро.',
+    'Этап 6 — почти пустая сцена для проверки базового FPS и частоты событий движения без нагрузки.',
+    'Этап 7 — ведение пальца по траектории: проверяется отклонение от линии, разрывы и прогресс прохождения.',
+    'Этап 8 — две отдельные траектории для двух игроков: можно проверить одновременное совместное ведение.',
+    'Этап 9 — автодиагностика: автоматически проверяется влияние blur, HUD, эффектов и снижения разрешения.'
+  ].map(t => `<div class="intro-par">${t}</div>`).join('');
+
+  setAdaptiveIntroText(fullIntroText, '');
+  refreshCardTextLayout();
 }
 
 function initFromParams(data={}){
@@ -1357,6 +1461,7 @@ function showSummary(){
     '',
     'Нажмите «Подтвердить результат», чтобы зафиксировать итог для движка.'
    ].filter(Boolean).join('\n');
+   refreshCardTextLayout();
 }
 
 
