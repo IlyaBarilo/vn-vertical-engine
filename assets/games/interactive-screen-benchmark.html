@@ -141,7 +141,7 @@ const STAGE_HINTS = {
   lightscene:'Почти пустая сцена. Ничего не делайте и просто смотрите на FPS, frame time и частоту событий движения.',
   tracepath:'Ведите палец по светящейся траектории. Проверяется плавность движения, отклонение и число разрывов.',
   dualpaths:'Двое игроков одновременно ведут свои круги по своим дорожкам. Проверяется реальная совместная игра.',
-  autodiag:'Этап выполняется сам. Не касайтесь экрана: тест по очереди проверит blur, HUD, упрощение эффектов и снижение разрешения.'
+  autodiag:'Ничего нажимать не нужно. Этап идёт автоматически и сам проверяет blur, HUD, эффекты и снижение разрешения.'
 };
 
 const CFG = {
@@ -1208,6 +1208,19 @@ function updateAutoDiag(dt){
   }
 }
 
+function getAutoDiagRemainingSec(){
+  const introLeft = Math.max(0, CFG.autoDiagIntroSec - state.autoDiag.introElapsed);
+
+  if(state.autoDiag.caseIndex < 0){
+    return introLeft + AUTO_DIAG_CASES.length * CFG.autoDiagCaseSec;
+  }
+
+  const currentLeft = Math.max(0, CFG.autoDiagCaseSec - state.autoDiag.caseElapsed);
+  const afterCurrent = Math.max(0, AUTO_DIAG_CASES.length - state.autoDiag.caseIndex - 1) * CFG.autoDiagCaseSec;
+
+  return introLeft + currentLeft + afterCurrent;
+}
+
 function drawAutoDiagWorld(){
   const cfg = getVisualModeConfig();
   wctx.clearRect(0,0,state.vw,state.vh);
@@ -1338,48 +1351,57 @@ function drawAutoDiagHud(){
 function drawAutoDiagOverlay(){
   const s = state.scale;
   const introLeft = Math.max(0, CFG.autoDiagIntroSec - state.autoDiag.introElapsed);
+  const totalLeft = getAutoDiagRemainingSec();
+
+  const boxW = 560 * s;
+  const boxH = 170 * s;
+  const boxX = state.cx - boxW / 2;
+  const boxY = 245 * s;
 
   roundRect(
-    wctx,
-    20*s,
-    20*s,
-    430*s,
-    120*s,
-    20*s,
-    'rgba(7,17,31,.58)',
+    hctx,
+    boxX,
+    boxY,
+    boxW,
+    boxH,
+    22 * s,
+    'rgba(7,17,31,.62)',
     'rgba(255,255,255,.10)'
   );
 
-  wctx.fillStyle = '#eef6ff';
-  wctx.font = `900 ${Math.round(26*s)}px Inter,system-ui,sans-serif`;
-  wctx.fillText('АВТОДИАГНОСТИКА', 38*s, 54*s);
+  hctx.fillStyle = '#eef6ff';
+  hctx.textAlign = 'center';
+  hctx.font = `900 ${Math.round(22*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillText('НИЧЕГО НАЖИМАТЬ НЕ НУЖНО', state.cx, boxY + 36*s);
 
-  wctx.fillStyle = 'rgba(159,180,204,.96)';
-  wctx.font = `800 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+  hctx.fillStyle = 'rgba(159,180,204,.96)';
+  hctx.font = `800 ${Math.round(18*s)}px Inter,system-ui,sans-serif`;
 
   if(introLeft > 0){
-    wctx.fillText(`Не касайтесь экрана. Старт через ${introLeft.toFixed(1)} с`, 38*s, 86*s);
-    wctx.fillText('Тест сам проверит blur, HUD, эффекты и снижение разрешения.', 38*s, 112*s);
-    return;
+    hctx.fillText(`Автодиагностика начнётся через ${introLeft.toFixed(1)} с`, state.cx, boxY + 72*s);
+    hctx.fillText(`Ориентировочно осталось ${totalLeft.toFixed(1)} с`, state.cx, boxY + 102*s);
+  } else {
+    const testCase = getAutoDiagCase();
+    const caseLeft = Math.max(0, CFG.autoDiagCaseSec - state.autoDiag.caseElapsed);
+
+    hctx.fillText(`Сейчас идёт проверка: ${testCase ? testCase.title : '-'}`, state.cx, boxY + 72*s);
+    hctx.fillText(`До конца этого под-теста: ${caseLeft.toFixed(1)} с`, state.cx, boxY + 102*s);
+    hctx.fillText(`Ориентировочно осталось всего: ${totalLeft.toFixed(1)} с`, state.cx, boxY + 132*s);
   }
-
-  const testCase = getAutoDiagCase();
-  const left = Math.max(0, CFG.autoDiagCaseSec - state.autoDiag.caseElapsed);
-
-  wctx.fillText(`Идёт: ${testCase ? testCase.title : '-'}`, 38*s, 86*s);
-  wctx.fillText(`Осталось: ${left.toFixed(1)} с`, 38*s, 112*s);
 
   const progress =
     Math.max(0, state.autoDiag.caseIndex) +
     Math.min(1, state.autoDiag.caseElapsed / CFG.autoDiagCaseSec);
 
-  const ratio = progress / AUTO_DIAG_CASES.length;
+  const ratio = state.autoDiag.caseIndex < 0
+    ? 0
+    : progress / AUTO_DIAG_CASES.length;
 
   roundRect(
-    wctx,
-    20*s,
-    152*s,
-    430*s,
+    hctx,
+    state.cx - 220*s,
+    boxY + boxH + 18*s,
+    440*s,
     16*s,
     999*s,
     'rgba(255,255,255,.08)',
@@ -1387,10 +1409,10 @@ function drawAutoDiagOverlay(){
   );
 
   roundRect(
-    wctx,
-    20*s,
-    152*s,
-    430*s * clamp(ratio, 0, 1),
+    hctx,
+    state.cx - 220*s,
+    boxY + boxH + 18*s,
+    440*s * clamp(ratio, 0, 1),
     16*s,
     999*s,
     'rgba(127,244,181,.88)',
@@ -1398,32 +1420,40 @@ function drawAutoDiagOverlay(){
   );
 
   if(state.autoDiag.results.length){
+    const resBoxW = 620 * s;
+    const resBoxH = Math.max(84*s, (state.autoDiag.results.length * 22 + 22) * s);
+    const resBoxX = state.cx - resBoxW / 2;
+    const resBoxY = boxY + boxH + 52*s;
+
     roundRect(
-      wctx,
-      20*s,
-      186*s,
-      520*s,
-      Math.max(84*s, (state.autoDiag.results.length * 22 + 22) * s),
+      hctx,
+      resBoxX,
+      resBoxY,
+      resBoxW,
+      resBoxH,
       20*s,
       'rgba(7,17,31,.52)',
       'rgba(255,255,255,.08)'
     );
 
-    wctx.fillStyle = '#eef6ff';
-    wctx.font = `900 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
-    wctx.fillText('УЖЕ ИЗМЕРЕНО:', 38*s, 214*s);
+    hctx.fillStyle = '#eef6ff';
+    hctx.textAlign = 'left';
+    hctx.font = `900 ${Math.round(16*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillText('УЖЕ ИЗМЕРЕНО:', resBoxX + 18*s, resBoxY + 28*s);
 
-    wctx.fillStyle = 'rgba(159,180,204,.96)';
-    wctx.font = `800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
+    hctx.fillStyle = 'rgba(159,180,204,.96)';
+    hctx.font = `800 ${Math.round(15*s)}px Inter,system-ui,sans-serif`;
 
     state.autoDiag.results.forEach((r, i) => {
-      wctx.fillText(
+      hctx.fillText(
         `${r.title}: ${Math.round(r.avgFps)} FPS · min ${Math.round(r.minFps)} · p95 ${Math.round(r.p95FrameMs)} ms`,
-        38*s,
-        (238 + i * 22)*s
+        resBoxX + 18*s,
+        resBoxY + (52 + i * 22)*s
       );
     });
   }
+
+  hctx.textAlign = 'left';
 }
 
 function showSummary(){
@@ -1922,6 +1952,9 @@ function draw(){
     } else {
       hctx.clearRect(0,0,state.vw,state.vh);
     }
+
+    drawStageHeader();
+    drawAutoDiagOverlay();
     return;
   }
 
