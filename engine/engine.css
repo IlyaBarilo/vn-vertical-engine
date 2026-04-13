@@ -1555,18 +1555,24 @@ body {
 }
 */
 
+/* Ширина элементов изображений в элементе сцены и других */
+
+/* одно изображение */
 .graphContainer .mermaid .node img.imgcount1 {
   width: 120px !important;
 }
 
+/* 2-4 изображения, 2 в ряд */
 .graphContainer .mermaid .node img.imgcount2 {
-  width: 80px !important;
+  width: 75px !important;
 }
 
+/* 5-9 изображений, 3 в ряд */
 .graphContainer .mermaid .node img.imgcount3 {
   width: 60px !important;
 }
 
+/* 10-... изображений, 4 в ряд */
 .graphContainer .mermaid .node img.imgcount4 {
   width: 40px !important;
 }
