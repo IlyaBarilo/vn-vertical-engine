@@ -4761,7 +4761,7 @@ function buildGamesGraph(story, options) {
     }
   }
 
-  var gameIds = Object.keys(usedGames).sort();
+  var gameIds = Object.keys(games).sort();
   var gamesCount = gameIds.length;
   var gameCountClass = getImgCountClass(gamesCount);
   var gamesListHtml = '<div class="games-list-container ' + gameCountClass + '">';
@@ -4791,7 +4791,8 @@ function buildGamesGraph(story, options) {
   for (var i = 0; i < gameIds.length; i++) {
     var gameId = gameIds[i];
     var game = games[gameId] || {};
-    console.log('[GRAPH GAME]', gameId, game);
+    var isUsed = !!usedGames[gameId];
+    console.log('[GRAPH GAME]', gameId, game, 'used=', isUsed);
 
     var safeGameId = escapeHtml(gameId);
     var safeTitle = escapeHtml(game.title || gameId);
@@ -4816,6 +4817,9 @@ function buildGamesGraph(story, options) {
 
     mermaid += '    ' + gameNodeId + '["' + label + '"]\n';
     mermaid += '    ' + gameNodeId + ':::game-node\n';
+    if (!isUsed) {
+      mermaid += '    class ' + gameNodeId + ' unreachable;\n';
+    }
     mermaid += '    games -.-> ' + gameNodeId + '\n';
   }
 
