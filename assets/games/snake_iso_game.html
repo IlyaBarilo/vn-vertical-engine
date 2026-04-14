@@ -445,6 +445,7 @@
     border: calc(2px * var(--scale)) solid rgba(255,255,255,0.16);
     box-shadow: 0 calc(10px * var(--scale)) calc(22px * var(--scale)) rgba(50, 76, 220, 0.26);
     touch-action: none;
+    pointer-events: none;
   }
 
   .controlHint {
@@ -1978,7 +1979,6 @@ function getDifficultyPreset(level) {
 
   function bindJoystickInput() {
     bindUiStop(joystick);
-    bindUiStop(joyKnob);
 
     if (HAS_POINTER_EVENTS) {
       joystick.addEventListener('pointerdown', (event) => {
