@@ -511,12 +511,6 @@ hide all
 if memoryResult == 1 -> scBranchLabMemoryGood
 if memoryResult == 0 -> scBranchLabMemoryBad
 
-scene scBranchLabMemoryRunHard
-
-bg bgBranchLab
-hide all
-
-
 scene scBranchLabMemoryGood
 
 bg bgBranchLab
