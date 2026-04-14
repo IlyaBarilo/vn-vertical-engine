@@ -50,7 +50,7 @@ bgmDay file=assets/audio/bgm-campus-day.mp3
 gmCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
 gmSpaceDebris file=assets/games/space-debris.html title="Космические обломки" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космических обломков." cover=assets/games/space-debris.jpg
 gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
-gmTestMiss file=assets/games/space-debris-test-miss.html
+gmCircuitRouting file=assets/games/snake_iso_game.html title="Маршрутизация контура" description="Проведи сигнал по плате через активные узлы. Чем выше сложность, тем быстрее поток и плотнее схема." cover=assets/games/snake_iso_game.jpg
 
 [var]
 x = 10 # объявление переменных
@@ -60,6 +60,7 @@ labStep = 0
 spaceResult = 0
 coffeeResult = 0
 benchmarkResult = 0
+circuitResult = 0
 
 [scene]
 # Формат описания сцен:
@@ -87,7 +88,6 @@ bgm bgmDay loop
 # anna: "coffee={coffeeResult}"
 # if coffeeResult == 1 -> cafeGood
 # if coffeeResult == 0 -> cafeBad
-
 
 show anna  # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
@@ -189,7 +189,7 @@ igor: "Можно прогнать расчёт, как раньше. А мож�
 menu
 "Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
 "Провести калибровку сенсорной панели" -> scBranchLabBenchmark
-
+"Открыть стенд маршрутизации контура" -> scBranchLabRoutingIntro
 
 
 
@@ -356,13 +356,100 @@ hide all
 
 
 
-scene scBranchLab02
+
+
+scene scBranchLabRoutingIntro
 
 bg bgBranchLab
 hide all
 
-"Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
-"Тут не боятся ошибок: каждая — шаг к решению. И да, иногда решения выглядят как магия."
+"На дальнем столе собран отдельный стенд: прозрачная плата, активные дорожки и контур, который нужно провести через узлы без перегрузки."
+"Это уже не просто диагностика, а практическое испытание реакции и точности."
+
+show anna neutral
+anna: "Вот это уже интересно. Здесь мы не просто смотрим на систему, а ведём сигнал по реальной схеме."
+
+show igor smile
+igor: "Давай выберем режим: простой и напряжённый."
+
+goto scBranchLabRoutingDifficulty
+
+
+scene scBranchLabRoutingDifficulty
+
+bg bgBranchLab
+hide all
+
+show anna neutral
+anna: "Какой режим запускаем?"
+
+menu
+"Простой режим" -> scBranchLabRoutingRunSimple
+"Нагруженный режим" -> scBranchLabRoutingRunHard
+"Вернуться к выбору в лаборатории" -> scBranchLab01
+
+
+scene scBranchLabRoutingRunSimple
+
+bg bgBranchLab
+hide all
+
+"Ты запускаешь стенд в базовом режиме."
+
+game gmCircuitRouting difficulty=1 result=circuitResult
+
+if circuitResult == 1 -> scBranchLabRoutingGood
+if circuitResult == 0 -> scBranchLabRoutingBad
+
+
+scene scBranchLabRoutingRunHard
+
+bg bgBranchLab
+hide all
+
+"Ты запускаешь стенд в нагруженном режиме."
+
+game gmCircuitRouting difficulty=3 result=circuitResult
+
+if circuitResult == 1 -> scBranchLabRoutingGood
+if circuitResult == 0 -> scBranchLabRoutingBad
+
+
+scene scBranchLabRoutingGood
+
+bg bgBranchLab
+hide all
+
+"Контур проведён чисто. Сигнал прошёл по плате без критических потерь, и стенд подтвердил устойчивость маршрута."
+
+goto scFinale01
+
+
+scene scBranchLabRoutingBad
+
+bg bgBranchLab
+hide all
+
+"На одном из участков сигнал сорвался, и стенд остановил прогон."
+
+show anna neutral
+anna: "Ничего страшного. Даже сбой здесь выглядит как часть эксперимента."
+
+show igor neutral
+igor: "Зато напряжение в сцене чувствуется сразу. Для истории это тоже работает."
+
+goto scFinale01
+
+
+
+
+
+# # Test
+# scene scBranchLab02
+# bg bgBranchLab
+# hide all
+# "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
+# "Тут не боятся ошибок: каждая — шаг к решению. И да, иногда решения выглядят как магия."
 
 `;
 
