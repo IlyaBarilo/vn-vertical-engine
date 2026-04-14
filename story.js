@@ -48,7 +48,7 @@ bgmDay file=assets/audio/bgm-campus-day.mp3
 
 [game]
 gmCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
-gmSpaceDebris file=assets/games/space-debris.html title="Космический Мусор" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора." cover=assets/games/space-debris.jpg
+gmSpaceDebris file=assets/games/space-debris.html title="Космические обломки" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космических обломков." cover=assets/games/space-debris.jpg
 gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
 gmTestMiss file=assets/games/space-debris-test-miss.html
 
@@ -291,7 +291,7 @@ hide all
 "Над кампусом — глубокое вечернее небо. Анна вдруг улыбается, будто придумала маленькое испытание."
 
 show anna neutral
-anna: "Знаешь, вечер — лучшее время для воображения. Давай представим, что мы проводим маленький спутник сквозь поток космического мусора."
+anna: "Знаешь, вечер — лучшее время для воображения. Давай представим, что мы проводим маленький спутник сквозь поток космическких обломков."
 
 show igor smile
 igor: "То есть вместо обычной прогулки — ночной челлендж?"

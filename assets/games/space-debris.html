@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Уклонение от мусора</title>
+    <title>Уклонение от обломков</title>
     <style>
         :root {
             --scale: 1;
@@ -191,8 +191,8 @@
     </div>
 
     <div id="screen-start" class="overlay">
-        <h1>Космический Мусор</h1>
-        <p>Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космического мусора.</p>
+        <h1>Космические обломки</h1>
+        <p>Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космических обломков.</p>
         <p>Спутник двигается только <b>вверх и вниз</b>.<br> Избегайте столкновений.</p>
         <p style="color: #f39c12;">💡 Круг управления можно перетащить за ярлык «Переместить».</p>
         <div class="btn-group">
@@ -202,7 +202,7 @@
 
     <div id="screen-lose" class="overlay hidden">
         <h1 style="color: #e74c3c;">Столкновение!</h1>
-        <p>Спутник получил критические повреждения от космического мусора.</p>
+        <p>Спутник получил критические повреждения от космических обломков.</p>
         <div class="btn-group">
             <button onclick="startGameFlow()">Повторить</button>
             <button class="danger" onclick="finishGame(0)">Завершить</button>
@@ -262,7 +262,7 @@
             spawnRateMax: 1000,
             baseSpeedX: 0.0003,
             speedVarX: 0.0002,
-            // Максимальная горизонтальная скорость мусора.
+            // Максимальная горизонтальная скорость обломков.
             // ИМЕННО ЭТО значение ограничивает реальную скорость объекта на экране.
             // Оно задаётся от сложности через maxSpeedByDifficulty.
             // Единица измерения: доля ширины экрана за 1 мс.
@@ -277,7 +277,7 @@
             baseSizeMin: 24,
             baseSizeMax: 64,
 
-            // Какие типы мусора разрешено спавнить.
+            // Какие типы обломков разрешено спавнить.
             // Чтобы отключить ненужный тип — просто поставь false.
             enabledTypes: {
                 0: false,  // Двойная солнечная панель --
@@ -430,11 +430,11 @@
 
         if (!enabledTypes.length) return;
 
-        // Здесь выбирается, КАКОЙ ИМЕННО элемент мусора будет создан.
+        // Здесь выбирается, КАКОЙ ИМЕННО элемент обломков будет создан.
         // Чтобы отключить ненужные варианты, редактируй CONFIG.debris.enabledTypes выше.
         const type = enabledTypes[Math.floor(Math.random() * enabledTypes.length)];
 
-        // Это максимальная скорость мусора на текущей сложности.
+        // Это максимальная скорость обломков на текущей сложности.
         // Формируется из maxSpeedByDifficulty и применяется как жёсткий лимит.
         const maxDebrisSpeed = canvas.width * CONFIG.debris.maxSpeedX;
         const rawSpeed = canvas.width * (CONFIG.debris.baseSpeedX + Math.random() * CONFIG.debris.speedVarX) * currentSpeedMult;
