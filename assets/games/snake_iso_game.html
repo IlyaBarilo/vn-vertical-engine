@@ -1,0 +1,2257 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Маршрутизация контура</title>
+<style>
+  :root {
+    --scale: 1;
+    --panel-bg: rgba(10, 18, 34, 0.88);
+    --panel-line: rgba(255, 255, 255, 0.12);
+    --text: #eef5ff;
+    --muted: #9cb6d8;
+    --good: #72f39b;
+    --bad: #ff7a7a;
+    --accent: #69b7ff;
+    --accent-2: #9a8dff;
+    --shadow: rgba(0, 0, 0, 0.35);
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 18%, rgba(84, 130, 255, 0.18), transparent 34%),
+      radial-gradient(circle at 50% 100%, rgba(20, 38, 86, 0.42), transparent 45%),
+      linear-gradient(180deg, #09111e 0%, #08101b 34%, #05070d 100%);
+    color: var(--text);
+    touch-action: none;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+  }
+
+  #gameRoot {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  #gameCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+
+  #fxCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+    opacity: 0.65;
+  }
+
+  #uiRoot {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  .overlay,
+  .panel,
+  .button,
+  .ui-control,
+  [data-ui="true"] {
+    pointer-events: auto;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(28px * var(--scale));
+    background: rgba(3, 8, 17, 0.62);
+    backdrop-filter: blur(calc(10px * var(--scale)));
+  }
+
+  .panel {
+    width: min(calc(720px * var(--scale)), 100%);
+    border-radius: calc(36px * var(--scale));
+    background: linear-gradient(180deg, rgba(15, 27, 50, 0.95), rgba(9, 16, 29, 0.95));
+    border: calc(2px * var(--scale)) solid var(--panel-line);
+    box-shadow:
+      0 calc(20px * var(--scale)) calc(50px * var(--scale)) var(--shadow),
+      inset 0 0 0 calc(1px * var(--scale)) rgba(255,255,255,0.03);
+    padding: calc(32px * var(--scale));
+  }
+
+  .title {
+    margin: 0 0 calc(12px * var(--scale));
+    font-size: calc(56px * var(--scale));
+    line-height: 1.02;
+    font-weight: 900;
+    letter-spacing: calc(-1.2px * var(--scale));
+  }
+
+  .subtitle {
+    margin: 0 0 calc(14px * var(--scale));
+    color: var(--muted);
+    font-size: calc(24px * var(--scale));
+    line-height: 1.45;
+  }
+
+  .tips {
+    display: grid;
+    gap: calc(14px * var(--scale));
+    margin: calc(20px * var(--scale)) 0 calc(28px * var(--scale));
+  }
+
+  .tip {
+    display: flex;
+    gap: calc(14px * var(--scale));
+    align-items: flex-start;
+    padding: calc(16px * var(--scale)) calc(18px * var(--scale));
+    border-radius: calc(22px * var(--scale));
+    background: rgba(255,255,255,0.045);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.05);
+    font-size: calc(21px * var(--scale));
+    line-height: 1.42;
+  }
+
+  .tipBadge {
+    width: calc(30px * var(--scale));
+    height: calc(30px * var(--scale));
+    border-radius: 999px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(105,183,255,0.9), rgba(86,124,255,0.9));
+    color: white;
+    font-size: calc(18px * var(--scale));
+    font-weight: 800;
+  }
+
+  .buttonRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(14px * var(--scale));
+  }
+
+
+  #finishOverlay .buttonRow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: calc(12px * var(--scale));
+  }
+
+  #finishOverlay .button {
+    width: 100%;
+    min-width: 0;
+    font-size: calc(21px * var(--scale));
+    padding-left: calc(20px * var(--scale));
+    padding-right: calc(20px * var(--scale));
+  }
+
+  @media (min-width: 700px) {
+    #finishOverlay .buttonRow {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+
+  .button {
+    appearance: none;
+    border: none;
+    border-radius: calc(24px * var(--scale));
+    min-height: calc(84px * var(--scale));
+    padding: calc(18px * var(--scale)) calc(28px * var(--scale));
+    font-size: calc(25px * var(--scale));
+    font-weight: 850;
+    letter-spacing: calc(0.2px * var(--scale));
+    color: white;
+    background: linear-gradient(180deg, #5cb3ff, #4a78ff);
+    box-shadow: 0 calc(12px * var(--scale)) calc(24px * var(--scale)) rgba(45, 87, 230, 0.32);
+    cursor: pointer;
+    transform: translateY(0);
+    transition: transform 0.12s ease, filter 0.12s ease, opacity 0.12s ease;
+  }
+
+  .button:active:not(:disabled) {
+    transform: translateY(calc(2px * var(--scale)));
+    filter: brightness(0.96);
+  }
+
+  .button.secondary {
+    background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+    color: var(--text);
+    box-shadow: none;
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.08);
+  }
+
+  .button.good {
+    background: linear-gradient(180deg, #66eba0, #29b365);
+    box-shadow: 0 calc(12px * var(--scale)) calc(24px * var(--scale)) rgba(12, 114, 58, 0.35);
+  }
+
+  .button.bad {
+    background: linear-gradient(180deg, #ff8d8d, #e65151);
+    box-shadow: 0 calc(12px * var(--scale)) calc(24px * var(--scale)) rgba(160, 42, 42, 0.35);
+  }
+
+  .button:disabled {
+    opacity: 0.5;
+    cursor: default;
+    filter: grayscale(0.12);
+  }
+
+  #hud {
+    position: absolute;
+    top: calc(22px * var(--scale));
+    left: calc(20px * var(--scale));
+    right: calc(20px * var(--scale));
+    display: grid;
+    gap: calc(12px * var(--scale));
+    pointer-events: none;
+  }
+
+  .hudTop {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: calc(12px * var(--scale));
+    align-items: stretch;
+  }
+
+  .hudCard {
+    background: rgba(9, 18, 34, 0.82);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.09);
+    border-radius: calc(24px * var(--scale));
+    padding: calc(16px * var(--scale)) calc(18px * var(--scale));
+    box-shadow: 0 calc(10px * var(--scale)) calc(20px * var(--scale)) rgba(0,0,0,0.18);
+    backdrop-filter: blur(calc(6px * var(--scale)));
+  }
+
+  .hudCard h2,
+  .hudCard p {
+    margin: 0;
+  }
+
+  .statusTitle {
+    font-size: calc(19px * var(--scale));
+    color: var(--muted);
+    margin-bottom: calc(8px * var(--scale));
+    text-transform: uppercase;
+    letter-spacing: calc(1.2px * var(--scale));
+  }
+
+  .statusMain {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(14px * var(--scale));
+    align-items: baseline;
+  }
+
+  .statusValue {
+    font-size: calc(40px * var(--scale));
+    font-weight: 900;
+  }
+
+  .statusHint {
+    font-size: calc(21px * var(--scale));
+    color: var(--muted);
+  }
+
+  .meterBlock {
+    display: grid;
+    gap: calc(8px * var(--scale));
+  }
+
+  .meterLabel {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(12px * var(--scale));
+    font-size: calc(18px * var(--scale));
+    color: var(--muted);
+  }
+
+  .meter {
+    position: relative;
+    height: calc(24px * var(--scale));
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.08);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.06);
+  }
+
+  .meterFill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    border-radius: inherit;
+    transition: width 0.14s linear;
+  }
+
+  #scoreFill {
+    background: linear-gradient(90deg, #75f7a1, #1bc56c);
+  }
+
+  #timeFill {
+    background: linear-gradient(90deg, #7cc4ff, #6b7fff);
+  }
+
+  .hudButtons {
+    display: flex;
+    gap: calc(10px * var(--scale));
+    pointer-events: auto;
+  }
+
+  .hudMiniButton {
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.12);
+    border-radius: calc(22px * var(--scale));
+    min-width: calc(86px * var(--scale));
+    min-height: calc(86px * var(--scale));
+    padding: 0 calc(18px * var(--scale));
+    color: white;
+    background: rgba(10, 18, 34, 0.84);
+    font-size: calc(19px * var(--scale));
+    font-weight: 800;
+    box-shadow: 0 calc(10px * var(--scale)) calc(18px * var(--scale)) rgba(0,0,0,0.18);
+  }
+
+  #controlPanel {
+    position: absolute;
+    left: calc(34px * var(--scale));
+    top: calc(930px * var(--scale));
+    width: calc(270px * var(--scale));
+    border-radius: calc(28px * var(--scale));
+    background: rgba(9, 18, 34, 0.84);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.1);
+    box-shadow: 0 calc(16px * var(--scale)) calc(30px * var(--scale)) rgba(0,0,0,0.24);
+    backdrop-filter: blur(calc(8px * var(--scale)));
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  #controlHandle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(10px * var(--scale));
+    min-height: calc(54px * var(--scale));
+    font-size: calc(18px * var(--scale));
+    font-weight: 800;
+    color: var(--muted);
+    border-bottom: calc(1px * var(--scale)) solid rgba(255,255,255,0.08);
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    touch-action: none;
+  }
+
+  .handleDots {
+    width: calc(42px * var(--scale));
+    height: calc(10px * var(--scale));
+    opacity: 0.6;
+    background:
+      radial-gradient(circle, rgba(255,255,255,0.7) 36%, transparent 38%) left center / calc(10px * var(--scale)) calc(10px * var(--scale)) repeat-x;
+  }
+
+  .controlBody {
+    padding: calc(16px * var(--scale));
+  }
+
+  .controlTitle {
+    font-size: calc(18px * var(--scale));
+    color: var(--muted);
+    margin: 0 0 calc(10px * var(--scale));
+    line-height: 1.3;
+  }
+
+  #joystick {
+    position: relative;
+    width: calc(200px * var(--scale));
+    height: calc(200px * var(--scale));
+    margin: 0 auto;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), rgba(255,255,255,0.02) 58%, rgba(255,255,255,0.05) 100%);
+    border: calc(2px * var(--scale)) solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 calc(8px * var(--scale)) calc(22px * var(--scale)) rgba(255,255,255,0.03);
+    touch-action: none;
+  }
+
+  #joystick::before,
+  #joystick::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  #joystick::before {
+    width: calc(156px * var(--scale));
+    height: calc(6px * var(--scale));
+  }
+
+  #joystick::after {
+    width: calc(6px * var(--scale));
+    height: calc(156px * var(--scale));
+  }
+
+  #joyKnob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(88px * var(--scale));
+    height: calc(88px * var(--scale));
+    margin-left: calc(-44px * var(--scale));
+    margin-top: calc(-44px * var(--scale));
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, rgba(255,255,255,0.32), transparent 26%),
+      linear-gradient(180deg, rgba(125,198,255,0.95), rgba(84,107,255,0.95));
+    border: calc(2px * var(--scale)) solid rgba(255,255,255,0.16);
+    box-shadow: 0 calc(10px * var(--scale)) calc(22px * var(--scale)) rgba(50, 76, 220, 0.26);
+    touch-action: none;
+  }
+
+  .controlHint {
+    margin: calc(12px * var(--scale)) 0 0;
+    font-size: calc(16px * var(--scale));
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.35;
+  }
+
+  #floatingToast {
+    position: absolute;
+    left: 50%;
+    top: calc(220px * var(--scale));
+    transform: translate(-50%, 0);
+    padding: calc(14px * var(--scale)) calc(18px * var(--scale));
+    border-radius: calc(18px * var(--scale));
+    background: rgba(11, 18, 34, 0.88);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.12);
+    box-shadow: 0 calc(12px * var(--scale)) calc(24px * var(--scale)) rgba(0,0,0,0.2);
+    font-size: calc(18px * var(--scale));
+    color: var(--text);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+
+  #floatingToast.visible {
+    opacity: 1;
+    transform: translate(-50%, calc(8px * var(--scale)));
+  }
+
+  .resultStatGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: calc(12px * var(--scale));
+    margin: calc(20px * var(--scale)) 0 calc(28px * var(--scale));
+  }
+
+  .resultStat {
+    padding: calc(16px * var(--scale));
+    border-radius: calc(22px * var(--scale));
+    background: rgba(255,255,255,0.05);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.06);
+  }
+
+  .resultStatLabel {
+    margin: 0 0 calc(8px * var(--scale));
+    font-size: calc(17px * var(--scale));
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: calc(1px * var(--scale));
+  }
+
+  .resultStatValue {
+    margin: 0;
+    font-size: calc(34px * var(--scale));
+    font-weight: 900;
+  }
+
+  .accentGood { color: var(--good); }
+  .accentBad { color: var(--bad); }
+
+  @media (max-aspect-ratio: 9/18) {
+    #controlPanel {
+      left: calc(24px * var(--scale));
+      top: calc(980px * var(--scale));
+    }
+  }
+</style>
+</head>
+<body>
+<div id="gameRoot">
+  <canvas id="gameCanvas"></canvas>
+  <canvas id="fxCanvas"></canvas>
+
+  <div id="uiRoot">
+    <div id="hud" data-ui="true" class="hidden">
+      <div class="hudTop" data-ui="true">
+        <div class="hudCard" data-ui="true">
+          <div class="statusTitle">Задача</div>
+          <div class="statusMain">
+            <div id="goalValue" class="statusValue">0 / 0 узл.</div>
+            <div id="difficultyValue" class="statusHint">Стенд S3</div>
+          </div>
+        </div>
+        <div class="hudButtons" data-ui="true">
+          <button id="pauseButton" class="hudMiniButton button ui-control" data-ui="true">Пауза</button>
+          <button id="quitButton" class="hudMiniButton button ui-control" data-ui="true">Выход</button>
+        </div>
+      </div>
+
+      <div class="hudCard" data-ui="true">
+        <div class="meterBlock" data-ui="true">
+          <div class="meterLabel"><span>Синхронизировано узлов</span><span id="scoreLabel">0 / 0</span></div>
+          <div class="meter"><div id="scoreFill" class="meterFill"></div></div>
+        </div>
+        <div class="meterBlock" data-ui="true" style="margin-top: calc(12px * var(--scale));">
+          <div class="meterLabel"><span>Ресурс стенда</span><span id="timeLabel">0.0 c</span></div>
+          <div class="meter"><div id="timeFill" class="meterFill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="controlPanel" class="panel ui-control hidden" data-ui="true">
+      <div id="controlHandle" class="ui-control" data-ui="true">
+        <div class="handleDots" aria-hidden="true"></div>
+        <span>Перетащи панель</span>
+      </div>
+      <div class="controlBody" data-ui="true">
+        <p class="controlTitle">Свайп по схеме или используй джойстик</p>
+        <div id="joystick" class="ui-control" data-ui="true">
+          <div id="joyKnob" class="ui-control" data-ui="true"></div>
+        </div>
+        <p class="controlHint">Веди импульс мягко: резкий разворот рядом с собственным маршрутом опасен.</p>
+      </div>
+    </div>
+
+    <div id="floatingToast" data-ui="true">Пауза</div>
+
+    <div id="startOverlay" class="overlay" data-ui="true">
+      <div class="panel" data-ui="true">
+        <h1 class="title">Маршрутизация контура</h1>
+        <p class="subtitle">Проведи световой импульс по изометрической схеме, синхронизируй нужное число узлов и не замкни трассу. Чем выше сложность, тем длиннее маршрут и меньше права на ошибку.</p>
+        <div class="tips" data-ui="true">
+          <div class="tip" data-ui="true"><div class="tipBadge">1</div><div>Цель: <strong id="startGoalText">0 узлов</strong>. Если контур стабилизирован, итоговый результат будет <strong>1</strong>.</div></div>
+          <div class="tip" data-ui="true"><div class="tipBadge">2</div><div>Управление: веди импульс свайпом по полю или джойстиком. Чем точнее повороты, тем безопаснее маршрут.</div></div>
+          <div class="tip" data-ui="true"><div class="tipBadge">3</div><div>Если трасса сорвётся, можно сразу повторить попытку и найти более безопасный маршрут.</div></div>
+        </div>
+        <div class="buttonRow" data-ui="true">
+          <button id="startButton" class="button">Запустить стенд</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="finishOverlay" class="overlay hidden" data-ui="true">
+      <div class="panel" data-ui="true">
+        <h1 id="finishTitle" class="title">Сеанс завершён</h1>
+        <p id="finishSubtitle" class="subtitle">Подтверди итог маршрутизации или попробуй ещё раз.</p>
+        <div class="resultStatGrid" data-ui="true">
+          <div class="resultStat" data-ui="true">
+            <p class="resultStatLabel">Узлов синхронизировано</p>
+            <p id="finishScore" class="resultStatValue">0</p>
+          </div>
+          <div class="resultStat" data-ui="true">
+            <p class="resultStatLabel">Осталось ресурса</p>
+            <p id="finishTime" class="resultStatValue">0.0 c</p>
+          </div>
+          <div class="resultStat" data-ui="true">
+            <p class="resultStatLabel">Итог</p>
+            <p id="finishResultLabel" class="resultStatValue">0</p>
+          </div>
+          <div class="resultStat" data-ui="true">
+            <p class="resultStatLabel">Причина</p>
+            <p id="finishReason" class="resultStatValue" style="font-size: calc(24px * var(--scale)); line-height: 1.2;">—</p>
+          </div>
+        </div>
+        <div class="buttonRow" data-ui="true">
+          <button id="retryButton" class="button secondary">Повторить трассировку</button>
+          <button id="finishButton" class="button good">Подтвердить итог</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  let difficulty = 3;
+  let resultSent = false;
+  let gameStarted = false;
+  let initReceived = false;
+  let gameReady = false;
+  let paused = false;
+  let runLoopActive = true;
+  let animationFrameId = 0;
+  let lastTimestamp = 0;
+  let accumulator = 0;
+  let lastDt = 0;
+  let finalAttemptResult = 0;
+  let attemptReason = '—';
+  let usingLocalInit = false;
+
+  const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+  const BASE_W = 810;
+  const BASE_H = 1440;
+  const DPR_CAP = 2;
+  const PI2 = Math.PI * 2;
+
+  const BASE_CONFIG = {
+  snakeHeightRatio: 0.95,
+  appleHeightRatio: 0.65,
+  swipeThresholdBase: 18,
+  swipeLatchDistanceBase: 24,
+  joystickRadiusBase: 100,
+  joystickKnobRadiusBase: 44,
+  panelDefaultX: 34,
+  panelDefaultY: 930
+};
+
+const GAME_LIMITS = {
+  boardColsMin: 7,
+  boardColsMax: 18,
+  boardRowsMin: 9,
+  boardRowsMax: 22,
+  targetMin: 3,
+  targetMax: 60,
+  timeMin: 18,
+  timeMax: 120,
+  moveIntervalMin: 0.11,
+  moveIntervalMax: 0.45,
+  speedGainMin: 0,
+  speedGainMax: 0.02,
+  trailMin: 0,
+  trailMax: 12
+};
+
+const DIFFICULTY_PRESETS = {
+  1: {
+    boardCols: 8,
+    boardRows: 11,
+    targetScore: 5,
+    timeLimit: 60,
+    moveInterval: 0.31,
+    speedGainPerScore: 0.003,
+    trailLength: 7,
+    collectiblePool: ['node', 'crystal']
+  },
+  2: {
+    boardCols: 9,
+    boardRows: 12,
+    targetScore: 6,
+    timeLimit: 56,
+    moveInterval: 0.29,
+    speedGainPerScore: 0.0035,
+    trailLength: 6,
+    collectiblePool: ['node', 'crystal']
+  },
+  3: {
+    boardCols: 9,
+    boardRows: 13,
+    targetScore: 7,
+    timeLimit: 52,
+    moveInterval: 0.27,
+    speedGainPerScore: 0.004,
+    trailLength: 5,
+    collectiblePool: ['node', 'crystal', 'capacitor']
+  },
+  4: {
+    boardCols: 10,
+    boardRows: 14,
+    targetScore: 8,
+    timeLimit: 48,
+    moveInterval: 0.245,
+    speedGainPerScore: 0.0045,
+    trailLength: 5,
+    collectiblePool: ['node', 'crystal', 'capacitor']
+  },
+  5: {
+    boardCols: 11,
+    boardRows: 15,
+    targetScore: 10,
+    timeLimit: 44,
+    moveInterval: 0.225,
+    speedGainPerScore: 0.005,
+    trailLength: 4,
+    collectiblePool: ['node', 'crystal', 'capacitor']
+  },
+  6: {
+    boardCols: 12,
+    boardRows: 16,
+    targetScore: 12,
+    timeLimit: 40,
+    moveInterval: 0.205,
+    speedGainPerScore: 0.0055,
+    trailLength: 4,
+    collectiblePool: ['node', 'crystal', 'capacitor']
+  },
+  7: {
+    boardCols: 13,
+    boardRows: 18,
+    targetScore: 14,
+    timeLimit: 36,
+    moveInterval: 0.185,
+    speedGainPerScore: 0.006,
+    trailLength: 3,
+    collectiblePool: ['node', 'crystal', 'capacitor']
+  }
+};
+
+function getDifficultyPreset(level) {
+  const safeLevel = clamp(Math.round(Number(level) || 3), 1, 7);
+  return DIFFICULTY_PRESETS[safeLevel] || DIFFICULTY_PRESETS[3];
+}
+
+
+
+
+
+  const COLORS = {
+    floorA: '#142235',
+    floorB: '#0f1a2b',
+    wall: '#09111e',
+    wallLine: '#234f71',
+    snakeTop: '#5cf0d0',
+    snakeHead: '#b8fff3',
+    snakeGlow: 'rgba(102, 255, 219, 0.42)',
+    appleTop: '#66d8ff',
+    appleGlow: 'rgba(102, 216, 255, 0.34)',
+    shadow: 'rgba(0, 0, 0, 0.24)',
+    highlight: 'rgba(255, 255, 255, 0.08)',
+    trail: 'rgba(102, 255, 219, 0.16)'
+  };
+
+  const COLLECTIBLE_TYPES = {
+    node: {
+      color: '#66d8ff',
+      glow: 'rgba(102, 216, 255, 0.34)',
+      particle: 'rgba(102, 216, 255, {a})'
+    },
+    crystal: {
+      color: '#a78bfa',
+      glow: 'rgba(167, 139, 250, 0.34)',
+      particle: 'rgba(167, 139, 250, {a})'
+    },
+    capacitor: {
+      color: '#7df0ae',
+      glow: 'rgba(125, 240, 174, 0.34)',
+      particle: 'rgba(125, 240, 174, {a})'
+    }
+  };
+
+  function randomFrom(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  const DIRECTIONS = {
+    up: { x: 0, y: -1, key: 'up' },
+    right: { x: 1, y: 0, key: 'right' },
+    down: { x: 0, y: 1, key: 'down' },
+    left: { x: -1, y: 0, key: 'left' }
+  };
+
+  const gameRoot = document.getElementById('gameRoot');
+  const canvas = document.getElementById('gameCanvas');
+  const fxCanvas = document.getElementById('fxCanvas');
+  const ctx = canvas.getContext('2d');
+  const fxCtx = fxCanvas.getContext('2d');
+  const uiRoot = document.getElementById('uiRoot');
+
+  const hud = document.getElementById('hud');
+  const startOverlay = document.getElementById('startOverlay');
+  const finishOverlay = document.getElementById('finishOverlay');
+  const controlPanel = document.getElementById('controlPanel');
+  const controlHandle = document.getElementById('controlHandle');
+  const joystick = document.getElementById('joystick');
+  const joyKnob = document.getElementById('joyKnob');
+
+  const floatingToast = document.getElementById('floatingToast');
+
+  const startButton = document.getElementById('startButton');
+  const retryButton = document.getElementById('retryButton');
+  const finishButton = document.getElementById('finishButton');
+  const pauseButton = document.getElementById('pauseButton');
+  const quitButton = document.getElementById('quitButton');
+
+  const goalValue = document.getElementById('goalValue');
+  const difficultyValue = document.getElementById('difficultyValue');
+  const scoreLabel = document.getElementById('scoreLabel');
+  const timeLabel = document.getElementById('timeLabel');
+  const scoreFill = document.getElementById('scoreFill');
+  const timeFill = document.getElementById('timeFill');
+  const startGoalText = document.getElementById('startGoalText');
+
+  const finishTitle = document.getElementById('finishTitle');
+  const finishSubtitle = document.getElementById('finishSubtitle');
+  const finishScore = document.getElementById('finishScore');
+  const finishTime = document.getElementById('finishTime');
+  const finishResultLabel = document.getElementById('finishResultLabel');
+  const finishReason = document.getElementById('finishReason');
+
+  const viewport = {
+    width: 1,
+    height: 1,
+    dpr: 1,
+    scale: 1,
+    tileW: 1,
+    tileH: 1,
+    blockH: 1,
+    originX: 0,
+    originY: 0,
+    boardPixelW: 1,
+    boardPixelH: 1,
+    uiScale: 1
+  };
+
+
+  const defaultPreset = getDifficultyPreset(difficulty);
+  
+  const state = {
+    boardCols: defaultPreset.boardCols,
+    boardRows: defaultPreset.boardRows,
+    targetScore: defaultPreset.targetScore,
+    timeLimit: defaultPreset.timeLimit,
+    timeLeft: 0,
+    moveIntervalBase: defaultPreset.moveInterval,
+    moveInterval: defaultPreset.moveInterval,
+    speedGainPerScore: defaultPreset.speedGainPerScore,
+    trailLength: defaultPreset.trailLength,
+    collectiblePool: [...defaultPreset.collectiblePool],
+    score: 0,
+    attempt: 1,
+    snake: [],
+    direction: DIRECTIONS.right,
+    nextDirection: DIRECTIONS.right,
+    apple: {
+      x: 0,
+      y: 0,
+      pulse: 0,
+      type: 'node',
+      variantSeed: 0
+    },
+    particles: [],
+    ghostTrail: [],
+    swipe: {
+      active: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      moved: false
+    },
+    joystick: {
+      active: false,
+      pointerId: null,
+      x: 0,
+      y: 0,
+      dirKey: null
+    },
+    panelDrag: {
+      active: false,
+      pointerId: null,
+      offsetX: 0,
+      offsetY: 0,
+      x: BASE_CONFIG.panelDefaultX,
+      y: BASE_CONFIG.panelDefaultY
+    },
+    finishPresented: false
+  };
+
+  const uiStopEvents = ['click', 'pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup'];
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function round1(value) {
+    return Math.round(value * 10) / 10;
+  }
+
+  function isFiniteNumber(value) {
+    return Number.isFinite(value);
+  }
+
+  function shade(hexColor, amount) {
+    const safe = String(hexColor || '').replace('#', '');
+    if (safe.length !== 6) return hexColor;
+    const num = parseInt(safe, 16);
+    let r = (num >> 16) & 255;
+    let g = (num >> 8) & 255;
+    let b = num & 255;
+    r = clamp(Math.round(r + 255 * amount), 0, 255);
+    g = clamp(Math.round(g + 255 * amount), 0, 255);
+    b = clamp(Math.round(b + 255 * amount), 0, 255);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function applyScale() {
+    const width = window.innerWidth || 1;
+    const height = window.innerHeight || 1;
+    const scale = Math.min(width / BASE_W, height / BASE_H);
+    viewport.uiScale = scale;
+    document.documentElement.style.setProperty('--scale', scale.toFixed(5));
+    state.panelDrag.x = clamp(state.panelDrag.x, 16, Math.max(16, BASE_W - 286));
+    state.panelDrag.y = clamp(state.panelDrag.y, 180, Math.max(180, BASE_H - 340));
+    positionControlPanel();
+    resizeCanvas();
+    updateJoystickKnob(0, 0);
+  }
+
+  function resizeCanvas() {
+    const rect = gameRoot.getBoundingClientRect();
+    viewport.width = Math.max(1, rect.width);
+    viewport.height = Math.max(1, rect.height);
+    viewport.dpr = clamp(window.devicePixelRatio || 1, 1, DPR_CAP);
+
+    const pixelW = Math.round(viewport.width * viewport.dpr);
+    const pixelH = Math.round(viewport.height * viewport.dpr);
+
+    if (canvas.width !== pixelW || canvas.height !== pixelH) {
+      canvas.width = pixelW;
+      canvas.height = pixelH;
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+    }
+
+    if (fxCanvas.width !== pixelW || fxCanvas.height !== pixelH) {
+      fxCanvas.width = pixelW;
+      fxCanvas.height = pixelH;
+      fxCanvas.style.width = `${viewport.width}px`;
+      fxCanvas.style.height = `${viewport.height}px`;
+      fxCtx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+    }
+
+    const isoSpanW = (state.boardCols + state.boardRows) * 0.5;
+    const usableW = viewport.width * 0.78;
+    const usableH = viewport.height * 0.46;
+    const tileW = Math.min(usableW / isoSpanW, usableH / ((state.boardCols + state.boardRows) * 0.25 + 2.4));
+    viewport.tileW = clamp(tileW, 22 * viewport.uiScale, 72 * viewport.uiScale);
+    viewport.tileH = viewport.tileW * 0.54;
+    viewport.blockH = viewport.tileH * BASE_CONFIG.snakeHeightRatio;
+    viewport.boardPixelW = (state.boardCols + state.boardRows) * viewport.tileW * 0.5;
+    viewport.boardPixelH = (state.boardCols + state.boardRows) * viewport.tileH * 0.5 + viewport.blockH * 2.2;
+    viewport.originX = viewport.width * 0.5;
+    viewport.originY = viewport.height * 0.29;
+  }
+
+  function isUiTarget(target) {
+    return !!(target && target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]'));
+  }
+
+  function stopEvent(event) {
+    if (!event) return;
+    if (event.cancelable) event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function bindUiStop(element) {
+    if (!element) return;
+    uiStopEvents.forEach((type) => {
+      element.addEventListener(type, stopEvent, { passive: false });
+    });
+  }
+
+  function bindUiButton(button, handler) {
+    bindUiStop(button);
+    let lastActivationTs = 0;
+
+    const activate = (event) => {
+      stopEvent(event);
+      const now = performance.now();
+      if (now - lastActivationTs < 280) return;
+      lastActivationTs = now;
+      if (!resultSent) handler(event);
+    };
+
+    if (HAS_POINTER_EVENTS) {
+      button.addEventListener('pointerup', activate, { passive: false });
+    } else {
+      button.addEventListener('mouseup', activate, { passive: false });
+      button.addEventListener('touchend', activate, { passive: false });
+    }
+
+    button.addEventListener('click', activate, { passive: false });
+  }
+
+  function showToast(text) {
+    floatingToast.textContent = text;
+    floatingToast.classList.add('visible');
+    window.clearTimeout(showToast._timer);
+    showToast._timer = window.setTimeout(() => {
+      floatingToast.classList.remove('visible');
+    }, 900);
+  }
+
+  function hideAllOverlays() {
+    startOverlay.classList.add('hidden');
+    finishOverlay.classList.add('hidden');
+  }
+
+  function toggleGameplayUi(visible) {
+    hud.classList.toggle('hidden', !visible);
+    controlPanel.classList.toggle('hidden', !visible);
+  }
+
+  function getDifficultySafe(value) {
+    const parsed = Number(value);
+    if (!isFiniteNumber(parsed)) return 3;
+    return clamp(Math.round(parsed), 1, 7);
+  }
+
+  function configureFromInit(data) {
+    difficulty = getDifficultySafe(data && data.difficulty);
+    const preset = getDifficultyPreset(difficulty);
+
+    const boardCols = Number(data && data.boardCols);
+    const boardRows = Number(data && data.boardRows);
+    const targetScore = Number(data && data.targetScore);
+    const timeLimit = Number(data && data.timeLimit);
+    const moveInterval = Number(data && data.moveInterval);
+    const speedGainPerScore = Number(data && data.speedGainPerScore);
+    const trailLength = Number(data && data.trailLength);
+
+    state.boardCols = isFiniteNumber(boardCols)
+      ? clamp(Math.round(boardCols), GAME_LIMITS.boardColsMin, GAME_LIMITS.boardColsMax)
+      : preset.boardCols;
+
+    state.boardRows = isFiniteNumber(boardRows)
+      ? clamp(Math.round(boardRows), GAME_LIMITS.boardRowsMin, GAME_LIMITS.boardRowsMax)
+      : preset.boardRows;
+
+    state.targetScore = isFiniteNumber(targetScore)
+      ? clamp(Math.round(targetScore), GAME_LIMITS.targetMin, GAME_LIMITS.targetMax)
+      : preset.targetScore;
+
+    state.timeLimit = isFiniteNumber(timeLimit)
+      ? clamp(timeLimit, GAME_LIMITS.timeMin, GAME_LIMITS.timeMax)
+      : preset.timeLimit;
+
+    state.moveIntervalBase = isFiniteNumber(moveInterval)
+      ? clamp(moveInterval, GAME_LIMITS.moveIntervalMin, GAME_LIMITS.moveIntervalMax)
+      : preset.moveInterval;
+
+    state.speedGainPerScore = isFiniteNumber(speedGainPerScore)
+      ? clamp(speedGainPerScore, GAME_LIMITS.speedGainMin, GAME_LIMITS.speedGainMax)
+      : preset.speedGainPerScore;
+
+    state.trailLength = isFiniteNumber(trailLength)
+      ? clamp(Math.round(trailLength), GAME_LIMITS.trailMin, GAME_LIMITS.trailMax)
+      : preset.trailLength;
+
+    state.collectiblePool = Array.isArray(data && data.collectiblePool) && data.collectiblePool.length
+      ? [...data.collectiblePool]
+      : [...preset.collectiblePool];
+
+    state.moveInterval = state.moveIntervalBase;
+
+    difficultyValue.textContent = `Стенд S${difficulty}`;
+    startGoalText.textContent = `${state.targetScore} узлов`;
+
+    applyScale();
+    updateHud();
+  }
+
+  function localInit() {
+    if (initReceived) return;
+    usingLocalInit = true;
+    configureFromInit({ difficulty: 3 });
+    gameReady = true;
+  }
+
+  function updateHud() {
+    goalValue.textContent = `${state.score} / ${state.targetScore} узл. • ${state.boardCols}×${state.boardRows}`;
+    scoreLabel.textContent = `${state.score} / ${state.targetScore}`;
+    timeLabel.textContent = `${round1(state.timeLeft)} c`;
+
+    const scoreRatio = clamp(state.score / Math.max(1, state.targetScore), 0, 1);
+    const timeRatio = clamp(state.timeLeft / Math.max(1, state.timeLimit), 0, 1);
+
+    scoreFill.style.width = `${(scoreRatio * 100).toFixed(2)}%`;
+    timeFill.style.width = `${(timeRatio * 100).toFixed(2)}%`;
+  }
+
+  function isoPosition(x, y, z = 0) {
+    return {
+      x: viewport.originX + (x - y) * viewport.tileW * 0.5,
+      y: viewport.originY + (x + y) * viewport.tileH * 0.5 - z * viewport.blockH
+    };
+  }
+
+  function drawIsoPrism(posX, posY, widthCells, depthCells, heightRatio, topColor, sideColorA, sideColorB, glowColor) {
+    const topA = isoPosition(posX, posY, heightRatio);
+    const topB = isoPosition(posX + widthCells, posY, heightRatio);
+    const topC = isoPosition(posX + widthCells, posY + depthCells, heightRatio);
+    const topD = isoPosition(posX, posY + depthCells, heightRatio);
+
+    const baseA = isoPosition(posX, posY, 0);
+    const baseB = isoPosition(posX + widthCells, posY, 0);
+    const baseC = isoPosition(posX + widthCells, posY + depthCells, 0);
+    const baseD = isoPosition(posX, posY + depthCells, 0);
+
+    ctx.beginPath();
+    ctx.moveTo(topA.x, topA.y);
+    ctx.lineTo(topB.x, topB.y);
+    ctx.lineTo(topC.x, topC.y);
+    ctx.lineTo(topD.x, topD.y);
+    ctx.closePath();
+    ctx.fillStyle = topColor;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(topD.x, topD.y);
+    ctx.lineTo(topC.x, topC.y);
+    ctx.lineTo(baseC.x, baseC.y);
+    ctx.lineTo(baseD.x, baseD.y);
+    ctx.closePath();
+    ctx.fillStyle = sideColorA;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(topB.x, topB.y);
+    ctx.lineTo(topC.x, topC.y);
+    ctx.lineTo(baseC.x, baseC.y);
+    ctx.lineTo(baseB.x, baseB.y);
+    ctx.closePath();
+    ctx.fillStyle = sideColorB;
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = Math.max(1, 1.25 * viewport.uiScale);
+    ctx.stroke();
+
+    if (glowColor) {
+      ctx.save();
+      ctx.shadowBlur = 20 * viewport.uiScale;
+      ctx.shadowColor = glowColor;
+      ctx.beginPath();
+      ctx.moveTo(topA.x, topA.y);
+      ctx.lineTo(topB.x, topB.y);
+      ctx.lineTo(topC.x, topC.y);
+      ctx.lineTo(topD.x, topD.y);
+      ctx.closePath();
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = Math.max(1, 1.2 * viewport.uiScale);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTile(x, y, pulse) {
+    const a = isoPosition(x, y, 0);
+    const b = isoPosition(x + 1, y, 0);
+    const c = isoPosition(x + 1, y + 1, 0);
+    const d = isoPosition(x, y + 1, 0);
+    const baseColor = (x + y) % 2 === 0 ? COLORS.floorA : COLORS.floorB;
+    const tileColor = pulse > 0 ? shade(baseColor, pulse * 0.1) : baseColor;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.lineTo(c.x, c.y);
+    ctx.lineTo(d.x, d.y);
+    ctx.closePath();
+    ctx.fillStyle = tileColor;
+    ctx.fill();
+
+    ctx.strokeStyle = COLORS.wallLine;
+    ctx.lineWidth = Math.max(1, 1 * viewport.uiScale);
+    ctx.stroke();
+
+    const center = isoPosition(x + 0.5, y + 0.5, 0.02);
+    ctx.save();
+    ctx.strokeStyle = `rgba(96, 226, 255, ${0.08 + pulse * 0.16})`;
+    ctx.lineWidth = Math.max(1, 1.2 * viewport.uiScale);
+    ctx.beginPath();
+    ctx.moveTo(a.x * 0.55 + center.x * 0.45, a.y * 0.55 + center.y * 0.45);
+    ctx.lineTo(center.x, center.y);
+    ctx.lineTo(c.x * 0.55 + center.x * 0.45, c.y * 0.55 + center.y * 0.45);
+    ctx.moveTo(b.x * 0.55 + center.x * 0.45, b.y * 0.55 + center.y * 0.45);
+    ctx.lineTo(center.x, center.y);
+    ctx.lineTo(d.x * 0.55 + center.x * 0.45, d.y * 0.55 + center.y * 0.45);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(178, 255, 244, ${0.08 + pulse * 0.22})`;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(1.5, 2.5 * viewport.uiScale), 0, PI2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBoard() {
+    const shadowCenter = isoPosition(state.boardCols * 0.5, state.boardRows * 0.5, 0);
+    const radial = ctx.createRadialGradient(shadowCenter.x, shadowCenter.y + viewport.tileH * 2.6, viewport.tileW * 0.5, shadowCenter.x, shadowCenter.y + viewport.tileH * 2.6, viewport.boardPixelW * 0.58);
+    radial.addColorStop(0, 'rgba(56, 194, 255, 0.18)');
+    radial.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = radial;
+    ctx.beginPath();
+    ctx.ellipse(shadowCenter.x, shadowCenter.y + viewport.tileH * 2.8, viewport.boardPixelW * 0.36, viewport.boardPixelH * 0.18, 0, 0, PI2);
+    ctx.fill();
+
+    for (let y = 0; y < state.boardRows; y += 1) {
+      for (let x = 0; x < state.boardCols; x += 1) {
+        const nearest = Math.abs(x - state.apple.x) + Math.abs(y - state.apple.y);
+        const pulse = clamp(1 - nearest / 4, 0, 1) * (0.35 + Math.sin(state.apple.pulse) * 0.18);
+        drawTile(x, y, pulse);
+      }
+    }
+
+    drawBorderWalls();
+  }
+
+  function drawBorderWalls() {
+    const h = 0.3;
+    for (let x = 0; x < state.boardCols; x += 1) {
+      drawIsoPrism(x, 0, 1, 0.08, h, '#101b30', '#0b1324', '#121d35');
+      drawIsoPrism(x, state.boardRows - 0.08, 1, 0.08, h, '#101b30', '#0b1324', '#121d35');
+    }
+    for (let y = 0; y < state.boardRows; y += 1) {
+      drawIsoPrism(0, y, 0.08, 1, h, '#101b30', '#0b1324', '#121d35');
+      drawIsoPrism(state.boardCols - 0.08, y, 0.08, 1, h, '#101b30', '#0b1324', '#121d35');
+    }
+  }
+
+  function drawSnake() {
+    for (let i = state.snake.length - 1; i >= 0; i -= 1) {
+      const segment = state.snake[i];
+      const t = i / Math.max(1, state.snake.length - 1);
+      const isHead = i === 0;
+      const top = isHead ? COLORS.snakeHead : shade(COLORS.snakeTop, -0.08 * t);
+      const sideA = shade(top, -0.18);
+      const sideB = shade(top, -0.28);
+      const glow = isHead ? COLORS.snakeGlow : null;
+      drawIsoPrism(segment.x + 0.06, segment.y + 0.06, 0.88, 0.88, BASE_CONFIG.snakeHeightRatio, top, sideA, sideB, glow);
+      if (isHead) {
+        drawSignalCore(segment);
+      }
+    }
+  }
+
+  function drawSignalCore(segment) {
+    const center = isoPosition(segment.x + 0.5, segment.y + 0.5, BASE_CONFIG.snakeHeightRatio + 0.06);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(10, 31, 42, 0.95)';
+    ctx.lineWidth = Math.max(1.5, 2.2 * viewport.uiScale);
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale), 0, PI2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(188, 255, 244, 0.95)';
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(2, 3.4 * viewport.uiScale), 0, PI2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(188, 255, 244, 0.72)';
+    ctx.lineWidth = Math.max(1, 1.4 * viewport.uiScale);
+    ctx.beginPath();
+    ctx.moveTo(center.x - viewport.tileW * 0.12, center.y);
+    ctx.lineTo(center.x + viewport.tileW * 0.12, center.y);
+    ctx.moveTo(center.x, center.y - viewport.tileH * 0.28);
+    ctx.lineTo(center.x, center.y + viewport.tileH * 0.28);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawApple() {
+    const pulse = 0.07 * Math.sin(state.apple.pulse);
+    const h = BASE_CONFIG.appleHeightRatio + pulse;
+    drawIsoPrism(state.apple.x + 0.22, state.apple.y + 0.22, 0.56, 0.56, h, COLORS.appleTop, shade(COLORS.appleTop, -0.16), shade(COLORS.appleTop, -0.26), COLORS.appleGlow);
+
+    const center = isoPosition(state.apple.x + 0.5, state.apple.y + 0.5, h + 0.03);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(185, 247, 255, 0.95)';
+    ctx.lineWidth = Math.max(1, 1.6 * viewport.uiScale);
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale), 0, PI2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(center.x - viewport.tileW * 0.1, center.y);
+    ctx.lineTo(center.x + viewport.tileW * 0.1, center.y);
+    ctx.moveTo(center.x, center.y - viewport.tileH * 0.22);
+    ctx.lineTo(center.x, center.y + viewport.tileH * 0.22);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(214, 255, 255, 0.98)';
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(1.8, 3.2 * viewport.uiScale), 0, PI2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGhostTrail() {
+    if (!state.ghostTrail.length) return;
+
+    ctx.save();
+
+    const maxTrail = Math.max(1, state.trailLength);
+
+    for (let i = 0; i < state.ghostTrail.length; i += 1) {
+      const item = state.ghostTrail[i];
+      const ratio = 1 - i / maxTrail; // ближе к змее -> ярче
+      const alpha = 0.08 + ratio * 0.26;
+      const inset = 0.2 + (1 - ratio) * 0.08;
+      const size = 1 - inset * 2;
+      const height = 0.08 + ratio * 0.14;
+
+      drawIsoPrism(
+        item.x + inset,
+        item.y + inset,
+        size,
+        size,
+        height,
+        `rgba(92, 240, 208, ${alpha})`,
+        `rgba(52, 148, 132, ${alpha * 0.9})`,
+        `rgba(16, 72, 68, ${alpha * 0.8})`
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    fxCtx.clearRect(0, 0, viewport.width, viewport.height);
+    for (let i = state.particles.length - 1; i >= 0; i -= 1) {
+      const p = state.particles[i];
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      const pos = isoPosition(p.x, p.y, p.z);
+      fxCtx.beginPath();
+      fxCtx.fillStyle = p.color.replace('{a}', alpha.toFixed(3));
+      fxCtx.arc(pos.x, pos.y, Math.max(1.5, p.size * viewport.uiScale * alpha), 0, PI2);
+      fxCtx.fill();
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, viewport.width, viewport.height);
+
+    const background = ctx.createLinearGradient(0, 0, 0, viewport.height);
+    background.addColorStop(0, '#09111e');
+    background.addColorStop(1, '#06080f');
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+    drawBoard();
+    drawGhostTrail();
+    drawApple();
+    drawSnake();
+    drawParticles();
+
+    if (!gameStarted && !state.finishPresented && !startOverlay.classList.contains('hidden')) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      const center = isoPosition(state.boardCols * 0.5, state.boardRows * 0.5, 0);
+      ctx.beginPath();
+      ctx.ellipse(center.x, center.y + viewport.tileH * 0.8, viewport.boardPixelW * 0.2, viewport.boardPixelH * 0.07, 0, 0, PI2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = state.particles.length - 1; i >= 0; i -= 1) {
+      const p = state.particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.vz -= 1.6 * dt;
+      if (p.life <= 0) {
+        state.particles.splice(i, 1);
+      }
+    }
+  }
+
+  function updateTrail() {}
+
+  function addTrailCell(cell) {
+    if (!cell || state.trailLength <= 0) return;
+
+    state.ghostTrail = state.ghostTrail.filter((item) => {
+      return !(item.x === cell.x && item.y === cell.y);
+    });
+
+    state.ghostTrail.unshift({ x: cell.x, y: cell.y });
+
+    if (state.ghostTrail.length > state.trailLength) {
+      state.ghostTrail.length = state.trailLength;
+    }
+  }
+
+  function clearTrailUnderSnake() {
+    const occupied = new Set(state.snake.map((part) => `${part.x}:${part.y}`));
+    state.ghostTrail = state.ghostTrail.filter((item) => !occupied.has(`${item.x}:${item.y}`));
+  }
+
+  function drawApple() {
+    const kind = state.apple.type || 'node';
+
+    if (kind === 'crystal') {
+      drawCrystalCollectible();
+      return;
+    }
+
+    if (kind === 'capacitor') {
+      drawCapacitorCollectible();
+      return;
+    }
+
+    drawNodeCollectible();
+  }
+
+  function drawNodeCollectible() {
+    const material = COLLECTIBLE_TYPES.node;
+    const pulse = 0.07 * Math.sin(state.apple.pulse);
+    const h = BASE_CONFIG.appleHeightRatio + pulse;
+
+    drawIsoPrism(
+      state.apple.x + 0.22,
+      state.apple.y + 0.22,
+      0.56,
+      0.56,
+      h,
+      material.color,
+      shade(material.color, -0.16),
+      shade(material.color, -0.26),
+      material.glow
+    );
+
+    const center = isoPosition(state.apple.x + 0.5, state.apple.y + 0.5, h + 0.03);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(220, 250, 255, 0.96)';
+    ctx.lineWidth = Math.max(1, 1.6 * viewport.uiScale);
+
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale), 0, PI2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(center.x - viewport.tileW * 0.1, center.y);
+    ctx.lineTo(center.x + viewport.tileW * 0.1, center.y);
+    ctx.moveTo(center.x, center.y - viewport.tileH * 0.22);
+    ctx.lineTo(center.x, center.y + viewport.tileH * 0.22);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(214, 255, 255, 0.98)';
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(1.8, 3.2 * viewport.uiScale), 0, PI2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCrystalCollectible() {
+    const material = COLLECTIBLE_TYPES.crystal;
+    const pulse = 0.08 * Math.sin(state.apple.pulse * 1.2);
+    const h = BASE_CONFIG.appleHeightRatio + 0.03 + pulse;
+    const center = isoPosition(state.apple.x + 0.5, state.apple.y + 0.5, h + 0.04);
+    const rot = state.apple.pulse * 0.9 + state.apple.variantSeed;
+
+    drawIsoPrism(
+      state.apple.x + 0.26,
+      state.apple.y + 0.26,
+      0.48,
+      0.48,
+      h,
+      material.color,
+      shade(material.color, -0.18),
+      shade(material.color, -0.3),
+      material.glow
+    );
+
+    ctx.save();
+    ctx.translate(center.x, center.y);
+    ctx.rotate(rot);
+    ctx.strokeStyle = 'rgba(245, 238, 255, 0.95)';
+    ctx.fillStyle = 'rgba(245, 238, 255, 0.2)';
+    ctx.lineWidth = Math.max(1, 1.4 * viewport.uiScale);
+
+    const rx = Math.max(5, 10 * viewport.uiScale);
+    const ry = Math.max(2, 5 * viewport.uiScale);
+
+    for (let i = 0; i < 4; i += 1) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -ry * 2.2);
+      ctx.lineTo(rx, 0);
+      ctx.lineTo(0, ry * 2.2);
+      ctx.lineTo(-rx, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCapacitorCollectible() {
+    const material = COLLECTIBLE_TYPES.capacitor;
+    const blink = 0.5 + 0.5 * Math.sin(state.apple.pulse * 2.2);
+    const pillarHeight = BASE_CONFIG.appleHeightRatio + 0.02 + blink * 0.08;
+    const barHeight = pillarHeight + 0.08;
+
+    drawIsoPrism(
+      state.apple.x + 0.2,
+      state.apple.y + 0.34,
+      0.16,
+      0.3,
+      pillarHeight,
+      material.color,
+      shade(material.color, -0.16),
+      shade(material.color, -0.28),
+      material.glow
+    );
+
+    drawIsoPrism(
+      state.apple.x + 0.64,
+      state.apple.y + 0.34,
+      0.16,
+      0.3,
+      pillarHeight,
+      material.color,
+      shade(material.color, -0.16),
+      shade(material.color, -0.28),
+      material.glow
+    );
+
+    const left = isoPosition(state.apple.x + 0.28, state.apple.y + 0.48, barHeight);
+    const right = isoPosition(state.apple.x + 0.72, state.apple.y + 0.48, barHeight);
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(240, 255, 248, ${0.55 + blink * 0.35})`;
+    ctx.lineWidth = Math.max(1.4, 2 * viewport.uiScale);
+    ctx.beginPath();
+    ctx.moveTo(left.x, left.y);
+    ctx.lineTo(right.x, right.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc((left.x + right.x) * 0.5, (left.y + right.y) * 0.5, Math.max(2, 3 * viewport.uiScale), 0, PI2);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.restore();
+  }
+
+
+  function spawnApple() {
+    const freeCells = [];
+
+    for (let y = 0; y < state.boardRows; y += 1) {
+      for (let x = 0; x < state.boardCols; x += 1) {
+        const occupiedBySnake = state.snake.some((part) => part.x === x && part.y === y);
+        if (!occupiedBySnake) {
+          freeCells.push({ x, y });
+        }
+      }
+    }
+
+    if (!freeCells.length) {
+      presentFinish(1, 'Контур стабилизирован');
+      return;
+    }
+
+    const nextCell = randomFrom(freeCells);
+
+    const availableTypes = Array.isArray(state.collectiblePool)
+      ? state.collectiblePool.filter((type) => COLLECTIBLE_TYPES[type])
+      : [];
+
+    const nextType = availableTypes.length
+      ? randomFrom(availableTypes)
+      : 'node';
+
+    state.apple.x = nextCell.x;
+    state.apple.y = nextCell.y;
+    state.apple.type = nextType;
+    state.apple.pulse = Math.random() * PI2;
+    state.apple.variantSeed = Math.random() * PI2;
+  }
+
+  function spawnAppleParticles(x, y, color) {
+    const count = 12;
+    for (let i = 0; i < count; i += 1) {
+      const angle = Math.random() * PI2;
+      const speed = 0.5 + Math.random() * 1.2;
+      state.particles.push({
+        x: x + 0.5,
+        y: y + 0.5,
+        z: 1,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        vz: 0.6 + Math.random() * 0.9,
+        life: 0.55 + Math.random() * 0.15,
+        maxLife: 0.7,
+        size: 5 + Math.random() * 4,
+        color
+      });
+    }
+  }
+
+  function resetSnake() {
+    const centerX = Math.floor(state.boardCols / 2);
+    const centerY = Math.floor(state.boardRows / 2);
+    state.snake = [
+      { x: centerX, y: centerY },
+      { x: centerX - 1, y: centerY },
+      { x: centerX - 2, y: centerY }
+    ];
+    state.direction = DIRECTIONS.right;
+    state.nextDirection = DIRECTIONS.right;
+  }
+
+  function computeMoveInterval() {
+    const byScore = state.score * state.speedGainPerScore;
+    return clamp(
+      state.moveIntervalBase - byScore,
+      GAME_LIMITS.moveIntervalMin,
+      GAME_LIMITS.moveIntervalMax
+    );
+  }
+
+  function resetAttempt() {
+    accumulator = 0;
+    state.score = 0;
+    state.timeLeft = state.timeLimit;
+    state.finishPresented = false;
+    state.particles.length = 0;
+    state.ghostTrail.length = 0;
+    resetSnake();
+    spawnApple();
+    state.moveInterval = computeMoveInterval();
+    paused = false;
+    pauseButton.textContent = 'Пауза';
+    updateHud();
+    render();
+  }
+
+  function presentFinish(result, reason) {
+    if (resultSent || state.finishPresented) return;
+    gameStarted = false;
+    paused = false;
+    state.finishPresented = true;
+    finalAttemptResult = Number(result) || 0;
+    attemptReason = reason || 'Сеанс завершён';
+
+    finishTitle.textContent = finalAttemptResult === 1 ? 'Контур стабилизирован' : 'Сеанс трассировки завершён';
+    finishSubtitle.textContent = finalAttemptResult === 1
+      ? 'Все ключевые узлы синхронизированы. Подтверди успех или начни новую попытку до фиксации результата.'
+      : 'Можно повторить трассировку без перезагрузки страницы или завершить игру с текущим итогом.';
+    finishScore.textContent = String(state.score);
+    finishTime.textContent = `${round1(state.timeLeft)} c`;
+    finishResultLabel.textContent = finalAttemptResult === 1 ? '1' : '0';
+    finishResultLabel.className = `resultStatValue ${finalAttemptResult === 1 ? 'accentGood' : 'accentBad'}`;
+    finishReason.textContent = reason || 'Сеанс завершён';
+    finishReason.className = `resultStatValue ${finalAttemptResult === 1 ? 'accentGood' : 'accentBad'}`;
+    finishButton.dataset.result = String(finalAttemptResult);
+    finishButton.textContent = finalAttemptResult === 1 ? 'Подтвердить стабилизацию' : 'Завершить сеанс';
+    finishButton.className = `button ${finalAttemptResult === 1 ? 'good' : 'bad'}`;
+
+    hideAllOverlays();
+    finishOverlay.classList.remove('hidden');
+    toggleGameplayUi(false);
+    releaseGameplayPointers();
+    render();
+  }
+
+  function blockAllInteraction() {
+    gameRoot.style.pointerEvents = 'none';
+    uiRoot.style.pointerEvents = 'none';
+  }
+
+  function sendGameResultOnce(result) {
+    if (resultSent) return;
+    resultSent = true;
+    gameStarted = false;
+    paused = false;
+    runLoopActive = false;
+    blockAllInteraction();
+    releaseGameplayPointers();
+    window.cancelAnimationFrame(animationFrameId);
+
+    parent.postMessage({
+      type: 'gameResult',
+      result: Number.isFinite(result) ? result : 0
+    }, '*');
+  }
+
+  function finishGame(result) {
+    if (resultSent) return;
+    sendGameResultOnce(Number.isFinite(result) ? result : 0);
+  }
+
+  function startGame() {
+    if (resultSent || !gameReady) return;
+    resetAttempt();
+    hideAllOverlays();
+    toggleGameplayUi(true);
+    gameStarted = true;
+    state.finishPresented = false;
+    showToast(usingLocalInit ? 'Локальный запуск стенда' : 'Стенд активирован');
+  }
+
+  function retryAttempt() {
+    if (resultSent) return;
+    state.attempt += 1;
+    hideAllOverlays();
+    toggleGameplayUi(true);
+    resetAttempt();
+    gameStarted = true;
+    showToast(`Сеанс ${state.attempt}`);
+  }
+
+  function quitEarly() {
+    if (resultSent) return;
+    presentFinish(0, 'Сеанс прерван оператором');
+  }
+
+  function togglePause() {
+    if (resultSent || !gameStarted || state.finishPresented) return;
+    paused = !paused;
+    pauseButton.textContent = paused ? 'Продолжить' : 'Пауза';
+    showToast(paused ? 'Стенд на паузе' : 'Трассировка продолжена');
+  }
+
+  function isOppositeDirection(a, b) {
+    return a && b && a.x === -b.x && a.y === -b.y;
+  }
+
+  function setNextDirection(direction) {
+    if (!direction || resultSent || !gameStarted || paused) return;
+    if (isOppositeDirection(direction, state.direction) || isOppositeDirection(direction, state.nextDirection)) return;
+    state.nextDirection = direction;
+  }
+
+  function directionFromVector(dx, dy) {
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return dx > 0 ? DIRECTIONS.right : DIRECTIONS.left;
+    }
+    return dy > 0 ? DIRECTIONS.down : DIRECTIONS.up;
+  }
+
+  function handleDirectionalInput(dx, dy) {
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+    setNextDirection(directionFromVector(dx, dy));
+  }
+
+  function applySwipeDelta(dx, dy) {
+    const threshold = BASE_CONFIG.swipeThresholdBase * viewport.uiScale;
+    if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return false;
+    handleDirectionalInput(dx, dy);
+    return true;
+  }
+
+  function onGameInputStart(event, x, y) {
+    if (!gameStarted || resultSent || paused) return;
+    if (isUiTarget(event.target)) return;
+    if (event.cancelable) event.preventDefault();
+    state.swipe.active = true;
+    state.swipe.pointerId = HAS_POINTER_EVENTS ? event.pointerId : null;
+    state.swipe.startX = x;
+    state.swipe.startY = y;
+    state.swipe.lastX = x;
+    state.swipe.lastY = y;
+    state.swipe.moved = false;
+    tryCapturePointer(gameRoot, event);
+  }
+
+  function onGameInputMove(event, x, y) {
+    if (!gameStarted || resultSent || paused) return;
+    if (isUiTarget(event.target)) return;
+    if (event.cancelable) event.preventDefault();
+    if (!state.swipe.active) return;
+    if (HAS_POINTER_EVENTS && state.swipe.pointerId !== null && event.pointerId !== state.swipe.pointerId) return;
+    state.swipe.lastX = x;
+    state.swipe.lastY = y;
+    const dx = x - state.swipe.startX;
+    const dy = y - state.swipe.startY;
+    const latched = applySwipeDelta(dx, dy);
+    if (latched) {
+      state.swipe.moved = true;
+      const latchDistance = BASE_CONFIG.swipeLatchDistanceBase * viewport.uiScale;
+      state.swipe.startX = x - clamp(dx, -latchDistance, latchDistance);
+      state.swipe.startY = y - clamp(dy, -latchDistance, latchDistance);
+    }
+  }
+
+  function onGameInputEnd(event) {
+    if (event && event.cancelable) event.preventDefault();
+    if (HAS_POINTER_EVENTS && state.swipe.pointerId !== null && event && event.pointerId !== state.swipe.pointerId) return;
+    releaseGameplayPointer(gameRoot, event);
+    state.swipe.active = false;
+    state.swipe.pointerId = null;
+  }
+
+  function tryCapturePointer(element, event) {
+    if (!HAS_POINTER_EVENTS) return;
+    if (!element || !event || event.pointerId == null || !element.setPointerCapture) return;
+    try {
+      element.setPointerCapture(event.pointerId);
+    } catch (_) {}
+  }
+
+  function releaseGameplayPointer(element, event) {
+    if (!HAS_POINTER_EVENTS) return;
+    if (!element || !event || event.pointerId == null || !element.releasePointerCapture) return;
+    try {
+      if (element.hasPointerCapture && element.hasPointerCapture(event.pointerId)) {
+        element.releasePointerCapture(event.pointerId);
+      }
+    } catch (_) {}
+  }
+
+  function releaseGameplayPointers() {
+    state.swipe.active = false;
+    state.swipe.pointerId = null;
+    state.joystick.active = false;
+    state.joystick.pointerId = null;
+    state.panelDrag.active = false;
+    state.panelDrag.pointerId = null;
+    updateJoystickKnob(0, 0);
+  }
+
+  function onJoystickVector(dx, dy) {
+    const radius = BASE_CONFIG.joystickRadiusBase * viewport.uiScale;
+    const length = Math.hypot(dx, dy);
+    if (length < radius * 0.22) {
+      updateJoystickKnob(0, 0);
+      return;
+    }
+    const clamped = Math.min(length, radius * 0.72);
+    const nx = (dx / length) * clamped;
+    const ny = (dy / length) * clamped;
+    updateJoystickKnob(nx, ny);
+    handleDirectionalInput(dx, dy);
+  }
+
+  function updateJoystickKnob(x, y) {
+    state.joystick.x = x;
+    state.joystick.y = y;
+    joyKnob.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+  }
+
+  function getElementCenter(element) {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }
+
+  function positionControlPanel() {
+    controlPanel.style.left = `${state.panelDrag.x * viewport.uiScale}px`;
+    controlPanel.style.top = `${state.panelDrag.y * viewport.uiScale}px`;
+  }
+
+  function panelClampX(raw) {
+    const maxX = Math.max(16, window.innerWidth / viewport.uiScale - 286);
+    return clamp(raw, 16, maxX);
+  }
+
+  function panelClampY(raw) {
+    const maxY = Math.max(180, window.innerHeight / viewport.uiScale - 340);
+    return clamp(raw, 180, maxY);
+  }
+
+  function handlePanelDragMove(clientX, clientY) {
+    state.panelDrag.x = panelClampX(clientX / viewport.uiScale - state.panelDrag.offsetX);
+    state.panelDrag.y = panelClampY(clientY / viewport.uiScale - state.panelDrag.offsetY);
+    positionControlPanel();
+  }
+
+  function bindGameplayInput() {
+    if (HAS_POINTER_EVENTS) {
+      gameRoot.addEventListener('pointerdown', (event) => {
+        onGameInputStart(event, event.clientX, event.clientY);
+      }, { passive: false });
+      gameRoot.addEventListener('pointermove', (event) => {
+        onGameInputMove(event, event.clientX, event.clientY);
+      }, { passive: false });
+      gameRoot.addEventListener('pointerup', (event) => {
+        onGameInputEnd(event);
+      }, { passive: false });
+      gameRoot.addEventListener('pointercancel', (event) => {
+        onGameInputEnd(event);
+      }, { passive: false });
+    } else {
+      let mouseActive = false;
+      gameRoot.addEventListener('mousedown', (event) => {
+        mouseActive = true;
+        onGameInputStart(event, event.clientX, event.clientY);
+      }, { passive: false });
+      window.addEventListener('mousemove', (event) => {
+        if (!mouseActive) return;
+        onGameInputMove(event, event.clientX, event.clientY);
+      }, { passive: false });
+      window.addEventListener('mouseup', (event) => {
+        if (!mouseActive) return;
+        mouseActive = false;
+        onGameInputEnd(event);
+      }, { passive: false });
+      gameRoot.addEventListener('touchstart', (event) => {
+        if (isUiTarget(event.target)) {
+          event.preventDefault();
+          return;
+        }
+        const touch = event.changedTouches[0];
+        if (!touch) return;
+        onGameInputStart(event, touch.clientX, touch.clientY);
+      }, { passive: false });
+      gameRoot.addEventListener('touchmove', (event) => {
+        if (isUiTarget(event.target)) {
+          event.preventDefault();
+          return;
+        }
+        const touch = event.changedTouches[0];
+        if (!touch) return;
+        onGameInputMove(event, touch.clientX, touch.clientY);
+      }, { passive: false });
+      gameRoot.addEventListener('touchend', (event) => {
+        onGameInputEnd(event);
+      }, { passive: false });
+      gameRoot.addEventListener('touchcancel', (event) => {
+        onGameInputEnd(event);
+      }, { passive: false });
+    }
+  }
+
+  function bindJoystickInput() {
+    bindUiStop(joystick);
+    bindUiStop(joyKnob);
+
+    if (HAS_POINTER_EVENTS) {
+      joystick.addEventListener('pointerdown', (event) => {
+        stopEvent(event);
+        state.joystick.active = true;
+        state.joystick.pointerId = event.pointerId;
+        tryCapturePointer(joystick, event);
+        const center = getElementCenter(joystick);
+        onJoystickVector(event.clientX - center.x, event.clientY - center.y);
+      }, { passive: false });
+
+      joystick.addEventListener('pointermove', (event) => {
+        if (!state.joystick.active || event.pointerId !== state.joystick.pointerId) return;
+        stopEvent(event);
+        const center = getElementCenter(joystick);
+        onJoystickVector(event.clientX - center.x, event.clientY - center.y);
+      }, { passive: false });
+
+      const stopJoy = (event) => {
+        if (!state.joystick.active || event.pointerId !== state.joystick.pointerId) return;
+        stopEvent(event);
+        releaseGameplayPointer(joystick, event);
+        state.joystick.active = false;
+        state.joystick.pointerId = null;
+        updateJoystickKnob(0, 0);
+      };
+
+      joystick.addEventListener('pointerup', stopJoy, { passive: false });
+      joystick.addEventListener('pointercancel', stopJoy, { passive: false });
+      return;
+    }
+
+    let mouseActive = false;
+    joystick.addEventListener('mousedown', (event) => {
+      stopEvent(event);
+      mouseActive = true;
+      const center = getElementCenter(joystick);
+      onJoystickVector(event.clientX - center.x, event.clientY - center.y);
+    }, { passive: false });
+    window.addEventListener('mousemove', (event) => {
+      if (!mouseActive) return;
+      const center = getElementCenter(joystick);
+      onJoystickVector(event.clientX - center.x, event.clientY - center.y);
+    }, { passive: false });
+    window.addEventListener('mouseup', () => {
+      if (!mouseActive) return;
+      mouseActive = false;
+      updateJoystickKnob(0, 0);
+    }, { passive: false });
+    joystick.addEventListener('touchstart', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const center = getElementCenter(joystick);
+      onJoystickVector(touch.clientX - center.x, touch.clientY - center.y);
+    }, { passive: false });
+    joystick.addEventListener('touchmove', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const center = getElementCenter(joystick);
+      onJoystickVector(touch.clientX - center.x, touch.clientY - center.y);
+    }, { passive: false });
+    joystick.addEventListener('touchend', (event) => {
+      stopEvent(event);
+      updateJoystickKnob(0, 0);
+    }, { passive: false });
+    joystick.addEventListener('touchcancel', (event) => {
+      stopEvent(event);
+      updateJoystickKnob(0, 0);
+    }, { passive: false });
+  }
+
+  function bindPanelDrag() {
+    bindUiStop(controlHandle);
+
+    if (HAS_POINTER_EVENTS) {
+      controlHandle.addEventListener('pointerdown', (event) => {
+        stopEvent(event);
+        state.panelDrag.active = true;
+        state.panelDrag.pointerId = event.pointerId;
+        const rect = controlPanel.getBoundingClientRect();
+        state.panelDrag.offsetX = event.clientX / viewport.uiScale - rect.left / viewport.uiScale;
+        state.panelDrag.offsetY = event.clientY / viewport.uiScale - rect.top / viewport.uiScale;
+        tryCapturePointer(controlHandle, event);
+      }, { passive: false });
+      controlHandle.addEventListener('pointermove', (event) => {
+        if (!state.panelDrag.active || event.pointerId !== state.panelDrag.pointerId) return;
+        stopEvent(event);
+        handlePanelDragMove(event.clientX, event.clientY);
+      }, { passive: false });
+      const endDrag = (event) => {
+        if (!state.panelDrag.active || event.pointerId !== state.panelDrag.pointerId) return;
+        stopEvent(event);
+        state.panelDrag.active = false;
+        state.panelDrag.pointerId = null;
+        releaseGameplayPointer(controlHandle, event);
+      };
+      controlHandle.addEventListener('pointerup', endDrag, { passive: false });
+      controlHandle.addEventListener('pointercancel', endDrag, { passive: false });
+      return;
+    }
+
+    let mouseActive = false;
+    controlHandle.addEventListener('mousedown', (event) => {
+      stopEvent(event);
+      mouseActive = true;
+      const rect = controlPanel.getBoundingClientRect();
+      state.panelDrag.offsetX = event.clientX / viewport.uiScale - rect.left / viewport.uiScale;
+      state.panelDrag.offsetY = event.clientY / viewport.uiScale - rect.top / viewport.uiScale;
+    }, { passive: false });
+    window.addEventListener('mousemove', (event) => {
+      if (!mouseActive) return;
+      handlePanelDragMove(event.clientX, event.clientY);
+    }, { passive: false });
+    window.addEventListener('mouseup', () => {
+      mouseActive = false;
+    }, { passive: false });
+    controlHandle.addEventListener('touchstart', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const rect = controlPanel.getBoundingClientRect();
+      state.panelDrag.offsetX = touch.clientX / viewport.uiScale - rect.left / viewport.uiScale;
+      state.panelDrag.offsetY = touch.clientY / viewport.uiScale - rect.top / viewport.uiScale;
+    }, { passive: false });
+    controlHandle.addEventListener('touchmove', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      handlePanelDragMove(touch.clientX, touch.clientY);
+    }, { passive: false });
+  }
+
+  function moveSnakeStep() {
+    state.direction = state.nextDirection;
+    const head = state.snake[0];
+    const next = {
+      x: head.x + state.direction.x,
+      y: head.y + state.direction.y
+    };
+
+    if (next.x < 0 || next.x >= state.boardCols || next.y < 0 || next.y >= state.boardRows) {
+      spawnAppleParticles(head.x, head.y, 'rgba(255, 124, 124, {a})');
+      presentFinish(0, 'Выход за границы схемы');
+      return;
+    }
+
+    const willGrow = next.x === state.apple.x && next.y === state.apple.y;
+    const collisionLimit = state.snake.length - (willGrow ? 0 : 1);
+    for (let i = 0; i < collisionLimit; i += 1) {
+      const part = state.snake[i];
+      if (part.x === next.x && part.y === next.y) {
+        spawnAppleParticles(next.x, next.y, 'rgba(255, 124, 124, {a})');
+        presentFinish(0, 'Короткое замыкание контура');
+        return;
+      }
+    }
+
+    const oldTail = willGrow ? null : { ...state.snake[state.snake.length - 1] };
+
+    state.snake.unshift(next);
+
+    // если змея зашла на клетку следа, след там исчезает
+    state.ghostTrail = state.ghostTrail.filter((item) => {
+      return !(item.x === next.x && item.y === next.y);
+    });
+
+    if (willGrow) {
+      state.score += 1;
+
+      const collectParticle = (COLLECTIBLE_TYPES[state.apple.type] || COLLECTIBLE_TYPES.node).particle;
+      spawnAppleParticles(state.apple.x, state.apple.y, collectParticle);
+
+      spawnApple();
+      state.moveInterval = computeMoveInterval();
+
+      if (state.score >= state.targetScore) {
+        presentFinish(1, 'Контур стабилизирован');
+        updateHud();
+        return;
+      }
+    } else {
+      state.snake.pop();
+      addTrailCell(oldTail);
+    }
+
+    clearTrailUnderSnake();
+    updateHud();
+
+  }
+
+  function update(dt) {
+    lastDt = dt;
+    state.apple.pulse += dt * 4.2;
+    updateParticles(dt);
+    updateTrail(dt);
+
+    if (!gameStarted || paused || state.finishPresented || resultSent) return;
+
+    state.timeLeft = Math.max(0, state.timeLeft - dt);
+    if (state.timeLeft <= 0) {
+      updateHud();
+      presentFinish(0, 'Ресурс стенда исчерпан');
+      return;
+    }
+
+    accumulator += dt;
+    const maxSteps = 8;
+    let steps = 0;
+    while (accumulator >= state.moveInterval && steps < maxSteps && gameStarted && !state.finishPresented) {
+      accumulator -= state.moveInterval;
+      moveSnakeStep();
+      steps += 1;
+    }
+
+    updateHud();
+  }
+
+  function loop(timestamp) {
+    if (!runLoopActive) return;
+    if (!lastTimestamp) lastTimestamp = timestamp;
+    const dt = clamp((timestamp - lastTimestamp) / 1000, 0, 0.05);
+    lastTimestamp = timestamp;
+    update(dt);
+    render();
+    animationFrameId = window.requestAnimationFrame(loop);
+  }
+
+  function installGlobalGuards() {
+    document.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('dragstart', (event) => {
+      event.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('selectstart', (event) => {
+      event.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('blur', () => {
+      if (gameStarted && !state.finishPresented && !resultSent) {
+        paused = true;
+        pauseButton.textContent = 'Продолжить';
+      }
+    });
+
+    window.addEventListener('resize', applyScale);
+
+    const earlyTerminate = () => {
+      if (!resultSent) {
+        sendGameResultOnce(0);
+      }
+    };
+
+    window.addEventListener('pagehide', earlyTerminate);
+    window.addEventListener('beforeunload', earlyTerminate);
+  }
+
+  function initBindings() {
+    bindUiStop(startOverlay);
+    bindUiStop(finishOverlay);
+    bindUiStop(controlPanel);
+    bindUiButton(startButton, startGame);
+    bindUiButton(retryButton, retryAttempt);
+    bindUiButton(finishButton, () => {
+      finishGame(Number(finishButton.dataset.result) || 0);
+    });
+    bindUiButton(pauseButton, togglePause);
+    bindUiButton(quitButton, quitEarly);
+    bindGameplayInput();
+    bindJoystickInput();
+    bindPanelDrag();
+  }
+
+  window.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== 'gameInit' || resultSent) return;
+    initReceived = true;
+    usingLocalInit = false;
+    configureFromInit(event.data);
+    gameReady = true;
+  });
+
+  installGlobalGuards();
+  initBindings();
+  applyScale();
+  configureFromInit({ difficulty: 3 });
+  gameReady = true;
+  toggleGameplayUi(false);
+  resetAttempt();
+  animationFrameId = window.requestAnimationFrame(loop);
+
+  window.setTimeout(() => {
+    if (initReceived) return;
+    localInit();
+  }, 300);
+})();
+</script>
+</body>
+</html>
