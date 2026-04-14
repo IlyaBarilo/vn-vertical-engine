@@ -415,19 +415,23 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translate(-50%, -50%);
     border-radius: 999px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.12);
+    transform-origin: center;
   }
 
+  /* ось ↙ ↗ */
   #joystick::before {
-    width: calc(156px * var(--scale));
+    width: calc(170px * var(--scale));
     height: calc(6px * var(--scale));
+    transform: translate(-50%, -50%) rotate(-27deg);
   }
 
+  /* ось ↖ ↘ */
   #joystick::after {
-    width: calc(6px * var(--scale));
-    height: calc(156px * var(--scale));
+    width: calc(170px * var(--scale));
+    height: calc(6px * var(--scale));
+    transform: translate(-50%, -50%) rotate(27deg);
   }
 
   #joyKnob {
@@ -515,6 +519,39 @@
       top: calc(980px * var(--scale));
     }
   }
+
+  .joyLabel {
+    position: absolute;
+    color: rgba(255,255,255,0.7);
+    font-size: calc(22px * var(--scale));
+    font-weight: 800;
+    pointer-events: none;
+  }
+
+  .joyLabelUp {
+    left: 50%;
+    top: calc(18px * var(--scale));
+    transform: translate(-50%, -50%);
+  }
+
+  .joyLabelRight {
+    right: calc(18px * var(--scale));
+    top: 50%;
+    transform: translate(50%, -50%);
+  }
+
+  .joyLabelDown {
+    left: 50%;
+    bottom: calc(18px * var(--scale));
+    transform: translate(-50%, 50%);
+  }
+
+  .joyLabelLeft {
+    left: calc(18px * var(--scale));
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
 </style>
 </head>
 <body>
@@ -558,6 +595,10 @@
       <div class="controlBody" data-ui="true">
         <p class="controlTitle">Свайп по схеме или используй джойстик</p>
         <div id="joystick" class="ui-control" data-ui="true">
+          <div class="joyLabel joyLabelUp">↑</div>
+          <div class="joyLabel joyLabelRight">→</div>
+          <div class="joyLabel joyLabelDown">↓</div>
+          <div class="joyLabel joyLabelLeft">←</div>
           <div id="joyKnob" class="ui-control" data-ui="true"></div>
         </div>
         <p class="controlHint">Веди импульс мягко: резкий разворот рядом с собственным маршрутом опасен.</p>
@@ -701,7 +742,7 @@ const DIFFICULTY_PRESETS = {
     boardRows: 20,
     targetScore: 5,
     timeLimit: 60,
-    moveInterval: 0.41,
+    moveInterval: 0.51,
     speedGainPerScore: 0.003,
     trailLength: 7,
     collectiblePool: ['node', 'crystal']
@@ -732,7 +773,7 @@ const DIFFICULTY_PRESETS = {
     boardRows: 10,
     targetScore: 8,
     timeLimit: 48,
-    moveInterval: 0.245,
+    moveInterval: 0.27,
     speedGainPerScore: 0.0045,
     trailLength: 5,
     collectiblePool: ['node', 'crystal', 'capacitor']
@@ -742,35 +783,15 @@ const DIFFICULTY_PRESETS = {
     boardRows: 9,
     targetScore: 10,
     timeLimit: 44,
-    moveInterval: 0.225,
+    moveInterval: 0.18,
     speedGainPerScore: 0.005,
     trailLength: 4,
-    collectiblePool: ['node', 'crystal', 'capacitor']
-  },
-  6: {
-    boardCols: 12,
-    boardRows: 16,
-    targetScore: 12,
-    timeLimit: 40,
-    moveInterval: 0.205,
-    speedGainPerScore: 0.0055,
-    trailLength: 4,
-    collectiblePool: ['node', 'crystal', 'capacitor']
-  },
-  7: {
-    boardCols: 13,
-    boardRows: 18,
-    targetScore: 14,
-    timeLimit: 36,
-    moveInterval: 0.185,
-    speedGainPerScore: 0.006,
-    trailLength: 3,
     collectiblePool: ['node', 'crystal', 'capacitor']
   }
 };
 
 function getDifficultyPreset(level) {
-  const safeLevel = clamp(Math.round(Number(level) || 3), 1, 7);
+  const safeLevel = clamp(Math.round(Number(level) || 3), 1, 5);
   return DIFFICULTY_PRESETS[safeLevel] || DIFFICULTY_PRESETS[3];
 }
 
@@ -1112,7 +1133,7 @@ function getDifficultyPreset(level) {
   function getDifficultySafe(value) {
     const parsed = Number(value);
     if (!isFiniteNumber(parsed)) return 3;
-    return clamp(Math.round(parsed), 1, 7);
+    return clamp(Math.round(parsed), 1, 5);
   }
 
   function configureFromInit(data) {
@@ -2074,10 +2095,14 @@ function getDifficultyPreset(level) {
   }
 
   function directionFromVector(dx, dy) {
-    if (Math.abs(dx) > Math.abs(dy)) {
-      return dx > 0 ? DIRECTIONS.right : DIRECTIONS.left;
+    const isoX = dx - dy;
+    const isoY = dx + dy;
+
+    if (Math.abs(isoX) > Math.abs(isoY)) {
+      return isoX > 0 ? DIRECTIONS.up : DIRECTIONS.down;
     }
-    return dy > 0 ? DIRECTIONS.down : DIRECTIONS.up;
+
+    return isoY > 0 ? DIRECTIONS.right : DIRECTIONS.left;
   }
 
   function handleDirectionalInput(dx, dy) {
