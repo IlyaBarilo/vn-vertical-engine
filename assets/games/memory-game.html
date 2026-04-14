@@ -359,23 +359,23 @@ function updateDifficultySettings() {
     const d = Math.min(Math.max(1, difficulty), 10);
     if (d === 1) {
         showDelay = 1000;
-        inputTimeout = 8000;
-        maxScore = 5;        // легко: 5 этапов
+        inputTimeout = 15000;
+        maxScore = 4;        // легко: 5 этапов
     } else if (d === 2) {
         showDelay = 700;
-        inputTimeout = 6000;
-        maxScore = 7;        // средне: 7 этапов
+        inputTimeout = 12000;
+        maxScore = 6;        // средне: 7 этапов
     } else if (d === 3) {
         showDelay = 600;
-        inputTimeout = 5000;
+        inputTimeout = 10000;
          maxScore = 8;       // сложно: 10 этапов
     } else if (d === 4) {
         showDelay = 400;
-        inputTimeout = 3000;
+        inputTimeout = 6000;
          maxScore = 10;       // сложно: 10 этапов
     } else {
         showDelay = 300;
-        inputTimeout = 3800;
+        inputTimeout = 5000;
          maxScore = 12;
     }
 }
