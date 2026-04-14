@@ -50,7 +50,7 @@ bgmDay file=assets/audio/bgm-campus-day.mp3
 gmCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейный поток" description="Лови заказы на кофе и не нажимай на мусор. Чем выше сложность, тем быстрее поток и больше лишних объектов." cover=assets/games/coffee-rush.jpg
 gmSpaceDebris file=assets/games/space-debris.html title="Космические обломки" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космических обломков." cover=assets/games/space-debris.jpg
 gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
-gmCircuitRouting file=assets/games/snake_iso_game.html title="Маршрутизация контура" description="Проведи сигнал по плате через активные узлы. Чем выше сложность, тем быстрее поток и плотнее схема." cover=assets/games/snake_iso_game.jpg
+gmCircuitRouting file=assets/games/snake-iso-game.html title="Маршрутизация контура" description="Проведи сигнал по плате через активные узлы. Чем выше сложность, тем быстрее поток и плотнее схема." cover=assets/games/snake-iso-game.jpg
 
 [var]
 x = 10 # объявление переменных
