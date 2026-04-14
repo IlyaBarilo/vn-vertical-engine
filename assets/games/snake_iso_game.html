@@ -645,7 +645,8 @@
   joystickRadiusBase: 100,
   joystickKnobRadiusBase: 44,
   panelDefaultX: 34,
-  panelDefaultY: 930
+  panelDefaultY: 930,
+  collectibleScale: 1.5 /* Масштаб съедаемых элементов */
 };
 
 const BOARD_LAYOUT = {
@@ -1517,14 +1518,18 @@ function getDifficultyPreset(level) {
 
   function drawNodeCollectible() {
     const material = COLLECTIBLE_TYPES.node;
+    const s = BASE_CONFIG.collectibleScale;
     const pulse = 0.07 * Math.sin(state.apple.pulse);
-    const h = BASE_CONFIG.appleHeightRatio + pulse;
+    const h = (BASE_CONFIG.appleHeightRatio + pulse) * s;
+
+    const size = 0.56 * s;
+    const offset = 0.5 - size * 0.5;
 
     drawIsoPrism(
-      state.apple.x + 0.22,
-      state.apple.y + 0.22,
-      0.56,
-      0.56,
+      state.apple.x + offset,
+      state.apple.y + offset,
+      size,
+      size,
       h,
       material.color,
       shade(material.color, -0.16),
@@ -1539,35 +1544,39 @@ function getDifficultyPreset(level) {
     ctx.lineWidth = Math.max(1, 1.6 * viewport.uiScale);
 
     ctx.beginPath();
-    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale), 0, PI2);
+    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale * s), 0, PI2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(center.x - viewport.tileW * 0.1, center.y);
-    ctx.lineTo(center.x + viewport.tileW * 0.1, center.y);
-    ctx.moveTo(center.x, center.y - viewport.tileH * 0.22);
-    ctx.lineTo(center.x, center.y + viewport.tileH * 0.22);
+    ctx.moveTo(center.x - viewport.tileW * 0.1 * s, center.y);
+    ctx.lineTo(center.x + viewport.tileW * 0.1 * s, center.y);
+    ctx.moveTo(center.x, center.y - viewport.tileH * 0.22 * s);
+    ctx.lineTo(center.x, center.y + viewport.tileH * 0.22 * s);
     ctx.stroke();
 
     ctx.fillStyle = 'rgba(214, 255, 255, 0.98)';
     ctx.beginPath();
-    ctx.arc(center.x, center.y, Math.max(1.8, 3.2 * viewport.uiScale), 0, PI2);
+    ctx.arc(center.x, center.y, Math.max(1.8, 3.2 * viewport.uiScale * s), 0, PI2);
     ctx.fill();
     ctx.restore();
   }
 
   function drawCrystalCollectible() {
     const material = COLLECTIBLE_TYPES.crystal;
+    const s = BASE_CONFIG.collectibleScale;
     const pulse = 0.08 * Math.sin(state.apple.pulse * 1.2);
-    const h = BASE_CONFIG.appleHeightRatio + 0.03 + pulse;
+    const h = (BASE_CONFIG.appleHeightRatio + 0.03 + pulse) * s;
+
+    const size = 0.48 * s;
+    const offset = 0.5 - size * 0.5;
     const center = isoPosition(state.apple.x + 0.5, state.apple.y + 0.5, h + 0.04);
     const rot = state.apple.pulse * 0.9 + state.apple.variantSeed;
 
     drawIsoPrism(
-      state.apple.x + 0.26,
-      state.apple.y + 0.26,
-      0.48,
-      0.48,
+      state.apple.x + offset,
+      state.apple.y + offset,
+      size,
+      size,
       h,
       material.color,
       shade(material.color, -0.18),
@@ -1582,8 +1591,8 @@ function getDifficultyPreset(level) {
     ctx.fillStyle = 'rgba(245, 238, 255, 0.2)';
     ctx.lineWidth = Math.max(1, 1.4 * viewport.uiScale);
 
-    const rx = Math.max(5, 10 * viewport.uiScale);
-    const ry = Math.max(2, 5 * viewport.uiScale);
+    const rx = Math.max(5, 10 * viewport.uiScale * s);
+    const ry = Math.max(2, 5 * viewport.uiScale * s);
 
     for (let i = 0; i < 4; i += 1) {
       ctx.rotate(Math.PI / 2);
@@ -1602,15 +1611,24 @@ function getDifficultyPreset(level) {
 
   function drawCapacitorCollectible() {
     const material = COLLECTIBLE_TYPES.capacitor;
+    const s = BASE_CONFIG.collectibleScale;
     const blink = 0.5 + 0.5 * Math.sin(state.apple.pulse * 2.2);
-    const pillarHeight = BASE_CONFIG.appleHeightRatio + 0.02 + blink * 0.08;
-    const barHeight = pillarHeight + 0.08;
+    const pillarHeight = (BASE_CONFIG.appleHeightRatio + 0.02 + blink * 0.08) * s;
+    const barHeight = pillarHeight + 0.08 * s;
+
+    const gap = 0.28 * s;
+    const pillarW = 0.16 * s;
+    const pillarD = 0.3 * s;
+    const pillarY = 0.5 - pillarD * 0.5;
+
+    const leftX = 0.5 - gap * 0.5 - pillarW;
+    const rightX = 0.5 + gap * 0.5;
 
     drawIsoPrism(
-      state.apple.x + 0.2,
-      state.apple.y + 0.34,
-      0.16,
-      0.3,
+      state.apple.x + leftX,
+      state.apple.y + pillarY,
+      pillarW,
+      pillarD,
       pillarHeight,
       material.color,
       shade(material.color, -0.16),
@@ -1619,10 +1637,10 @@ function getDifficultyPreset(level) {
     );
 
     drawIsoPrism(
-      state.apple.x + 0.64,
-      state.apple.y + 0.34,
-      0.16,
-      0.3,
+      state.apple.x + rightX,
+      state.apple.y + pillarY,
+      pillarW,
+      pillarD,
       pillarHeight,
       material.color,
       shade(material.color, -0.16),
@@ -1630,8 +1648,8 @@ function getDifficultyPreset(level) {
       material.glow
     );
 
-    const left = isoPosition(state.apple.x + 0.28, state.apple.y + 0.48, barHeight);
-    const right = isoPosition(state.apple.x + 0.72, state.apple.y + 0.48, barHeight);
+    const left = isoPosition(state.apple.x + leftX + pillarW * 0.5, state.apple.y + 0.5, barHeight);
+    const right = isoPosition(state.apple.x + rightX + pillarW * 0.5, state.apple.y + 0.5, barHeight);
 
     ctx.save();
     ctx.strokeStyle = `rgba(240, 255, 248, ${0.55 + blink * 0.35})`;
@@ -1642,7 +1660,7 @@ function getDifficultyPreset(level) {
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc((left.x + right.x) * 0.5, (left.y + right.y) * 0.5, Math.max(2, 3 * viewport.uiScale), 0, PI2);
+    ctx.arc((left.x + right.x) * 0.5, (left.y + right.y) * 0.5, Math.max(2, 3 * viewport.uiScale * s), 0, PI2);
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.fill();
     ctx.restore();
