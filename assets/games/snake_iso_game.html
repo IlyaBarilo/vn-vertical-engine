@@ -648,6 +648,12 @@
   panelDefaultY: 930
 };
 
+const BOARD_LAYOUT = {
+  edgePaddingX: 8,      // вот здесь потом менять боковой отступ от края экрана
+  bottomPadding: 14,    // отступ снизу
+  originYRatio: 0.29    // вертикальная посадка верхней точки доски
+};
+
 const GAME_LIMITS = {
   boardColsMin: 7,
   boardColsMax: 18,
@@ -671,7 +677,7 @@ const DIFFICULTY_PRESETS = {
     boardRows: 20,
     targetScore: 5,
     timeLimit: 60,
-    moveInterval: 0.31,
+    moveInterval: 0.41,
     speedGainPerScore: 0.003,
     trailLength: 7,
     collectiblePool: ['node', 'crystal']
@@ -681,7 +687,7 @@ const DIFFICULTY_PRESETS = {
     boardRows: 15,
     targetScore: 6,
     timeLimit: 56,
-    moveInterval: 0.29,
+    moveInterval: 0.39,
     speedGainPerScore: 0.0035,
     trailLength: 6,
     collectiblePool: ['node', 'crystal']
@@ -692,7 +698,7 @@ const DIFFICULTY_PRESETS = {
     boardRows: 13,
     targetScore: 7,
     timeLimit: 52,
-    moveInterval: 0.27,
+    moveInterval: 0.37,
     speedGainPerScore: 0.004,
     trailLength: 5,
     collectiblePool: ['node', 'crystal', 'capacitor']
@@ -972,16 +978,29 @@ function getDifficultyPreset(level) {
     }
 
     const isoSpanW = (state.boardCols + state.boardRows) * 0.5;
-    const usableW = viewport.width * 0.78;
-    const usableH = viewport.height * 0.46;
-    const tileW = Math.min(usableW / isoSpanW, usableH / ((state.boardCols + state.boardRows) * 0.25 + 2.4));
+    const isoSpanH = (state.boardCols + state.boardRows) * 0.25 + 2.4;
+
+    const originY = viewport.height * BOARD_LAYOUT.originYRatio;
+
+    // ширина: почти во всю ширину экрана
+    const usableW = Math.max(120, viewport.width - BOARD_LAYOUT.edgePaddingX * 2);
+
+    // высота: только то, что реально помещается до нижнего края
+    const usableH = Math.max(120, viewport.height - originY - BOARD_LAYOUT.bottomPadding);
+
+    // ограничиваем размер тайла и по ширине, и по высоте
+    const tileWByWidth = usableW / isoSpanW;
+    const tileWByHeight = usableH / isoSpanH;
+    const tileW = Math.min(tileWByWidth, tileWByHeight);
+
     viewport.tileW = clamp(tileW, 22 * viewport.uiScale, 72 * viewport.uiScale);
     viewport.tileH = viewport.tileW * 0.54;
     viewport.blockH = viewport.tileH * BASE_CONFIG.snakeHeightRatio;
     viewport.boardPixelW = (state.boardCols + state.boardRows) * viewport.tileW * 0.5;
     viewport.boardPixelH = (state.boardCols + state.boardRows) * viewport.tileH * 0.5 + viewport.blockH * 2.2;
+
     viewport.originX = viewport.width * 0.5;
-    viewport.originY = viewport.height * 0.29;
+    viewport.originY = originY;
   }
 
   function isUiTarget(target) {
