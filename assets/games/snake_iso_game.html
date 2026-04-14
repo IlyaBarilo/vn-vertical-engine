@@ -855,6 +855,12 @@ function getDifficultyPreset(level) {
     moveIntervalBase: defaultPreset.moveInterval,
     moveInterval: defaultPreset.moveInterval,
     speedGainPerScore: defaultPreset.speedGainPerScore,
+
+
+    initialSnakeLength: 3,
+    maxSnakeLength: 3 + defaultPreset.targetScore,
+    
+    trailLengthBase: defaultPreset.trailLength,
     trailLength: defaultPreset.trailLength,
     collectiblePool: [...defaultPreset.collectiblePool],
     score: 0,
@@ -1076,9 +1082,13 @@ function getDifficultyPreset(level) {
       ? clamp(speedGainPerScore, GAME_LIMITS.speedGainMin, GAME_LIMITS.speedGainMax)
       : preset.speedGainPerScore;
 
-    state.trailLength = isFiniteNumber(trailLength)
+    state.trailLengthBase = isFiniteNumber(trailLength)
       ? clamp(Math.round(trailLength), GAME_LIMITS.trailMin, GAME_LIMITS.trailMax)
       : preset.trailLength;
+
+    state.maxSnakeLength = state.initialSnakeLength + state.targetScore;
+    state.trailLength = state.trailLengthBase;
+
 
     state.collectiblePool = Array.isArray(data && data.collectiblePool) && data.collectiblePool.length
       ? [...data.collectiblePool]
@@ -1635,6 +1645,21 @@ function getDifficultyPreset(level) {
     state.nextDirection = DIRECTIONS.right;
   }
 
+  function recalculateTrailLength() {
+    state.maxSnakeLength = state.initialSnakeLength + state.targetScore;
+
+    const availableTrail = Math.max(0, state.maxSnakeLength - state.snake.length);
+
+    state.trailLength = Math.min(
+      state.trailLengthBase,
+      availableTrail
+    );
+
+    if (state.ghostTrail.length > state.trailLength) {
+      state.ghostTrail = state.ghostTrail.slice(-state.trailLength);
+    }
+  }
+
   function computeMoveInterval() {
     const byScore = state.score * state.speedGainPerScore;
     return clamp(
@@ -1652,6 +1677,7 @@ function getDifficultyPreset(level) {
     state.particles.length = 0;
     state.ghostTrail.length = 0;
     resetSnake();
+    recalculateTrailLength();
     spawnApple();
     state.moveInterval = computeMoveInterval();
     paused = false;
@@ -2123,6 +2149,7 @@ function getDifficultyPreset(level) {
 
     if (willGrow) {
       state.score += 1;
+      recalculateTrailLength();
 
       const collectParticle = (COLLECTIBLE_TYPES[state.apple.type] || COLLECTIBLE_TYPES.node).particle;
       spawnAppleParticles(state.apple.x, state.apple.y, collectParticle);
