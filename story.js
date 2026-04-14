@@ -228,6 +228,7 @@ goto scBranchLabCalc
 
 scene scBranchLabBenchmark
 
+
 bg bgBranchLab
 hide all
 
@@ -266,6 +267,7 @@ goto scFinale01
 
 
 scene scBranchLabBenchmarkBad
+
 bg bgbranchLab
 hide all
 
@@ -479,7 +481,6 @@ menu
 scene scBranchLabMemorySetEasy
 set memoryDifficulty = 1
 
-bg bgBranchLab
 hide all
 
 "Ты запускаешь тест памяти в базовом режиме."
@@ -494,7 +495,6 @@ goto scBranchLabMemoryFinal
 scene scBranchLabMemorySetHard
 set memoryDifficulty = 3
 
-bg bgBranchLab
 hide all
 
 "Ты запускаешь тест памяти в нагруженном режиме."
@@ -506,14 +506,15 @@ goto scBranchLabMemoryFinal
 
 scene scBranchLabMemoryFinal
 
-bg bgBranchLab
 hide all
 
 if memoryResult == 1 -> scBranchLabMemoryGood
 if memoryResult == 0 -> scBranchLabMemoryBad
 
+scene scBranchLabMemoryRunHard
 
-
+bg bgBranchLab
+hide all
 
 
 scene scBranchLabMemoryGood
