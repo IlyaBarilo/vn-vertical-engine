@@ -478,6 +478,12 @@ function stopTimer() {
     if (currentTimeout) clearTimeout(currentTimeout);
 }
 
+// Добавьте этот обработчик, чтобы гарантировать, что клики по оверлею не блокируются
+gameContainer.addEventListener('pointerdown', (e) => {
+    // Если клик по UI - не трогаем
+    if (isUiTarget(e.target)) return;
+}, { passive: false });
+
 // Игрок нажал на кнопку
 function onPlayerInput(btnIdx) {
     if (!gameActive || gameOver || !isWaitingPlayer || isShowing) return;
@@ -633,10 +639,8 @@ function retryGame() {
 
 // ========== UI ИЗОЛЯЦИЯ ==========
 function isUiTarget(target) {
-    return !!(
-        target &&
-        target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]')
-    );
+    if (!target) return false;
+    return target.closest('.overlay, .button, .ui-control, [data-ui="true"], .overlay-button');
 }
 
 // Обработка ввода (только для игровых кнопок)
@@ -651,6 +655,8 @@ function handleGameInput(event, btnIdx) {
 // Привязка кнопок
 buttons.forEach((btn, idx) => {
     const handler = (event) => {
+        if (isUiTarget(event.target)) return;
+
         event.stopPropagation();
         handleGameInput(event, idx);
     };
@@ -674,22 +680,21 @@ function bindUIButton(button, handler) {
         e.stopPropagation();
     };
 
-    [
-        'click',
-        'pointerdown',
-        'pointerup',
-        'touchstart',
-        'touchend',
-        'mousedown',
-        'mouseup'
-    ].forEach(type => {
-        button.addEventListener(type, stop, { passive: false });
-    });
-
+    // Только ОДИН раз добавляем каждый тип события
+    button.addEventListener('pointerdown', stop, { passive: false });
+    button.addEventListener('pointerup', stop, { passive: false });
     button.addEventListener('click', (e) => {
         stop(e);
         if (!resultSent) handler();
-    }, { passive: false });
+    });
+    
+    // Для touch-устройств без pointer events
+    if (!HAS_POINTER_EVENTS) {
+        button.addEventListener('touchstart', stop, { passive: false });
+        button.addEventListener('touchend', stop, { passive: false });
+        button.addEventListener('mousedown', stop, { passive: false });
+        button.addEventListener('mouseup', stop, { passive: false });
+    }
 }
 
 bindUIButton(startButton, startGame);
