@@ -20,7 +20,7 @@
         padding: 0;
         width: 100%;
         height: 100%;
-        overflow: hidden;
+        overflow: auto;
         background: #0a0e1a;
         touch-action: none;
         font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
@@ -42,11 +42,11 @@
     /* Основной контейнер с масштабированием */
     .game-container {
         position: relative;
-        width: 810px;
-        height: 1440px;
-        transform-origin: top left;
+        width: calc(810px * var(--scale));
+        height: calc(1440px * var(--scale));
+        transform-origin: center center;
         background: linear-gradient(180deg, #0f172a 0%, #0a0f1a 100%);
-        overflow: hidden;
+        overflow: visible;
         touch-action: none;
     }
 
@@ -65,24 +65,24 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 540px;
-        height: 540px;
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: repeat(3, 1fr);
-        gap: 20px;
         background: rgba(0, 0, 0, 0.4);
-        border-radius: 60px;
-        padding: 20px;
+        width: calc(540px * var(--scale));
+        height: calc(540px * var(--scale));
+        gap: calc(20px * var(--scale));
+        border-radius: calc(60px * var(--scale));
+        padding: calc(20px * var(--scale));
     }
 
     /* Кнопка-сенсор */
     .sensor-btn {
-        border-radius: 40px;
+        border-radius: calc(40px * var(--scale));
         cursor: pointer;
         transition: transform 0.26s ease-out, filter 0.26s ease-out, box-shadow 0.26s ease-out;
-        border: 3px solid rgba(255, 255, 255, 0.3);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        border: calc(3px * var(--scale)) solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 calc(8px * var(--scale)) calc(20px * var(--scale)) rgba(0, 0, 0, 0.3);
         touch-action: manipulation;
     }
 
@@ -104,19 +104,19 @@
     .sensor-btn.active {
         filter: brightness(1.5);
         transform: scale(1.02);
-        box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 calc(30px * var(--scale)) rgba(255, 255, 255, 0.8);
         border-color: white;
     }
 
     /* HUD */
     .hud {
         position: absolute;
-        top: 60px;
+        top: calc(60px * var(--scale));
         left: 0;
         right: 0;
         display: flex;
         justify-content: space-between;
-        padding: 0 60px;
+        padding: 0 calc(60px * var(--scale));
         z-index: 10;
     }
 
@@ -125,8 +125,9 @@
         backdrop-filter: blur(10px);
         border-radius: calc(60px * var(--scale));
         padding: calc(16px * var(--scale)) calc(32px * var(--scale));
-        border: 1px solid rgba(0, 255, 255, 0.3);
+        border: calc(1px * var(--scale)) solid rgba(0, 255, 255, 0.3);
         text-align: center;
+        width: calc(120px * var(--scale));
     }
 
     .score-label, .level-label {
@@ -145,12 +146,12 @@
     /* Таймер */
     .timer-bar {
         position: absolute;
-        bottom: 180px;
+        bottom: calc(180px * var(--scale));
         left: calc(100px * var(--scale));
         right: calc(100px * var(--scale));
         height: calc(8px * var(--scale));
         background: rgba(255, 255, 255, 0.2);
-        border-radius: 4px;
+        border-radius: calc(4px * var(--scale));
         overflow: hidden;
     }
 
@@ -158,20 +159,20 @@
         height: 100%;
         width: 100%;
         background: linear-gradient(90deg, #00ffff, #0066ff);
-        border-radius: 4px;
+        border-radius: calc(4px * var(--scale));
         transition: width 0.08s linear;
     }
 
     /* Статус */
     .status-text {
         position: absolute;
-        bottom: 100px;
+        bottom: calc(100px * var(--scale));
         left: 0;
         right: 0;
         text-align: center;
         font-size: calc(24px * var(--scale));
         color: #00ffff;
-        text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        text-shadow: 0 0 calc(10px * var(--scale)) rgba(0, 255, 255, 0.5);
     }
 
     /* Оверлеи (UI) */
@@ -194,14 +195,14 @@
     .overlay-title {
         font-size: calc(48px * var(--scale));
         color: #00ffff;
-        margin-bottom: 20px;
+        margin-bottom: calc(20px * var(--scale));
     }
 
     .overlay-text {
         font-size: calc(28px * var(--scale));
         padding: 0 calc(60px * var(--scale));
         color: white;
-        margin-bottom: 40px;
+        margin-bottom: calc(40px * var(--scale));
         text-align: center;
     }
 
@@ -227,7 +228,7 @@
     /* Инструкция */
     .instruction {
         position: absolute;
-        top: 200px;
+        top: calc(200px * var(--scale));
         left: 0;
         right: 0;
         text-align: center;
@@ -254,57 +255,73 @@
 
 .overlay-button-secondary {
     background: linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.08));
-    border: 1px solid rgba(255,255,255,0.16);
+    border: calc(1px * var(--scale)) solid rgba(255,255,255,0.16);
+}
+
+/* Обёртка для правильного центрирования на любых экранах */
+.game-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background: #0a0e1a;
 }
 
 </style>
 </head>
 <body>
-<div class="game-container" id="gameContainer">
-    <div class="lab-bg"></div>
+<div class="game-wrapper">
+    <div class="game-container" id="gameContainer">
+        <div class="lab-bg"></div>
 
-    <div class="hud">
-        <div class="score-panel">
-            <div class="score-label">SCORE</div>
-            <div class="score-value" id="scoreValue">0</div>
+        <div class="hud">
+            <div class="score-panel">
+                <div class="score-label">SCORE</div>
+                <div class="score-value" id="scoreValue">0</div>
+            </div>
+            <div class="level-panel">
+                <div class="level-label">LEVEL</div>
+                <div class="level-value" id="levelValue">1</div>
+            </div>
         </div>
-        <div class="level-panel">
-            <div class="level-label">LEVEL</div>
-            <div class="level-value" id="levelValue">1</div>
+
+        <div class="panel-grid" id="buttonGrid">
+            <div class="sensor-btn btn-0" data-idx="0"></div>
+            <div class="sensor-btn btn-1" data-idx="1"></div>
+            <div class="sensor-btn btn-2" data-idx="2"></div>
+            <div class="sensor-btn btn-3" data-idx="3"></div>
+            <div class="sensor-btn btn-4" data-idx="4"></div>
+            <div class="sensor-btn btn-5" data-idx="5"></div>
         </div>
-    </div>
 
-    <div class="panel-grid" id="buttonGrid">
-        <div class="sensor-btn btn-0" data-idx="0"></div>
-        <div class="sensor-btn btn-1" data-idx="1"></div>
-        <div class="sensor-btn btn-2" data-idx="2"></div>
-        <div class="sensor-btn btn-3" data-idx="3"></div>
-        <div class="sensor-btn btn-4" data-idx="4"></div>
-        <div class="sensor-btn btn-5" data-idx="5"></div>
-    </div>
+        <div class="timer-bar" id="timerBar">
+            <div class="timer-fill" id="timerFill"></div>
+        </div>
 
-    <div class="timer-bar" id="timerBar">
-        <div class="timer-fill" id="timerFill"></div>
-    </div>
+        <div class="status-text" id="statusText">Жду сигнал...</div>
+        <div class="instruction">Повтори последовательность</div>
 
-    <div class="status-text" id="statusText">Жду сигнал...</div>
-    <div class="instruction">Повтори последовательность</div>
+        <!-- Стартовый оверлей -->
+        <div id="startOverlay" class="overlay" data-ui="true">
+            <div class="overlay-title">🧪 ЛАБОРАТОРНЫЙ ПРОТОКОЛ</div>
+            <div class="overlay-text">Тест памяти сенсорной панели</div>
+            <button id="startButton" class="overlay-button button ui-control" data-ui="true">▶ НАЧАТЬ</button>
+        </div>
 
-    <!-- Стартовый оверлей -->
-    <div id="startOverlay" class="overlay" data-ui="true">
-        <div class="overlay-title">🧪 ЛАБОРАТОРНЫЙ ПРОТОКОЛ</div>
-        <div class="overlay-text">Тест памяти сенсорной панели</div>
-        <button id="startButton" class="overlay-button button ui-control" data-ui="true">▶ НАЧАТЬ</button>
-    </div>
-
-    <!-- Финальный оверлей -->
-    <div id="finishOverlay" class="overlay hidden" data-ui="true">
-        <div class="overlay-title" id="finishTitle">✅ КАЛИБРОВКА ЗАВЕРШЕНА</div>
-        <div class="overlay-text" id="finishText">Результат: 0</div>
-        <div class="finish-actions">
-          <button id="retryButton" class="overlay-button overlay-button-secondary button ui-control" data-ui="true">↺ ПОВТОРИТЬ</button>
-          <button id="confirmButton" class="overlay-button button ui-control" data-ui="true">✓ ПОДТВЕРДИТЬ</button>
-      </div>
+        <!-- Финальный оверлей -->
+        <div id="finishOverlay" class="overlay hidden" data-ui="true">
+            <div class="overlay-title" id="finishTitle">✅ КАЛИБРОВКА ЗАВЕРШЕНА</div>
+            <div class="overlay-text" id="finishText">Результат: 0</div>
+            <div class="finish-actions">
+            <button id="retryButton" class="overlay-button overlay-button-secondary button ui-control" data-ui="true">↺ ПОВТОРИТЬ</button>
+            <button id="confirmButton" class="overlay-button button ui-control" data-ui="true">✓ ПОДТВЕРДИТЬ</button>
+        </div>
+        </div>
     </div>
 </div>
 
@@ -315,6 +332,12 @@ let resultSent = false;
 let gameActive = false;
 let initReceived = false;
 const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+
+// ========== UI ИЗОЛЯЦИЯ ==========
+function isUiTarget(target) {
+    if (!target) return false;
+    return target.closest('.overlay, .button, .ui-control, [data-ui="true"], .overlay-button');
+}
 
 // Параметры игры
 let sequence = [];          // последовательность для запоминания
@@ -373,19 +396,12 @@ const buttons = document.querySelectorAll('.sensor-btn');
 
 // Масштабирование (база 810x1440)
 function applyScale() {
-    const container = document.querySelector('.game-container');
-    const scaleX = window.innerWidth / 810;
-    const scaleY = window.innerHeight / 1440;
-    const scale = Math.min(scaleX, scaleY);
-    document.documentElement.style.setProperty('--scale', scale.toFixed(5));
-    container.style.transform = `scale(${scale})`;
-    container.style.transformOrigin = 'top left';
-    
-    const offsetX = (window.innerWidth - 810 * scale) / 2;
-    const offsetY = (window.innerHeight - 1440 * scale) / 2;
-    container.style.position = 'absolute';
-    container.style.left = `${offsetX}px`;
-    container.style.top = `${offsetY}px`;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const scale = Math.min(viewportWidth / 810, viewportHeight / 1440);
+
+    document.documentElement.style.setProperty('--scale', scale.toFixed(6));
 }
 
 // Обновление HUD
@@ -477,12 +493,6 @@ function stopTimer() {
     if (timerInterval) clearInterval(timerInterval);
     if (currentTimeout) clearTimeout(currentTimeout);
 }
-
-// Добавьте этот обработчик, чтобы гарантировать, что клики по оверлею не блокируются
-gameContainer.addEventListener('pointerdown', (e) => {
-    // Если клик по UI - не трогаем
-    if (isUiTarget(e.target)) return;
-}, { passive: false });
 
 // Игрок нажал на кнопку
 function onPlayerInput(btnIdx) {
@@ -637,11 +647,7 @@ function retryGame() {
     }, 250);
 }
 
-// ========== UI ИЗОЛЯЦИЯ ==========
-function isUiTarget(target) {
-    if (!target) return false;
-    return target.closest('.overlay, .button, .ui-control, [data-ui="true"], .overlay-button');
-}
+
 
 // Обработка ввода (только для игровых кнопок)
 function handleGameInput(event, btnIdx) {
@@ -679,22 +685,12 @@ function bindUIButton(button, handler) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
     };
-
-    // Только ОДИН раз добавляем каждый тип события
+    
     button.addEventListener('pointerdown', stop, { passive: false });
-    button.addEventListener('pointerup', stop, { passive: false });
     button.addEventListener('click', (e) => {
         stop(e);
         if (!resultSent) handler();
     });
-    
-    // Для touch-устройств без pointer events
-    if (!HAS_POINTER_EVENTS) {
-        button.addEventListener('touchstart', stop, { passive: false });
-        button.addEventListener('touchend', stop, { passive: false });
-        button.addEventListener('mousedown', stop, { passive: false });
-        button.addEventListener('mouseup', stop, { passive: false });
-    }
 }
 
 bindUIButton(startButton, startGame);
