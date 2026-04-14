@@ -649,6 +649,29 @@
   collectibleScale: 1.5 /* Масштаб съедаемых элементов */
 };
 
+const AMBIENT_LINE_CONFIG = {
+  enabled: true,
+
+  color: '#3e5a86',          // основной жёлтый цвет, менять тут
+  glowAlpha: 0.22,                // сила свечения
+
+  spawnIntervalMin: 0.3,          // минимум между появлениями
+  spawnIntervalMax: 1.5,          // максимум между появлениями
+
+  speedMin: 4.2,                  // минимум скорости (клеток/сек)
+  speedMax: 6.4,                  // максимум скорости
+
+  lengthMin: 3,                   // минимум длины линии (в клетках)
+  lengthMax: 7,                   // максимум длины
+
+  alphaMin: 0.51,                 // минимальная яркость
+  alphaMax: 0.75,                 // максимальная яркость
+
+  thickness: 0.50,                // толщина полосы на клетке
+  inset: 0.14,                    // отступ от края клетки
+  height: 0.05                    // высота свечения над платой
+};
+
 const BOARD_LAYOUT = {
   edgePaddingX: 8,      // вот здесь потом менять боковой отступ от края экрана
   bottomPadding: 14,    // отступ снизу
@@ -886,6 +909,8 @@ function getDifficultyPreset(level) {
     },
     particles: [],
     ghostTrail: [],
+    ambientLines: [],
+    ambientLineSpawnIn: 0,
     swipe: {
       active: false,
       pointerId: null,
@@ -925,6 +950,28 @@ function getDifficultyPreset(level) {
 
   function isFiniteNumber(value) {
     return Number.isFinite(value);
+  }
+
+  function randRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function randInt(min, max) {
+    return Math.floor(randRange(min, max + 1));
+  }
+
+  function hexToRgba(hex, alpha = 1) {
+    const normalized = hex.replace('#', '').trim();
+
+    if (normalized.length !== 6) {
+      return `rgba(255, 255, 255, ${alpha})`;
+    }
+
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
   function shade(hexColor, amount) {
@@ -1478,6 +1525,7 @@ function getDifficultyPreset(level) {
     ctx.fillRect(0, 0, viewport.width, viewport.height);
 
     drawBoard();
+    drawAmbientLines();
     drawSceneEntities();
     drawParticles();
 
@@ -1506,7 +1554,133 @@ function getDifficultyPreset(level) {
     }
   }
 
-  function updateTrail() {}
+  function scheduleAmbientLineSpawn() {
+    state.ambientLineSpawnIn = randRange(
+      AMBIENT_LINE_CONFIG.spawnIntervalMin,
+      AMBIENT_LINE_CONFIG.spawnIntervalMax
+    );
+  }
+
+  function resetAmbientLines() {
+    state.ambientLines = [];
+    scheduleAmbientLineSpawn();
+  }
+
+  function spawnAmbientLine() {
+    if (!AMBIENT_LINE_CONFIG.enabled) return;
+
+    const axis = Math.random() < 0.5 ? 'row' : 'col';
+    const length = randInt(
+      AMBIENT_LINE_CONFIG.lengthMin,
+      AMBIENT_LINE_CONFIG.lengthMax
+    );
+
+    state.ambientLines.push({
+      axis,
+      lane: axis === 'row'
+        ? randInt(0, state.boardRows - 1)
+        : randInt(0, state.boardCols - 1),
+      head: -1,
+      length,
+      speed: randRange(
+        AMBIENT_LINE_CONFIG.speedMin,
+        AMBIENT_LINE_CONFIG.speedMax
+      ),
+      alpha: randRange(
+        AMBIENT_LINE_CONFIG.alphaMin,
+        AMBIENT_LINE_CONFIG.alphaMax
+      )
+    });
+
+    scheduleAmbientLineSpawn();
+  }
+
+  function updateAmbientLines(dt) {
+    if (!AMBIENT_LINE_CONFIG.enabled) return;
+
+    state.ambientLineSpawnIn -= dt;
+    if (state.ambientLineSpawnIn <= 0) {
+      spawnAmbientLine();
+    }
+
+    for (let i = state.ambientLines.length - 1; i >= 0; i -= 1) {
+      const line = state.ambientLines[i];
+      line.head += line.speed * dt;
+
+      const maxTravel = line.axis === 'row'
+        ? state.boardCols + line.length + 1
+        : state.boardRows + line.length + 1;
+
+      if (line.head > maxTravel) {
+        state.ambientLines.splice(i, 1);
+      }
+    }
+  }
+
+  function drawAmbientLineCell(x, y, axis, alpha) {
+    const c = AMBIENT_LINE_CONFIG.color;
+    const glow = hexToRgba(c, alpha * AMBIENT_LINE_CONFIG.glowAlpha);
+    const fill = hexToRgba(c, alpha);
+    const sideA = hexToRgba(c, alpha * 0.72);
+    const sideB = hexToRgba(c, alpha * 0.55);
+
+    const inset = AMBIENT_LINE_CONFIG.inset;
+    const thickness = AMBIENT_LINE_CONFIG.thickness;
+    const height = AMBIENT_LINE_CONFIG.height;
+
+    if (axis === 'row') {
+      drawIsoPrism(
+        x + inset,
+        y + 0.5 - thickness * 0.5,
+        1 - inset * 2,
+        thickness,
+        height,
+        fill,
+        sideA,
+        sideB,
+        glow
+      );
+      return;
+    }
+
+    drawIsoPrism(
+      x + 0.5 - thickness * 0.5,
+      y + inset,
+      thickness,
+      1 - inset * 2,
+      height,
+      fill,
+      sideA,
+      sideB,
+      glow
+    );
+  }
+
+  function drawAmbientLines() {
+    if (!AMBIENT_LINE_CONFIG.enabled) return;
+
+    for (const line of state.ambientLines) {
+      for (let i = 0; i < line.length; i += 1) {
+        const pos = line.head - i;
+        const fade = 1 - i / Math.max(1, line.length);
+        const alpha = line.alpha * fade;
+
+        if (line.axis === 'row') {
+          const x = Math.floor(pos);
+          const y = line.lane;
+          if (x >= 0 && x < state.boardCols) {
+            drawAmbientLineCell(x, y, line.axis, alpha);
+          }
+        } else {
+          const x = line.lane;
+          const y = Math.floor(pos);
+          if (y >= 0 && y < state.boardRows) {
+            drawAmbientLineCell(x, y, line.axis, alpha);
+          }
+        }
+      }
+    }
+  }
 
   function addTrailCell(cell) {
     if (!cell || state.trailLength <= 0) return;
@@ -1791,6 +1965,7 @@ function getDifficultyPreset(level) {
     state.finishPresented = false;
     state.particles.length = 0;
     state.ghostTrail.length = 0;
+    resetAmbientLines();
     resetSnake();
     recalculateTrailLength();
     spawnApple();
@@ -2290,7 +2465,7 @@ function getDifficultyPreset(level) {
     lastDt = dt;
     state.apple.pulse += dt * 4.2;
     updateParticles(dt);
-    updateTrail(dt);
+    updateAmbientLines(dt);
 
     if (!gameStarted || paused || state.finishPresented || resultSent) return;
 
