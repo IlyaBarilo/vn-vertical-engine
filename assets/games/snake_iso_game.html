@@ -667,8 +667,8 @@ const GAME_LIMITS = {
 
 const DIFFICULTY_PRESETS = {
   1: {
-    boardCols: 8,
-    boardRows: 11,
+    boardCols: 20,
+    boardRows: 20,
     targetScore: 5,
     timeLimit: 60,
     moveInterval: 0.31,
@@ -677,8 +677,8 @@ const DIFFICULTY_PRESETS = {
     collectiblePool: ['node', 'crystal']
   },
   2: {
-    boardCols: 9,
-    boardRows: 12,
+    boardCols: 15,
+    boardRows: 15,
     targetScore: 6,
     timeLimit: 56,
     moveInterval: 0.29,
@@ -687,7 +687,8 @@ const DIFFICULTY_PRESETS = {
     collectiblePool: ['node', 'crystal']
   },
   3: {
-    boardCols: 9,
+    /* ширина и высота поля */
+    boardCols: 13, 
     boardRows: 13,
     targetScore: 7,
     timeLimit: 52,
@@ -698,7 +699,7 @@ const DIFFICULTY_PRESETS = {
   },
   4: {
     boardCols: 10,
-    boardRows: 14,
+    boardRows: 10,
     targetScore: 8,
     timeLimit: 48,
     moveInterval: 0.245,
@@ -707,8 +708,8 @@ const DIFFICULTY_PRESETS = {
     collectiblePool: ['node', 'crystal', 'capacitor']
   },
   5: {
-    boardCols: 11,
-    boardRows: 15,
+    boardCols: 9,
+    boardRows: 9,
     targetScore: 10,
     timeLimit: 44,
     moveInterval: 0.225,
@@ -1262,19 +1263,28 @@ function getDifficultyPreset(level) {
     }
   }
 
-  function drawSnake() {
-    for (let i = state.snake.length - 1; i >= 0; i -= 1) {
-      const segment = state.snake[i];
-      const t = i / Math.max(1, state.snake.length - 1);
-      const isHead = i === 0;
-      const top = isHead ? COLORS.snakeHead : shade(COLORS.snakeTop, -0.08 * t);
-      const sideA = shade(top, -0.18);
-      const sideB = shade(top, -0.28);
-      const glow = isHead ? COLORS.snakeGlow : null;
-      drawIsoPrism(segment.x + 0.06, segment.y + 0.06, 0.88, 0.88, BASE_CONFIG.snakeHeightRatio, top, sideA, sideB, glow);
-      if (isHead) {
-        drawSignalCore(segment);
-      }
+  function drawSnakeSegment(segment, index) {
+    const t = index / Math.max(1, state.snake.length - 1);
+    const isHead = index === 0;
+    const top = isHead ? COLORS.snakeHead : shade(COLORS.snakeTop, -0.08 * t);
+    const sideA = shade(top, -0.18);
+    const sideB = shade(top, -0.28);
+    const glow = isHead ? COLORS.snakeGlow : null;
+
+    drawIsoPrism(
+      segment.x + 0.06,
+      segment.y + 0.06,
+      0.88,
+      0.88,
+      BASE_CONFIG.snakeHeightRatio,
+      top,
+      sideA,
+      sideB,
+      glow
+    );
+
+    if (isHead) {
+      drawSignalCore(segment);
     }
   }
 
@@ -1326,35 +1336,77 @@ function getDifficultyPreset(level) {
     ctx.restore();
   }
 
-  function drawGhostTrail() {
-    if (!state.ghostTrail.length) return;
+  function drawGhostTrailCell(item, index, total) {
+    const maxTrail = Math.max(1, total);
+    const ratio = 1 - index / maxTrail; // ближе к змее -> ярче
+    const alpha = 0.08 + ratio * 0.26;
+    const inset = 0.2 + (1 - ratio) * 0.08;
+    const size = 1 - inset * 2;
+    const height = 0.08 + ratio * 0.14;
 
-    ctx.save();
+    drawIsoPrism(
+      item.x + inset,
+      item.y + inset,
+      size,
+      size,
+      height,
+      `rgba(92, 240, 208, ${alpha})`,
+      `rgba(52, 148, 132, ${alpha * 0.9})`,
+      `rgba(16, 72, 68, ${alpha * 0.8})`
+    );
+  }
 
-    const maxTrail = Math.max(1, state.trailLength);
+  function getRenderDepth(x, y) {
+    return x + y;
+  }
+
+  function compareRenderables(a, b) {
+    if (a.depth !== b.depth) return a.depth - b.depth;
+    if (a.y !== b.y) return a.y - b.y;
+    if (a.x !== b.x) return a.x - b.x;
+    return a.priority - b.priority;
+  }
+
+  function drawSceneEntities() {
+    const renderQueue = [];
 
     for (let i = 0; i < state.ghostTrail.length; i += 1) {
       const item = state.ghostTrail[i];
-      const ratio = 1 - i / maxTrail; // ближе к змее -> ярче
-      const alpha = 0.08 + ratio * 0.26;
-      const inset = 0.2 + (1 - ratio) * 0.08;
-      const size = 1 - inset * 2;
-      const height = 0.08 + ratio * 0.14;
-
-      drawIsoPrism(
-        item.x + inset,
-        item.y + inset,
-        size,
-        size,
-        height,
-        `rgba(92, 240, 208, ${alpha})`,
-        `rgba(52, 148, 132, ${alpha * 0.9})`,
-        `rgba(16, 72, 68, ${alpha * 0.8})`
-      );
+      renderQueue.push({
+        x: item.x,
+        y: item.y,
+        depth: getRenderDepth(item.x, item.y),
+        priority: 0,
+        draw: () => drawGhostTrailCell(item, i, state.ghostTrail.length)
+      });
     }
 
-    ctx.restore();
+    renderQueue.push({
+      x: state.apple.x,
+      y: state.apple.y,
+      depth: getRenderDepth(state.apple.x, state.apple.y),
+      priority: 1,
+      draw: () => drawApple()
+    });
+
+    for (let i = 0; i < state.snake.length; i += 1) {
+      const segment = state.snake[i];
+      renderQueue.push({
+        x: segment.x,
+        y: segment.y,
+        depth: getRenderDepth(segment.x, segment.y),
+        priority: i === 0 ? 3 : 2,
+        draw: () => drawSnakeSegment(segment, i)
+      });
+    }
+
+    renderQueue.sort(compareRenderables);
+
+    for (const item of renderQueue) {
+      item.draw();
+    }
   }
+
 
   function drawParticles() {
     fxCtx.clearRect(0, 0, viewport.width, viewport.height);
@@ -1379,9 +1431,7 @@ function getDifficultyPreset(level) {
     ctx.fillRect(0, 0, viewport.width, viewport.height);
 
     drawBoard();
-    drawGhostTrail();
-    drawApple();
-    drawSnake();
+    drawSceneEntities();
     drawParticles();
 
     if (!gameStarted && !state.finishPresented && !startOverlay.classList.contains('hidden')) {
