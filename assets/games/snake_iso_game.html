@@ -1308,28 +1308,55 @@ function getDifficultyPreset(level) {
     }
   }
 
-  function drawSignalCore(segment) {
-    const center = isoPosition(segment.x + 0.5, segment.y + 0.5, BASE_CONFIG.snakeHeightRatio + 0.06);
+  function drawSnakeEye(cx, cy, fx, fy, px, py, eyeW, eyeH) {
+    const tipX = fx * eyeW * 0.55;
+    const tipY = fy * eyeW * 0.55;
+    const sideX = px * eyeH;
+    const sideY = py * eyeH;
+
+    ctx.beginPath();
+    ctx.moveTo(cx - tipX, cy - tipY);
+    ctx.quadraticCurveTo(
+      cx + sideX * 0.9,
+      cy + sideY * 0.9,
+      cx + tipX,
+      cy + tipY
+    );
+    ctx.quadraticCurveTo(
+      cx - sideX * 0.9,
+      cy - sideY * 0.9,
+      cx - tipX,
+      cy - tipY
+    );
+    ctx.closePath();
+  }
+
+  function fillIsoTopRect(x, y, w, h, z, fillStyle, glowStyle = null) {
+    const p1 = isoPosition(x, y, z);
+    const p2 = isoPosition(x + w, y, z);
+    const p3 = isoPosition(x + w, y + h, z);
+    const p4 = isoPosition(x, y + h, z);
+
     ctx.save();
-    ctx.strokeStyle = 'rgba(10, 31, 42, 0.95)';
-    ctx.lineWidth = Math.max(1.5, 2.2 * viewport.uiScale);
+
+    if (glowStyle) {
+      ctx.shadowColor = glowStyle;
+      ctx.shadowBlur = Math.max(8, 14 * viewport.uiScale);
+    }
+
+    ctx.fillStyle = fillStyle;
     ctx.beginPath();
-    ctx.arc(center.x, center.y, Math.max(4, 8 * viewport.uiScale), 0, PI2);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(188, 255, 244, 0.95)';
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, Math.max(2, 3.4 * viewport.uiScale), 0, PI2);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(188, 255, 244, 0.72)';
-    ctx.lineWidth = Math.max(1, 1.4 * viewport.uiScale);
-    ctx.beginPath();
-    ctx.moveTo(center.x - viewport.tileW * 0.12, center.y);
-    ctx.lineTo(center.x + viewport.tileW * 0.12, center.y);
-    ctx.moveTo(center.x, center.y - viewport.tileH * 0.28);
-    ctx.lineTo(center.x, center.y + viewport.tileH * 0.28);
-    ctx.stroke();
+
     ctx.restore();
   }
+
+  function drawSignalCore() {}
 
   function drawApple() {
     const pulse = 0.07 * Math.sin(state.apple.pulse);
