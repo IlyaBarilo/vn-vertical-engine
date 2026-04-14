@@ -51,6 +51,7 @@ gmCoffeeRush file=assets/games/coffee-rush.html title="Удержи кофейн
 gmSpaceDebris file=assets/games/space-debris.html title="Космические обломки" description="Управляйте спутником с помощью кругового контроллера, чтобы пролететь через облако космических обломков." cover=assets/games/space-debris.jpg
 gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
 gmCircuitRouting file=assets/games/snake-iso-game.html title="Маршрутизация контура" description="Проведи сигнал по плате через активные узлы. Чем выше сложность, тем быстрее поток и плотнее схема." cover=assets/games/snake-iso-game.jpg
+gmMemoryProtocol file=assets/games/memory-game.html title="Лабораторный протокол: Импульс" description="Повтори последовательность световых импульсов. В нагруженном режиме сигналы идут быстрее, а серия становится длиннее." cover=assets/games/memory-game.jpg
 
 [var]
 x = 10 # объявление переменных
@@ -61,6 +62,8 @@ spaceResult = 0
 coffeeResult = 0
 benchmarkResult = 0
 circuitResult = 0
+memoryResult = 0
+memoryDifficulty = 1
 
 [scene]
 # Формат описания сцен:
@@ -190,7 +193,7 @@ menu
 "Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
 "Провести калибровку сенсорной панели" -> scBranchLabBenchmark
 "Открыть стенд маршрутизации контура" -> scBranchLabRoutingIntro
-
+"Пройти тест памяти световых импульсов" -> scBranchLabMemoryIntro
 
 
 
@@ -224,7 +227,6 @@ goto scBranchLabCalc
 
 
 scene scBranchLabBenchmark
-
 
 bg bgBranchLab
 hide all
@@ -264,7 +266,6 @@ goto scFinale01
 
 
 scene scBranchLabBenchmarkBad
-
 bg bgbranchLab
 hide all
 
@@ -440,6 +441,112 @@ igor: "Зато напряжение в сцене чувствуется сра
 
 goto scFinale01
 
+
+
+
+
+scene scBranchLabMemoryIntro
+
+bg bgBranchLab
+hide all
+
+"На соседнем стенде открыт режим памяти: световые импульсы проходят по панели сериями, а система проверяет, насколько точно оператор удерживает последовательность."
+"Это испытание нужно для сценариев, где важны внимание, ритм и устойчивость к нагрузке."
+
+show anna neutral
+anna: "Вот это уже ближе к игровому эпизоду. Не просто касание, а проверка памяти и темпа."
+
+show igor smile
+igor: "Давай оставим два режима: обычный и напряжённый. Для новеллы этого вполне достаточно."
+
+goto scBranchLabMemoryDifficulty
+
+
+scene scBranchLabMemoryDifficulty
+
+bg bgBranchLab
+hide all
+
+show anna neutral
+anna: "Какой режим теста запускаем?"
+
+menu
+"Базовый режим" -> scBranchLabMemorySetEasy
+"Нагруженный режим" -> scBranchLabMemorySetHard
+"Вернуться к выбору в лаборатории" -> scBranchLab01
+
+
+scene scBranchLabMemorySetEasy
+set memoryDifficulty = 1
+
+bg bgBranchLab
+hide all
+
+"Ты запускаешь тест памяти в базовом режиме."
+
+game gmMemoryProtocol difficulty=1 result=memoryResult
+
+goto scBranchLabMemoryFinal
+
+
+
+
+scene scBranchLabMemorySetHard
+set memoryDifficulty = 3
+
+bg bgBranchLab
+hide all
+
+"Ты запускаешь тест памяти в нагруженном режиме."
+
+game gmMemoryProtocol difficulty=3 result=memoryResult
+
+goto scBranchLabMemoryFinal
+
+
+scene scBranchLabMemoryFinal
+
+bg bgBranchLab
+hide all
+
+if memoryResult == 1 -> scBranchLabMemoryGood
+if memoryResult == 0 -> scBranchLabMemoryBad
+
+
+
+
+
+scene scBranchLabMemoryGood
+
+bg bgBranchLab
+hide all
+
+"Серия световых импульсов воспроизведена без ошибок. Стенд подтвердил, что память и темп удерживаются стабильно."
+
+show anna neutral
+anna: "Отлично. Такой тест хорошо дополняет лабораторию: здесь важна не только реакция, но и концентрация."
+
+show igor smile
+igor: "Да, это уже другой тип мини-игры, и он ощущается очень к месту."
+
+goto scFinale01
+
+
+
+scene scBranchLabMemoryBad
+
+bg bgBranchLab
+hide all
+
+"На одной из серий ты сбиваешься, и стенд останавливает испытание."
+
+show anna neutral
+anna: "Ничего страшного. Даже ошибка здесь работает как часть эксперимента."
+
+show igor neutral
+igor: "Зато сразу видно, как меняется напряжение, когда на память идёт реальная нагрузка."
+
+goto scFinale01
 
 
 

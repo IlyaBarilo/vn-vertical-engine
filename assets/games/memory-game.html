@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lab Protocol: Memory Test</title>
+<style>
+    * {
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    :root {
+        --scale: 1;
+    }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0a0e1a;
+        touch-action: none;
+        font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+        font: inherit;
+    }
+
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* Основной контейнер с масштабированием */
+    .game-container {
+        position: relative;
+        width: 810px;
+        height: 1440px;
+        transform-origin: top left;
+        background: linear-gradient(180deg, #0f172a 0%, #0a0f1a 100%);
+        overflow: hidden;
+        touch-action: none;
+    }
+
+    /* Лабораторный фон */
+    .lab-bg {
+        position: absolute;
+        inset: 0;
+        background-image: 
+            radial-gradient(circle at 20% 30%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(100, 0, 255, 0.05) 0%, transparent 50%);
+    }
+
+    /* Сетка монитора/панели */
+    .panel-grid {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 540px;
+        height: 540px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 20px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 60px;
+        padding: 20px;
+    }
+
+    /* Кнопка-сенсор */
+    .sensor-btn {
+        border-radius: 40px;
+        cursor: pointer;
+        transition: transform 0.26s ease-out, filter 0.26s ease-out, box-shadow 0.26s ease-out;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        touch-action: manipulation;
+    }
+
+    .sensor-btn:active {
+        transform: scale(0.975);
+        filter: brightness(1.08);
+        transition: transform 0.26s ease-out, filter 0.26s ease-out, box-shadow 0.26s ease-out;
+    }
+
+    /* Цвета кнопок */
+    .btn-0 { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    .btn-1 { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .btn-2 { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .btn-3 { background: linear-gradient(135deg, #eab308, #ca8a04); }
+    .btn-4 { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+    .btn-5 { background: linear-gradient(135deg, #ec489a, #db2777); }
+
+    /* Активная подсветка */
+    .sensor-btn.active {
+        filter: brightness(1.5);
+        transform: scale(1.02);
+        box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+        border-color: white;
+    }
+
+    /* HUD */
+    .hud {
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        padding: 0 60px;
+        z-index: 10;
+    }
+
+    .score-panel, .level-panel {
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(10px);
+        border-radius: calc(60px * var(--scale));
+        padding: calc(16px * var(--scale)) calc(32px * var(--scale));
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        text-align: center;
+    }
+
+    .score-label, .level-label {
+        font-size: calc(20px * var(--scale));
+        color: #00ffff;
+        letter-spacing: 2px;
+    }
+
+    .score-value, .level-value {
+        font-size: calc(48px * var(--scale));
+        font-weight: bold;
+        color: white;
+        line-height: 1;
+    }
+
+    /* Таймер */
+    .timer-bar {
+        position: absolute;
+        bottom: 180px;
+        left: calc(100px * var(--scale));
+        right: calc(100px * var(--scale));
+        height: calc(8px * var(--scale));
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .timer-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #00ffff, #0066ff);
+        border-radius: 4px;
+        transition: width 0.08s linear;
+    }
+
+    /* Статус */
+    .status-text {
+        position: absolute;
+        bottom: 100px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: calc(24px * var(--scale));
+        color: #00ffff;
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+    }
+
+    /* Оверлеи (UI) */
+    .overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(20px);
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .overlay.hidden {
+        display: none;
+    }
+
+    .overlay-title {
+        font-size: calc(48px * var(--scale));
+        color: #00ffff;
+        margin-bottom: 20px;
+    }
+
+    .overlay-text {
+        font-size: calc(28px * var(--scale));
+        padding: 0 calc(60px * var(--scale));
+        color: white;
+        margin-bottom: 40px;
+        text-align: center;
+    }
+
+    .overlay-button {
+        background: linear-gradient(135deg, #00ffff, #0066ff);
+        border: none;
+        border-radius: 60px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        transition: transform 0.16s ease, filter 0.16s ease;
+        touch-action: manipulation;
+
+        padding: calc(20px * var(--scale)) calc(60px * var(--scale));
+        font-size: calc(32px * var(--scale));
+        border-radius: calc(60px * var(--scale));
+    }
+
+    .overlay-button:active {
+        transform: scale(0.97);
+    }
+
+    /* Инструкция */
+    .instruction {
+        position: absolute;
+        top: 200px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: calc(20px * var(--scale));
+        color: rgba(255, 255, 255, 0.5);
+        z-index: 10;
+    }
+
+    .sensor-btn:active {
+        transform: scale(0.92);
+        filter: brightness(1.2);
+    }
+
+.finish-actions {
+    display: flex;
+    flex-direction: column;
+    gap: calc(16px * var(--scale));
+    width: min(calc(520px * var(--scale)), 80%);
+}
+
+.finish-actions .overlay-button {
+    width: 100%;
+}
+
+.overlay-button-secondary {
+    background: linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.08));
+    border: 1px solid rgba(255,255,255,0.16);
+}
+
+</style>
+</head>
+<body>
+<div class="game-container" id="gameContainer">
+    <div class="lab-bg"></div>
+
+    <div class="hud">
+        <div class="score-panel">
+            <div class="score-label">SCORE</div>
+            <div class="score-value" id="scoreValue">0</div>
+        </div>
+        <div class="level-panel">
+            <div class="level-label">LEVEL</div>
+            <div class="level-value" id="levelValue">1</div>
+        </div>
+    </div>
+
+    <div class="panel-grid" id="buttonGrid">
+        <div class="sensor-btn btn-0" data-idx="0"></div>
+        <div class="sensor-btn btn-1" data-idx="1"></div>
+        <div class="sensor-btn btn-2" data-idx="2"></div>
+        <div class="sensor-btn btn-3" data-idx="3"></div>
+        <div class="sensor-btn btn-4" data-idx="4"></div>
+        <div class="sensor-btn btn-5" data-idx="5"></div>
+    </div>
+
+    <div class="timer-bar" id="timerBar">
+        <div class="timer-fill" id="timerFill"></div>
+    </div>
+
+    <div class="status-text" id="statusText">Жду сигнал...</div>
+    <div class="instruction">Повтори последовательность</div>
+
+    <!-- Стартовый оверлей -->
+    <div id="startOverlay" class="overlay" data-ui="true">
+        <div class="overlay-title">🧪 ЛАБОРАТОРНЫЙ ПРОТОКОЛ</div>
+        <div class="overlay-text">Тест памяти сенсорной панели</div>
+        <button id="startButton" class="overlay-button button ui-control" data-ui="true">▶ НАЧАТЬ</button>
+    </div>
+
+    <!-- Финальный оверлей -->
+    <div id="finishOverlay" class="overlay hidden" data-ui="true">
+        <div class="overlay-title" id="finishTitle">✅ КАЛИБРОВКА ЗАВЕРШЕНА</div>
+        <div class="overlay-text" id="finishText">Результат: 0</div>
+        <div class="finish-actions">
+          <button id="retryButton" class="overlay-button overlay-button-secondary button ui-control" data-ui="true">↺ ПОВТОРИТЬ</button>
+          <button id="confirmButton" class="overlay-button button ui-control" data-ui="true">✓ ПОДТВЕРДИТЬ</button>
+      </div>
+    </div>
+</div>
+
+<script>
+// ========== ИГРОВАЯ ЛОГИКА ==========
+let difficulty = 3;
+let resultSent = false;
+let gameActive = false;
+let initReceived = false;
+const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+
+// Параметры игры
+let sequence = [];          // последовательность для запоминания
+let playerIndex = 0;       // сколько игрок повторил
+let isShowing = false;     // показываем последовательность
+let isWaitingPlayer = false; // ждём ввод игрока
+let currentTimeout = null;  // таймер на ввод
+let currentStep = 0;        // текущий шаг при показе
+
+let score = 0;              // количество правильных повторений (0..10)
+let maxScore = 10;          // победа при 10
+let gameOver = false;
+
+// Настройки от difficulty
+let showDelay = 500;        // мс на показ одного шага
+let inputTimeout = 5500;    // мс на ввод игрока
+
+function updateDifficultySettings() {
+    const d = Math.min(Math.max(1, difficulty), 10);
+    if (d === 1) {
+        showDelay = 1000;
+        inputTimeout = 8000;
+        maxScore = 5;        // легко: 5 этапов
+    } else if (d === 2) {
+        showDelay = 700;
+        inputTimeout = 6000;
+        maxScore = 7;        // средне: 7 этапов
+    } else if (d === 3) {
+        showDelay = 600;
+        inputTimeout = 5000;
+         maxScore = 8;       // сложно: 10 этапов
+    } else if (d === 4) {
+        showDelay = 400;
+        inputTimeout = 3000;
+         maxScore = 10;       // сложно: 10 этапов
+    } else {
+        showDelay = 300;
+        inputTimeout = 3800;
+         maxScore = 12;
+    }
+}
+
+// UI элементы
+const gameContainer = document.getElementById('gameContainer');
+const startOverlay = document.getElementById('startOverlay');
+const finishOverlay = document.getElementById('finishOverlay');
+const startButton = document.getElementById('startButton');
+const confirmButton = document.getElementById('confirmButton');
+const retryButton = document.getElementById('retryButton');
+const scoreSpan = document.getElementById('scoreValue');
+const levelSpan = document.getElementById('levelValue');
+const statusSpan = document.getElementById('statusText');
+const timerFill = document.getElementById('timerFill');
+
+const buttons = document.querySelectorAll('.sensor-btn');
+
+// Масштабирование (база 810x1440)
+function applyScale() {
+    const container = document.querySelector('.game-container');
+    const scaleX = window.innerWidth / 810;
+    const scaleY = window.innerHeight / 1440;
+    const scale = Math.min(scaleX, scaleY);
+    document.documentElement.style.setProperty('--scale', scale.toFixed(5));
+    container.style.transform = `scale(${scale})`;
+    container.style.transformOrigin = 'top left';
+    
+    const offsetX = (window.innerWidth - 810 * scale) / 2;
+    const offsetY = (window.innerHeight - 1440 * scale) / 2;
+    container.style.position = 'absolute';
+    container.style.left = `${offsetX}px`;
+    container.style.top = `${offsetY}px`;
+}
+
+// Обновление HUD
+function updateHUD() {
+    scoreSpan.textContent = score;
+    levelSpan.textContent = `${score + 1}/${maxScore}`;
+}
+
+// Подсветка кнопки
+function lightButton(idx, duration = 200) {
+    const btn = buttons[idx];
+    if (!btn) return;
+    btn.classList.add('active');
+    setTimeout(() => {
+        btn.classList.remove('active');
+    }, duration);
+}
+
+// Показ последовательности
+function showSequence() {
+    isShowing = true;
+    isWaitingPlayer = false;
+    statusSpan.textContent = `Запоминай... (${sequence.length} шагов)`;
+    hideTimer();
+    
+    let i = 0;
+    function showNext() {
+        if (!gameActive || gameOver) return;
+        if (i >= sequence.length) {
+            // Показ закончен, ждём игрока
+            isShowing = false;
+            isWaitingPlayer = true;
+            playerIndex = 0;
+            statusSpan.textContent = 'Твой ход! Повтори последовательность';
+            startTimer();
+            return;
+        }
+        const btnIdx = sequence[i];
+        lightButton(btnIdx, 250);
+        i++;
+        setTimeout(showNext, showDelay);
+    }
+    
+    setTimeout(showNext, 300);
+}
+
+// Таймер ответа игрока
+let timerInterval = null;
+let timerStartTime = 0;
+
+function startTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    if (currentTimeout) clearTimeout(currentTimeout);
+    
+    timerFill.style.transition = 'none';
+    timerFill.style.width = '100%';
+    timerFill.offsetHeight; // reflow
+    timerFill.style.transition = `width ${inputTimeout}ms linear`;
+    timerFill.style.width = '0%';
+    
+    timerStartTime = Date.now();
+    currentTimeout = setTimeout(() => {
+        // Время вышло
+        if (isWaitingPlayer && gameActive && !gameOver) {
+            gameLose('Время вышло');
+        }
+    }, inputTimeout);
+    
+    timerInterval = setInterval(() => {
+        if (!isWaitingPlayer || !gameActive || gameOver) return;
+        const elapsed = Date.now() - timerStartTime;
+        const remaining = Math.max(0, inputTimeout - elapsed);
+        const percent = (remaining / inputTimeout) * 100;
+        timerFill.style.transition = 'none';
+        timerFill.style.width = `${percent}%`;
+        timerFill.offsetHeight;
+        timerFill.style.transition = 'width 0.05s linear';
+    }, 50);
+}
+
+function hideTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    if (currentTimeout) clearTimeout(currentTimeout);
+    timerFill.style.transition = 'none';
+    timerFill.style.width = '100%';
+}
+
+function stopTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    if (currentTimeout) clearTimeout(currentTimeout);
+}
+
+// Игрок нажал на кнопку
+function onPlayerInput(btnIdx) {
+    if (!gameActive || gameOver || !isWaitingPlayer || isShowing) return;
+    if (resultSent) return;
+    
+    // Проверяем
+    const expected = sequence[playerIndex];
+    
+    if (btnIdx === expected) {
+        // Правильно
+        lightButton(btnIdx, 150);
+        playerIndex++;
+        
+        if (playerIndex === sequence.length) {
+            // Полная последовательность повторена!
+            stopTimer();
+            isWaitingPlayer = false;
+            
+            score++;
+            updateHUD();
+            
+            if (score >= maxScore) {
+                gameWin();
+                return;
+            }
+            
+            // Добавляем новый шаг
+            const newStep = Math.floor(Math.random() * 6);
+            sequence.push(newStep);
+            
+            statusSpan.textContent = `✅ Успех! Уровень ${score + 1}`;
+            
+            // Пауза перед показом новой последовательности
+            setTimeout(() => {
+                if (gameActive && !gameOver && !resultSent) {
+                    showSequence();
+                }
+            }, 450);
+        }
+    } else {
+        // Ошибка
+        lightButton(btnIdx, 200);
+        gameLose('Ошибка последовательности');
+    }
+}
+
+function gameWin() {
+    if (gameOver || resultSent) return;
+    gameOver = true;
+    gameActive = false;
+    isWaitingPlayer = false;
+    isShowing = false;
+    stopTimer();
+
+    if (navigator.vibrate) {
+        navigator.vibrate([40, 30, 40]);
+    }
+
+    statusSpan.textContent = '🏆 КАЛИБРОВКА ПРОЙДЕНА 🏆';
+    
+    // Показываем финальный оверлей
+    document.getElementById('finishTitle').textContent = '✅ КАЛИБРОВКА УСПЕШНА';
+    document.getElementById('finishText').innerHTML = `Пройдено уровней: ${score}/${maxScore}<br>Точность памяти: отлично`;
+    finishOverlay.classList.remove('hidden');
+}
+
+function gameLose(reason) {
+    if (gameOver || resultSent) return;
+    gameOver = true;
+    gameActive = false;
+    isWaitingPlayer = false;
+    isShowing = false;
+    stopTimer();
+
+    if (navigator.vibrate) {
+        navigator.vibrate(120);
+    }
+
+    statusSpan.textContent = `❌ ${reason}`;
+    
+    document.getElementById('finishTitle').textContent = '⚠️ СБОЙ КАЛИБРОВКИ';
+    document.getElementById('finishText').innerHTML = `Пройдено уровней: ${score}/${maxScore}<br>Причина: ${reason}`;
+    finishOverlay.classList.remove('hidden');
+}
+
+// Блокировка всего ввода после отправки результата
+function blockAllInteraction() {
+    gameContainer.style.pointerEvents = 'none';
+}
+
+function finishGame() {
+    if (resultSent) return;
+    resultSent = true;
+    gameActive = false;
+    gameOver = true;
+    stopTimer();
+    blockAllInteraction();
+    
+    // Вычисляем результат (0..1)
+    let resultValue = (score >= maxScore) ? 1 : 0;
+    
+    parent.postMessage({
+        type: "gameResult",
+        result: resultValue
+    }, "*");
+}
+
+function resetAttempt() {
+    gameActive = true;
+    gameOver = false;
+    score = 0;
+    sequence = [];
+    playerIndex = 0;
+    isShowing = false;
+    isWaitingPlayer = false;
+
+    stopTimer();
+    updateHUD();
+    hideTimer();
+
+    finishOverlay.classList.add('hidden');
+    startOverlay.classList.add('hidden');
+
+    const firstStep = Math.floor(Math.random() * 6);
+    sequence.push(firstStep);
+}
+
+// Старт игры
+function startGame() {
+    if (resultSent) return;
+
+    resetAttempt();
+
+    setTimeout(() => {
+        if (gameActive && !resultSent) {
+            showSequence();
+        }
+    }, 300);
+}
+
+function retryGame() {
+    if (resultSent) return;
+
+    resetAttempt();
+    statusSpan.textContent = 'Жду сигнал...';
+
+    setTimeout(() => {
+        if (gameActive && !resultSent) {
+            showSequence();
+        }
+    }, 250);
+}
+
+// ========== UI ИЗОЛЯЦИЯ ==========
+function isUiTarget(target) {
+    return !!(
+        target &&
+        target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]')
+    );
+}
+
+// Обработка ввода (только для игровых кнопок)
+function handleGameInput(event, btnIdx) {
+    if (!gameActive || gameOver || resultSent) return;
+    if (isUiTarget(event.target)) return;
+
+    if (event.cancelable) event.preventDefault();
+    onPlayerInput(btnIdx);
+}
+
+// Привязка кнопок
+buttons.forEach((btn, idx) => {
+    const handler = (event) => {
+        event.stopPropagation();
+        handleGameInput(event, idx);
+    };
+
+    if (HAS_POINTER_EVENTS) {
+        btn.addEventListener('pointerdown', handler, { passive: false });
+    } else {
+        btn.addEventListener('mousedown', handler, { passive: false });
+        btn.addEventListener('touchstart', handler, { passive: false });
+        btn.addEventListener('touchcancel', (event) => {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+        }, { passive: false });
+    }
+});
+
+// Кнопки UI
+function bindUIButton(button, handler) {
+    const stop = (e) => {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+    };
+
+    [
+        'click',
+        'pointerdown',
+        'pointerup',
+        'touchstart',
+        'touchend',
+        'mousedown',
+        'mouseup'
+    ].forEach(type => {
+        button.addEventListener(type, stop, { passive: false });
+    });
+
+    button.addEventListener('click', (e) => {
+        stop(e);
+        if (!resultSent) handler();
+    }, { passive: false });
+}
+
+bindUIButton(startButton, startGame);
+bindUIButton(retryButton, retryGame);
+bindUIButton(confirmButton, finishGame);
+
+// ========== ВЗАИМОДЕЙСТВИЕ С ДВИЖКОМ ==========
+window.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== 'gameInit') return;
+    initReceived = true;
+    difficulty = Number(event.data.difficulty ?? 3);
+    updateDifficultySettings();
+    applyScale();
+    // Не стартуем автоматически — ждём нажатия Start
+});
+
+// Локальная инициализация (автономный запуск)
+setTimeout(() => {
+    if (!initReceived) {
+        difficulty = 3;
+        updateDifficultySettings();
+        applyScale();
+    }
+}, 300);
+
+window.addEventListener('resize', () => {
+    applyScale();
+});
+
+applyScale();
+
+// Защита от контекстного меню и выделения
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('selectstart', (e) => e.preventDefault());
+</script>
+</body>
+</html>
