@@ -114,9 +114,13 @@ const UI_I18N = {
     closeGame: "Close Game",
     hintContinue: "Click to continue",
     statsTitle: "Script Statistics",
-    graphButton: "📊 Graph",
+    fullGraphButton: "📊 Full Graph",
+    objectGraphButton: "🧩 Object Graph",
+    gamesButton: "🎮 Games",
     textButton: "📄 Text",
-    graphButtonTitle: "Show/hide graph",
+    fullGraphButtonTitle: "Show full graph",
+    objectGraphButtonTitle: "Show object graph",
+    gamesButtonTitle: "Show games catalog",
     textButtonTitle: "Show text statistics",
     closeStats: "Close stats",
     zoomOut: "Zoom Out",
@@ -150,9 +154,13 @@ const UI_I18N = {
     closeGame: "Закрыть игру",
     hintContinue: "Нажмите, чтобы продолжить",
     statsTitle: "Статистика сценария",
-    graphButton: "📊 Граф",
+    fullGraphButton: "📊 Граф полный",
+    objectGraphButton: "🧩 Граф объектов",
+    gamesButton: "🎮 Игры",
     textButton: "📄 Текст",
-    graphButtonTitle: "Показать/скрыть граф",
+    fullGraphButtonTitle: "Показать полный граф",
+    objectGraphButtonTitle: "Показать граф объектов",
+    gamesButtonTitle: "Показать каталог игр",
     textButtonTitle: "Показать текстовую статистику",
     closeStats: "Закрыть статистику",
     zoomOut: "Уменьшить",
@@ -231,15 +239,36 @@ function applyUiLanguage() {
   var statsTitle = document.querySelector(".statsTitle");
   if (statsTitle) statsTitle.textContent = t("statsTitle");
 
-  var btnToggleGraph = document.getElementById("btnToggleGraph");
-  if (btnToggleGraph) {
-    if (window.showingGraph) {
-      btnToggleGraph.textContent = t("textButton");
-      btnToggleGraph.title = t("textButtonTitle");
-    } else {
-      btnToggleGraph.textContent = t("graphButton");
-      btnToggleGraph.title = t("graphButtonTitle");
-    }
+  var btnShowFullGraph = document.getElementById("btnShowFullGraph");
+  if (btnShowFullGraph) {
+    btnShowFullGraph.textContent = t("fullGraphButton");
+    btnShowFullGraph.title = t("fullGraphButtonTitle");
+    btnShowFullGraph.classList.toggle("is-active", window.currentStatsView === "graph-full");
+    btnShowFullGraph.setAttribute("aria-pressed", window.currentStatsView === "graph-full" ? "true" : "false");
+  }
+
+  var btnShowObjectGraph = document.getElementById("btnShowObjectGraph");
+  if (btnShowObjectGraph) {
+    btnShowObjectGraph.textContent = t("objectGraphButton");
+    btnShowObjectGraph.title = t("objectGraphButtonTitle");
+    btnShowObjectGraph.classList.toggle("is-active", window.currentStatsView === "graph-objects");
+    btnShowObjectGraph.setAttribute("aria-pressed", window.currentStatsView === "graph-objects" ? "true" : "false");
+  }
+
+  var btnShowGames = document.getElementById("btnShowGames");
+  if (btnShowGames) {
+    btnShowGames.textContent = t("gamesButton");
+    btnShowGames.title = t("gamesButtonTitle");
+    btnShowGames.classList.toggle("is-active", window.currentStatsView === "games");
+    btnShowGames.setAttribute("aria-pressed", window.currentStatsView === "games" ? "true" : "false");
+  }
+
+  var btnShowText = document.getElementById("btnShowText");
+  if (btnShowText) {
+    btnShowText.textContent = t("textButton");
+    btnShowText.title = t("textButtonTitle");
+    btnShowText.classList.toggle("is-active", window.currentStatsView === "text");
+    btnShowText.setAttribute("aria-pressed", window.currentStatsView === "text" ? "true" : "false");
   }
 
   var btnCloseStats = document.getElementById("btnCloseStats");
@@ -260,21 +289,10 @@ function applyUiLanguage() {
   var btnRefreshGraph = document.getElementById("btnRefreshGraph");
   if (btnRefreshGraph) btnRefreshGraph.textContent = t("refresh");
 
-  var btnShowGames = document.getElementById("btnShowGames");
-  if (btnShowGames) {
-    if (window.showingGames) {
-      btnShowGames.textContent = t("textButton");
-      btnShowGames.title = t("textButtonTitle");
-    } else {
-      btnShowGames.textContent = t("gamesButton");
-      btnShowGames.title = t("gamesButtonTitle");
-    }
-  }
-
 }
 
 window.showingGraph = false;
-
+window.currentStatsView = "text";
 
 
 var firstScreenMetrics = {
@@ -566,9 +584,11 @@ profiler.mark('DOM has been loaded');
 
 // Добавьте в engine.js после объявления переменных
 
-// Элементы управления графиком
-var btnToggleGraph = document.getElementById("btnToggleGraph");
+// Элементы управления статистикой и графиком
+var btnShowFullGraph = document.getElementById("btnShowFullGraph");
+var btnShowObjectGraph = document.getElementById("btnShowObjectGraph");
 var btnShowGames = document.getElementById("btnShowGames");
+var btnShowText = document.getElementById("btnShowText");
 var graphContainer = document.getElementById("graphContainer");
 var gamesContainer = document.getElementById("gamesContainer");
 var gamesGrid = document.getElementById("gamesGrid");
@@ -579,6 +599,7 @@ var btnRefreshGraph = document.getElementById("btnRefreshGraph");
 var mermaidGraph = document.getElementById("mermaidGraph");
 
 // Состояние отображения
+var currentStatsView = "text";
 var showingGraph = false;
 var showingGames = false;
 
@@ -602,16 +623,27 @@ var currentMermaidVariants = {
 
 var lastStandaloneGameInfo = null;
 
-// Обработчик кнопки переключения
-if (btnToggleGraph) {
-  btnToggleGraph.addEventListener("click", function() {
-    toggleGraphView();
+if (btnShowFullGraph) {
+  btnShowFullGraph.addEventListener("click", function() {
+    setStatsView("graph-full");
+  });
+}
+
+if (btnShowObjectGraph) {
+  btnShowObjectGraph.addEventListener("click", function() {
+    setStatsView("graph-objects");
   });
 }
 
 if (btnShowGames) {
   btnShowGames.addEventListener("click", function() {
-    toggleGamesView();
+    setStatsView("games");
+  });
+}
+
+if (btnShowText) {
+  btnShowText.addEventListener("click", function() {
+    setStatsView("text");
   });
 }
 
@@ -642,32 +674,51 @@ if (btnRefreshGraph) {
   });
 }
 
-// Функция переключения между текстом и графиком
+function getMermaidVariantForStatsView(view) {
+  if (view === "graph-objects") {
+    return currentMermaidVariants.intro;
+  }
+
+  return currentMermaidVariants.full;
+}
+
+function syncCurrentMermaidCodeWithView() {
+  var variant = getMermaidVariantForStatsView(currentStatsView);
+  currentMermaidCode = (variant && variant.code) ? variant.code : "";
+}
+
 function setStatsView(view) {
   var statsBody = document.getElementById("statsBody");
+  var isGraphView;
 
-  showingGraph = (view === "graph");
-  showingGames = (view === "games");
+  currentStatsView = view || "text";
+  isGraphView = (currentStatsView === "graph-full" || currentStatsView === "graph-objects");
+
+  showingGraph = isGraphView;
+  showingGames = (currentStatsView === "games");
   window.showingGraph = showingGraph;
   window.showingGames = showingGames;
+  window.currentStatsView = currentStatsView;
+
+  syncCurrentMermaidCodeWithView();
 
   if (statsBody) {
-    statsBody.classList.toggle("hidden", view !== "text");
+    statsBody.classList.toggle("hidden", currentStatsView !== "text");
   }
 
   if (graphContainer) {
-    graphContainer.classList.toggle("hidden", view !== "graph");
+    graphContainer.classList.toggle("hidden", !isGraphView);
   }
 
   if (graphControls) {
-    graphControls.classList.toggle("hidden", view !== "graph");
+    graphControls.classList.toggle("hidden", !isGraphView);
   }
 
   if (gamesContainer) {
-    gamesContainer.classList.toggle("hidden", view !== "games");
+    gamesContainer.classList.toggle("hidden", currentStatsView !== "games");
   }
 
-  if (view === "graph") {
+  if (isGraphView) {
     renderMermaidGraph();
     setTimeout(resetPanzoom, 200);
     setTimeout(function() {
@@ -675,19 +726,11 @@ function setStatsView(view) {
     }, 500);
   }
 
-  if (view === "games") {
+  if (currentStatsView === "games") {
     renderGamesCatalog();
   }
 
   applyUiLanguage();
-}
-
-function toggleGraphView() {
-  setStatsView(showingGraph ? "text" : "graph");
-}
-
-function toggleGamesView() {
-  setStatsView(showingGames ? "text" : "games");
 }
 
 
@@ -3565,8 +3608,8 @@ function renderStats() {
         forceFull: true
       });
 
-      // До интерфейса оставляем текущим именно обычный полный граф
-      currentMermaidCode = currentMermaidVariants.full.code;
+      // Подстраиваем текущий Mermaid-код под выбранную вкладку статистики
+      syncCurrentMermaidCodeWithView();
 
 
 

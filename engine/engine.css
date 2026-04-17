@@ -630,6 +630,29 @@ body {
   border-bottom: var(--ui-border-width) solid rgba(255,255,255,0.12);
 }
 
+.statsHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.statsViewTabs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.statsViewTabs .btn.is-active,
+.statsViewTabs .btn[aria-pressed="true"] {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.42);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset;
+}
+
 .statsTitle {
   font-weight: 800;
   font-size: var(--stats-title-size);
