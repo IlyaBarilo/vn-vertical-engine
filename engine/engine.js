@@ -584,6 +584,22 @@ var showingGames = false;
 
 // Переменная для хранения текущего кода графа
 var currentMermaidCode = "";
+
+var currentMermaidVariants = {
+  full: {
+    fullCode: "",
+    compactCode: "",
+    code: "",
+    useCompact: false
+  },
+  intro: {
+    fullCode: "",
+    compactCode: "",
+    code: "",
+    useCompact: false
+  }
+};
+
 var lastStandaloneGameInfo = null;
 
 // Обработчик кнопки переключения
@@ -3538,25 +3554,36 @@ function renderStats() {
       
 
 
-      var fullCode = buildMermaidGraph(STORY, reach.unreachable, {
-        compact: false
+      currentMermaidVariants.full = buildMermaidVariant(STORY, reach.unreachable, {
+        scope: "full"
       });
 
-      var useCompact = shouldUseCompactMermaid(fullCode);
+      // intro пока по умолчанию строим в полной версии,
+      // даже если full ушёл в compact
+      currentMermaidVariants.intro = buildMermaidVariant(STORY, reach.unreachable, {
+        scope: "intro",
+        forceFull: true
+      });
 
-      var compactCode = null;
-      if (useCompact) {
-        compactCode = buildMermaidGraph(STORY, reach.unreachable, {
-          compact: true
-        });
+      // До интерфейса оставляем текущим именно обычный полный граф
+      currentMermaidCode = currentMermaidVariants.full.code;
+
+
+
+
+      
+      text += "\n\n=== MERMAID GRAPH INFO ===\n";
+
+      text += "[full]\n";
+      text += "full length: " + currentMermaidVariants.full.fullCode.length + "\n";
+      if (currentMermaidVariants.full.useCompact && currentMermaidVariants.full.compactCode) {
+        text += "compact length: " + currentMermaidVariants.full.compactCode.length + "\n";
       }
 
-      currentMermaidCode = useCompact ? compactCode : fullCode;
-
-      text += "\n\n=== MERMAID GRAPH INFO ===\n";
-      text += "full length: " + fullCode.length + "\n";
-      if (useCompact && compactCode) {
-        text += "compact length: " + compactCode.length + "\n";
+      text += "\n[intro]\n";
+      text += "full length: " + currentMermaidVariants.intro.fullCode.length + "\n";
+      if (currentMermaidVariants.intro.useCompact && currentMermaidVariants.intro.compactCode) {
+        text += "compact length: " + currentMermaidVariants.intro.compactCode.length + "\n";
       }
 
       text += "\n=== MERMAID GRAPH ===\n\n";
@@ -4263,10 +4290,12 @@ function buildMermaidGraph(story, unreachableList, options) {
   options = options || {};
 
   var compact = !!options.compact;
+  var scope = options.scope || "full";
   
   var scenes = story.scenes || [];
   var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
-  
+  var attachSceneId = startId;
+
   // Набор недостижимых сцен для подсветки
   var unreachableSet = {};
   if (unreachableList && unreachableList.length) {
@@ -4438,7 +4467,39 @@ function buildMermaidGraph(story, unreachableList, options) {
 
 
 
+  var nodesById = {};
+  for (var ni = 0; ni < nodes.length; ni++) {
+    nodesById[nodes[ni].id] = nodes[ni];
+  }
 
+  var introCharIds = null;
+  var introGameIds = null;
+  var introBgIds = null;
+
+  if (scope === "intro") {
+    var introNode = nodesById[startId];
+
+    if (introNode) {
+      introCharIds = (introNode.characters || []).slice();
+      introGameIds = (introNode.games || []).slice();
+
+      var introBgMap = {};
+      introBgIds = [];
+      if (introNode.allBgImages && introNode.allBgImages.length) {
+        for (var ib = 0; ib < introNode.allBgImages.length; ib++) {
+          var bgItem = introNode.allBgImages[ib];
+          if (bgItem && bgItem.id && !introBgMap[bgItem.id]) {
+            introBgMap[bgItem.id] = true;
+            introBgIds.push(bgItem.id);
+          }
+        }
+      }
+    } else {
+      introCharIds = [];
+      introGameIds = [];
+      introBgIds = [];
+    }
+  }
 
 
 
@@ -4464,22 +4525,34 @@ function buildMermaidGraph(story, unreachableList, options) {
   mermaid += "classDef games-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n";
   mermaid += "classDef game-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
 
-  // СОЗДАЕМ УЗЛЫ ПЕРСОНАЖЕЙ
-  var charGraphData = buildCharactersGraph(story, options);
+  var sharedGraphOptions = {
+    compact: compact,
+    attachTo: attachSceneId
+  };
+
+  if (scope === "intro") {
+    sharedGraphOptions.onlyCharIds = introCharIds;
+    sharedGraphOptions.onlyBgIds = introBgIds;
+    sharedGraphOptions.onlyGameIds = introGameIds;
+  }
+
+  var charGraphData = buildCharactersGraph(story, sharedGraphOptions);
   mermaid += charGraphData.mermaid;
   mermaid += "\n";
 
-  // ДОБАВЛЯЕМ УЗЕЛ "ФОНЫ"
-  mermaid += buildBackgroundsGraph(story, options);
+  mermaid += buildBackgroundsGraph(story, sharedGraphOptions);
   mermaid += "\n";
 
-  // ДОБАВЛЯЕМ УЗЕЛ "ИГРЫ"
-  mermaid += buildGamesGraph(story, options);
+  mermaid += buildGamesGraph(story, sharedGraphOptions);
   mermaid += "\n";
 
   // Создаем узлы с многострочными метками
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
+    if (scope === "intro" && node.id !== startId) {
+      continue;
+    }
+
     var chars = node.characters.length ? node.characters.join(", ") : "(none)";
     var games = (node.games && node.games.length) ? node.games : [];
 
@@ -4583,6 +4656,13 @@ function buildMermaidGraph(story, unreachableList, options) {
   // Создаем связи с подписями (только реальные связи из сценария)
   for (var e = 0; e < edges.length; e++) {
     var ed = edges[e];
+
+    if (scope === "intro") {
+      if (ed.from !== startId || ed.to !== startId) {
+        continue;
+      }
+    }
+
     if (ed.label && ed.label.trim() !== "") {
       // Экранируем кавычки и спецсимволы в метках
       var label = ed.label.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -4600,9 +4680,8 @@ function buildMermaidGraph(story, unreachableList, options) {
   });
 
   // ВАЖНО: Добавляем пунктирную связь от узла "Персонажи" к первой сцене
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
-  mermaid += '\n    %% Character connections to the first chapter\n';
-  mermaid += '    characters -.-> ' + startId + ';\n';
+  mermaid += '\n    %% Character connections to the attached scene\n';
+  mermaid += '    characters -.-> ' + attachSceneId + ';\n';
 
   return mermaid;
 }
@@ -4631,7 +4710,9 @@ function buildCharactersGraph(story, options) {
   
   // Создаем узлы для каждого персонажа
   var charNodes = [];
-  var charIds = Object.keys(characters).sort();
+  var charIds = (options.onlyCharIds && options.onlyCharIds.length)
+    ? options.onlyCharIds.slice().sort()
+    : Object.keys(characters).sort();
   
   for (var i = 0; i < charIds.length; i++) {
     var charId = charIds[i];
@@ -4710,11 +4791,37 @@ function buildBackgroundsGraph(story, options) {
 
   var mermaid = "";
   var backgrounds = story.assets.backgrounds || {};
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
-  
-  // Собираем все уникальные фоны из всех сцен
-  var allUniqueBgs = {};
+  var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
   var scenes = story.scenes || [];
+  
+  var allUniqueBgs = {};
+
+  if (options.onlyBgIds && options.onlyBgIds.length) {
+    for (var ob = 0; ob < options.onlyBgIds.length; ob++) {
+      var onlyBgId = options.onlyBgIds[ob];
+      if (onlyBgId && backgrounds[onlyBgId]) {
+        allUniqueBgs[onlyBgId] = backgrounds[onlyBgId];
+      }
+    }
+  } else {
+    
+
+    for (var s = 0; s < scenes.length; s++) {
+      var scene = scenes[s];
+      if (!scene || !scene.actions) continue;
+
+      var actions = scene.actions;
+      for (var a = 0; a < actions.length; a++) {
+        var act = actions[a];
+        if (act.type === "bg" && act.src) {
+          var bgId = extractAliasId(act.src, "bg");
+          if (bgId && backgrounds[bgId]) {
+            allUniqueBgs[bgId] = backgrounds[bgId];
+          }
+        }
+      }
+    }
+  }
   
   for (var s = 0; s < scenes.length; s++) {
     var scene = scenes[s];
@@ -4770,7 +4877,7 @@ function buildBackgroundsGraph(story, options) {
 
   // Добавляем пунктирную связь с первой главой
   mermaid += '\n    %% Connection between backgrounds and the first chapter\n';
-  mermaid += '    backgrounds -.-> ' + startId + ';\n';
+  mermaid += '    backgrounds -.-> ' + attachTo + ';\n';
   
   return mermaid;
 }
@@ -4781,7 +4888,7 @@ function buildGamesGraph(story, options) {
 
   var mermaid = "";
   var games = (story.assets && story.assets.games) ? story.assets.games : {};
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+  var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
   var scenes = story.scenes || [];
   var usedGames = {};
 
@@ -4798,8 +4905,14 @@ function buildGamesGraph(story, options) {
     }
   }
 
-  var gameIds = Object.keys(games).sort();
+  var gameIds = (options.onlyGameIds && options.onlyGameIds.length)
+  ? options.onlyGameIds.filter(function(gameId) {
+      return !!games[gameId];
+    }).slice().sort()
+  : Object.keys(games).sort();
+
   var gamesCount = gameIds.length;
+
   var gameCountClass = getImgCountClass(gamesCount);
   var gamesListHtml = '<div class="games-list-container ' + gameCountClass + '">';
 
@@ -4827,6 +4940,7 @@ function buildGamesGraph(story, options) {
 
   mermaid += '    games["' + label + '"]\n';
   mermaid += '    games:::games-group\n';
+  mermaid += '    games -.-> ' + attachTo + '\n';
 
   for (var i = 0; i < gameIds.length; i++) {
     var gameId = gameIds[i];
@@ -4871,8 +4985,7 @@ function buildGamesGraph(story, options) {
     mermaid += '    games -.-> ' + gameNodeId + '\n';
   }
 
-  mermaid += '\n    %% Connection between games and the first chapter\n';
-  mermaid += '    games -.-> ' + startId + ';\n';
+  
 
   return mermaid;
 }
@@ -5727,6 +5840,43 @@ function initPanzoom() {
   resetPanzoom();
 }
 
+
+function buildMermaidVariant(story, unreachableList, options) {
+  options = options || {};
+
+  var scope = options.scope || "full";
+  var forceCompact = options.forceCompact;
+  var forceFull = !!options.forceFull;
+
+  var fullCode = buildMermaidGraph(story, unreachableList, {
+    compact: false,
+    scope: scope
+  });
+
+  var useCompact = false;
+  if (!forceFull) {
+    if (typeof forceCompact === "boolean") {
+      useCompact = forceCompact;
+    } else {
+      useCompact = shouldUseCompactMermaid(fullCode);
+    }
+  }
+
+  var compactCode = "";
+  if (useCompact) {
+    compactCode = buildMermaidGraph(story, unreachableList, {
+      compact: true,
+      scope: scope
+    });
+  }
+
+  return {
+    fullCode: fullCode,
+    compactCode: compactCode,
+    code: useCompact ? compactCode : fullCode,
+    useCompact: useCompact
+  };
+}
 
 
 function shouldUseCompactMermaid(fullCode, stats) {
