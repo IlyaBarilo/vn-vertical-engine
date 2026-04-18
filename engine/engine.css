@@ -1281,6 +1281,19 @@ body {
   overflow: visible !important;
 }
 
+.graphContainer .mermaid foreignObject,
+.graphContainer .mermaid foreignObject * {
+  color: var(--graph-label-color) !important;
+  font-family: var(--graph-label-font) !important;
+}
+
+.graphContainer .mermaid .node div,
+.graphContainer .mermaid .node span,
+.graphContainer .mermaid .node b,
+.graphContainer .mermaid .node i {
+  color: var(--graph-label-color) !important;
+}
+
 /* Контейнер для изображений - только один раз! */
 .bg-images-container {
   display: flex !important;

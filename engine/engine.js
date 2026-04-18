@@ -2483,7 +2483,7 @@ function updateMuteIcon() {
   let icon = btnMute.querySelector('.btn-icon');
 
   if (!icon) {
-    btnMute.innerHTML = '<span class="btn-icon"></span>';
+    btnMute.innerHTML = "<span class='btn-icon'></span>";
     icon = btnMute.querySelector('.btn-icon');
   }
 
@@ -4611,18 +4611,19 @@ function buildMermaidGraph(story, unreachableList, options) {
       if (node.allBgImages && node.allBgImages.length > 0) {
         var sceneBgCountClass = getImgCountClass(node.allBgImages.length);
 
-        label += '<div class="bg-images-container ' + sceneBgCountClass + '" style="padding: 4px;">';
+        label += "<div class='bg-images-container " + sceneBgCountClass + "' style='padding: 4px;'>";
         
         for (var b = 0; b < node.allBgImages.length; b++) {
           var bg = node.allBgImages[b];
           var imgSrc = bg.src.replace(/"/g, '&quot;');
-          
-          label += '<img src="' + imgSrc + '" ' +
-                  'class="bg-thumbnail ' + sceneBgCountClass + '" ' +
-                  'data-id="' + bg.id + '" ' +
-                  'data-index="' + b + '" ' +
-                  'title="' + bg.id + '" ' +
-                  'alt="" /> ';
+          var safeBgId = escapeHtml(bg.id);
+
+          label += "<img src='" + imgSrc + "' " +
+                  "class='bg-thumbnail " + sceneBgCountClass + "' " +
+                  "data-id='" + safeBgId + "' " +
+                  "data-index='" + b + "' " +
+                  "title='" + safeBgId + "' " +
+                  "alt='' /> ";
         }
         
         label += '</div>';
@@ -4768,21 +4769,20 @@ function buildCharactersGraph(story, options) {
       var emotionIds = Object.keys(char.images).sort();
       var emotionCountClass = getImgCountClass(emotionIds.length);
 
-      emotionsHtml = '<div class="char-emotions-container ' + emotionCountClass + '" style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin-top:4px;">';
+      emotionsHtml = "<div class='char-emotions-container " + emotionCountClass + "' style='display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin-top:4px;'>";
 
       for (var e = 0; e < emotionIds.length; e++) {
         var emotion = emotionIds[e];
         var imgSrc = char.images[emotion].replace(/"/g, '&quot;');
+        var safeEmotion = escapeHtml(emotion);
 
-        emotionsHtml += '<img src="' + imgSrc + '" ' +
-                        'class="char-emotion-thumbnail ' + emotionCountClass + '" ';
+        emotionsHtml += "<img src='" + imgSrc + "' " +
+                  "class='char-emotion-thumbnail " + emotionCountClass + "' " +
+                  "style='object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;' " +
+                  "onmouseover='this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;' " +
+                  "onmouseout='this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;' " +
+                  "title='" + safeEmotion + "' alt='' /> ";
 
-        
-        emotionsHtml += 'style="object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;" ' +
-        'onmouseover="this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;" ' +
-        'onmouseout="this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;" ';
-      
-        emotionsHtml += 'title="' + emotion + '" alt="" /> ';
       }
 
       emotionsHtml += '</div>';
@@ -4893,18 +4893,20 @@ function buildBackgroundsGraph(story, options) {
   if (!compact) {
     var bgCountClass = getImgCountClass(bgIds.length);
 
-    var bgImagesHtml = '<div class="bg-images-container ' + bgCountClass + '" style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;">';
-    
+    var bgImagesHtml = "<div class='bg-images-container " + bgCountClass + "' style='display:flex; flex-wrap:wrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;'>";
+
+
     for (var i = 0; i < bgIds.length; i++) {
       var bgId = bgIds[i];
       var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
-      
-      bgImagesHtml += '<img src="' + imgSrc + '" ' +
-                  'class="bg-thumbnail ' + bgCountClass + '" ' +
-                  'title="' + bgId + '" alt="" /> ';
+      var safeBgId = escapeHtml(bgId);
+
+      bgImagesHtml += "<img src='" + imgSrc + "' " +
+                  "class='bg-thumbnail " + bgCountClass + "' " +
+                  "title='" + safeBgId + "' alt='' /> ";
     }
       
-    bgImagesHtml += '</div>';
+    bgImagesHtml += "</div>";
   }
 
   // Формируем метку элемента
@@ -4957,24 +4959,20 @@ function buildGamesGraph(story, options) {
   var gamesCount = gameIds.length;
 
   var gameCountClass = getImgCountClass(gamesCount);
-  var gamesListHtml = '<div class="games-list-container ' + gameCountClass + '">';
+  var gamesListHtml = "<div class='games-list-container " + gameCountClass + "'>";
 
   if (gamesCount > 0) {
     for (var i = 0; i < gameIds.length; i++) {
       var gameId = gameIds[i];
-      var safeGameId = gameId
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
-      gamesListHtml += '<div class="game-list-item">' + safeGameId + '</div>';
+      var safeGameId = escapeHtml(gameId);
+      gamesListHtml += "<div class='game-list-item'>" + safeGameId + "</div>";
     }
   } else {
-    gamesListHtml += '<div class="game-list-empty">(none)</div>';
+    gamesListHtml += "<div class='game-list-empty'>(none)</div>";
   }
 
-  gamesListHtml += '</div>';
+  gamesListHtml += "</div>";
 
   var label = '<b>🎮 Games (' + gamesCount + ')</b>';
   if (!compact) {
@@ -4999,26 +4997,24 @@ function buildGamesGraph(story, options) {
 
 
     var tooltip = escapeHtml(game.description || game.title || gameId);
-    var titleAttr = compact ? "" : ' title="' + tooltip + '"';
+    var titleAttr = compact ? "" : " title='" + tooltip + "'";
 
     var gameNodeId = 'game_' + gameId.replace(/[^a-zA-Z0-9_]/g, '_');
 
-    var label = '<div class="game-card"' + titleAttr + '>' +
-      '<div class="game-card-var">' + safeGameId + '</div>' +
-      '<div class="game-card-title">' + safeTitle + '</div>';
+    var label = "<div class='game-card'" + titleAttr + ">" +
+      "<div class='game-card-var'>" + safeGameId + "</div>" +
+      "<div class='game-card-title'>" + safeTitle + "</div>";
 
     if (!compact && safeCover) {
-      label += '<div class="game-card-image-wrap">' +
-                '<img src="' + safeCover + '" ' +
-                'class="game-thumbnail ' + gameCountClass + '" ' +
-                'alt="" ' +
-                'loading="eager" />' +
-              '</div>';
+      label += "<div class='game-card-image-wrap'>" +
+            "<img src='" + safeCover + "' " +
+            "class='game-thumbnail " + gameCountClass + "' " +
+            "alt='' " +
+            "loading='eager' />" +
+          "</div>";
     }
 
-    label += '</div>';
-
-
+    label += "</div>";
 
     mermaid += '    ' + gameNodeId + '["' + label + '"]\n';
     mermaid += '    ' + gameNodeId + ':::game-node\n';
