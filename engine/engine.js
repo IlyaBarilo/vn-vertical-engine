@@ -967,6 +967,13 @@ function normalizeAssetUrl(url) {
   }
 }
 
+function getGraphImageSrc(src) {
+  var normalized = normalizeAssetUrl(src || "");
+  if (!normalized) return "";
+  if (failedAssets.images && failedAssets.images[normalized]) return "";
+  return escapeHtml(normalized);
+}
+
 // Чтобы музыка не включалась слишком громко при старте
 audio.bgm.loop = true;
 
@@ -4616,7 +4623,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         for (var b = 0; b < node.allBgImages.length; b++) {
           var bg = node.allBgImages[b];
           var imgSrc = bg.src.replace(/"/g, '&quot;');
-          var safeBgId = escapeHtml(bg.id);
+          var safeBgId =  escapeHtml(bg.id || "");
 
           label += "<img src='" + imgSrc + "' " +
                   "class='bg-thumbnail " + sceneBgCountClass + "' " +
@@ -4773,7 +4780,7 @@ function buildCharactersGraph(story, options) {
 
       for (var e = 0; e < emotionIds.length; e++) {
         var emotion = emotionIds[e];
-        var imgSrc = char.images[emotion].replace(/"/g, '&quot;');
+        var imgSrc = getGraphImageSrc(char.images[emotion]);
         var safeEmotion = escapeHtml(emotion);
 
         emotionsHtml += "<img src='" + imgSrc + "' " +
@@ -4898,8 +4905,10 @@ function buildBackgroundsGraph(story, options) {
 
     for (var i = 0; i < bgIds.length; i++) {
       var bgId = bgIds[i];
-      var imgSrc = allUniqueBgs[bgId].replace(/"/g, '&quot;');
+      var imgSrc = getGraphImageSrc(allUniqueBgs[bgId]);
       var safeBgId = escapeHtml(bgId);
+
+      if (!imgSrc) continue;
 
       bgImagesHtml += "<img src='" + imgSrc + "' " +
                   "class='bg-thumbnail " + bgCountClass + "' " +
@@ -4992,7 +5001,7 @@ function buildGamesGraph(story, options) {
     var safeGameId = escapeHtml(gameId);
     var safeTitle = escapeHtml(game.title || gameId);
     var safeDescription = escapeHtml(game.description || "");
-    var safeCover = escapeHtml(game.cover || "");
+    var safeCover = getGraphImageSrc(game.cover || "");
     
 
 
