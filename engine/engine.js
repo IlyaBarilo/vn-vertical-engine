@@ -5925,7 +5925,7 @@ function buildMermaidVariant(story, unreachableList, options) {
 function shouldUseCompactMermaid(fullCode, stats) {
   if (!fullCode) return false;
 
-  if (fullCode.length > 50) return true;
+  if (fullCode.length > 35000) return true;
   //35000
 
   if (stats && stats.sceneCount > 120) return true;
