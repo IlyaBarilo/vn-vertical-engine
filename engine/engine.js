@@ -3695,10 +3695,17 @@ window.addEventListener("resize", function() {
         // Не переинициализируем полностью, только обновляем размеры
         var svg = mermaidGraph.querySelector('svg');
         if (svg) {
+          var padding = 25;
           var bbox = svg.getBBox();
-          svg.setAttribute('width', bbox.width + 50);
-          svg.setAttribute('height', bbox.height + 50);
-          svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
+
+          var x = bbox.x - padding;
+          var y = bbox.y - padding;
+          var w = bbox.width + padding * 2;
+          var h = bbox.height + padding * 2;
+
+          svg.setAttribute('width', w);
+          svg.setAttribute('height', h);
+          svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
         }
       }
     }, 100);
@@ -4622,7 +4629,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         
         for (var b = 0; b < node.allBgImages.length; b++) {
           var bg = node.allBgImages[b];
-          var imgSrc = bg.src.replace(/"/g, '&quot;');
+          var imgSrc = getGraphImageSrc(bg.src);
           var safeBgId =  escapeHtml(bg.id || "");
 
           label += "<img src='" + imgSrc + "' " +
@@ -6090,10 +6097,17 @@ function forceRedraw(element) {
   // Находим SVG и обновляем его
   var svg = element.querySelector('svg');
   if (svg) {
+    var padding = 25;
     var bbox = svg.getBBox();
-    svg.setAttribute('width', bbox.width + 50);
-    svg.setAttribute('height', bbox.height + 50);
-    svg.setAttribute('viewBox', `0 0 ${bbox.width + 50} ${bbox.height + 50}`);
+
+    var x = bbox.x - padding;
+    var y = bbox.y - padding;
+    var w = bbox.width + padding * 2;
+    var h = bbox.height + padding * 2;
+
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   }
 }
 
