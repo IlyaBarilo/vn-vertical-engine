@@ -968,10 +968,13 @@ function normalizeAssetUrl(url) {
 }
 
 function getGraphImageSrc(src) {
-  var normalized = normalizeAssetUrl(src || "");
-  if (!normalized) return "";
+  var original = String(src || "").trim();
+  if (!original) return "";
+
+  var normalized = normalizeAssetUrl(original);
   if (failedAssets.images && failedAssets.images[normalized]) return "";
-  return escapeHtml(normalized);
+
+  return escapeHtml(original);
 }
 
 // Чтобы музыка не включалась слишком громко при старте
