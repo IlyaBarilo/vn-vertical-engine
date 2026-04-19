@@ -1170,23 +1170,19 @@ body {
 }
 
 /* Сами изображения */
+/* Отключаем конфликтующие стили для изображений в узлах */
 .graphContainer .mermaid .node img {
-  display: inline-block !important;  /* Вместо block, чтобы быть в строке */
-  object-fit: cover !important;
-  background-color: #f0f0f0 !important;
-  border-radius: 4px !important;
-  border: 1px solid #ccc !important;
-  transition: transform 0.2s ease !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  margin: 0 !important;  /* Убираем отступы */
-  vertical-align: middle !important; /* Выравнивание по вертикали */
-  position: relative !important;  /* Для правильного наложения */
-  z-index: 1 !important;
   cursor: zoom-in !important;
-
-  /* Убираем любые ограничения */
-  max-width: none !important;
-  max-height: none !important;
+  transform-origin: center center !important;
 }
 
 .graphContainer .mermaid .node img:hover {
