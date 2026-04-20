@@ -689,10 +689,18 @@ function syncCurrentMermaidCodeWithView() {
 
 function setStatsView(view) {
   var statsBody = document.getElementById("statsBody");
+  var previousView = currentStatsView;
+  var previousStateKey = getPanzoomStateKeyForView(previousView);
+  var currentStateKey;
   var isGraphView;
 
+  if (previousStateKey) {
+    savedPanzoomByView[previousStateKey] = clonePanzoomState();
+  }
+
   currentStatsView = view || "text";
-  isGraphView = (currentStatsView === "graph-full" || currentStatsView === "graph-objects");
+  currentStateKey = getPanzoomStateKeyForView(currentStatsView);
+  isGraphView = currentStateKey !== null;
 
   showingGraph = isGraphView;
   showingGames = (currentStatsView === "games");
@@ -719,11 +727,9 @@ function setStatsView(view) {
   }
 
   if (isGraphView) {
+    resetPanzoom();
     renderMermaidGraph();
-    setTimeout(resetPanzoom, 200);
-    setTimeout(function() {
-      resetPanzoom();
-    }, 500);
+    restorePanzoomWhenGraphReady(currentStateKey);
   }
 
   if (currentStatsView === "games") {
@@ -5681,6 +5687,86 @@ var panzoomState = {
   startTranslateX: 0,
   startTranslateY: 0
 };
+
+var savedPanzoomByView = {
+  "graph-full": null,
+  "graph-objects": null
+};
+
+function getPanzoomStateKeyForView(view) {
+  if (view === "graph-full" || view === "full") return "graph-full";
+  if (view === "graph-objects" || view === "intro") return "graph-intro";
+  return null;
+}
+
+function isGraphStatsView(view) {
+  return getPanzoomStateKeyForView(view) !== null;
+}
+
+function clonePanzoomState() {
+  return {
+    scale: panzoomState.scale,
+    translateX: panzoomState.translateX,
+    translateY: panzoomState.translateY
+  };
+}
+
+function applyPanzoomState(savedState) {
+  if (!savedState) {
+    resetPanzoom();
+    return;
+  }
+
+  panzoomState.scale = (typeof savedState.scale === "number") ? savedState.scale : 1;
+  panzoomState.translateX = (typeof savedState.translateX === "number") ? savedState.translateX : 0;
+  panzoomState.translateY = (typeof savedState.translateY === "number") ? savedState.translateY : 0;
+  panzoomState.isPanning = false;
+  panzoomState.panMode = "none";
+
+  updatePanzoomTransform();
+}
+
+function restorePanzoomWhenGraphReady(stateKey, attempt) {
+  attempt = attempt || 0;
+
+  var svg = mermaidGraph ? mermaidGraph.querySelector("svg") : null;
+  var images = mermaidGraph ? mermaidGraph.querySelectorAll("img") : [];
+  var hasPendingImages = false;
+  var i;
+
+  for (i = 0; i < images.length; i++) {
+    if (!images[i].complete) {
+      hasPendingImages = true;
+      break;
+    }
+  }
+
+  // Немного ждём готовности SVG/картинок,
+  // но не блокируем восстановление навсегда
+  if ((!svg || hasPendingImages) && attempt < 12) {
+    setTimeout(function() {
+      restorePanzoomWhenGraphReady(stateKey, attempt + 1);
+    }, 50);
+    return;
+  }
+
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      if (graphContainer) {
+        forceRedraw(graphContainer);
+      }
+
+      applyPanzoomState(savedPanzoomByView[stateKey]);
+
+      // Контрольный повтор после redraw/layout
+      setTimeout(function() {
+        applyPanzoomState(savedPanzoomByView[stateKey]);
+      }, 40);
+    });
+  });
+}
+
+
 
 // Переменные для обработчиков событий
 var panzoomHandlers = {};
