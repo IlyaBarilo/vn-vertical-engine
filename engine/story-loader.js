@@ -403,14 +403,6 @@
 
 
 
-
-
-    // Сохраняем JSON для отладки
-    try {
-      localStorage.setItem('story_debug', JSON.stringify(story, null, 2));
-      console.log('[Loader] JSON сохранён в localStorage.story_debug');
-    } catch (e) {}
-    
     // Передаём в движок
     window.STORY = story;
     
