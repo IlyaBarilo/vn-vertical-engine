@@ -727,7 +727,7 @@ function setStatsView(view) {
   }
 
   if (isGraphView) {
-    resetPanzoom();
+    neutralizePanzoomForRender();
     renderMermaidGraph();
     restorePanzoomWhenGraphReady(currentStateKey);
   }
@@ -5676,6 +5676,7 @@ var zoomResetBtn = document.getElementById("zoomResetBtn");
 // Состояние panzoom
 var panzoomState = {
   scale: 1,
+  fitScale: 1,
   minScale: 0.1,      // Минимальный масштаб до 10%
   maxScale: 500,       // Максимальный масштаб до 50000% (500x)
   translateX: 0,
@@ -5706,6 +5707,7 @@ function isGraphStatsView(view) {
 function clonePanzoomState() {
   return {
     scale: panzoomState.scale,
+    fitScale: panzoomState.fitScale,
     translateX: panzoomState.translateX,
     translateY: panzoomState.translateY
   };
@@ -5713,11 +5715,12 @@ function clonePanzoomState() {
 
 function applyPanzoomState(savedState) {
   if (!savedState) {
-    resetPanzoom();
+    fitGraphToViewport();
     return;
   }
 
-  panzoomState.scale = (typeof savedState.scale === "number") ? savedState.scale : 1;
+  panzoomState.fitScale = (typeof savedState.fitScale === "number") ? savedState.fitScale : 1;
+  panzoomState.scale = (typeof savedState.scale === "number") ? savedState.scale : panzoomState.fitScale;
   panzoomState.translateX = (typeof savedState.translateX === "number") ? savedState.translateX : 0;
   panzoomState.translateY = (typeof savedState.translateY === "number") ? savedState.translateY : 0;
   panzoomState.isPanning = false;
@@ -5780,30 +5783,111 @@ function updatePanzoomTransform() {
   
   // Обновляем отображение масштаба
   if (zoomLevelSpan) {
-    zoomLevelSpan.textContent = Math.round(panzoomState.scale * 100) + '%';
+    var baseScale = panzoomState.fitScale || 1;
+    zoomLevelSpan.textContent = Math.round((panzoomState.scale / baseScale) * 100) + '%';
   }
 }
 
-// Функция сброса panzoom
-function resetPanzoom() {
+function neutralizePanzoomForRender() {
   panzoomState.scale = 1;
   panzoomState.translateX = 0;
   panzoomState.translateY = 0;
   panzoomState.isPanning = false;
   panzoomState.panMode = 'none';
-  
-  // Принудительно применяем трансформацию
+
   if (panzoomContent) {
     panzoomContent.style.transform = 'translate(0px, 0px) scale(1)';
   }
-  
-  // Обновляем отображение масштаба
-  if (zoomLevelSpan) {
-    zoomLevelSpan.textContent = '100%';
-  }
-  
-  console.log('[Panzoom] Сброшен до 100%'); // для отладки
 }
+
+function fitGraphToViewport() {
+  var svg, wrapperRect, bbox;
+  var padding = 24;
+  var availableWidth, availableHeight;
+  var fitScale, offsetX, offsetY;
+
+  if (!panzoomWrapper || !panzoomContent) return;
+
+  svg = mermaidGraph ? mermaidGraph.querySelector("svg") : null;
+  if (!svg) {
+    panzoomState.fitScale = 1;
+    panzoomState.scale = 1;
+    panzoomState.translateX = 0;
+    panzoomState.translateY = 0;
+    updatePanzoomTransform();
+    return;
+  }
+
+  try {
+    bbox = svg.getBBox();
+  } catch (e) {
+    bbox = null;
+  }
+
+  wrapperRect = panzoomWrapper.getBoundingClientRect();
+
+  if (!bbox || !bbox.width || !bbox.height || !wrapperRect.width || !wrapperRect.height) {
+    panzoomState.fitScale = 1;
+    panzoomState.scale = 1;
+    panzoomState.translateX = 0;
+    panzoomState.translateY = 0;
+    updatePanzoomTransform();
+    return;
+  }
+
+  availableWidth = Math.max(10, wrapperRect.width - padding * 2);
+  availableHeight = Math.max(10, wrapperRect.height - padding * 2);
+
+  fitScale = Math.min(
+    availableWidth / bbox.width,
+    availableHeight / bbox.height
+  );
+
+  // Не увеличиваем маленький граф сверх 100%
+  fitScale = Math.min(1, fitScale);
+
+  if (!isFinite(fitScale) || fitScale <= 0) {
+    fitScale = 1;
+  }
+
+  offsetX = padding + (availableWidth - bbox.width * fitScale) / 2;
+  offsetY = padding + (availableHeight - bbox.height * fitScale) / 2;
+
+  panzoomState.fitScale = fitScale;
+  panzoomState.scale = fitScale;
+  panzoomState.translateX = offsetX - bbox.x * fitScale;
+  panzoomState.translateY = offsetY - bbox.y * fitScale;
+  panzoomState.isPanning = false;
+  panzoomState.panMode = 'none';
+
+  updatePanzoomTransform();
+
+  // Второй проход: центрируем уже по реальным экранным границам SVG,
+  // потому что getBBox() у Mermaid/foreignObject может давать неидеальный центр
+  requestAnimationFrame(function() {
+    var wrapperRect2, svgRect, deltaX, deltaY;
+
+    if (!panzoomWrapper || !svg) return;
+
+    wrapperRect2 = panzoomWrapper.getBoundingClientRect();
+    svgRect = svg.getBoundingClientRect();
+
+    deltaX = (wrapperRect2.left + wrapperRect2.width / 2) - (svgRect.left + svgRect.width / 2);
+    deltaY = (wrapperRect2.top + wrapperRect2.height / 2) - (svgRect.top + svgRect.height / 2);
+
+    if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
+      panzoomState.translateX += deltaX;
+      panzoomState.translateY += deltaY;
+      updatePanzoomTransform();
+    }
+  });
+}
+
+function resetPanzoom() {
+  fitGraphToViewport();
+}
+
+
 
 // Функция зумирования
 function zoom(delta, mouseX, mouseY) {
