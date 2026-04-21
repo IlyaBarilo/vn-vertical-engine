@@ -1145,15 +1145,28 @@
   }
 
   function bindUiButton(button, handler) {
-    const stop = (event) => stopEvent(event);
-    ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach((type) => {
-      button.addEventListener(type, stop, { passive: false });
+    // Останавливаем всплытие для всех событий ввода, но без preventDefault
+    const stopPropagationOnly = (event) => {
+      event.stopPropagation();
+      // preventDefault не вызываем, чтобы не блокировать click
+    };
+
+    // Для событий, которые могут вызвать нежелательные системные действия (например, контекстное меню),
+    // можно оставить preventDefault только на самых критичных, но для кнопки это не нужно.
+    // Однако для совместимости с touch-action: none на родителе оставим только stopPropagation.
+    ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach((type) => {
+      button.addEventListener(type, stopPropagationOnly, { passive: false });
     });
+
+    // Визуальный фидбек (нажатие) – используем pointerdown/up без preventDefault
     button.addEventListener('pointerdown', () => button.classList.add('is-pressed'), { passive: false });
     button.addEventListener('pointerup', () => button.classList.remove('is-pressed'), { passive: false });
     button.addEventListener('pointercancel', () => button.classList.remove('is-pressed'), { passive: false });
+
+    // Обработчик клика – здесь можно сделать preventDefault, чтобы избежать случайных действий
     button.addEventListener('click', (event) => {
-      stop(event);
+      event.preventDefault();
+      event.stopPropagation();
       if (!resultSent) handler();
     }, { passive: false });
   }
