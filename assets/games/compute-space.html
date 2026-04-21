@@ -1,0 +1,2878 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Вычислительное пространство</title>
+<style>
+  :root { --scale: 1; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    background: #020611;
+    color: #eef8ff;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #gameRoot {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    background: radial-gradient(circle at 50% 20%, #0a1736 0%, #020611 55%, #01030a 100%);
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  #uiRoot {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+  }
+  .hidden { display: none !important; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(32px * var(--scale));
+    background:
+      radial-gradient(circle at 50% 30%, rgba(89, 146, 255, 0.18), rgba(2, 8, 20, 0.92) 48%, rgba(1, 3, 10, 0.98) 100%),
+      linear-gradient(180deg, rgba(6, 20, 45, 0.95), rgba(1, 5, 14, 0.96));
+    backdrop-filter: blur(calc(10px * var(--scale)));
+  }
+  .panel {
+    position: relative;
+    width: min(calc(620px * var(--scale)), 100%);
+    border: calc(2px * var(--scale)) solid rgba(121, 201, 255, 0.26);
+    border-radius: calc(28px * var(--scale));
+    padding: calc(28px * var(--scale));
+    background:
+      linear-gradient(180deg, rgba(16, 34, 70, 0.92), rgba(6, 14, 28, 0.96));
+    box-shadow:
+      0 0 calc(30px * var(--scale)) rgba(64, 160, 255, 0.2),
+      inset 0 0 calc(30px * var(--scale)) rgba(137, 207, 255, 0.08);
+  }
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: calc(10px * var(--scale));
+    border: calc(1px * var(--scale)) solid rgba(160, 232, 255, 0.12);
+    border-radius: calc(20px * var(--scale));
+    pointer-events: none;
+  }
+  .title {
+    margin: 0 0 calc(18px * var(--scale));
+    font-size: calc(42px * var(--scale));
+    font-weight: 800;
+    letter-spacing: calc(0.7px * var(--scale));
+    line-height: 1.04;
+  }
+  .subtitle {
+    margin: 0 0 calc(18px * var(--scale));
+    font-size: calc(21px * var(--scale));
+    line-height: 1.45;
+    color: rgba(235, 247, 255, 0.92);
+  }
+  .tips {
+    display: grid;
+    gap: calc(10px * var(--scale));
+    margin: 0 0 calc(24px * var(--scale));
+    font-size: calc(18px * var(--scale));
+    line-height: 1.4;
+    color: rgba(197, 228, 255, 0.88);
+  }
+  .button {
+    appearance: none;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    width: 100%;
+    min-height: calc(88px * var(--scale));
+    padding: calc(18px * var(--scale)) calc(24px * var(--scale));
+    border-radius: calc(22px * var(--scale));
+    font-size: calc(24px * var(--scale));
+    font-weight: 800;
+    letter-spacing: calc(0.6px * var(--scale));
+    color: #f9fdff;
+    background:
+      linear-gradient(180deg, rgba(76, 184, 255, 0.95), rgba(45, 110, 240, 0.95));
+    box-shadow:
+      0 calc(10px * var(--scale)) calc(24px * var(--scale)) rgba(30, 120, 255, 0.28),
+      inset 0 0 calc(18px * var(--scale)) rgba(255,255,255,0.18);
+    transform: translateY(0);
+    transition: transform 0.08s ease, filter 0.08s ease;
+  }
+  .button:active,
+  .button.is-pressed {
+    transform: translateY(calc(2px * var(--scale))) scale(0.99);
+    filter: brightness(1.08);
+  }
+  #hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .hud-top {
+    position: absolute;
+    top: calc(34px * var(--scale));
+    left: calc(26px * var(--scale));
+    right: calc(26px * var(--scale));
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: calc(14px * var(--scale));
+  }
+  .hud-box {
+    padding: calc(12px * var(--scale)) calc(14px * var(--scale));
+    border-radius: calc(18px * var(--scale));
+    background: rgba(4, 13, 28, 0.58);
+    border: calc(1px * var(--scale)) solid rgba(147, 215, 255, 0.16);
+    box-shadow: inset 0 0 calc(20px * var(--scale)) rgba(132, 204, 255, 0.05);
+  }
+  .hud-label {
+    font-size: calc(13px * var(--scale));
+    line-height: 1;
+    letter-spacing: calc(1.4px * var(--scale));
+    text-transform: uppercase;
+    color: rgba(180, 223, 255, 0.72);
+    margin-bottom: calc(8px * var(--scale));
+  }
+  .bar {
+    height: calc(14px * var(--scale));
+    border-radius: calc(999px * var(--scale));
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .bar > span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(109,237,255,0.9), rgba(154,255,245,0.95));
+    box-shadow: 0 0 calc(18px * var(--scale)) rgba(121, 245, 255, 0.38);
+  }
+  #syncFill {
+    background: linear-gradient(90deg, rgba(149,148,255,0.95), rgba(107,238,255,0.95));
+    box-shadow: 0 0 calc(18px * var(--scale)) rgba(124, 168, 255, 0.34);
+  }
+  #stageBox {
+    min-width: calc(132px * var(--scale));
+    text-align: center;
+  }
+  #stageValue {
+    font-size: calc(28px * var(--scale));
+    font-weight: 800;
+    line-height: 1;
+  }
+  #messageBox {
+    position: absolute;
+    left: 50%;
+    top: calc(140px * var(--scale));
+    transform: translateX(-50%);
+    min-width: calc(280px * var(--scale));
+    max-width: min(calc(620px * var(--scale)), calc(100% - 60px * var(--scale)));
+    text-align: center;
+    padding: calc(12px * var(--scale)) calc(18px * var(--scale));
+    border-radius: calc(18px * var(--scale));
+    background: rgba(4, 13, 28, 0.5);
+    border: calc(1px * var(--scale)) solid rgba(151, 220, 255, 0.14);
+    font-size: calc(18px * var(--scale));
+    color: rgba(226, 245, 255, 0.95);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+  #messageBox.visible { opacity: 1; }
+  #reticle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(46px * var(--scale));
+    height: calc(46px * var(--scale));
+    margin-left: calc(-23px * var(--scale));
+    margin-top: calc(-23px * var(--scale));
+    border-radius: 50%;
+    border: calc(2px * var(--scale)) solid rgba(178, 235, 255, 0.35);
+    box-shadow: 0 0 calc(18px * var(--scale)) rgba(124, 199, 255, 0.14), inset 0 0 calc(12px * var(--scale)) rgba(157, 243, 255, 0.08);
+    pointer-events: none;
+  }
+  #reticle::before,
+  #reticle::after {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    background: rgba(207, 243, 255, 0.42);
+    transform: translate(-50%, -50%);
+  }
+  #reticle::before { width: calc(14px * var(--scale)); height: calc(2px * var(--scale)); }
+  #reticle::after { width: calc(2px * var(--scale)); height: calc(14px * var(--scale)); }
+  #controlsLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 110;
+    pointer-events: none;
+    display: none !important;
+  }
+  #joystickWrap {
+    position: absolute;
+    left: calc(34px * var(--scale));
+    bottom: calc(170px * var(--scale));
+    width: calc(220px * var(--scale));
+    height: calc(220px * var(--scale));
+    border-radius: 50%;
+    pointer-events: auto;
+  }
+  #joystickBase {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(112,194,255,0.16), rgba(10,24,48,0.68) 68%);
+    border: calc(2px * var(--scale)) solid rgba(134, 218, 255, 0.2);
+    box-shadow: inset 0 0 calc(18px * var(--scale)) rgba(121, 201, 255, 0.12), 0 0 calc(20px * var(--scale)) rgba(77, 162, 255, 0.14);
+  }
+  #joystickKnob {
+    position: absolute;
+    width: calc(92px * var(--scale));
+    height: calc(92px * var(--scale));
+    left: 50%;
+    top: 50%;
+    margin-left: calc(-46px * var(--scale));
+    margin-top: calc(-46px * var(--scale));
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.2), rgba(110,212,255,0.25) 42%, rgba(24,69,115,0.95) 85%);
+    border: calc(2px * var(--scale)) solid rgba(174, 233, 255, 0.24);
+    box-shadow: 0 0 calc(18px * var(--scale)) rgba(102, 206, 255, 0.24), inset 0 0 calc(16px * var(--scale)) rgba(255,255,255,0.12);
+  }
+  #actionWrap {
+    position: absolute;
+    right: calc(34px * var(--scale));
+    bottom: calc(186px * var(--scale));
+    width: calc(200px * var(--scale));
+    height: calc(200px * var(--scale));
+    pointer-events: auto;
+  }
+  #stabilizeButton {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: calc(2px * var(--scale)) solid rgba(196, 233, 255, 0.24);
+    background:
+      radial-gradient(circle at 35% 30%, rgba(255,255,255,0.2), rgba(123, 134, 255, 0.22) 36%, rgba(21, 34, 94, 0.96) 78%);
+    box-shadow:
+      0 0 calc(28px * var(--scale)) rgba(114, 144, 255, 0.2),
+      inset 0 0 calc(26px * var(--scale)) rgba(165, 220, 255, 0.08);
+    color: #eff7ff;
+    font-size: calc(17px * var(--scale));
+    font-weight: 800;
+    letter-spacing: calc(1px * var(--scale));
+    text-transform: uppercase;
+    padding: calc(18px * var(--scale));
+    line-height: 1.1;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.08s ease, box-shadow 0.16s ease;
+  }
+  #stabilizeButton.active-window {
+    box-shadow:
+      0 0 calc(42px * var(--scale)) rgba(131, 246, 255, 0.35),
+      inset 0 0 calc(28px * var(--scale)) rgba(168, 255, 244, 0.16);
+    filter: brightness(1.08);
+  }
+  #stabilizeButton:active,
+  #stabilizeButton.is-pressed {
+    transform: scale(0.97);
+    filter: brightness(1.1);
+  }
+  #phaseLabel {
+    position: absolute;
+    left: calc(34px * var(--scale));
+    bottom: calc(116px * var(--scale));
+    max-width: calc(320px * var(--scale));
+    padding: calc(10px * var(--scale)) calc(14px * var(--scale));
+    border-radius: calc(16px * var(--scale));
+    background: rgba(4, 13, 28, 0.52);
+    border: calc(1px * var(--scale)) solid rgba(147, 215, 255, 0.14);
+    font-size: calc(17px * var(--scale));
+    color: rgba(220, 242, 255, 0.9);
+    pointer-events: none;
+  }
+  #hintBubble {
+    position: absolute;
+    right: calc(34px * var(--scale));
+    bottom: calc(402px * var(--scale));
+    max-width: calc(250px * var(--scale));
+    padding: calc(10px * var(--scale)) calc(14px * var(--scale));
+    border-radius: calc(16px * var(--scale));
+    background: rgba(15, 28, 66, 0.72);
+    border: calc(1px * var(--scale)) solid rgba(155, 231, 255, 0.18);
+    font-size: calc(17px * var(--scale));
+    color: rgba(235, 249, 255, 0.95);
+    opacity: 0;
+    transform: translateY(calc(8px * var(--scale)));
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+  }
+  #hintBubble.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #startOverlay { pointer-events: none; }
+  #startOverlay .panel,
+  #startOverlay .panel * { pointer-events: auto; }
+  .dragHandle {
+    position: absolute;
+    left: 50%;
+    top: calc(-36px * var(--scale));
+    transform: translateX(-50%);
+    min-width: calc(126px * var(--scale));
+    height: calc(34px * var(--scale));
+    padding: 0 calc(12px * var(--scale));
+    border-radius: calc(999px * var(--scale));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(6px * var(--scale));
+    background: rgba(7, 17, 38, 0.8);
+    border: calc(1px * var(--scale)) solid rgba(152, 225, 255, 0.22);
+    color: rgba(233, 248, 255, 0.92);
+    font-size: calc(14px * var(--scale));
+    font-weight: 700;
+    letter-spacing: calc(0.5px * var(--scale));
+    box-shadow: 0 0 calc(16px * var(--scale)) rgba(79, 160, 255, 0.15);
+    cursor: grab;
+    pointer-events: auto;
+    touch-action: none;
+    z-index: 2;
+  }
+  .dragHandle:active,
+  .dragHandle.is-dragging { cursor: grabbing; }
+  .dragHandle::before {
+    content: "⠿";
+    font-size: calc(16px * var(--scale));
+    opacity: 0.9;
+  }
+  #settingsPanel {
+    position: absolute;
+    top: calc(118px * var(--scale));
+    right: calc(26px * var(--scale));
+    z-index: 140;
+    width: min(calc(280px * var(--scale)), calc(100% - 52px * var(--scale)));
+    padding: calc(14px * var(--scale)) calc(16px * var(--scale));
+    border-radius: calc(20px * var(--scale));
+    background: rgba(6, 17, 39, 0.76);
+    border: calc(1px * var(--scale)) solid rgba(152, 225, 255, 0.18);
+    box-shadow: 0 0 calc(18px * var(--scale)) rgba(76, 151, 255, 0.12), inset 0 0 calc(16px * var(--scale)) rgba(255,255,255,0.04);
+    backdrop-filter: blur(calc(8px * var(--scale)));
+    pointer-events: auto;
+  }
+  .settings-title {
+    margin: 0 0 calc(10px * var(--scale));
+    font-size: calc(14px * var(--scale));
+    letter-spacing: calc(1.2px * var(--scale));
+    text-transform: uppercase;
+    color: rgba(184, 226, 255, 0.76);
+  }
+  .settings-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: calc(10px * var(--scale));
+    font-size: calc(16px * var(--scale));
+    color: rgba(236, 247, 255, 0.94);
+  }
+  #resolutionValue {
+    min-width: calc(54px * var(--scale));
+    text-align: right;
+    font-weight: 800;
+  }
+  #resolutionSlider {
+    width: 100%;
+    margin-top: calc(12px * var(--scale));
+    accent-color: #7bd8ff;
+    cursor: pointer;
+  }
+  .settings-note {
+    margin-top: calc(8px * var(--scale));
+    font-size: calc(13px * var(--scale));
+    line-height: 1.35;
+    color: rgba(188, 223, 255, 0.72);
+  }
+</style>
+</head>
+<body>
+<div id="gameRoot">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="uiRoot">
+    <div id="hud" class="hidden" data-ui="true">
+      <div class="hud-top" data-ui="true">
+        <div class="hud-box" data-ui="true">
+          <div class="hud-label">Стабильность</div>
+          <div class="bar"><span id="integrityFill"></span></div>
+        </div>
+        <div id="stageBox" class="hud-box" data-ui="true">
+          <div class="hud-label">Стадия</div>
+          <div id="stageValue">1 / 4</div>
+        </div>
+        <div class="hud-box" data-ui="true">
+          <div class="hud-label">Синхронизация</div>
+          <div class="bar"><span id="syncFill"></span></div>
+        </div>
+      </div>
+      <div id="messageBox" data-ui="true"></div>
+      <div id="reticle" data-ui="true"></div>
+    </div>
+
+    <div id="controlsLayer" data-ui="true">
+      <div id="joystickWrap" class="ui-control" data-ui="true">
+        <div id="joystickDragHandle" class="dragHandle" data-ui="true">Перетащить</div>
+        <div id="joystickBase" data-ui="true"></div>
+        <div id="joystickKnob" data-ui="true"></div>
+      </div>
+      <div id="actionWrap" class="ui-control" data-ui="true">
+        <div id="actionDragHandle" class="dragHandle" data-ui="true">Перетащить</div>
+        <button id="stabilizeButton" class="button ui-control" data-ui="true">Стабилизация</button>
+      </div>
+      <div id="phaseLabel" data-ui="true">Входной тоннель</div>
+      <div id="hintBubble" data-ui="true">Нажмите «Стабилизация» в окне синхронизации</div>
+    </div>
+
+    <div id="settingsPanel" data-ui="true">
+      <div class="settings-title">Производительность</div>
+      <div class="settings-row" data-ui="true">
+        <div>Render scale</div>
+        <div id="resolutionValue" data-ui="true">100%</div>
+      </div>
+      <input id="resolutionSlider" data-ui="true" type="range" min="5" max="100" step="5" value="100">
+      <div class="settings-note" data-ui="true">Уменьшайте значение, если хотите снизить нагрузку на компьютер.</div>
+    </div>
+
+    <div id="startOverlay" class="overlay" data-ui="true">
+      <div class="panel" data-ui="true">
+        <h1 class="title">Вычислительное пространство</h1>
+        <p class="subtitle">Погрузитесь внутрь цифровой модели университетской системы: удерживайте маршрут, собирайте узлы и стабилизируйте ядро.</p>
+        <div class="tips" data-ui="true">
+          <div>• Левый круговой контрол задаёт направление полёта.</div>
+          <div>• Избегайте перегруженных блоков и шумовых кластеров.</div>
+          <div>• Кнопку «Стабилизация» нажимайте, когда появляются светящиеся ворота или активное окно у ядра.</div>
+          <div>• Оба элемента управления можно перетаскивать за верхнюю плашку ещё до старта игры.</div>
+        </div>
+        <button id="startButton" class="button" data-ui="true">Начать</button>
+      </div>
+    </div>
+
+    <div id="finishOverlay" class="overlay hidden" data-ui="true">
+      <div class="panel" data-ui="true">
+        <h2 id="finishTitle" class="title">Синхронизация завершена</h2>
+        <p id="finishText" class="subtitle">Маршрут стабилизирован.</p>
+        <div class="tips" data-ui="true">
+          <div id="finishStats1">Стабильность: 0%</div>
+          <div id="finishStats2">Синхронизация: 0%</div>
+          <div id="finishStats3">Этапов пройдено: 0 / 4</div>
+        </div>
+        <button id="finishButton" class="button" data-ui="true">Подтвердить результат</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const BASE_W = 810;
+  const BASE_H = 1440;
+  const HAS_POINTER_EVENTS = 'PointerEvent' in window;
+
+  // ============================================================
+  // ОСНОВНЫЕ НАСТРОЙКИ ДЛЯ БЫСТРОЙ РУЧНОЙ ПОДСТРОЙКИ
+  // Меняйте сначала этот блок, если хотите сделать игру проще/сложнее.
+  // ============================================================
+  const MAIN_TUNING = {
+    // Насколько большими выглядят кольца и насколько легко в них попасть.
+    ringSizeMultiplier: 1.9,
+
+    // Насколько большими выглядят ворота стабилизации.
+    gateSizeMultiplier: 1.22,
+
+    // Размер финального ядра.
+    coreSizeMultiplier: 1.08,
+
+    // Общая "ширина" игрока для подбора объектов и столкновений.
+    playerRadius: 0.2,
+
+    // Дополнительная поблажка для колец при проверке попадания.
+    ringCollisionBonus: 0.34,
+
+    // Дополнительная поблажка для полезных узлов.
+    pickupCollisionBonus: 0.1,
+
+    // Насколько проще попасть в окно стабилизации.
+    gateAlignMultiplier: 1.14,
+
+    // Насколько рано объекты появляются впереди. Меньше значение = объекты кажутся крупнее раньше.
+    spawnZMin: 11,
+    spawnZMax: 15.5,
+
+    // Общий масштаб перспективы. Больше = объекты визуально крупнее.
+    fovBase: 1.42,
+
+    // Общая скорость полёта. Меньше = проще целиться.
+    forwardSpeedMultiplier: 0.94,
+
+    // Начальный render scale. 100 = полное разрешение, 5 = сильное снижение нагрузки.
+    defaultRenderScalePercent: 100,
+  };
+
+
+
+  const RING_RENDER_TUNING = {
+  // Базовая скорость вращения большого кольца
+  spinSpeed: 0.18,
+
+  // Скорость встречного внутреннего слоя
+  counterSpinSpeed: 0.09,
+
+  // Дополнительное ускорение, когда кольцо ближе к игроку
+  nearSpinBoost: 1.05,
+
+  // С какой глубины начинать ускорение
+  nearSpinStartZ: 8.0,
+
+  // На какой глубине ускорение уже максимально
+  nearSpinEndZ: 1.2,
+
+  // Скорость небольшого локального поворота сегментов
+  segmentTwistSpeed: 1.15,
+
+  // Амплитуда локального поворота сегментов
+  segmentTwistAmount: 0.03,
+
+  // Насколько кольцо “дышит” по радиусу
+  pulseAmount: 0.2,
+  ringSpawnIntervalMin: 1.05,
+  ringSpawnIntervalMax: 1.45,
+
+  // Здесь удобнее всего менять скорость полёта
+  forwardSpeedMultiplier: 0.9,
+};
+
+
+  const CONFIG = {
+    tunnelLength: 18,
+    spawnZMin: MAIN_TUNING.spawnZMin,
+    spawnZMax: MAIN_TUNING.spawnZMax,
+    playerRadius: MAIN_TUNING.playerRadius,
+    baseForwardSpeed: 3.2,
+    maxLateralSpeed: 1.78,
+    lateralAccel: 3.8,
+    lateralDamping: 4.2,
+    collisionPenalty: 14,
+    noisePenalty: 9,
+    routeReward: 5,
+    memoryReward: 7,
+    ringReward: 2,
+    gateReward: 10,
+    failPulsePenalty: 18,
+    maxMessagesTime: 1.4,
+    stageDurations: [20, 26, 25, 24],
+    playerBoundsX: 1.35,
+    playerBoundsY: 1.15,
+    starCount: 90,
+    railCount: 11,
+    gridLineCount: 9,
+    fovBase: MAIN_TUNING.fovBase,
+    easy: {
+      forwardMul: 0.94,
+      densityMul: 0.8,
+      penaltyMul: 0.85,
+      gateWindow: 1.45,
+      secretSync: 76,
+      baseSync: 42,
+      secretIntegrity: 58,
+      baseIntegrity: 18,
+    },
+    normal: {
+      forwardMul: 1,
+      densityMul: 1,
+      penaltyMul: 1,
+      gateWindow: 1.1,
+      secretSync: 80,
+      baseSync: 48,
+      secretIntegrity: 62,
+      baseIntegrity: 24,
+    },
+    hard: {
+      forwardMul: 1.08,
+      densityMul: 1.22,
+      penaltyMul: 1.16,
+      gateWindow: 0.9,
+      secretSync: 84,
+      baseSync: 52,
+      secretIntegrity: 65,
+      baseIntegrity: 28,
+    },
+  };
+
+    const BACKGROUND_FX = {
+    farDust: {
+      enabled: true,
+
+      // Количество далёких мягких частиц
+      count: 120,
+
+      // Зона разброса в мировых координатах
+      spreadX: 5.6,
+      spreadY: 8.2,
+
+      // Дистанция появления
+      spawnZMin: 24,
+      spawnZMax: 58,
+
+      // Когда удалять и пересоздавать
+      despawnZ: 11,
+
+      // Скорость пролёта относительно общей скорости мира
+      speedMul: 0.18,
+
+      // Медленный собственный дрейф
+      driftX: 0.0,
+      driftY: 0.04,
+
+      // Насколько слой реагирует на движение игрока
+      parallaxX: 0.08,
+      parallaxY: 0.06,
+
+      // Размеры
+      sizeMin: 0.6,
+      sizeMax: 2.2,
+
+      // Прозрачность
+      alphaMin: 0.03,
+      alphaMax: 0.14,
+
+      // Цвет
+      hueMin: 185,
+      hueMax: 220,
+    },
+
+    farStreaks: {
+      enabled: true,
+
+      // Редкие дальние полосы / световые штрихи
+      count: 18,
+
+      spreadX: 6.4,
+      spreadY: 9.0,
+
+      spawnZMin: 28,
+      spawnZMax: 64,
+      despawnZ: 13,
+
+      speedMul: 0.24,
+
+      driftX: 0.0,
+      driftY: 0.018,
+
+      parallaxX: 0.06,
+      parallaxY: 0.04,
+
+      lengthMin: 18,
+      lengthMax: 56,
+      thicknessMin: 0.8,
+      thicknessMax: 1.8,
+
+      alphaMin: 0.04,
+      alphaMax: 0.10,
+
+      hueMin: 190,
+      hueMax: 225,
+
+      angleMin: -0.55,
+      angleMax: 0.55,
+
+      wobbleAmp: 0.08,
+      wobbleSpeedMin: 0.4,
+      wobbleSpeedMax: 1.1,
+    },
+      depthBands: {
+      enabled: true,
+
+      // Количество больших дальних лент
+      count: 7,
+
+      spreadX: 6.6,
+      spreadY: 7.4,
+
+      spawnZMin: 30,
+      spawnZMax: 72,
+      despawnZ: 16,
+
+      // Медленнее частиц, чтобы читалась глубина
+      speedMul: 0.12,
+
+      driftX: 0.0,
+      driftY: 0.012,
+
+      // Очень мягкая реакция на движение игрока
+      parallaxX: 0.04,
+      parallaxY: 0.035,
+
+      // Размеры лент
+      widthMin: 1400,
+      widthMax: 2600,
+      heightMin: 120,
+      heightMax: 280,
+
+      // Прозрачность
+      alphaMin: 0.03,
+      alphaMax: 0.085,
+
+      // Цвет
+      hueMin: 190,
+      hueMax: 235,
+
+      // Общий наклон
+      angleMin: -0.75,
+      angleMax: 0.75,
+
+      // Медленное покачивание
+      wobbleAmp: 0.18,
+      wobbleSpeedMin: 0.18,
+      wobbleSpeedMax: 0.45,
+
+      // Внутренний более яркий слой
+      coreScale: 0.34,
+      coreAlphaMul: 1.35,
+    },
+
+
+        megaArcs: {
+      enabled: true,
+
+      // Количество дальних больших конструкций
+      count: 4,
+
+      spreadX: 6.8,
+      spreadY: 6.2,
+
+      spawnZMin: 34,
+      spawnZMax: 82,
+      despawnZ: 20,
+
+      // Очень медленно летят, чтобы ощущались гигантскими
+      speedMul: 0.095,
+
+      driftX: 0.0,
+      driftY: 0.008,
+
+      parallaxX: 0.03,
+      parallaxY: 0.025,
+
+      // Радиус дуг
+      radiusMin: 260,
+      radiusMax: 560,
+
+      // Толщина сегментов
+      thicknessMin: 5,
+      thicknessMax: 14,
+
+      alphaMin: 0.03,
+      alphaMax: 0.085,
+
+      hueMin: 188,
+      hueMax: 232,
+
+      // Насколько дуга сплюснута по вертикали
+      squashMin: 0.46,
+      squashMax: 0.92,
+
+      // Сколько сегментов в дуге
+      segmentCountMin: 10,
+      segmentCountMax: 18,
+
+      // Насколько большие разрывы между сегментами
+      gapRatioMin: 0.18,
+      gapRatioMax: 0.34,
+
+      // Общая длина дуги
+      arcSpanMin: Math.PI * 0.7,
+      arcSpanMax: Math.PI * 1.45,
+
+      // Медленное вращение
+      rotationSpeedMin: -0.08,
+      rotationSpeedMax: 0.08,
+
+      // Дополнительный внутренний свет
+      coreAlphaMul: 1.25,
+    },
+  };
+
+  const STAGES = [
+    { key: 'entry', name: 'Входной тоннель', colorA: '#0b214e', colorB: '#09122a', message: 'Калибровка маршрута' },
+    { key: 'routing', name: 'Маршрутизация', colorA: '#0d3158', colorB: '#091027', message: 'Выберите безопасные каналы' },
+    { key: 'memory', name: 'Зона памяти', colorA: '#2a1756', colorB: '#080d24', message: 'Синхронизируйте узлы памяти' },
+    { key: 'core', name: 'Центральное ядро', colorA: '#133868', colorB: '#050913', message: 'Удержите канал до ядра' },
+  ];
+
+    const STAGE_BACKGROUND_PROFILES = [
+    {
+      key: 'entry',
+
+      showDust: true,
+      showStreaks: true,
+      showBands: true,
+      showArcs: true,
+
+      hueShift: 0,
+
+      dustAlphaMul: 0.78,
+      streakAlphaMul: 0.42,
+      bandAlphaMul: 0.55,
+      arcAlphaMul: 0.42,
+
+      dustSpeedMul: 0.92,
+      streakSpeedMul: 0.78,
+      bandSpeedMul: 0.84,
+      arcSpeedMul: 0.84,
+    },
+    {
+      key: 'routing',
+
+      showDust: true,
+      showStreaks: true,
+      showBands: true,
+      showArcs: true,
+
+      hueShift: 10,
+
+      dustAlphaMul: 1.0,
+      streakAlphaMul: 1.05,
+      bandAlphaMul: 0.78,
+      arcAlphaMul: 0.7,
+
+      dustSpeedMul: 1.0,
+      streakSpeedMul: 1.08,
+      bandSpeedMul: 0.95,
+      arcSpeedMul: 0.92,
+    },
+    {
+      key: 'memory',
+
+      showDust: true,
+      showStreaks: false,
+      showBands: true,
+      showArcs: true,
+
+      hueShift: 22,
+
+      dustAlphaMul: 0.72,
+      streakAlphaMul: 0.0,
+      bandAlphaMul: 1.18,
+      arcAlphaMul: 0.72,
+
+      dustSpeedMul: 0.88,
+      streakSpeedMul: 0.7,
+      bandSpeedMul: 0.82,
+      arcSpeedMul: 0.86,
+    },
+    {
+      key: 'core',
+
+      showDust: true,
+      showStreaks: true,
+      showBands: true,
+      showArcs: true,
+
+      hueShift: 34,
+
+      dustAlphaMul: 0.9,
+      streakAlphaMul: 0.82,
+      bandAlphaMul: 1.35,
+      arcAlphaMul: 1.18,
+
+      dustSpeedMul: 1.02,
+      streakSpeedMul: 0.9,
+      bandSpeedMul: 0.92,
+      arcSpeedMul: 0.96,
+    },
+  ];
+
+
+  const gameRoot = document.getElementById('gameRoot');
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const uiRoot = document.getElementById('uiRoot');
+  const hud = document.getElementById('hud');
+  const controlsLayer = document.getElementById('controlsLayer');
+  const startOverlay = document.getElementById('startOverlay');
+  const finishOverlay = document.getElementById('finishOverlay');
+  const startButton = document.getElementById('startButton');
+  const finishButton = document.getElementById('finishButton');
+  const actionWrap = document.getElementById('actionWrap');
+  const stabilizeButton = document.getElementById('stabilizeButton');
+  const joystickWrap = document.getElementById('joystickWrap');
+  const joystickKnob = document.getElementById('joystickKnob');
+  const joystickDragHandle = document.getElementById('joystickDragHandle');
+  const actionDragHandle = document.getElementById('actionDragHandle');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const resolutionSlider = document.getElementById('resolutionSlider');
+  const resolutionValue = document.getElementById('resolutionValue');
+  const integrityFill = document.getElementById('integrityFill');
+  const syncFill = document.getElementById('syncFill');
+  const stageValue = document.getElementById('stageValue');
+  const phaseLabel = document.getElementById('phaseLabel');
+  const messageBox = document.getElementById('messageBox');
+  const hintBubble = document.getElementById('hintBubble');
+  const finishTitle = document.getElementById('finishTitle');
+  const finishText = document.getElementById('finishText');
+  const finishStats1 = document.getElementById('finishStats1');
+  const finishStats2 = document.getElementById('finishStats2');
+  const finishStats3 = document.getElementById('finishStats3');
+
+  let viewportW = 0;
+  let viewportH = 0;
+  let scale = 1;
+  let difficulty = 2;
+  let initReceived = false;
+  let localInitPerformed = false;
+  let resultSent = false;
+  let gameStarted = false;
+  let finished = false;
+  let animationHandle = 0;
+  let lastTime = 0;
+  let deltaClamp = 0.035;
+  let renderScalePercent = 100;
+
+  const state = {
+    stageIndex: 0,
+    stageElapsed: 0,
+    totalElapsed: 0,
+    integrity: 100,
+    sync: 0,
+    stageCompleted: 0,
+    coreReached: false,
+    finalizeReady: false,
+    finishResult: 0,
+    finishShown: false,
+    messageText: '',
+    messageTimer: 0,
+    hintTimer: 0,
+    activeGate: null,
+    forwardDistance: 0,
+    player: {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      targetX: 0,
+      targetY: 0,
+      roll: 0,
+    },
+    visualPulse: 0,
+    hitFlash: 0,
+    stars: [],
+    farDust: [],
+    farStreaks: [],
+    depthBands: [],
+    megaArcs: [],
+    objects: [],
+    spawnTimers: [0.4, 0.5, 0.6, 0.6],
+    gatePatternIndex: 0,
+    lastCollisionAt: 0,
+    syncBursts: [],
+  };
+
+  const joystickState = {
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    inputX: 0,
+    inputY: 0,
+    radius: 0,
+  };
+
+  const actionState = {
+    pressed: false,
+    pointerId: null,
+  };
+
+  // ============================================================
+  // РАСПОЛОЖЕНИЕ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ
+  // x/y — центр элемента в долях экрана: 0..1
+  // Эти значения можно менять вручную, если хотите задать позиции кодом.
+  // ============================================================
+  const CONTROL_LAYOUT = {
+    joystick: { x: 0.17, y: 0.83, size: 220 },
+    action: { x: 0.83, y: 0.81, size: 200 },
+    clampPadding: 20,
+  };
+
+  const controlDragState = {
+    active: false,
+    target: null,
+    pointerId: null,
+    offsetX: 0,
+    offsetY: 0,
+  };
+
+  // ============================================================
+  // HOOKS ДЛЯ ДАЛЬНЕЙШИХ ДОБАВОК
+  // Сюда удобно вставлять новые фоновые элементы, дополнительный рендер
+  // и обновления, не ломая основную структуру.
+  //
+  // Примеры использования:
+  // EXTENSIONS.afterBackground.push(({ ctx, viewportW, viewportH, state }) => { ... });
+  // EXTENSIONS.afterGuide.push(({ ctx, state, project }) => { ... });
+  // EXTENSIONS.afterUpdate.push(({ dt, state }) => { ... });
+  // EXTENSIONS.customObjectDrawers.myType = ({ obj, ctx, project, state }) => { ... };
+  // ============================================================
+  const EXTENSIONS = {
+    beforeBackground: [],
+    afterBackground: [],
+    beforeGuide: [],
+    afterGuide: [],
+    beforeObjects: [],
+    afterObjects: [],
+    afterUpdate: [],
+    afterSpawn: [],
+    customObjectDrawers: Object.create(null),
+  };
+
+  function runExtensionList(listName, payload) {
+    const list = EXTENSIONS[listName];
+    if (!Array.isArray(list)) return;
+    for (const fn of list) {
+      try { fn(payload); } catch (error) { console.warn('Extension hook failed:', listName, error); }
+    }
+  }
+
+  function updateResolutionUi() {
+    if (resolutionSlider) resolutionSlider.value = String(renderScalePercent);
+    if (resolutionValue) resolutionValue.textContent = `${renderScalePercent}%`;
+  }
+
+  function setRenderScalePercent(nextValue) {
+    const rounded = Math.round(Number(nextValue) / 5) * 5;
+    renderScalePercent = Math.max(5, Math.min(100, Number.isFinite(rounded) ? rounded : 100));
+    applyScale();
+  }
+
+  function getDiffConfig() {
+    return difficulty <= 1 ? CONFIG.easy : difficulty >= 3 ? CONFIG.hard : CONFIG.normal;
+  }
+
+  function applyScale() {
+    viewportW = window.innerWidth;
+    viewportH = window.innerHeight;
+    scale = Math.min(viewportW / BASE_W, viewportH / BASE_H);
+    document.documentElement.style.setProperty('--scale', scale.toFixed(5));
+
+    const renderRatio = Math.max(0.05, Math.min(1, renderScalePercent / 100));
+    const internalW = Math.max(64, Math.round(viewportW * window.devicePixelRatio * renderRatio));
+    const internalH = Math.max(64, Math.round(viewportH * window.devicePixelRatio * renderRatio));
+    canvas.width = internalW;
+    canvas.height = internalH;
+    ctx.setTransform(internalW / viewportW, 0, 0, internalH / viewportH, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+
+    joystickState.radius = 58 * scale;
+    resetJoystickKnob();
+    applyControlLayout();
+    updateResolutionUi();
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+    function getStageBackgroundProfile() {
+    return STAGE_BACKGROUND_PROFILES[state.stageIndex] || STAGE_BACKGROUND_PROFILES[0];
+  }
+
+  function applyControlLayout() {
+    const joySize = CONTROL_LAYOUT.joystick.size * scale;
+    const actionSize = CONTROL_LAYOUT.action.size * scale;
+    const pad = CONTROL_LAYOUT.clampPadding * scale;
+
+    const joyHalf = joySize / 2;
+    const actHalf = actionSize / 2;
+
+    CONTROL_LAYOUT.joystick.x = clamp(CONTROL_LAYOUT.joystick.x, (joyHalf + pad) / viewportW, 1 - (joyHalf + pad) / viewportW);
+    CONTROL_LAYOUT.joystick.y = clamp(CONTROL_LAYOUT.joystick.y, (joyHalf + pad) / viewportH, 1 - (joyHalf + pad + 42 * scale) / viewportH);
+    CONTROL_LAYOUT.action.x = clamp(CONTROL_LAYOUT.action.x, (actHalf + pad) / viewportW, 1 - (actHalf + pad) / viewportW);
+    CONTROL_LAYOUT.action.y = clamp(CONTROL_LAYOUT.action.y, (actHalf + pad) / viewportH, 1 - (actHalf + pad + 42 * scale) / viewportH);
+
+    joystickWrap.style.width = `${joySize}px`;
+    joystickWrap.style.height = `${joySize}px`;
+    joystickWrap.style.left = `${CONTROL_LAYOUT.joystick.x * viewportW - joyHalf}px`;
+    joystickWrap.style.top = `${CONTROL_LAYOUT.joystick.y * viewportH - joyHalf}px`;
+    joystickWrap.style.bottom = 'auto';
+
+    actionWrap.style.width = `${actionSize}px`;
+    actionWrap.style.height = `${actionSize}px`;
+    actionWrap.style.left = `${CONTROL_LAYOUT.action.x * viewportW - actHalf}px`;
+    actionWrap.style.top = `${CONTROL_LAYOUT.action.y * viewportH - actHalf}px`;
+    actionWrap.style.right = 'auto';
+    actionWrap.style.bottom = 'auto';
+  }
+
+  function isUiTarget(target) {
+    return !!(target && target.closest('.button, .panel, .overlay, .ui-control, [data-ui="true"]'));
+  }
+
+  function stopEvent(event) {
+    if (!event) return;
+    if (event.cancelable) event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function bindUiButton(button, handler) {
+    const stop = (event) => stopEvent(event);
+    ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach((type) => {
+      button.addEventListener(type, stop, { passive: false });
+    });
+    button.addEventListener('pointerdown', () => button.classList.add('is-pressed'), { passive: false });
+    button.addEventListener('pointerup', () => button.classList.remove('is-pressed'), { passive: false });
+    button.addEventListener('pointercancel', () => button.classList.remove('is-pressed'), { passive: false });
+    button.addEventListener('click', (event) => {
+      stop(event);
+      if (!resultSent) handler();
+    }, { passive: false });
+  }
+
+  function showMessage(text, duration = CONFIG.maxMessagesTime) {
+    state.messageText = text;
+    state.messageTimer = duration;
+    messageBox.textContent = text;
+    messageBox.classList.add('visible');
+  }
+
+  function hideMessage() {
+    state.messageTimer = 0;
+    messageBox.classList.remove('visible');
+  }
+
+  function showHint(duration = 1.25) {
+    state.hintTimer = duration;
+    hintBubble.classList.add('visible');
+  }
+
+  function hideHint() {
+    state.hintTimer = 0;
+    hintBubble.classList.remove('visible');
+  }
+
+  function setStage(index) {
+    state.stageIndex = Math.max(0, Math.min(index, STAGES.length - 1));
+    phaseLabel.textContent = STAGES[state.stageIndex].name;
+    stageValue.textContent = `${state.stageIndex + 1} / 4`;
+    showMessage(STAGES[state.stageIndex].message, 1.3);
+  }
+
+  function blockAllInteraction() {
+    gameRoot.style.pointerEvents = 'none';
+    uiRoot.style.pointerEvents = 'none';
+  }
+
+  function computeResult() {
+    const diff = getDiffConfig();
+    if (!state.coreReached || state.integrity <= 0) return 0;
+    if (state.integrity >= diff.secretIntegrity && state.sync >= diff.secretSync) return 2;
+    if (state.integrity >= diff.baseIntegrity && state.sync >= diff.baseSync) return 1;
+    return 0;
+  }
+
+  function finishGame(result) {
+    if (resultSent) return;
+    resultSent = true;
+    gameStarted = false;
+    blockAllInteraction();
+    try {
+      parent.postMessage({ type: 'gameResult', result: Number.isFinite(result) ? result : 0 }, '*');
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  function showFinishOverlay(result) {
+    if (state.finishShown) return;
+    state.finishShown = true;
+    finished = true;
+    gameStarted = false;
+    hideHint();
+    const titles = {
+      0: 'Синхронизация сорвана',
+      1: 'Синхронизация завершена',
+      2: 'Идеальная синхронизация'
+    };
+    const texts = {
+      0: 'Система сохранила часть данных, но маршрут оказался нестабилен.',
+      1: 'Подключение успешно. Базовые контуры системы подтверждены.',
+      2: 'Ядро открыло дополнительный исследовательский слой.'
+    };
+    finishTitle.textContent = titles[result] || titles[0];
+    finishText.textContent = texts[result] || texts[0];
+    finishStats1.textContent = `Стабильность: ${Math.max(0, Math.round(state.integrity))}%`;
+    finishStats2.textContent = `Синхронизация: ${Math.max(0, Math.round(state.sync))}%`;
+    finishStats3.textContent = `Этапов пройдено: ${Math.min(4, state.stageCompleted)} / 4`;
+    finishButton.dataset.result = String(result);
+    finishOverlay.classList.remove('hidden');
+  }
+
+  function concludeRun(forcedResult = null) {
+    const result = forcedResult == null ? computeResult() : forcedResult;
+    state.finishResult = result;
+    showFinishOverlay(result);
+  }
+
+  function startGame() {
+    if (resultSent) return;
+    startOverlay.classList.add('hidden');
+    finishOverlay.classList.add('hidden');
+    hud.classList.remove('hidden');
+    controlsLayer.classList.remove('hidden');
+    phaseLabel.classList.remove('hidden');
+    if (!gameStarted && !finished) {
+      gameStarted = true;
+      lastTime = performance.now();
+      showMessage('Маршрут синхронизирован', 1.2);
+    }
+  }
+
+  function resetWorld() {
+    state.stageElapsed = 0;
+    state.totalElapsed = 0;
+    state.stageIndex = 0;
+    state.integrity = 100;
+    state.sync = 0;
+    state.stageCompleted = 1;
+    state.coreReached = false;
+    state.finalizeReady = false;
+    state.finishResult = 0;
+    state.finishShown = false;
+    state.activeGate = null;
+    state.forwardDistance = 0;
+    state.player.x = 0;
+    state.player.y = 0;
+    state.player.vx = 0;
+    state.player.vy = 0;
+    state.player.targetX = 0;
+    state.player.targetY = 0;
+    state.player.roll = 0;
+    state.visualPulse = 0;
+    state.hitFlash = 0;
+    state.objects = [];
+    state.gatePatternIndex = 0;
+    state.lastCollisionAt = -999;
+    state.syncBursts = [];
+    state.spawnTimers = [0.4, 0.55, 0.7, 0.85];
+    hideMessage();
+    hideHint();
+    phaseLabel.classList.add('hidden');
+    setStage(0);
+    updateHud();
+    buildStars();
+    buildFarBackgroundFx();
+    seedInitialObjects();
+  }
+
+  function buildStars() {
+    state.stars = [];
+    for (let i = 0; i < CONFIG.starCount; i++) {
+      state.stars.push({
+        x: Math.random() * 2 - 1,
+        y: Math.random() * 2 - 1,
+        z: Math.random() * CONFIG.tunnelLength,
+        size: 0.3 + Math.random() * 0.9,
+        hue: 180 + Math.random() * 80,
+      });
+    }
+  }
+
+    function createFarDustParticle() {
+    const fx = BACKGROUND_FX.farDust;
+    return {
+      x: randomRange(-fx.spreadX, fx.spreadX),
+      y: randomRange(-fx.spreadY, fx.spreadY),
+      z: randomRange(fx.spawnZMin, fx.spawnZMax),
+      size: randomRange(fx.sizeMin, fx.sizeMax),
+      alpha: randomRange(fx.alphaMin, fx.alphaMax),
+      hue: randomRange(fx.hueMin, fx.hueMax),
+    };
+  }
+
+  function resetFarDustParticle(particle) {
+    const fx = BACKGROUND_FX.farDust;
+    particle.x = randomRange(-fx.spreadX, fx.spreadX);
+    particle.y = randomRange(-fx.spreadY, fx.spreadY);
+    particle.z = randomRange(fx.spawnZMin, fx.spawnZMax);
+    particle.size = randomRange(fx.sizeMin, fx.sizeMax);
+    particle.alpha = randomRange(fx.alphaMin, fx.alphaMax);
+    particle.hue = randomRange(fx.hueMin, fx.hueMax);
+  }
+
+  function createFarStreak() {
+    const fx = BACKGROUND_FX.farStreaks;
+    return {
+      x: randomRange(-fx.spreadX, fx.spreadX),
+      y: randomRange(-fx.spreadY, fx.spreadY),
+      z: randomRange(fx.spawnZMin, fx.spawnZMax),
+      length: randomRange(fx.lengthMin, fx.lengthMax),
+      thickness: randomRange(fx.thicknessMin, fx.thicknessMax),
+      alpha: randomRange(fx.alphaMin, fx.alphaMax),
+      hue: randomRange(fx.hueMin, fx.hueMax),
+      angle: randomRange(fx.angleMin, fx.angleMax),
+      wobbleSpeed: randomRange(fx.wobbleSpeedMin, fx.wobbleSpeedMax),
+      phase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  function resetFarStreak(streak) {
+    const fx = BACKGROUND_FX.farStreaks;
+    streak.x = randomRange(-fx.spreadX, fx.spreadX);
+    streak.y = randomRange(-fx.spreadY, fx.spreadY);
+    streak.z = randomRange(fx.spawnZMin, fx.spawnZMax);
+    streak.length = randomRange(fx.lengthMin, fx.lengthMax);
+    streak.thickness = randomRange(fx.thicknessMin, fx.thicknessMax);
+    streak.alpha = randomRange(fx.alphaMin, fx.alphaMax);
+    streak.hue = randomRange(fx.hueMin, fx.hueMax);
+    streak.angle = randomRange(fx.angleMin, fx.angleMax);
+    streak.wobbleSpeed = randomRange(fx.wobbleSpeedMin, fx.wobbleSpeedMax);
+    streak.phase = Math.random() * Math.PI * 2;
+  }
+
+    function createDepthBand() {
+    const fx = BACKGROUND_FX.depthBands;
+    return {
+      x: randomRange(-fx.spreadX, fx.spreadX),
+      y: randomRange(-fx.spreadY, fx.spreadY),
+      z: randomRange(fx.spawnZMin, fx.spawnZMax),
+
+      width: randomRange(fx.widthMin, fx.widthMax),
+      height: randomRange(fx.heightMin, fx.heightMax),
+
+      alpha: randomRange(fx.alphaMin, fx.alphaMax),
+      hue: randomRange(fx.hueMin, fx.hueMax),
+
+      angle: randomRange(fx.angleMin, fx.angleMax),
+      wobbleSpeed: randomRange(fx.wobbleSpeedMin, fx.wobbleSpeedMax),
+      phase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  function resetDepthBand(band) {
+    const fx = BACKGROUND_FX.depthBands;
+
+    band.x = randomRange(-fx.spreadX, fx.spreadX);
+    band.y = randomRange(-fx.spreadY, fx.spreadY);
+    band.z = randomRange(fx.spawnZMin, fx.spawnZMax);
+
+    band.width = randomRange(fx.widthMin, fx.widthMax);
+    band.height = randomRange(fx.heightMin, fx.heightMax);
+
+    band.alpha = randomRange(fx.alphaMin, fx.alphaMax);
+    band.hue = randomRange(fx.hueMin, fx.hueMax);
+
+    band.angle = randomRange(fx.angleMin, fx.angleMax);
+    band.wobbleSpeed = randomRange(fx.wobbleSpeedMin, fx.wobbleSpeedMax);
+    band.phase = Math.random() * Math.PI * 2;
+  }
+
+  function drawDepthBands() {
+    const profile = getStageBackgroundProfile();
+    if (!BACKGROUND_FX.depthBands.enabled || !profile.showBands) return;
+
+    const fx = BACKGROUND_FX.depthBands;
+    const stageHueShift = profile.hueShift;
+
+    for (const band of state.depthBands) {
+      const p = project(
+        band.x - state.player.x * fx.parallaxX,
+        band.y - state.player.y * fx.parallaxY,
+        band.z
+      );
+
+      const width = Math.max(180 * scale, band.width * (p.scale / 120));
+      const height = Math.max(18 * scale, band.height * (p.scale / 120));
+
+      const wobble =
+        Math.sin(state.totalElapsed * band.wobbleSpeed + band.phase) * fx.wobbleAmp;
+
+      const alphaFade = clamp(
+        (band.z - fx.despawnZ) / (fx.spawnZMax - fx.despawnZ),
+        0.25,
+        1
+      );
+
+      const alpha = band.alpha * alphaFade * profile.bandAlphaMul;
+      const hue = band.hue + stageHueShift;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(band.angle + wobble);
+
+      // Внешний мягкий слой
+      const outer = ctx.createLinearGradient(-width * 0.5, 0, width * 0.5, 0);
+      outer.addColorStop(0, `hsla(${hue}, 100%, 62%, 0)`);
+      outer.addColorStop(0.2, `hsla(${hue}, 100%, 68%, ${alpha * 0.35})`);
+      outer.addColorStop(0.5, `hsla(${hue}, 100%, 74%, ${alpha})`);
+      outer.addColorStop(0.8, `hsla(${hue}, 100%, 68%, ${alpha * 0.35})`);
+      outer.addColorStop(1, `hsla(${hue}, 100%, 62%, 0)`);
+
+      ctx.fillStyle = outer;
+      ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
+
+      // Внутреннее яркое ядро
+      const coreW = width * 0.72;
+      const coreH = height * fx.coreScale;
+
+      const inner = ctx.createLinearGradient(-coreW * 0.5, 0, coreW * 0.5, 0);
+      inner.addColorStop(0, `hsla(${hue + 6}, 100%, 82%, 0)`);
+      inner.addColorStop(0.25, `hsla(${hue + 6}, 100%, 86%, ${alpha * 0.45 * fx.coreAlphaMul})`);
+      inner.addColorStop(0.5, `hsla(${hue + 10}, 100%, 92%, ${alpha * fx.coreAlphaMul})`);
+      inner.addColorStop(0.75, `hsla(${hue + 6}, 100%, 86%, ${alpha * 0.45 * fx.coreAlphaMul})`);
+      inner.addColorStop(1, `hsla(${hue + 6}, 100%, 82%, 0)`);
+
+      ctx.fillStyle = inner;
+      ctx.fillRect(-coreW * 0.5, -coreH * 0.5, coreW, coreH);
+
+      ctx.restore();
+    }
+  }
+
+
+    function createMegaArc() {
+    const fx = BACKGROUND_FX.megaArcs;
+    return {
+      x: randomRange(-fx.spreadX, fx.spreadX),
+      y: randomRange(-fx.spreadY, fx.spreadY),
+      z: randomRange(fx.spawnZMin, fx.spawnZMax),
+
+      radius: randomRange(fx.radiusMin, fx.radiusMax),
+      thickness: randomRange(fx.thicknessMin, fx.thicknessMax),
+
+      alpha: randomRange(fx.alphaMin, fx.alphaMax),
+      hue: randomRange(fx.hueMin, fx.hueMax),
+
+      squash: randomRange(fx.squashMin, fx.squashMax),
+
+      segmentCount: Math.round(randomRange(fx.segmentCountMin, fx.segmentCountMax)),
+      gapRatio: randomRange(fx.gapRatioMin, fx.gapRatioMax),
+
+      arcSpan: randomRange(fx.arcSpanMin, fx.arcSpanMax),
+      startAngle: randomRange(0, Math.PI * 2),
+
+      rotationSpeed: randomRange(fx.rotationSpeedMin, fx.rotationSpeedMax),
+      phase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  function resetMegaArc(arc) {
+    const fx = BACKGROUND_FX.megaArcs;
+
+    arc.x = randomRange(-fx.spreadX, fx.spreadX);
+    arc.y = randomRange(-fx.spreadY, fx.spreadY);
+    arc.z = randomRange(fx.spawnZMin, fx.spawnZMax);
+
+    arc.radius = randomRange(fx.radiusMin, fx.radiusMax);
+    arc.thickness = randomRange(fx.thicknessMin, fx.thicknessMax);
+
+    arc.alpha = randomRange(fx.alphaMin, fx.alphaMax);
+    arc.hue = randomRange(fx.hueMin, fx.hueMax);
+
+    arc.squash = randomRange(fx.squashMin, fx.squashMax);
+
+    arc.segmentCount = Math.round(randomRange(fx.segmentCountMin, fx.segmentCountMax));
+    arc.gapRatio = randomRange(fx.gapRatioMin, fx.gapRatioMax);
+
+    arc.arcSpan = randomRange(fx.arcSpanMin, fx.arcSpanMax);
+    arc.startAngle = randomRange(0, Math.PI * 2);
+
+    arc.rotationSpeed = randomRange(fx.rotationSpeedMin, fx.rotationSpeedMax);
+    arc.phase = Math.random() * Math.PI * 2;
+  }
+
+  function drawMegaArcs() {
+    const profile = getStageBackgroundProfile();
+    if (!BACKGROUND_FX.megaArcs.enabled || !profile.showArcs) return;
+
+    const fx = BACKGROUND_FX.megaArcs;
+    const stageHueShift = profile.hueShift;
+
+    for (const arc of state.megaArcs) {
+      const p = project(
+        arc.x - state.player.x * fx.parallaxX,
+        arc.y - state.player.y * fx.parallaxY,
+        arc.z
+      );
+
+      const radius = Math.max(90 * scale, arc.radius * (p.scale / 70));
+      const thickness = Math.max(1.2 * scale, arc.thickness * (p.scale / 150));
+
+      const alphaFade = clamp(
+        (arc.z - fx.despawnZ) / (fx.spawnZMax - fx.despawnZ),
+        0.25,
+        1
+      );
+
+      const alpha = arc.alpha * alphaFade * profile.arcAlphaMul;
+      const hue = arc.hue + stageHueShift;
+      const rotation = arc.startAngle + state.totalElapsed * arc.rotationSpeed;
+
+      const step = arc.arcSpan / arc.segmentCount;
+      const visibleStep = step * (1 - arc.gapRatio);
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(rotation);
+      ctx.scale(1, arc.squash);
+
+      for (let i = 0; i < arc.segmentCount; i++) {
+        const a0 = i * step;
+        const a1 = a0 + visibleStep;
+
+        // мягкий широкий внешний контур
+        ctx.strokeStyle = `hsla(${hue}, 100%, 72%, ${alpha * 0.35})`;
+        ctx.lineWidth = thickness * 2.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, a0, a1);
+        ctx.stroke();
+
+        // основной сегмент
+        ctx.strokeStyle = `hsla(${hue}, 100%, 82%, ${alpha})`;
+        ctx.lineWidth = thickness;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, a0, a1);
+        ctx.stroke();
+
+        // тонкая яркая сердцевина
+        ctx.strokeStyle = `hsla(${hue + 10}, 100%, 92%, ${alpha * fx.coreAlphaMul})`;
+        ctx.lineWidth = Math.max(0.8 * scale, thickness * 0.28);
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, a0 + visibleStep * 0.08, a1 - visibleStep * 0.08);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+
+    function buildFarBackgroundFx() {
+    state.farDust = [];
+    state.farStreaks = [];
+    state.depthBands = [];
+    state.megaArcs = [];
+
+    if (BACKGROUND_FX.farDust.enabled) {
+      for (let i = 0; i < BACKGROUND_FX.farDust.count; i++) {
+        state.farDust.push(createFarDustParticle());
+      }
+    }
+
+    if (BACKGROUND_FX.farStreaks.enabled) {
+      for (let i = 0; i < BACKGROUND_FX.farStreaks.count; i++) {
+        state.farStreaks.push(createFarStreak());
+      }
+    }
+
+    if (BACKGROUND_FX.depthBands.enabled) {
+      for (let i = 0; i < BACKGROUND_FX.depthBands.count; i++) {
+        state.depthBands.push(createDepthBand());
+      }
+    }
+
+    if (BACKGROUND_FX.megaArcs.enabled) {
+      for (let i = 0; i < BACKGROUND_FX.megaArcs.count; i++) {
+        state.megaArcs.push(createMegaArc());
+      }
+    }
+  }
+
+  function updateFarBackgroundFx(dt) {
+    const forward = CONFIG.baseForwardSpeed * getDiffConfig().forwardMul;
+    const profile = getStageBackgroundProfile();
+
+    if (BACKGROUND_FX.depthBands.enabled) {
+      const fx = BACKGROUND_FX.depthBands;
+      for (const band of state.depthBands) {
+        band.z -= forward * fx.speedMul * profile.bandSpeedMul * dt;
+        band.x += fx.driftX * dt;
+        band.y += fx.driftY * dt;
+        if (band.z < fx.despawnZ) resetDepthBand(band);
+      }
+    }
+
+     if (BACKGROUND_FX.megaArcs.enabled) {
+      const fx = BACKGROUND_FX.megaArcs;
+      for (const arc of state.megaArcs) {
+        arc.z -= forward * fx.speedMul * profile.arcSpeedMul * dt;
+        arc.x += fx.driftX * dt;
+        arc.y += fx.driftY * dt;
+        if (arc.z < fx.despawnZ) resetMegaArc(arc);
+      }
+    }
+
+    if (BACKGROUND_FX.farDust.enabled) {
+      const fx = BACKGROUND_FX.farDust;
+      for (const particle of state.farDust) {
+        particle.z -= forward * fx.speedMul * profile.dustSpeedMul * dt;
+        particle.x += fx.driftX * dt;
+        particle.y += fx.driftY * dt;
+        if (particle.z < fx.despawnZ) resetFarDustParticle(particle);
+      }
+    }
+
+    if (BACKGROUND_FX.farStreaks.enabled) {
+      const fx = BACKGROUND_FX.farStreaks;
+      for (const streak of state.farStreaks) {
+        streak.z -= forward * fx.speedMul * profile.streakSpeedMul * dt;
+        streak.x += fx.driftX * dt;
+        streak.y += fx.driftY * dt;
+        if (streak.z < fx.despawnZ) resetFarStreak(streak);
+      }
+    }
+  }
+
+  function drawFarDust() {
+    const profile = getStageBackgroundProfile();
+    if (!BACKGROUND_FX.farDust.enabled || !profile.showDust) return;
+
+    const fx = BACKGROUND_FX.farDust;
+    const stageHueShift = state.stageIndex * 6;
+
+    for (const particle of state.farDust) {
+      const p = project(
+        particle.x - state.player.x * fx.parallaxX,
+        particle.y - state.player.y * fx.parallaxY,
+        particle.z
+      );
+
+      const size = Math.max(0.7 * scale, particle.size * (p.scale / 190));
+      const alphaFade = clamp((particle.z - fx.despawnZ) / (fx.spawnZMax - fx.despawnZ), 0.25, 1);
+      const alpha = particle.alpha * alphaFade * profile.dustAlphaMul;
+
+      ctx.fillStyle = `hsla(${particle.hue + stageHueShift}, 92%, 78%, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawFarStreaks() {
+    const profile = getStageBackgroundProfile();
+    if (!BACKGROUND_FX.farStreaks.enabled || !profile.showStreaks) return;
+
+    const fx = BACKGROUND_FX.farStreaks;
+    const stageHueShift = profile.hueShift;
+
+    for (const streak of state.farStreaks) {
+      const p = project(
+        streak.x - state.player.x * fx.parallaxX,
+        streak.y - state.player.y * fx.parallaxY,
+        streak.z
+      );
+
+      const angle =
+        streak.angle +
+        Math.sin(state.totalElapsed * streak.wobbleSpeed + streak.phase) * fx.wobbleAmp;
+
+      const length = Math.max(8 * scale, streak.length * (p.scale / 170));
+      const thickness = Math.max(0.8 * scale, streak.thickness * (p.scale / 230));
+      const alphaFade = clamp((streak.z - fx.despawnZ) / (fx.spawnZMax - fx.despawnZ), 0.25, 1);
+      const alpha = streak.alpha * alphaFade * profile.streakAlphaMul;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(angle);
+
+      ctx.strokeStyle = `hsla(${streak.hue + stageHueShift}, 100%, 82%, ${alpha * 0.55})`;
+      ctx.lineWidth = thickness * 2.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-length * 0.5, 0);
+      ctx.lineTo(length * 0.5, 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = `hsla(${streak.hue + stageHueShift}, 100%, 88%, ${alpha})`;
+      ctx.lineWidth = thickness;
+      ctx.beginPath();
+      ctx.moveTo(-length * 0.5, 0);
+      ctx.lineTo(length * 0.5, 0);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
+  function drawFarBackgroundFx() {
+    drawDepthBands();
+    drawMegaArcs();
+    drawFarDust();
+    drawFarStreaks();
+  }
+  
+  function createObject(type, x, y, z, radius, data = {}) {
+    return {
+      type,
+      x,
+      y,
+      z,
+      radius,
+      hit: false,
+      ...data,
+    };
+  }
+
+  function randomRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function pickSign() {
+    return Math.random() < 0.5 ? -1 : 1;
+  }
+
+  function seedInitialObjects() {
+    state.objects.length = 0;
+    for (let i = 0; i < 12; i++) {
+      const z = 3 + i * 1.25;
+      state.objects.push(createObject('ring', Math.sin(i * 0.4) * 0.2, Math.cos(i * 0.35) * 0.16, z, 0.38 * MAIN_TUNING.ringSizeMultiplier, { glow: 0.8 }));
+    }
+  }
+
+  function stageDuration(index) {
+    return CONFIG.stageDurations[index] || 20;
+  }
+
+  function handleStageTransition() {
+    while (state.stageIndex < STAGES.length - 1 && state.stageElapsed >= stageDuration(state.stageIndex)) {
+      state.stageElapsed -= stageDuration(state.stageIndex);
+      state.stageIndex += 1;
+      state.stageCompleted = Math.max(state.stageCompleted, state.stageIndex + 1);
+      setStage(state.stageIndex);
+    }
+  }
+
+  function spawnForStage(dt) {
+    const diff = getDiffConfig();
+    const density = diff.densityMul;
+    const idx = state.stageIndex;
+    state.spawnTimers[idx] -= dt;
+    if (state.spawnTimers[idx] > 0) return;
+
+    if (idx === 0) {
+      spawnEntryObjects();
+      state.spawnTimers[idx] = randomRange(0.58, 0.92) / density;
+    } else if (idx === 1) {
+      spawnRoutingObjects();
+      state.spawnTimers[idx] = randomRange(0.48, 0.76) / density;
+    } else if (idx === 2) {
+      spawnMemoryObjects();
+      state.spawnTimers[idx] = randomRange(0.54, 0.82) / density;
+    } else {
+      spawnCoreObjects();
+      state.spawnTimers[idx] = randomRange(0.56, 0.86) / density;
+    }
+    runExtensionList('afterSpawn', { stageIndex: idx, state, scale, viewportW, viewportH, project });
+  }
+
+  function spawnEntryObjects() {
+    const z = randomRange(CONFIG.spawnZMin, CONFIG.spawnZMax);
+    const sway = Math.sin(state.totalElapsed * 0.7) * 0.35;
+    state.objects.push(createObject('ring', sway * 0.6, Math.sin(state.totalElapsed * 0.55) * 0.18, z, randomRange(0.34, 0.48) * MAIN_TUNING.ringSizeMultiplier, { glow: 0.8 }));
+    if (Math.random() < 0.65) {
+      state.objects.push(createObject('route', pickSign() * randomRange(0.25, 0.65), randomRange(-0.2, 0.2), z + randomRange(0.7, 1.6), 0.18, { spin: randomRange(0.5, 1.4) }));
+    }
+    if (Math.random() < 0.42) {
+      state.objects.push(createObject('overload', pickSign() * randomRange(0.45, 0.95), pickSign() * randomRange(0.15, 0.55), z + randomRange(0.6, 1.2), 0.22, { rot: randomRange(0, Math.PI * 2) }));
+    }
+  }
+
+  function spawnRoutingObjects() {
+    const z = randomRange(CONFIG.spawnZMin, CONFIG.spawnZMax);
+    const path = Math.sin(state.totalElapsed * 1.15 + state.forwardDistance * 0.03) * 0.72;
+    state.objects.push(createObject('ring', path * 0.8, Math.cos(state.totalElapsed * 0.8) * 0.18, z, randomRange(0.3, 0.42) * MAIN_TUNING.ringSizeMultiplier, { glow: 0.9 }));
+    state.objects.push(createObject('route', path * 0.88 + randomRange(-0.15, 0.15), randomRange(-0.18, 0.18), z + randomRange(0.3, 1.1), 0.18, { spin: randomRange(0.2, 1.1) }));
+    state.objects.push(createObject('overload', -path * 0.7 + randomRange(-0.25, 0.25), pickSign() * randomRange(0.05, 0.55), z + randomRange(0.65, 1.55), 0.24, { rot: randomRange(0, Math.PI) }));
+    if (Math.random() < 0.45) {
+      state.objects.push(createObject('overload', pickSign() * randomRange(0.25, 1.0), pickSign() * randomRange(0.15, 0.72), z + randomRange(1.0, 1.8), 0.2, { rot: randomRange(0, Math.PI) }));
+    }
+  }
+
+  function spawnMemoryObjects() {
+    const z = randomRange(CONFIG.spawnZMin, CONFIG.spawnZMax);
+    const gateSeq = [
+      { x: -0.36, y: -0.12 },
+      { x: 0.42, y: 0.18 },
+      { x: 0.05, y: -0.28 },
+    ];
+
+    if (!state.activeGate && Math.random() < 0.38) {
+      const pattern = gateSeq[state.gatePatternIndex % gateSeq.length];
+      state.gatePatternIndex += 1;
+      state.objects.push(createObject('gate', pattern.x, pattern.y, z, 0.46 * MAIN_TUNING.gateSizeMultiplier, {
+        good: false,
+        failed: false,
+        windowOpen: false,
+        ringPulse: randomRange(0, Math.PI * 2),
+      }));
+      return;
+    }
+
+    state.objects.push(createObject('memory', pickSign() * randomRange(0.12, 0.88), pickSign() * randomRange(0.05, 0.55), z, 0.2, { twinkle: Math.random() * Math.PI * 2 }));
+    if (Math.random() < 0.58) {
+      state.objects.push(createObject('noise', pickSign() * randomRange(0.25, 1.0), pickSign() * randomRange(0.12, 0.65), z + randomRange(0.4, 1.4), 0.2, { twinkle: Math.random() * Math.PI * 2 }));
+    }
+  }
+
+  function spawnCoreObjects() {
+    const z = randomRange(CONFIG.spawnZMin, CONFIG.spawnZMax);
+    const wave = Math.sin(state.totalElapsed * 0.9) * 0.44;
+    state.objects.push(createObject('ring', wave * 0.58, Math.cos(state.totalElapsed * 0.7) * 0.18, z, randomRange(0.34, 0.46) * MAIN_TUNING.ringSizeMultiplier, { glow: 1.0 }));
+    if (Math.random() < 0.6) {
+      state.objects.push(createObject('route', wave * 0.6 + randomRange(-0.22, 0.22), randomRange(-0.2, 0.2), z + randomRange(0.45, 1.1), 0.17, { spin: randomRange(0.4, 1.1) }));
+    }
+    if (!state.coreReached && state.totalElapsed > 84 && !state.objects.some((o) => o.type === 'core')) {
+      state.objects.push(createObject('core', 0, 0, CONFIG.spawnZMax + 2.4, 0.9 * MAIN_TUNING.coreSizeMultiplier, { charge: 0, good: false }));
+    }
+  }
+
+  function project(x, y, z) {
+    const fov = CONFIG.fovBase * Math.min(viewportW, viewportH) * 0.5;
+    const safeZ = Math.max(0.12, z);
+    return {
+      x: viewportW * 0.5 + (x / safeZ) * fov,
+      y: viewportH * 0.5 + (y / safeZ) * fov,
+      scale: fov / safeZ,
+    };
+  }
+
+  function applyPlayerMotion(dt) {
+    const diff = getDiffConfig();
+    const p = state.player;
+    const targetVX = p.targetX * CONFIG.maxLateralSpeed;
+    const targetVY = p.targetY * CONFIG.maxLateralSpeed;
+    p.vx += (targetVX - p.vx) * Math.min(1, CONFIG.lateralAccel * dt);
+    p.vy += (targetVY - p.vy) * Math.min(1, CONFIG.lateralAccel * dt);
+    p.vx *= 1 - Math.min(0.9, CONFIG.lateralDamping * dt * 0.18);
+    p.vy *= 1 - Math.min(0.9, CONFIG.lateralDamping * dt * 0.18);
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.x = Math.max(-CONFIG.playerBoundsX, Math.min(CONFIG.playerBoundsX, p.x));
+    p.y = Math.max(-CONFIG.playerBoundsY, Math.min(CONFIG.playerBoundsY, p.y));
+    p.roll += ((p.targetX * -0.16) - p.roll) * Math.min(1, 4.5 * dt);
+    state.forwardDistance += CONFIG.baseForwardSpeed * MAIN_TUNING.forwardSpeedMultiplier * diff.forwardMul * dt;
+  }
+
+  function spawnBursts(x, y, amount, color) {
+    for (let i = 0; i < amount; i++) {
+      state.syncBursts.push({
+        x,
+        y,
+        z: randomRange(0.6, 1.2),
+        vx: randomRange(-0.4, 0.4),
+        vy: randomRange(-0.4, 0.4),
+        life: randomRange(0.45, 0.9),
+        size: randomRange(0.02, 0.08),
+        color,
+      });
+    }
+  }
+
+  function handleInteractionWithObject(obj) {
+    if (obj.hit) return;
+    obj.hit = true;
+    const diff = getDiffConfig();
+    const penaltyMul = diff.penaltyMul;
+    if (obj.type === 'ring') {
+      state.sync = Math.min(100, state.sync + CONFIG.ringReward);
+      state.visualPulse = 0.12;
+      spawnBursts(obj.x, obj.y, 12, 'rgba(149,245,255,0.8)');
+    } else if (obj.type === 'route') {
+      state.sync = Math.min(100, state.sync + CONFIG.routeReward);
+      showMessage('Маршрут подтверждён', 0.8);
+      spawnBursts(obj.x, obj.y, 14, 'rgba(140,200,255,0.8)');
+    } else if (obj.type === 'memory') {
+      state.sync = Math.min(100, state.sync + CONFIG.memoryReward);
+      showMessage('Узел памяти синхронизирован', 0.9);
+      spawnBursts(obj.x, obj.y, 18, 'rgba(182,148,255,0.8)');
+    } else if (obj.type === 'overload') {
+      if (state.totalElapsed - state.lastCollisionAt > 0.22) {
+        state.lastCollisionAt = state.totalElapsed;
+        state.integrity = Math.max(0, state.integrity - CONFIG.collisionPenalty * penaltyMul);
+        state.hitFlash = 0.55;
+        showMessage('Перегрузка канала', 0.75);
+      }
+    } else if (obj.type === 'noise') {
+      if (state.totalElapsed - state.lastCollisionAt > 0.22) {
+        state.lastCollisionAt = state.totalElapsed;
+        state.integrity = Math.max(0, state.integrity - CONFIG.noisePenalty * penaltyMul);
+        state.sync = Math.max(0, state.sync - 3);
+        state.hitFlash = 0.45;
+        showMessage('Шумовой кластер', 0.75);
+      }
+    }
+    updateHud();
+  }
+
+  function handleGateWindow(obj, dt) {
+    const diff = getDiffConfig();
+    const gateWindowDepth = diff.gateWindow;
+    const gateWindowNear = 2.1 + gateWindowDepth;
+    const gateWindowFar = Math.max(0.8, 1.0 - (gateWindowDepth - 1.0) * 0.2);
+    const isWindow = obj.z < gateWindowNear && obj.z > gateWindowFar && !obj.good && !obj.failed;
+    obj.windowOpen = isWindow;
+    if (isWindow) {
+      state.activeGate = obj;
+      showHint(0.16);
+    }
+    if (actionState.pressed && isWindow) {
+      const dx = obj.x - state.player.x;
+      const dy = obj.y - state.player.y;
+      const aligned = Math.hypot(dx, dy) < (obj.radius * MAIN_TUNING.gateAlignMultiplier);
+      if (aligned) {
+        obj.good = true;
+        obj.hit = true;
+        state.sync = Math.min(100, state.sync + CONFIG.gateReward);
+        state.integrity = Math.min(100, state.integrity + 3);
+        showMessage('Стабилизация подтверждена', 0.95);
+        spawnBursts(obj.x, obj.y, 22, 'rgba(144,255,226,0.88)');
+      }
+      actionState.pressed = false;
+      stabilizeButton.classList.remove('is-pressed');
+      updateHud();
+    }
+    if (!obj.good && !obj.failed && obj.z < 0.92) {
+      obj.failed = true;
+      obj.hit = true;
+      state.integrity = Math.max(0, state.integrity - CONFIG.failPulsePenalty * getDiffConfig().penaltyMul);
+      state.hitFlash = 0.48;
+      showMessage('Окно стабилизации упущено', 0.85);
+      updateHud();
+    }
+    if (state.activeGate === obj && (obj.good || obj.failed || obj.z < 0.7 || obj.z > 3.2)) {
+      state.activeGate = null;
+      hideHint();
+    }
+  }
+
+  function updateObjects(dt) {
+    const diff = getDiffConfig();
+    const forward = CONFIG.baseForwardSpeed * MAIN_TUNING.forwardSpeedMultiplier * diff.forwardMul;
+    for (const obj of state.objects) {
+      obj.z -= forward * dt;
+      if (obj.type === 'route') obj.spin = (obj.spin || 0) + dt * 2.2;
+      if (obj.type === 'memory' || obj.type === 'noise') obj.twinkle = (obj.twinkle || 0) + dt * 2.8;
+      if (obj.type === 'overload') obj.rot = (obj.rot || 0) + dt * 1.6;
+      if (obj.type === 'gate') {
+        obj.ringPulse = (obj.ringPulse || 0) + dt * 2.2;
+        handleGateWindow(obj, dt);
+      }
+      if (obj.type === 'core') {
+        obj.charge = Math.min(1.6, (obj.charge || 0) + dt * 0.8);
+        const dx = obj.x - state.player.x;
+        const dy = obj.y - state.player.y;
+        const inFinalWindow = obj.z < 2.4 && obj.z > 1.2;
+        if (inFinalWindow) showHint(0.16);
+        if (!obj.good && inFinalWindow && actionState.pressed && Math.hypot(dx, dy) < 0.7 * MAIN_TUNING.gateAlignMultiplier) {
+          obj.good = true;
+          state.coreReached = true;
+          state.sync = Math.min(100, state.sync + 8);
+          showMessage('Ядро синхронизировано', 1.1);
+          spawnBursts(0, 0, 40, 'rgba(220,245,255,0.92)');
+          updateHud();
+          actionState.pressed = false;
+          stabilizeButton.classList.remove('is-pressed');
+        }
+        if (!obj.good && obj.z < 0.78) {
+          state.coreReached = false;
+          concludeRun(0);
+          return;
+        }
+        if (obj.good && obj.z < 0.52) {
+          concludeRun();
+          return;
+        }
+      }
+
+      if (!obj.hit && obj.z < 0.95 && obj.z > 0.22) {
+        const dx = obj.x - state.player.x;
+        const dy = obj.y - state.player.y;
+        let threshold = obj.radius + CONFIG.playerRadius;
+        if (obj.type === 'ring') threshold += MAIN_TUNING.ringCollisionBonus;
+        if (obj.type === 'route' || obj.type === 'memory') threshold += MAIN_TUNING.pickupCollisionBonus;
+        if (Math.hypot(dx, dy) < threshold) {
+          handleInteractionWithObject(obj);
+        }
+      }
+    }
+
+    state.objects = state.objects.filter((obj) => obj.z > -0.5 && !(obj.hit && obj.z < 0.15));
+    if (state.integrity <= 0 && !finished) {
+      concludeRun(0);
+    }
+  }
+
+  function updateBursts(dt) {
+    for (const p of state.syncBursts) {
+      p.life -= dt;
+      p.z -= dt * 0.8;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    state.syncBursts = state.syncBursts.filter((p) => p.life > 0 && p.z > 0.1);
+  }
+
+  function updateStars(dt) {
+    const forward = CONFIG.baseForwardSpeed * MAIN_TUNING.forwardSpeedMultiplier * getDiffConfig().forwardMul * 0.45;
+    for (const star of state.stars) {
+      star.z -= forward * dt;
+      if (star.z < 0.4) {
+        star.z = CONFIG.tunnelLength;
+        star.x = Math.random() * 2 - 1;
+        star.y = Math.random() * 2 - 1;
+        star.size = 0.3 + Math.random() * 0.9;
+        star.hue = 180 + Math.random() * 80;
+      }
+    }
+  }
+
+  function updateHud() {
+    integrityFill.style.width = `${Math.max(0, Math.min(100, state.integrity)).toFixed(1)}%`;
+    syncFill.style.width = `${Math.max(0, Math.min(100, state.sync)).toFixed(1)}%`;
+    stageValue.textContent = `${state.stageIndex + 1} / 4`;
+    const activeWindow = !!state.activeGate || state.objects.some((o) => o.type === 'core' && o.z < 2.4 && o.z > 1.2 && !o.good);
+    stabilizeButton.classList.toggle('active-window', activeWindow && !finished);
+  }
+
+  function drawBackground() {
+    runExtensionList('beforeBackground', { ctx, viewportW, viewportH, state, scale, project });
+    const stage = STAGES[state.stageIndex];
+    const grad = ctx.createLinearGradient(0, 0, 0, viewportH);
+    grad.addColorStop(0, stage.colorA);
+    grad.addColorStop(0.55, stage.colorB);
+    grad.addColorStop(1, '#02040b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, viewportW, viewportH);
+
+    const glow = ctx.createRadialGradient(viewportW * 0.5, viewportH * 0.18, 0, viewportW * 0.5, viewportH * 0.22, viewportW * 0.62);
+    glow.addColorStop(0, `rgba(125, 195, 255, ${0.11 + state.visualPulse * 0.18})`);
+    glow.addColorStop(0.5, 'rgba(41, 86, 153, 0.08)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, viewportW, viewportH);
+
+    if (state.hitFlash > 0) {
+      ctx.fillStyle = `rgba(255, 72, 82, ${state.hitFlash * 0.18})`;
+      ctx.fillRect(0, 0, viewportW, viewportH);
+    }
+    runExtensionList('afterBackground', { ctx, viewportW, viewportH, state, scale, project });
+  }
+
+  function drawStars() {
+    for (const star of state.stars) {
+      const p = project((star.x - state.player.x * 0.16) * 2.2, (star.y - state.player.y * 0.14) * 2.2, star.z);
+      const size = Math.max(1, star.size * (p.scale / 230));
+      ctx.fillStyle = `hsla(${star.hue}, 90%, 78%, ${0.18 + (1 / star.z) * 0.45})`;
+      ctx.fillRect(p.x, p.y, size, size);
+    }
+  }
+
+  function drawGuideGeometry() {
+    runExtensionList('beforeGuide', { ctx, viewportW, viewportH, state, scale, project });
+    const pulse = 0.6 + Math.sin(state.totalElapsed * 1.4) * 0.12;
+    ctx.lineWidth = Math.max(1, 2 * scale);
+
+    for (let i = 0; i < CONFIG.railCount; i++) {
+      const ratio = i / (CONFIG.railCount - 1);
+      const x = -1.28 + ratio * 2.56;
+      const p1 = project(x - state.player.x * 0.1, -1.26 - state.player.y * 0.12, 0.65);
+      const p2 = project(x * 1.15 - state.player.x * 0.1, 1.25 - state.player.y * 0.12, CONFIG.tunnelLength);
+      ctx.strokeStyle = `rgba(80, 160, 255, ${0.06 + 0.04 * pulse})`;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < CONFIG.gridLineCount; i++) {
+      const depth = 1 + (i / CONFIG.gridLineCount) * CONFIG.tunnelLength * 0.9;
+      const a = project(-1.5 - state.player.x * 0.08, -1.15 - state.player.y * 0.08, depth);
+      const b = project(1.5 - state.player.x * 0.08, -1.15 - state.player.y * 0.08, depth);
+      const c = project(1.5 - state.player.x * 0.08, 1.15 - state.player.y * 0.08, depth);
+      const d = project(-1.5 - state.player.x * 0.08, 1.15 - state.player.y * 0.08, depth);
+      ctx.strokeStyle = `rgba(99, 189, 255, ${0.02 + 0.06 * (1 - i / CONFIG.gridLineCount)})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(d.x, d.y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    runExtensionList('afterGuide', { ctx, viewportW, viewportH, state, scale, project });
+  }
+
+  function drawRing(obj) {
+  const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+  const r = Math.max(18 * scale, obj.radius * p.scale);
+  const t = state.totalElapsed;
+  const depthAlpha = 0.16 + Math.min(0.78, 0.9 / obj.z);
+
+  const nearT = Math.max(
+    0,
+    Math.min(
+      1,
+      (RING_RENDER_TUNING.nearSpinStartZ - obj.z) /
+        Math.max(0.001, RING_RENDER_TUNING.nearSpinStartZ - RING_RENDER_TUNING.nearSpinEndZ)
+    )
+  );
+
+  const speedMul = 1 + nearT * RING_RENDER_TUNING.nearSpinBoost;
+
+  const pulse =
+    1 + Math.sin(t * 2.1 + obj.z * 0.35) * RING_RENDER_TUNING.pulseAmount;
+
+  const spin =
+    t * RING_RENDER_TUNING.spinSpeed * speedMul + obj.z * 0.08;
+
+  const counterSpin =
+    -t * RING_RENDER_TUNING.counterSpinSpeed * speedMul + obj.z * 0.03;
+
+  const segCount = Math.max(18, Math.min(42, Math.floor(r / 7)));
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Мягкое стабильное свечение без резкой пульсации цвета
+  const glow = ctx.createRadialGradient(0, 0, r * 0.15, 0, 0, r * 1.5);
+  glow.addColorStop(0, `rgba(210,245,255,${0.06 * depthAlpha})`);
+  glow.addColorStop(0.35, `rgba(120,220,255,${0.10 * depthAlpha})`);
+  glow.addColorStop(0.75, `rgba(65,110,255,${0.08 * depthAlpha})`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Тонкий внешний контур
+  ctx.strokeStyle = `rgba(140,220,255,${0.16 * depthAlpha})`;
+  ctx.lineWidth = Math.max(1, 1.5 * scale);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.08, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Основные сегменты-прямоугольники
+  for (let i = 0; i < segCount; i++) {
+    const k = i / segCount;
+    const a = spin + k * Math.PI * 2;
+
+    // Волна влияет только на геометрию, а не на цвет
+    const wave =
+      0.5 + 0.5 * Math.sin(t * 3.1 + i * 0.65 + obj.z * 0.22);
+
+    const orbitRadius = r * (0.94 + wave * 0.12) * pulse;
+    const segLen = Math.max(10 * scale, r * (0.095 + wave * 0.05));
+    const segThick = Math.max(3 * scale, r * (0.022 + wave * 0.016));
+
+    const x = Math.cos(a) * orbitRadius;
+    const y = Math.sin(a) * orbitRadius;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(
+      a +
+        Math.PI / 2 +
+        Math.sin(t * RING_RENDER_TUNING.segmentTwistSpeed + i * 0.9) *
+          RING_RENDER_TUNING.segmentTwistAmount
+    );
+
+    // Тёмная подложка
+    ctx.fillStyle = `rgba(72,140,255,${0.09 * depthAlpha})`;
+    ctx.fillRect(-segLen * 0.62, -segThick * 1.3, segLen * 1.24, segThick * 2.6);
+
+    // Основной сегмент
+    ctx.fillStyle = `rgba(175,240,255,${0.34 * depthAlpha})`;
+    ctx.fillRect(-segLen / 2, -segThick / 2, segLen, segThick);
+
+    // Центральный блик
+    ctx.fillStyle = `rgba(255,255,255,${0.13 * depthAlpha})`;
+    ctx.fillRect(-segLen * 0.3, -segThick * 0.22, segLen * 0.6, segThick * 0.44);
+
+    ctx.restore();
+  }
+
+  // Внутренний второй слой, вращается в обратную сторону
+  const innerSegCount = Math.max(10, Math.floor(segCount * 0.55));
+  for (let i = 0; i < innerSegCount; i++) {
+    const k = i / innerSegCount;
+    const a = counterSpin + k * Math.PI * 2;
+
+    const wave =
+      0.5 + 0.5 * Math.sin(t * 2.2 + i * 0.95 + 1.4);
+
+    const orbitRadius = r * (0.68 + wave * 0.06);
+    const segLen = Math.max(7 * scale, r * (0.05 + wave * 0.02));
+    const segThick = Math.max(2 * scale, r * (0.013 + wave * 0.008));
+
+    const x = Math.cos(a) * orbitRadius;
+    const y = Math.sin(a) * orbitRadius;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a - Math.PI / 2);
+
+    ctx.fillStyle = `rgba(118,150,255,${0.16 * depthAlpha})`;
+    ctx.fillRect(-segLen / 2, -segThick / 2, segLen, segThick);
+
+    ctx.restore();
+  }
+
+  // Энергетическая нить
+  ctx.strokeStyle = `rgba(220,245,255,${0.16 * depthAlpha})`;
+  ctx.lineWidth = Math.max(1, 2 * scale);
+  ctx.beginPath();
+  for (let i = 0; i <= segCount; i++) {
+    const k = i / segCount;
+    const a = spin * 0.7 + k * Math.PI * 2;
+    const rr = r * (0.8 + Math.sin(t * 1.6 + i * 0.45) * 0.015);
+    const x = Math.cos(a) * rr;
+    const y = Math.sin(a) * rr;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  // Центральное кольцо
+  ctx.strokeStyle = `rgba(150,230,255,${0.24 * depthAlpha})`;
+  ctx.lineWidth = Math.max(1, 3 * scale);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+  function drawRoute(obj) {
+    const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+    const r = Math.max(5 * scale, obj.radius * p.scale);
+    const spin = obj.spin || 0;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(spin);
+    ctx.strokeStyle = `rgba(143, 201, 255, ${0.22 + Math.min(0.7, 0.85 / obj.z)})`;
+    ctx.lineWidth = Math.max(1, 3 * scale);
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 * i) / 6;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.lineTo(r * 0.9, 0);
+    ctx.moveTo(0, -r * 0.9);
+    ctx.lineTo(0, r * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMemory(obj, noise = false) {
+    const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+    const r = Math.max(6 * scale, obj.radius * p.scale);
+    const alpha = noise ? 0.2 + Math.min(0.5, 0.7 / obj.z) : 0.22 + Math.min(0.6, 0.8 / obj.z);
+    const twinkle = 0.55 + Math.sin(obj.twinkle || 0) * 0.2;
+    const grad = ctx.createRadialGradient(p.x - r * 0.25, p.y - r * 0.25, r * 0.1, p.x, p.y, r);
+    if (noise) {
+      grad.addColorStop(0, `rgba(255, 120, 144, ${alpha * twinkle})`);
+      grad.addColorStop(1, 'rgba(79, 16, 31, 0)');
+    } else {
+      grad.addColorStop(0, `rgba(183, 155, 255, ${alpha * twinkle})`);
+      grad.addColorStop(0.65, `rgba(117, 157, 255, ${alpha * 0.75})`);
+      grad.addColorStop(1, 'rgba(30, 18, 58, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = noise ? `rgba(255, 138, 147, ${alpha})` : `rgba(207, 194, 255, ${alpha})`;
+    ctx.lineWidth = Math.max(1.2, 2.2 * scale);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.78, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function drawOverload(obj) {
+    const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+    const size = Math.max(8 * scale, obj.radius * p.scale * 1.25);
+    const rot = obj.rot || 0;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(rot);
+    ctx.strokeStyle = `rgba(255, 124, 92, ${0.25 + Math.min(0.72, 0.95 / obj.z)})`;
+    ctx.lineWidth = Math.max(1.4, 3 * scale);
+    ctx.strokeRect(-size * 0.65, -size * 0.65, size * 1.3, size * 1.3);
+    ctx.strokeRect(-size * 0.35, -size * 0.35, size * 0.7, size * 0.7);
+    ctx.restore();
+  }
+
+  function drawGate(obj) {
+    const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+    const r = Math.max(10 * scale, obj.radius * p.scale);
+    const pulse = 0.78 + Math.sin(obj.ringPulse || 0) * 0.16;
+    ctx.strokeStyle = `rgba(144, 255, 226, ${0.16 + Math.min(0.7, 0.8 / obj.z)})`;
+    ctx.lineWidth = Math.max(1.8, 4 * scale);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.54, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(p.x - r, p.y);
+    ctx.lineTo(p.x + r, p.y);
+    ctx.moveTo(p.x, p.y - r);
+    ctx.lineTo(p.x, p.y + r);
+    ctx.stroke();
+  }
+
+  function drawCore(obj) {
+    const p = project(obj.x - state.player.x, obj.y - state.player.y, obj.z);
+    const r = Math.max(20 * scale, obj.radius * p.scale);
+    const charge = obj.charge || 0;
+    const grad = ctx.createRadialGradient(p.x, p.y, r * 0.05, p.x, p.y, r * 1.2);
+    grad.addColorStop(0, `rgba(240, 249, 255, ${0.78})`);
+    grad.addColorStop(0.22, `rgba(122, 229, 255, ${0.42 + charge * 0.14})`);
+    grad.addColorStop(0.7, `rgba(74, 117, 255, ${0.18 + charge * 0.08})`);
+    grad.addColorStop(1, 'rgba(3, 14, 36, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(223, 246, 255, ${0.18 + Math.min(0.74, 0.96 / obj.z)})`;
+    ctx.lineWidth = Math.max(2, 5 * scale);
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * (0.55 + i * 0.18 + Math.sin(state.totalElapsed * 1.5 + i) * 0.03), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(state.totalElapsed * 0.35);
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.2, Math.sin(a) * r * 0.2);
+      ctx.lineTo(Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBursts() {
+    for (const p of state.syncBursts) {
+      const pr = project(p.x - state.player.x * 0.2, p.y - state.player.y * 0.2, p.z);
+      const size = Math.max(1.5, p.size * pr.scale);
+      ctx.fillStyle = p.color.replace(/0\.[0-9]+\)$/, `${Math.max(0, Math.min(1, p.life))})`);
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawObjects() {
+    runExtensionList('beforeObjects', { ctx, viewportW, viewportH, state, scale, project });
+    const sorted = [...state.objects].sort((a, b) => b.z - a.z);
+    for (const obj of sorted) {
+      if (obj.z <= 0.12) continue;
+      if (EXTENSIONS.customObjectDrawers[obj.type]) {
+        try { EXTENSIONS.customObjectDrawers[obj.type]({ obj, ctx, state, scale, project, viewportW, viewportH }); } catch (error) { console.warn('Custom drawer failed:', obj.type, error); }
+      } else if (obj.type === 'ring') drawRing(obj);
+      else if (obj.type === 'route') drawRoute(obj);
+      else if (obj.type === 'memory') drawMemory(obj, false);
+      else if (obj.type === 'noise') drawMemory(obj, true);
+      else if (obj.type === 'overload') drawOverload(obj);
+      else if (obj.type === 'gate') drawGate(obj);
+      else if (obj.type === 'core') drawCore(obj);
+    }
+    runExtensionList('afterObjects', { ctx, viewportW, viewportH, state, scale, project });
+  }
+
+  function render() {
+   drawBackground();
+    ctx.save();
+    ctx.translate(viewportW * 0.5, viewportH * 0.52);
+    ctx.rotate(state.player.roll);
+    ctx.translate(-viewportW * 0.5, -viewportH * 0.52);
+    drawFarBackgroundFx();
+    drawStars();
+    drawGuideGeometry();
+    drawObjects();
+    drawBursts();
+    ctx.restore();
+  }
+
+  function updateGame(dt) {
+    if (!gameStarted || finished) return;
+    state.totalElapsed += dt;
+    state.stageElapsed += dt;
+    state.visualPulse = Math.max(0, state.visualPulse - dt * 0.5);
+    state.hitFlash = Math.max(0, state.hitFlash - dt * 1.3);
+    if (state.messageTimer > 0) {
+      state.messageTimer -= dt;
+      if (state.messageTimer <= 0) hideMessage();
+    }
+    if (state.hintTimer > 0) {
+      state.hintTimer -= dt;
+      if (state.hintTimer <= 0) hideHint();
+    }
+
+    handleStageTransition();
+    applyPlayerMotion(dt);
+    updateStars(dt);
+    updateFarBackgroundFx(dt);
+    spawnForStage(dt);
+    updateObjects(dt);
+    updateBursts(dt);
+    runExtensionList('afterUpdate', { dt, state, scale, viewportW, viewportH, project });
+
+    if (state.stageIndex === STAGES.length - 1 && state.totalElapsed > 104 && !finished && !state.objects.some((o) => o.type === 'core')) {
+      concludeRun();
+    }
+
+    updateHud();
+  }
+
+  function loop(ts) {
+    animationHandle = requestAnimationFrame(loop);
+    if (!lastTime) lastTime = ts;
+    const dt = Math.min(deltaClamp, Math.max(0.001, (ts - lastTime) / 1000));
+    lastTime = ts;
+    updateGame(dt);
+    render();
+  }
+
+  function resetJoystickKnob() {
+    joystickKnob.style.transform = 'translate(0px, 0px)';
+  }
+
+  function updateJoystickInput(clientX, clientY) {
+    const rect = joystickWrap.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    const maxDist = joystickState.radius;
+    if (dist > maxDist && dist > 0.001) {
+      dx = (dx / dist) * maxDist;
+      dy = (dy / dist) * maxDist;
+    }
+    const normalizedX = dx / maxDist;
+    const normalizedY = dy / maxDist;
+    joystickState.inputX = normalizedX;
+    joystickState.inputY = normalizedY;
+    state.player.targetX = normalizedX;
+    state.player.targetY = normalizedY;
+    joystickKnob.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+  }
+
+  function resetInputState() {
+    joystickState.active = false;
+    joystickState.pointerId = null;
+    joystickState.inputX = 0;
+    joystickState.inputY = 0;
+    state.player.targetX = 0;
+    state.player.targetY = 0;
+    resetJoystickKnob();
+    actionState.pressed = false;
+    actionState.pointerId = null;
+    stabilizeButton.classList.remove('is-pressed');
+  }
+
+  function startControlDrag(target, event, clientX, clientY) {
+    stopEvent(event);
+    controlDragState.active = true;
+    controlDragState.target = target;
+
+    const layout = CONTROL_LAYOUT[target];
+    const currentCenterX = layout.x * viewportW;
+    const currentCenterY = layout.y * viewportH;
+
+    controlDragState.offsetX = clientX - currentCenterX;
+    controlDragState.offsetY = clientY - currentCenterY;
+
+    if (HAS_POINTER_EVENTS && event.pointerId != null) {
+      controlDragState.pointerId = event.pointerId;
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+
+    event.currentTarget.classList.add('is-dragging');
+  }
+
+  function moveControlDrag(clientX, clientY) {
+    if (!controlDragState.active || !controlDragState.target) return;
+
+    const layout = CONTROL_LAYOUT[controlDragState.target];
+    const nextCenterX = clientX - controlDragState.offsetX;
+    const nextCenterY = clientY - controlDragState.offsetY;
+
+    layout.x = nextCenterX / viewportW;
+    layout.y = nextCenterY / viewportH;
+
+    applyControlLayout();
+  }
+
+  function endControlDrag(event) {
+    if (!controlDragState.active) return;
+    if (HAS_POINTER_EVENTS && controlDragState.pointerId != null && event.pointerId != null && event.pointerId !== controlDragState.pointerId) return;
+    joystickDragHandle.classList.remove('is-dragging');
+    actionDragHandle.classList.remove('is-dragging');
+    controlDragState.active = false;
+    controlDragState.target = null;
+    controlDragState.pointerId = null;
+    controlDragState.offsetX = 0;
+    controlDragState.offsetY = 0;
+  }
+
+  function bindControlDragHandle(handle, targetKey) {
+    if (HAS_POINTER_EVENTS) {
+      handle.addEventListener('pointerdown', (event) => startControlDrag(targetKey, event, event.clientX, event.clientY), { passive: false });
+      handle.addEventListener('pointermove', (event) => {
+        if (!controlDragState.active) return;
+        stopEvent(event);
+        if (controlDragState.pointerId != null && event.pointerId !== controlDragState.pointerId) return;
+        moveControlDrag(event.clientX, event.clientY);
+      }, { passive: false });
+      handle.addEventListener('pointerup', (event) => { stopEvent(event); endControlDrag(event); }, { passive: false });
+      handle.addEventListener('pointercancel', (event) => { stopEvent(event); endControlDrag(event); }, { passive: false });
+      return;
+    }
+
+    let mouseDrag = false;
+    handle.addEventListener('mousedown', (event) => { mouseDrag = true; startControlDrag(targetKey, event, event.clientX, event.clientY); }, { passive: false });
+    window.addEventListener('mousemove', (event) => { if (mouseDrag) moveControlDrag(event.clientX, event.clientY); }, { passive: false });
+    window.addEventListener('mouseup', (event) => { if (!mouseDrag) return; mouseDrag = false; endControlDrag(event); }, { passive: false });
+    handle.addEventListener('touchstart', (event) => { const t = event.changedTouches[0]; if (!t) return; startControlDrag(targetKey, event, t.clientX, t.clientY); }, { passive: false });
+    handle.addEventListener('touchmove', (event) => { const t = event.changedTouches[0]; if (!t) return; stopEvent(event); moveControlDrag(t.clientX, t.clientY); }, { passive: false });
+    handle.addEventListener('touchend', (event) => { stopEvent(event); endControlDrag(event); }, { passive: false });
+    handle.addEventListener('touchcancel', (event) => { stopEvent(event); endControlDrag(event); }, { passive: false });
+  }
+
+  function onJoystickStart(event, x, y) {
+    if (resultSent || finished) return;
+    joystickState.active = true;
+    if (HAS_POINTER_EVENTS && event.pointerId != null) {
+      joystickState.pointerId = event.pointerId;
+      try { joystickWrap.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+    updateJoystickInput(x, y);
+  }
+
+  function onJoystickMove(event, x, y) {
+    if (!joystickState.active) return;
+    if (HAS_POINTER_EVENTS && joystickState.pointerId != null && event.pointerId != null && event.pointerId !== joystickState.pointerId) return;
+    updateJoystickInput(x, y);
+  }
+
+  function onJoystickEnd(event) {
+    if (!joystickState.active) return;
+    if (HAS_POINTER_EVENTS && joystickState.pointerId != null && event.pointerId != null && event.pointerId !== joystickState.pointerId) return;
+    try {
+      if (event.target && event.pointerId != null && event.target.releasePointerCapture) {
+        if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
+          event.target.releasePointerCapture(event.pointerId);
+        }
+      }
+    } catch (_) {}
+    joystickState.active = false;
+    joystickState.pointerId = null;
+    joystickState.inputX = 0;
+    joystickState.inputY = 0;
+    state.player.targetX = 0;
+    state.player.targetY = 0;
+    resetJoystickKnob();
+  }
+
+  function onActionStart(event) {
+    if (resultSent || finished) return;
+    actionState.pressed = true;
+    if (HAS_POINTER_EVENTS && event.pointerId != null) {
+      actionState.pointerId = event.pointerId;
+      try { stabilizeButton.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+    stabilizeButton.classList.add('is-pressed');
+  }
+
+  function onActionEnd(event) {
+    if (HAS_POINTER_EVENTS && actionState.pointerId != null && event.pointerId != null && event.pointerId !== actionState.pointerId) return;
+    actionState.pressed = false;
+    actionState.pointerId = null;
+    stabilizeButton.classList.remove('is-pressed');
+    try {
+      if (event.target && event.pointerId != null && event.target.releasePointerCapture) {
+        if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
+          event.target.releasePointerCapture(event.pointerId);
+        }
+      }
+    } catch (_) {}
+  }
+
+  function bindJoystick() {
+    if (HAS_POINTER_EVENTS) {
+      joystickWrap.addEventListener('pointerdown', (event) => {
+        stopEvent(event);
+        onJoystickStart(event, event.clientX, event.clientY);
+      }, { passive: false });
+      joystickWrap.addEventListener('pointermove', (event) => {
+        stopEvent(event);
+        onJoystickMove(event, event.clientX, event.clientY);
+      }, { passive: false });
+      joystickWrap.addEventListener('pointerup', (event) => {
+        stopEvent(event);
+        onJoystickEnd(event);
+      }, { passive: false });
+      joystickWrap.addEventListener('pointercancel', (event) => {
+        stopEvent(event);
+        onJoystickEnd(event);
+      }, { passive: false });
+      return;
+    }
+
+    let mouseActive = false;
+    joystickWrap.addEventListener('mousedown', (event) => {
+      stopEvent(event);
+      mouseActive = true;
+      onJoystickStart(event, event.clientX, event.clientY);
+    }, { passive: false });
+    window.addEventListener('mousemove', (event) => {
+      if (!mouseActive) return;
+      onJoystickMove(event, event.clientX, event.clientY);
+    }, { passive: false });
+    window.addEventListener('mouseup', (event) => {
+      if (!mouseActive) return;
+      mouseActive = false;
+      onJoystickEnd(event);
+    }, { passive: false });
+    joystickWrap.addEventListener('touchstart', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (touch) onJoystickStart(event, touch.clientX, touch.clientY);
+    }, { passive: false });
+    joystickWrap.addEventListener('touchmove', (event) => {
+      stopEvent(event);
+      const touch = event.changedTouches[0];
+      if (touch) onJoystickMove(event, touch.clientX, touch.clientY);
+    }, { passive: false });
+    joystickWrap.addEventListener('touchend', (event) => {
+      stopEvent(event);
+      onJoystickEnd(event);
+    }, { passive: false });
+    joystickWrap.addEventListener('touchcancel', (event) => {
+      stopEvent(event);
+      onJoystickEnd(event);
+    }, { passive: false });
+  }
+
+  function bindActionButton() {
+    if (HAS_POINTER_EVENTS) {
+      stabilizeButton.addEventListener('pointerdown', (event) => {
+        stopEvent(event);
+        onActionStart(event);
+      }, { passive: false });
+      stabilizeButton.addEventListener('pointerup', (event) => {
+        stopEvent(event);
+        onActionEnd(event);
+      }, { passive: false });
+      stabilizeButton.addEventListener('pointercancel', (event) => {
+        stopEvent(event);
+        onActionEnd(event);
+      }, { passive: false });
+      return;
+    }
+    stabilizeButton.addEventListener('mousedown', (event) => {
+      stopEvent(event);
+      onActionStart(event);
+    }, { passive: false });
+    window.addEventListener('mouseup', (event) => {
+      onActionEnd(event);
+    }, { passive: false });
+    stabilizeButton.addEventListener('touchstart', (event) => {
+      stopEvent(event);
+      onActionStart(event);
+    }, { passive: false });
+    stabilizeButton.addEventListener('touchend', (event) => {
+      stopEvent(event);
+      onActionEnd(event);
+    }, { passive: false });
+    stabilizeButton.addEventListener('touchcancel', (event) => {
+      stopEvent(event);
+      onActionEnd(event);
+    }, { passive: false });
+  }
+
+  function onMessage(event) {
+    if (!event.data || event.data.type !== 'gameInit') return;
+    if (initReceived || localInitPerformed) {
+      initReceived = true;
+      difficulty = Number(event.data.difficulty ?? difficulty) || difficulty;
+      return;
+    }
+    initReceived = true;
+    difficulty = Number(event.data.difficulty ?? 2) || 2;
+    resetWorld();
+  }
+
+  function localInit() {
+    if (initReceived || localInitPerformed) return;
+    localInitPerformed = true;
+    difficulty = 2;
+    resetWorld();
+  }
+
+  function init() {
+    renderScalePercent = MAIN_TUNING.defaultRenderScalePercent;
+    applyScale();
+    resetWorld();
+    bindUiButton(startButton, startGame);
+    bindUiButton(finishButton, () => {
+      finishGame(Number(finishButton.dataset.result) || 0);
+    });
+    bindScreenNavigation();
+    bindControlDragHandle(joystickDragHandle, 'joystick');
+    bindControlDragHandle(actionDragHandle, 'action');
+    resolutionSlider.addEventListener('input', (event) => {
+      stopEvent(event);
+      setRenderScalePercent(event.target.value);
+    }, { passive: false });
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => {
+      settingsPanel.addEventListener(type, (event) => {
+        event.stopPropagation();
+      }, { passive: true });
+    });
+    window.addEventListener('resize', applyScale);
+    window.addEventListener('message', onMessage);
+    window.addEventListener('contextmenu', (event) => event.preventDefault());
+    window.addEventListener('dragstart', (event) => event.preventDefault());
+    document.addEventListener('selectstart', (event) => event.preventDefault());
+    setTimeout(localInit, 320);
+    animationHandle = requestAnimationFrame(loop);
+  }
+
+  let screenNavActive = false;
+
+function updateScreenTarget(clientX, clientY) {
+  const nx = (clientX / viewportW) * 2 - 1;
+  const ny = (clientY / viewportH) * 2 - 1;
+
+  state.player.targetX = Math.max(-1, Math.min(1, nx));
+  state.player.targetY = Math.max(-1, Math.min(1, ny));
+}
+
+function resetScreenTarget() {
+  state.player.targetX = 0;
+  state.player.targetY = 0;
+}
+
+function bindScreenNavigation() {
+  const isUiTarget = (target) =>
+    target && target.closest && target.closest('[data-ui="true"]');
+
+  if (HAS_POINTER_EVENTS) {
+    window.addEventListener('pointerdown', (event) => {
+      if (isUiTarget(event.target)) return;
+      screenNavActive = true;
+      updateScreenTarget(event.clientX, event.clientY);
+    }, { passive: true });
+
+    window.addEventListener('pointermove', (event) => {
+      if (!screenNavActive) return;
+      updateScreenTarget(event.clientX, event.clientY);
+    }, { passive: true });
+
+    window.addEventListener('pointerup', () => {
+      screenNavActive = false;
+      resetScreenTarget();
+    }, { passive: true });
+
+    window.addEventListener('pointercancel', () => {
+      screenNavActive = false;
+      resetScreenTarget();
+    }, { passive: true });
+
+    return;
+  }
+
+  let mouseActive = false;
+
+  window.addEventListener('mousedown', (event) => {
+    if (isUiTarget(event.target)) return;
+    mouseActive = true;
+    updateScreenTarget(event.clientX, event.clientY);
+  }, { passive: true });
+
+  window.addEventListener('mousemove', (event) => {
+    if (!mouseActive) return;
+    updateScreenTarget(event.clientX, event.clientY);
+  }, { passive: true });
+
+  window.addEventListener('mouseup', () => {
+    mouseActive = false;
+    resetScreenTarget();
+  }, { passive: true });
+
+  window.addEventListener('touchstart', (event) => {
+    const touch = event.changedTouches && event.changedTouches[0];
+    if (!touch) return;
+    if (isUiTarget(event.target)) return;
+    mouseActive = true;
+    updateScreenTarget(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (event) => {
+    if (!mouseActive) return;
+    const touch = event.changedTouches && event.changedTouches[0];
+    if (!touch) return;
+    updateScreenTarget(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  window.addEventListener('touchend', () => {
+    mouseActive = false;
+    resetScreenTarget();
+  }, { passive: true });
+
+  window.addEventListener('touchcancel', () => {
+    mouseActive = false;
+    resetScreenTarget();
+  }, { passive: true });
+}
+
+  init();
+})();
+</script>
+</body>
+</html>

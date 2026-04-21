@@ -52,6 +52,7 @@ gmSpaceDebris file=assets/games/space-debris.html title="Космические 
 gmScreenBenchmark file=assets/games/interactive-screen-benchmark.html title="Калибровка Системы" description="Проверьте отклик, multitouch, FPS и точность управления." cover=assets/games/interactive-screen-benchmark.jpg
 gmCircuitRouting file=assets/games/snake-iso-game.html title="Маршрутизация контура" description="Проведи сигнал по плате через активные узлы. Чем выше сложность, тем быстрее поток и плотнее схема." cover=assets/games/snake-iso-game.jpg
 gmMemoryProtocol file=assets/games/memory-game.html title="Лабораторный протокол: Импульс" description="Повтори последовательность световых импульсов. В нагруженном режиме сигналы идут быстрее, а серия становится длиннее." cover=assets/games/memory-game.jpg
+gmComputeSpace file=assets/games/compute-space.html title="Тестирование" description="Тестирование"
 
 [var]
 x = 10 # объявление переменных
