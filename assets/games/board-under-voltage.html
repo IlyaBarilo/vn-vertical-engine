@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CyberCircuit Collector | 3D Mini-Game</title>
+    <style>
+
+
+:root {
+    --base-w: 810;
+    --base-h: 1440;
+    --scale: 1;
+    --font-scale: calc(var(--scale) * 1px);
+}
+
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Orbitron', 'Audiowide', monospace;
+            background: #050b1a;
+            touch-action: none;
+        }
+
+        /* Game root и canvas */
+        #gameRoot {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+        }
+
+        /* UI слой - масштабирование */
+        #uiRoot {
+            position: absolute;
+            inset: 0;
+            z-index: 200;
+            pointer-events: none;
+        }
+
+        .ui-scaler {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-origin: top left;
+        }
+
+        /* Базовые размеры 810x1440 */
+        :root {
+            --base-w: 810;
+            --base-h: 1440;
+            --scale: 1;
+        }
+
+        /* Стили HUD */
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+            pointer-events: none;
+            font-weight: bold;
+            text-shadow: 0 0 5px #0ff, 0 0 10px #00aaff;
+            z-index: 210;
+        }
+
+        .hud-panel {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 40px;
+            padding: 8px 24px;
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+            font-family: 'Orbitron', monospace;
+            font-size: 28px;
+            color: #0ff;
+            letter-spacing: 2px;
+        }
+
+        .hud-label {
+            font-size: 12px;
+            color: #ccc;
+            margin-right: 10px;
+        }
+
+        /* Оверлеи */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 300;
+            transition: all 0.3s ease;
+        }
+
+        .panel {
+            background: linear-gradient(145deg, #0a0f2a, #030617);
+            border-radius: 60px;
+            padding: 30px 50px;
+            text-align: center;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.4);
+            min-width: 280px;
+            backdrop-filter: blur(5px);
+        }
+
+        .panel h1 {
+            font-size: 48px;
+            color: #0ff;
+            margin: 0 0 20px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
+
+        .panel p {
+            color: #bbf;
+            font-size: 24px;
+            margin: 10px 0;
+        }
+
+        .button {
+            background: linear-gradient(90deg, #1e2a5e, #0a0f2a);
+            border: 2px solid #0ff;
+            color: #0ff;
+            font-size: 28px;
+            font-weight: bold;
+            padding: 14px 32px;
+            margin: 16px 12px;
+            border-radius: 60px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: 'Orbitron', monospace;
+            letter-spacing: 2px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            pointer-events: auto;
+        }
+
+        .button:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 25px #0ff;
+            transform: scale(1.02);
+        }
+
+        .button:active {
+            transform: scale(0.98);
+        }
+
+        /* Джойстик */
+
+        .joystick-base {
+            width: 100%;
+            height: 100%;
+            background: rgba(20, 30, 60, 0.7);
+            backdrop-filter: blur(12px);
+            border-radius: 50%;
+            border: 2px solid #0ff;
+            position: relative;
+            touch-action: none;
+        }
+
+ 
+
+        .hidden {
+            display: none !important;
+        }
+
+        .overlay {
+          position: fixed;  /* вместо absolute, чтобы не зависеть от контейнера */
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          z-index: 1000;    /* выше всего */
+        }
+
+        /* Для мобильных удобство */
+        @media (max-width: 700px) {
+            .hud-panel { padding: 6px 18px; font-size: 22px; }
+            .panel h1 { font-size: 36px; }
+            .button { font-size: 22px; padding: 10px 24px; }
+            .joystick-container { width: 110px; height: 110px; bottom: 50px; right: 25px; }
+        }
+
+/* Джойстик - начальное положение (видимое) */
+.joystick-container {
+    position: fixed;
+    bottom: 120px;
+    right: 30px;
+    width: 140px;
+    height: 140px;
+    pointer-events: auto;
+    z-index: 400;
+    filter: drop-shadow(0 0 12px rgba(0, 255, 255, 0.5));
+    cursor: grab;
+    touch-action: none;
+}
+
+.joystick-container:active {
+    cursor: grabbing;
+}
+
+.joystick-base {
+    width: 100%;
+    height: 100%;
+    background: rgba(20, 30, 60, 0.7);
+    backdrop-filter: blur(12px);
+    border-radius: 50%;
+    border: 2px solid #0ff;
+    position: relative;
+    touch-action: none;
+}
+
+.joystick-thumb {
+    position: absolute;
+    width: 55px;
+    height: 55px;
+    background: radial-gradient(circle, #0ff, #0088aa);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 15px #0ff;
+    transition: transform 0.05s linear;
+    pointer-events: none;
+}
+
+.joystick-drag-handle {
+    position: absolute;
+    top: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50px;
+    height: 22px;
+    background: rgba(0, 255, 255, 0.7);
+    border-radius: 30px;
+    text-align: center;
+    font-size: 18px;
+    line-height: 22px;
+    color: black;
+    font-weight: bold;
+    pointer-events: auto;
+    z-index: 10;
+    cursor: grab;
+    touch-action: none;
+    box-shadow: 0 0 5px #0ff;
+}
+
+.joystick-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 700px) {
+    .joystick-container {
+        width: 110px;
+        height: 110px;
+        bottom: 80px;
+        right: 20px;
+    }
+    .joystick-drag-handle {
+        width: 40px;
+        height: 18px;
+        font-size: 14px;
+        top: -20px;
+    }
+}
+
+.warning {
+    transition: opacity 0.2s ease;
+    opacity: 0;
+}
+.warning.show {
+    opacity: 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+:root {
+    --base-w: 810;
+    --base-h: 1440;
+    --scale: 1;
+    --font-scale: calc(var(--scale) * 1px);
+}
+
+/* Все размеры интерфейса теперь зависят от --scale */
+
+.hud {
+    position: absolute;
+    top: calc(20px * var(--scale));
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 calc(30px * var(--scale));
+    pointer-events: none;
+    font-weight: bold;
+    text-shadow: 0 0 5px #0ff, 0 0 10px #00aaff;
+    z-index: 210;
+}
+
+.hud-panel {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    border-radius: calc(40px * var(--scale));
+    padding: calc(8px * var(--scale)) calc(24px * var(--scale));
+    border: calc(1px * var(--scale)) solid rgba(0, 255, 255, 0.5);
+    box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+    font-family: 'Orbitron', monospace;
+    font-size: calc(18px * var(--scale));
+    color: #0ff;
+    letter-spacing: 2px;
+    min-width: calc(180px * var(--scale));  /* фиксируем минимальную ширину */
+    white-space: nowrap;                    /* запрещаем перенос текста */
+    text-align: center;
+    padding: calc(12px * var(--scale)) calc(32px * var(--scale)); /* было 8px 24px */
+}
+
+.hud-label {
+    font-size: calc(14px * var(--scale));
+    color: #ccc;
+    margin-right: calc(10px * var(--scale));
+}
+.panel {
+    padding: calc(30px * var(--scale)) calc(50px * var(--scale));
+    border-radius: calc(60px * var(--scale));
+    border-width: calc(2px * var(--scale));
+}
+
+.panel h1 {
+    font-size: calc(48px * var(--scale));
+    margin-bottom: calc(20px * var(--scale));
+}
+
+.panel p {
+    font-size: calc(24px * var(--scale));
+    margin: calc(10px * var(--scale)) 0;
+}
+
+.button {
+    font-size: calc(28px * var(--scale));
+    padding: calc(14px * var(--scale)) calc(32px * var(--scale));
+    margin: calc(16px * var(--scale)) calc(12px * var(--scale));
+    border-radius: calc(60px * var(--scale));
+    border-width: calc(2px * var(--scale));
+}
+
+.joystick-container {
+    position: fixed;
+    bottom: calc(120px * var(--scale));
+    right: calc(30px * var(--scale));
+    width: calc(140px * var(--scale));
+    height: calc(140px * var(--scale));
+    pointer-events: auto;
+    z-index: 400;
+    filter: drop-shadow(0 0 12px rgba(0, 255, 255, 0.5));
+    cursor: grab;
+    touch-action: none;
+}
+
+.joystick-base {
+    width: 100%;
+    height: 100%;
+    background: rgba(20, 30, 60, 0.7);
+    backdrop-filter: blur(12px);
+    border-radius: 50%;
+    border: calc(2px * var(--scale)) solid #0ff;
+    position: relative;
+    touch-action: none;
+}
+
+
+.joystick-thumb {
+    position: absolute;
+    width: calc(55px * var(--scale));
+    height: calc(55px * var(--scale));
+    background: radial-gradient(circle, #0ff, #0088aa);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 15px #0ff;
+    transition: transform 0.05s linear;
+    pointer-events: none;
+}
+
+.joystick-drag-handle {
+    position: absolute;
+    top: calc(-25px * var(--scale));
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(50px * var(--scale));
+    height: calc(22px * var(--scale));
+    background: rgba(0, 255, 255, 0.7);
+    border-radius: calc(30px * var(--scale));
+    text-align: center;
+    font-size: calc(18px * var(--scale));
+    line-height: calc(22px * var(--scale));
+    color: black;
+    font-weight: bold;
+    pointer-events: auto;
+    z-index: 10;
+    cursor: grab;
+    touch-action: none;
+}
+
+.warning {
+    position: absolute;
+    bottom: calc(100px * var(--scale));
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 0, 0, 0.85);
+    color: white;
+    padding: calc(8px * var(--scale)) calc(20px * var(--scale));
+    border-radius: calc(40px * var(--scale));
+    font-size: calc(20px * var(--scale));
+    font-weight: bold;
+    z-index: 500;
+    pointer-events: none;
+    white-space: nowrap;
+    transition: opacity 0.2s ease;
+    opacity: 0;
+}
+.warning.show {
+    opacity: 1;
+}
+
+@media (max-width: 700px) {
+    .joystick-container {
+        width: calc(110px * var(--scale));
+        height: calc(110px * var(--scale));
+        bottom: calc(80px * var(--scale));
+        right: calc(20px * var(--scale));
+    }
+}
+
+
+    </style>
+</head>
+<body>
+<div id="gameRoot">
+    <canvas id="gameCanvas"></canvas>
+    <div id="uiRoot">
+            <!-- HUD -->
+            <div class="hud">
+                <div class="hud-panel"><span class="hud-label">⚡ ЭНЕРГИЯ</span> <span id="counterDisplay">0</span> / <span id="targetDisplay">0</span></div>
+                <div class="hud-panel"><span class="hud-label">⏱ ВРЕМЯ</span> <span id="timerDisplay">00</span>s</div>
+                <div class="hud-panel"><span class="hud-label">🌀 УРОВЕНЬ</span> <span id="difficultyDisplay">3</span></div>
+                <div id="warningMessage" class="warning hidden">⚠️ ОПАСНО! ЧИП ⚠️</div>
+            </div>
+
+            <!-- Виртуальный джойстик -->
+            <div id="joystickArea" class="joystick-container" data-ui="true">
+                <div class="joystick-drag-handle" data-ui="true">⣿</div>
+                <div class="joystick-base" id="joystickBase">
+                    <div class="joystick-thumb" id="joystickThumb"></div>
+                </div>
+            </div>
+
+        <!-- Стартовый экран -->
+        <div id="startOverlay" class="overlay" data-ui="true">
+            <div class="panel" data-ui="true">
+                <h1>⚡ Плата под напряжением ⚡</h1>
+                <p>Собирай энергию до перегрузки системы!</p>
+                <p style="color: #ff8888;">⚠️ Избегай чёрных чипов – они опасны!</p>
+                <button id="startButton" class="button">⟳ СТАРТ</button>
+            </div>
+        </div>
+
+        <!-- Финишный экран (результат + ретрай/конфирм) -->
+        <div id="finishOverlay" class="overlay hidden" data-ui="true">
+            <div class="panel" data-ui="true">
+                <h1 id="finishTitle">🟢 УСПЕХ</h1>
+                <p id="finishMessage">Собрано X / Y энергии</p>
+                <button id="retryButton" class="button">⟳ ЗАНОВО</button>
+                <button id="confirmButton" class="button">✔ ПОДТВЕРДИТЬ</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Three.js CDN -->
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+
+    // ------------------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ -------------------
+    let scene, camera, renderer, clock;
+    let player;                 // Mesh персонажа
+    const CHARACTER_Y_OFFSET = 0.1;   // ← меняйте это значение (было 0.5, стало 0.2)
+    const DANGER_CHIP_HEIGHT = 0.55;   // ← меняйте здесь (высота корпуса + ножек)
+    const CAMERA_DISTANCE = 19;      // ← меняйте это число
+    const CAMERA_HEIGHT = 18.2;
+    let playerPos = new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0);
+    let collectibles = [];
+    let obstacles = [];        // декоративные, не коллизии
+    let speed = 6.5;           // ед/сек
+    let direction = new THREE.Vector3(0, 0, 0);
+    
+    let dangerChips = [];           // массив опасных чипов { mesh, position, radius }
+    let dangerCount = 0;            // количество опасных чипов для текущей сложности
+
+    // Игровое состояние
+    let gameActive = false;     // разрешено управление и таймер
+    let resultSent = false;
+    let initReceived = false;
+    let difficulty = 3;
+    let targetCollect = 5;
+    let timeLimit = 45;         // секунд
+    let timeLeft = 45;
+    let collected = 0;
+    let gameWin = false;        // завершена ли игра победой/поражением (показ оверлея)
+    
+    // Визуальные компоненты
+    let ambientLight, dirLight, fillLight, pointLights = [];
+    let particleSystem = null;
+    
+    // Управление
+    let keyboard = { up: false, down: false, left: false, right: false };
+    let joystickDir = { x: 0, z: 0 };
+    let activePointerId = null;
+    let joystickActive = false;
+    let joystickBaseElem, joystickThumbElem, joystickRect;
+    let joystickCenter = { x: 0, y: 0 };
+    let joystickRadius = 50;
+    
+    // UI элементы
+    const startOverlay = document.getElementById('startOverlay');
+    const finishOverlay = document.getElementById('finishOverlay');
+    const startBtn = document.getElementById('startButton');
+    const retryBtn = document.getElementById('retryButton');
+    const confirmBtn = document.getElementById('confirmButton');
+    const counterSpan = document.getElementById('counterDisplay');
+    const targetSpan = document.getElementById('targetDisplay');
+    const timerSpan = document.getElementById('timerDisplay');
+    const difficultySpan = document.getElementById('difficultyDisplay');
+    const finishTitle = document.getElementById('finishTitle');
+    const finishMessage = document.getElementById('finishMessage');
+    
+    // Параметры сцены
+    const WORLD_BOUNDS = { x: 14, z: 10 };
+    const BASE_W = 810, BASE_H = 1440;
+    
+
+    let warningTimeout = null;
+    const warningElement = document.getElementById('warningMessage');
+
+    function showDangerWarning() {
+        if (warningTimeout) clearTimeout(warningTimeout);
+        warningElement.classList.remove('hidden');
+        warningElement.classList.add('show');
+        warningTimeout = setTimeout(() => {
+            warningElement.classList.remove('show');
+            setTimeout(() => warningElement.classList.add('hidden'), 200);
+        }, 800);
+    }
+
+
+    // ---------- Вспомогательные функции масштабирования UI ----------
+    function applyUIScale() {
+    const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+    document.documentElement.style.setProperty('--scale', scale);
+    // Больше ничего не нужно
+}
+    
+    // ---------- Создание 3D сцены: Плата и окружение ----------
+    function createMotherboard() {
+        // Основание платы
+        const boardMat = new THREE.MeshStandardMaterial({ color: 0x1a2a3a, roughness: 0.4, metalness: 0.7 });
+        const boardPlane = new THREE.Mesh(new THREE.PlaneGeometry(28, 20), boardMat);
+        boardPlane.rotation.x = -Math.PI / 2;
+        boardPlane.position.y = -0.2;
+        boardPlane.receiveShadow = true;
+        scene.add(boardPlane);
+        
+        // Добавим детали: чипы, конденсаторы, дорожки (декор)
+        const chipMat = new THREE.MeshStandardMaterial({ color: 0x44aaff, metalness: 0.8, roughness: 0.2, emissive: 0x004466 });
+        const capMat = new THREE.MeshStandardMaterial({ color: 0xdd8844, metalness: 0.3 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xffaa33, metalness: 0.9, emissive: 0x442200 });
+        
+        for (let i = 0; i < 60; i++) {
+            let type = Math.random() > 0.6 ? 'chip' : 'cap';
+            let mesh;
+            if (type === 'chip') {
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.4), chipMat);
+                mesh.position.y = -0.05;
+            } else {
+                mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.3, 8), capMat);
+                mesh.position.y = 0.0;
+            }
+            let x = (Math.random() - 0.5) * 24;
+            let z = (Math.random() - 0.5) * 17;
+            if (Math.abs(x) < 3 && Math.abs(z) < 2.5) continue; // стартовая зона
+            mesh.position.set(x, -0.1, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = false;
+            scene.add(mesh);
+            obstacles.push(mesh);
+        }
+        
+        // Дорожки (линии из цилиндров)
+        const traceMat = new THREE.MeshStandardMaterial({ color: 0xbbaa77, metalness: 0.9 });
+        for (let i = 0; i < 30; i++) {
+            const line = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 4), traceMat);
+            line.rotation.z = Math.PI / 2;
+            line.position.set((Math.random() - 0.5) * 26, -0.15, (Math.random() - 0.5) * 18);
+            line.castShadow = false;
+            scene.add(line);
+        }
+        
+        // Добавим светящиеся индикаторы
+        const ledMat = new THREE.MeshStandardMaterial({ color: 0xff3300, emissive: 0xff2200 });
+        for (let i = 0; i < 12; i++) {
+            const led = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), ledMat);
+            led.position.set(-12 + i * 2.2, 0.05, -8.5);
+            scene.add(led);
+        }
+    }
+    
+    function createPlayer() {
+        const group = new THREE.Group();
+        // корпус
+        const bodyGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.8, 16);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x33ccff, metalness: 0.8, emissive: 0x0066aa });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 0.4;
+        body.castShadow = true;
+        group.add(body);
+        // голова
+        const headGeo = new THREE.SphereGeometry(0.45, 24, 24);
+        const headMat = new THREE.MeshStandardMaterial({ color: 0x88ddff, metalness: 0.4 });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 0.9;
+        head.castShadow = true;
+        group.add(head);
+        // глаза
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x44aaff });
+        const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), eyeMat);
+        leftEye.position.set(-0.2, 1.05, 0.45);
+        const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), eyeMat);
+        rightEye.position.set(0.2, 1.05, 0.45);
+        group.add(leftEye);
+        group.add(rightEye);
+        // антенна
+        const antennaMat = new THREE.MeshStandardMaterial({ color: 0xffaa44 });
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6), antennaMat);
+        antenna.position.set(0, 1.25, 0);
+        group.add(antenna);
+        
+        group.position.copy(playerPos);
+        group.castShadow = true;
+        scene.add(group);
+        return group;
+    }
+    
+    function createCollectible(x, z) {
+        const geometry = new THREE.IcosahedronGeometry(0.35, 0);
+        const material = new THREE.MeshStandardMaterial({ color: 0xffaa44, metalness: 0.9, emissive: 0xaa5522, emissiveIntensity: 0.6 });
+        const chip = new THREE.Mesh(geometry, material);
+        chip.position.set(x, 0.5, z);
+        chip.castShadow = true;
+        scene.add(chip);
+        // вращающаяся аура
+        const ringGeo = new THREE.TorusGeometry(0.48, 0.05, 16, 32);
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0xffaa66, emissive: 0xff4411 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        chip.add(ring);
+        return chip;
+    }
+    
+
+    function createDangerChip(x, z) {
+    const group = new THREE.Group();
+    
+    // ========== 1. Форма чипа (разные варианты) ==========
+    const shapeType = Math.floor(Math.random() * 4);
+    
+    let bodyGeo;
+    if (shapeType === 0) bodyGeo = new THREE.BoxGeometry(0.7, DANGER_CHIP_HEIGHT * 0.6, 0.7);      // квадратный
+    else if (shapeType === 1) bodyGeo = new THREE.BoxGeometry(1.0, DANGER_CHIP_HEIGHT * 0.6, 0.5); // вытянутый
+    else if (shapeType === 2) bodyGeo = new THREE.CylinderGeometry(0.4, 0.4, DANGER_CHIP_HEIGHT * 0.6, 8);
+    else bodyGeo = new THREE.BoxGeometry(0.6, DANGER_CHIP_HEIGHT * 0.6, 0.9);                       // прямоугольный
+    
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.7, roughness: 0.3 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = DANGER_CHIP_HEIGHT * 0.3;
+    body.castShadow = true;
+    group.add(body);
+    
+    // ========== 2. Ножки (высота зависит от DANGER_CHIP_HEIGHT) ==========
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9 });
+    const legHeight = DANGER_CHIP_HEIGHT * 0.25;
+    const legPositions = [
+        [-0.4, -0.05, -0.4], [ 0.4, -0.05, -0.4],
+        [-0.4, -0.05,  0.4], [ 0.4, -0.05,  0.4]
+    ];
+    legPositions.forEach(pos => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, legHeight, 6), legMat);
+        leg.position.set(pos[0], -legHeight/2 + 0.02, pos[2]);
+        group.add(leg);
+    });
+    
+    // ========== 3. Анимация (выберите ОДИН из вариантов) ==========
+    
+    // ----- ВАРИАНТ А: ПАРЯЩИЕ СВЕТЯЩИЕСЯ ШАРЫ (рекомендую) -----
+    const orbMat = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff2200, emissiveIntensity: 0.8 });
+    const orbs = [];
+    const orbCount = 3;
+    for (let i = 0; i < orbCount; i++) {
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), orbMat);
+        orb.userData = { angle: (i / orbCount) * Math.PI * 2, radius: 0.65, speed: 1.2 };
+        group.add(orb);
+        orbs.push(orb);
+    }
+    group.userData = { orbs, time: 0 };
+    
+    /* // ----- ВАРИАНТ Б: АНИМИРОВАННЫЕ МОЛНИИ (LineSegments) -----
+    const lightningMat = new THREE.LineBasicMaterial({ color: 0xffaa44 });
+    const lightningPoints = [];
+    for (let i = 0; i < 4; i++) {
+        const points = [];
+        points.push(new THREE.Vector3(0, DANGER_CHIP_HEIGHT * 0.5, 0));
+        points.push(new THREE.Vector3((Math.random() - 0.5) * 0.8, DANGER_CHIP_HEIGHT * 0.8, (Math.random() - 0.5) * 0.8));
+        points.push(new THREE.Vector3((Math.random() - 0.5) * 0.5, DANGER_CHIP_HEIGHT * 1.1, (Math.random() - 0.5) * 0.5));
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, lightningMat);
+        group.add(line);
+        lightningPoints.push(line);
+    }
+    group.userData = { lightning: lightningPoints, time: 0 };
+    */
+    
+    group.position.set(x, 0.05, z);
+    scene.add(group);
+    
+    return { mesh: group, position: new THREE.Vector3(x, DANGER_CHIP_HEIGHT * 0.5, z), radius: 0.6 };
+}
+
+
+function generateDangerChips(count) {
+    // Удаляем старые
+    dangerChips.forEach(d => scene.remove(d.mesh));
+    dangerChips = [];
+    if (count <= 0) return;
+    
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+        let x, z, ok;
+        do {
+            ok = true;
+            x = (Math.random() - 0.5) * (WORLD_BOUNDS.x * 2 - 3);
+            z = (Math.random() - 0.5) * (WORLD_BOUNDS.z * 2 - 2.5);
+            // Не ставить слишком близко к стартовой позиции
+            if (Math.hypot(x, z) < 2.0) ok = false;
+            // Не ставить рядом с другими опасными чипами
+            for (let p of positions) if (Math.hypot(p.x - x, p.z - z) < 1.2) ok = false;
+            // Не ставить на место обычных чипов (опционально)
+            for (let col of collectibles) if (col.position.distanceTo(new THREE.Vector3(x, 0, z)) < 0.8) ok = false;
+        } while (!ok);
+        positions.push({x, z});
+        const chipObj = createDangerChip(x, z);
+        dangerChips.push(chipObj);
+    }
+}
+
+
+function animateDangerChips(delta) {
+    const time = performance.now() * 0.008;
+    dangerChips.forEach(chip => {
+        const group = chip.mesh;
+        if (group.userData && group.userData.lightning) {
+            const lines = group.userData.lightning;
+            lines.forEach((line, idx) => {
+                // Меняем форму молнии (случайные смещения вершин)
+                const positions = line.geometry.attributes.position.array;
+                for (let i = 1; i < positions.length / 3; i++) {
+                    positions[i*3] = (Math.sin(time * 10 + idx * 2 + i) * 0.2);
+                    positions[i*3+1] = DANGER_CHIP_HEIGHT * (0.6 + Math.sin(time * 12 + idx) * 0.2);
+                    positions[i*3+2] = (Math.cos(time * 9 + idx * 1.5 + i) * 0.2);
+                }
+                line.geometry.attributes.position.needsUpdate = true;
+                // Изменение цвета
+                const intensity = 0.5 + Math.sin(time * 15 + idx) * 0.5;
+                line.material.color.setHSL(0.12, 1, intensity * 0.6);
+            });
+        }
+    });
+}
+
+
+    function generateCollectibles(count) {
+        // очистка старых
+        collectibles.forEach(c => scene.remove(c.mesh));
+        collectibles = [];
+        const positions = [];
+        for (let i = 0; i < count; i++) {
+            let x, z, ok;
+            do {
+                ok = true;
+                x = (Math.random() - 0.5) * (WORLD_BOUNDS.x * 2 - 2);
+                z = (Math.random() - 0.5) * (WORLD_BOUNDS.z * 2 - 2);
+                if (Math.hypot(x, z) < 1.5) ok = false;
+                for (let p of positions) if (Math.hypot(p.x - x, p.z - z) < 1.2) ok = false;
+            } while (!ok);
+            positions.push({x, z});
+            const mesh = createCollectible(x, z);
+            collectibles.push({ mesh, position: new THREE.Vector3(x, 0.2, z), radius: 0.55 });
+        }
+    }
+    
+    // Эффект частиц при сборе
+    function spawnSparkle(position) {
+        const particleCount = 12;
+        const particleGeo = new THREE.BufferGeometry();
+        const vertices = [];
+        for (let i = 0; i < particleCount; i++) {
+            vertices.push(0, 0, 0);
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0xffaa55, size: 0.08 });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        particles.position.copy(position);
+        scene.add(particles);
+        
+        let time = 0;
+        const animateParticles = () => {
+            time += 0.1;
+            if (time > 0.6) {
+                scene.remove(particles);
+                particles.geometry.dispose();
+                return;
+            }
+            const positionsAttr = particles.geometry.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const rad = time * 1.5;
+                const xOff = Math.cos(angle + i) * rad;
+                const zOff = Math.sin(angle + i) * rad;
+                const yOff = Math.abs(Math.sin(time * 8)) * 0.5;
+                positionsAttr[i*3] = xOff;
+                positionsAttr[i*3+1] = yOff;
+                positionsAttr[i*3+2] = zOff;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+            requestAnimationFrame(animateParticles);
+        };
+        requestAnimationFrame(animateParticles);
+    }
+    
+    // Инициализация всей 3D сцены
+    function init3D() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020617);
+        scene.fog = new THREE.FogExp2(0x020617, 0.008);
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 6, 12);
+        renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        clock = new THREE.Clock();
+        
+        // Освещение
+        ambientLight = new THREE.AmbientLight(0x222222);
+        scene.add(ambientLight);
+        dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 12, 4);
+        dirLight.castShadow = true;
+        dirLight.receiveShadow = false;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+        fillLight = new THREE.PointLight(0x4466ff, 0.5);
+        fillLight.position.set(2, 3, 3);
+        scene.add(fillLight);
+        const backLight = new THREE.PointLight(0xffaa66, 0.4);
+        backLight.position.set(-3, 2, -5);
+        scene.add(backLight);
+        
+        createMotherboard();
+        player = createPlayer();
+        
+        // пол
+        const gridHelper = new THREE.GridHelper(30, 20, 0x33aaff, 0x2266aa);
+        gridHelper.position.y = -0.25;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.3;
+        scene.add(gridHelper);
+    }
+    
+    function resetGameState() {
+        if (resultSent) return;
+        gameActive = false;
+        gameWin = false;
+        collected = 0;
+        timeLeft = timeLimit;
+        updateUI();
+        // сброс позиции
+        playerPos.set(0, CHARACTER_Y_OFFSET, 0);
+        player.position.copy(playerPos);
+        direction.set(0,0,0);
+        joystickDir = { x: 0, z: 0 };
+        // перегенерация чипов
+        generateCollectibles(Math.min(14, targetCollect + 3)); // немного больше чем цель
+        generateDangerChips(dangerCount);   // ← добавить эту строку
+        // сброс камеры
+        camera.position.set(0, 6, 12);
+    }
+    
+    function updateUI() {
+        counterSpan.innerText = collected;
+        targetSpan.innerText = targetCollect;
+        timerSpan.innerText = Math.max(0, Math.floor(timeLeft));
+        difficultySpan.innerText = difficulty;
+    }
+    
+    function checkWinLose() {
+        if (!gameActive) return;
+        let finished = false;
+        let win = false;
+        if (collected >= targetCollect) {
+            win = true;
+            finished = true;
+        } else if (timeLeft <= 0) {
+            win = false;
+            finished = true;
+        }
+        if (finished && !gameWin && !resultSent) {
+            gameActive = false;
+            gameWin = true;
+            // Показать финишный оверлей
+            finishTitle.innerText = win ? "✨ ПОБЕДА ✨" : "🚫 ПРОВАЛ 🚫";
+            finishMessage.innerText = `Собрано ${collected} / ${targetCollect} энергии`;
+            finishOverlay.classList.remove('hidden');
+            // запомним результат для кнопки CONFIRM
+            finishOverlay.dataset.win = win ? "1" : "0";
+        }
+    }
+    
+    function collectItem(index) {
+        if (!gameActive) return;
+        const item = collectibles[index];
+        if (!item) return;
+        scene.remove(item.mesh);
+        spawnSparkle(item.position);
+        collectibles.splice(index, 1);
+        collected++;
+        updateUI();
+        checkWinLose();
+    }
+    
+    function updateMovement(deltaSec) {
+        if (!gameActive) return;
+        let moveX = 0, moveZ = 0;
+        // клавиатура
+        if (keyboard.left || keyboard.right) moveX = (keyboard.right ? 1 : 0) - (keyboard.left ? 1 : 0);
+        if (keyboard.up || keyboard.down) moveZ = (keyboard.up ? 1 : 0) - (keyboard.down ? 1 : 0);
+        // джойстик приоритет (если активен)
+        if (joystickActive && (Math.abs(joystickDir.x) > 0.05 || Math.abs(joystickDir.z) > 0.05)) {
+            moveX = joystickDir.x;
+            moveZ = joystickDir.z;
+        }
+        if (moveX !== 0 || moveZ !== 0) {
+            const len = Math.hypot(moveX, moveZ);
+            if (len > 0.01) {
+                moveX /= len;
+                moveZ /= len;
+            }
+            const newX = playerPos.x + moveX * speed * deltaSec;
+            const newZ = playerPos.z + moveZ * speed * deltaSec;
+            playerPos.x = Math.min(WORLD_BOUNDS.x, Math.max(-WORLD_BOUNDS.x, newX));
+            playerPos.z = Math.min(WORLD_BOUNDS.z, Math.max(-WORLD_BOUNDS.z, newZ));
+            player.position.copy(playerPos);
+            // небольшая анимация поворота
+            const angle = Math.atan2(moveX, moveZ);
+            player.rotation.y = angle;
+        }
+        
+        // сбор предметов (коллизия)
+        for (let i = collectibles.length-1; i >= 0; i--) {
+            const item = collectibles[i];
+            const dist = playerPos.distanceTo(item.position);
+            if (dist < 0.85) {
+                collectItem(i);
+            }
+        }
+
+        // Проверка столкновения с опасными чипами
+for (let i = 0; i < dangerChips.length; i++) {
+    const danger = dangerChips[i];
+    const dist = playerPos.distanceTo(danger.position);
+    // Предупреждение за 2.5 единицы
+    if (dist < 2.5 && !warningTimeout) {
+        showDangerWarning();
+    }
+    if (dist < danger.radius + 0.4) {
+        // Игрок коснулся опасного чипа -> проигрыш
+        gameActive = false;
+        gameWin = false;
+        stopTimer();
+        // Показать экран поражения с возможностью ретрая
+        finishTitle.innerText = "🚫 Плата под напряжением 🚫";
+        finishMessage.innerText = `Вы коснулись опасного чипа! Собрано энергии ${collected} / ${targetCollect}`;
+        finishOverlay.dataset.win = "0";
+        finishOverlay.classList.remove('hidden');
+        return;
+    }
+}
+
+
+    }
+    
+    function animateCollectibles(delta) {
+        collectibles.forEach((item, idx) => {
+            item.mesh.rotation.y += 3.5 * delta;
+            item.mesh.rotation.x += 1.2 * delta;
+            const ring = item.mesh.children[0];
+            if (ring) ring.rotation.z += 2 * delta;
+            // легкая пульсация
+            const scale = 1 + Math.sin(Date.now() * 0.008) * 0.05;
+            item.mesh.scale.set(scale, scale, scale);
+        });
+    }
+    
+    // Таймер игры
+    let timerInterval = null;
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (!gameActive) return;
+            if (timeLeft > 0) {
+                timeLeft -= 0.1;
+                if (timeLeft <= 0) {
+                    timeLeft = 0;
+                    updateUI();
+                    checkWinLose();
+                } else {
+                    updateUI();
+                }
+            }
+        }, 100);
+    }
+    
+    function stopTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    
+    function startGameplay() {
+        if (resultSent) return;
+        resetGameState();
+        gameActive = true;
+        gameWin = false;
+        finishOverlay.classList.add('hidden');
+        startOverlay.classList.add('hidden');
+        stopTimer();
+        startTimer();
+    }
+    
+    function confirmFinalResult() {
+        if (resultSent) return;
+        const winFlag = finishOverlay.dataset.win === "1";
+        const finalResult = winFlag ? 1 : 0;
+        resultSent = true;
+        gameActive = false;
+        stopTimer();
+        // Блокировка всего ввода
+        document.body.style.pointerEvents = 'none';
+        // Отключаем джойстик
+        const joyArea = document.getElementById('joystickArea');
+        if (joyArea) joyArea.style.pointerEvents = 'none';
+        // Отправка результата
+        parent.postMessage({ type: "gameResult", result: finalResult }, "*");
+        // полная блокировка интерфейса
+        startBtn.disabled = true;
+        retryBtn.disabled = true;
+        confirmBtn.disabled = true;
+    }
+    
+    function retryGame() {
+        if (resultSent) return;
+        stopTimer();
+        finishOverlay.classList.add('hidden');
+        startGameplay();
+    }
+    
+    // ---------- УПРАВЛЕНИЕ: КЛАВИАТУРА, ДЖОЙСТИК, UI ----------
+    function setupInput() {
+        window.addEventListener('keydown', (e) => {
+            if (!gameActive || resultSent) return;
+            const k = e.key;
+            if (k === 'ArrowUp' || k === 'w') keyboard.up = true;
+            if (k === 'ArrowDown' || k === 's') keyboard.down = true;
+            if (k === 'ArrowLeft' || k === 'a') keyboard.left = true;
+            if (k === 'ArrowRight' || k === 'd') keyboard.right = true;
+            e.preventDefault();
+        });
+        window.addEventListener('keyup', (e) => {
+            const k = e.key;
+            if (k === 'ArrowUp' || k === 'w') keyboard.up = false;
+            if (k === 'ArrowDown' || k === 's') keyboard.down = false;
+            if (k === 'ArrowLeft' || k === 'a') keyboard.left = false;
+            if (k === 'ArrowRight' || k === 'd') keyboard.right = false;
+        });
+        
+        // Джойстик (pointer events)
+        joystickBaseElem = document.getElementById('joystickBase');
+        joystickThumbElem = document.getElementById('joystickThumb');
+        const updateJoystick = (clientX, clientY) => {
+            const rect = joystickBaseElem.getBoundingClientRect();
+            const centerX = rect.left + rect.width/2;
+            const centerY = rect.top + rect.height/2;
+            let dx = clientX - centerX;
+            let dy = clientY - centerY;
+            const distance = Math.hypot(dx, dy);
+            const maxDist = rect.width/2;
+            let normX = 0, normY = 0;
+            if (distance > 0.01) {
+                const limited = Math.min(distance, maxDist);
+                normX = dx / maxDist;
+                normY = dy / maxDist;
+                const angle = Math.atan2(dy, dx);
+                const thumbX = Math.cos(angle) * limited;
+                const thumbY = Math.sin(angle) * limited;
+                joystickThumbElem.style.transform = `translate(calc(-50% + ${thumbX}px), calc(-50% + ${thumbY}px))`;
+            } else {
+                joystickThumbElem.style.transform = `translate(-50%, -50%)`;
+            }
+            joystickDir = { x: Math.min(1, Math.max(-1, normX)), z: Math.min(1, Math.max(-1, normY)) };
+            joystickActive = true;
+        };
+        const resetJoystick = () => {
+            joystickThumbElem.style.transform = `translate(-50%, -50%)`;
+            joystickDir = { x: 0, z: 0 };
+            joystickActive = false;
+        };
+        joystickBaseElem.addEventListener('pointerdown', (e) => {
+            if (!gameActive || resultSent) return;
+            e.preventDefault();
+            e.stopPropagation();
+            joystickBaseElem.setPointerCapture(e.pointerId);
+            updateJoystick(e.clientX, e.clientY);
+        });
+        joystickBaseElem.addEventListener('pointermove', (e) => {
+            if (!gameActive || resultSent) return;
+            if (joystickBaseElem.hasPointerCapture(e.pointerId)) {
+                updateJoystick(e.clientX, e.clientY);
+            }
+        });
+        joystickBaseElem.addEventListener('pointerup', (e) => {
+            resetJoystick();
+            joystickBaseElem.releasePointerCapture(e.pointerId);
+        });
+        joystickBaseElem.addEventListener('pointercancel', resetJoystick);
+    }
+    
+    function bindUIButtons() {
+        const stopProp = (e) => { e.preventDefault(); e.stopPropagation(); };
+        const buttons = [startBtn, retryBtn, confirmBtn];
+        buttons.forEach(btn => {
+            ['pointerdown', 'touchstart', 'mousedown', 'click'].forEach(ev => {
+                btn.addEventListener(ev, stopProp);
+            });
+        });
+        startBtn.addEventListener('click', () => { if (!resultSent) startGameplay(); });
+        retryBtn.addEventListener('click', () => { if (!resultSent) retryGame(); });
+        confirmBtn.addEventListener('click', () => { confirmFinalResult(); });
+    }
+    
+    // ========== ПЕРЕТАСКИВАНИЕ ДЖОЙСТИКА ==========
+function makeDraggable(element, handleSelector) {
+    let startX, startY, startLeft, startTop;
+    let isDragging = false;
+    const handle = element.querySelector(handleSelector);
+    if (!handle) return;
+
+    const onPointerDown = (e) => {
+        // Только если начали тянуть за ручку
+        if (e.target === handle || handle.contains(e.target)) {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            const rect = element.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            element.setPointerCapture(e.pointerId);
+            element.style.cursor = 'grabbing';
+        }
+    };
+
+    const onPointerMove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+        // Ограничения по экрану (чтобы не вылезал за края)
+        const maxX = window.innerWidth - element.offsetWidth;
+        const maxY = window.innerHeight - element.offsetHeight;
+        newLeft = Math.min(maxX, Math.max(0, newLeft));
+        newTop = Math.min(maxY, Math.max(0, newTop));
+        element.style.left = newLeft + 'px';
+        element.style.top = newTop + 'px';
+        element.style.right = 'auto';
+        element.style.bottom = 'auto';
+    };
+
+    const onPointerUp = (e) => {
+        if (isDragging) {
+            isDragging = false;
+            element.releasePointerCapture(e.pointerId);
+            element.style.cursor = '';
+        }
+    };
+
+    handle.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+}
+
+// Вызов после того, как DOM загружен
+const joystickElement = document.getElementById('joystickArea');
+if (joystickElement) {
+    makeDraggable(joystickElement, '.joystick-drag-handle');
+}
+
+    function setupCameraFollow() {
+        // камера следует за игроком
+        const offset = new THREE.Vector3(0, CAMERA_HEIGHT, CAMERA_DISTANCE);
+        const targetOffset = new THREE.Vector3(0, 1.2, 0);
+        if (player) {
+            const desiredPos = playerPos.clone().add(offset);
+            camera.position.lerp(desiredPos, 0.08);
+            camera.lookAt(playerPos.clone().add(targetOffset));
+        }
+    }
+    
+    // Анимация и цикл
+    let lastTime = 0;
+    function animate() {
+        const now = performance.now() / 1000;
+        let delta = Math.min(0.033, lastTime ? now - lastTime : 0.016);
+        lastTime = now;
+        if (gameActive && !resultSent) {
+            updateMovement(delta);
+        }
+        animateCollectibles(delta);
+        setupCameraFollow();
+        
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+    
+    // Инициализация игры и обработка сообщения от движка
+    function applyDifficulty(value) {
+      difficulty = Math.min(5, Math.max(1, Number(value) || 3));
+      if (difficulty === 1) {
+          targetCollect = 5;
+          timeLimit = 55;
+          speed = 6.0;
+          dangerCount = 2;          // мало опасностей
+      } else if (difficulty === 2) {
+          targetCollect = 7;
+          timeLimit = 45;
+          speed = 6.8;
+          dangerCount = 3;
+      } else {
+          targetCollect = 10;
+          timeLimit = 38;
+          speed = 7.5;
+          dangerCount = 4;
+      }
+      updateUI();
+  }
+    
+    window.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'gameInit') {
+            initReceived = true;
+            const newDiff = e.data.difficulty ?? 3;
+            applyDifficulty(newDiff);
+            resetGameState();
+            startOverlay.classList.remove('hidden');
+            finishOverlay.classList.add('hidden');
+            if (timerInterval) stopTimer();
+            gameActive = false;
+        }
+    });
+    
+    // Автономный запуск (если нет gameInit через 300ms)
+    setTimeout(() => {
+        if (!initReceived) {
+            applyDifficulty(3);
+            resetGameState();
+        }
+    }, 300);
+    
+    function main() {
+        init3D();
+        setupInput();
+        bindUIButtons();
+        applyUIScale();
+
+        const joystickElement = document.getElementById('joystickArea');
+        if (joystickElement) {
+            makeDraggable(joystickElement, '.joystick-drag-handle');
+        }
+
+        window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    applyUIScale();  // ← обновляем масштаб интерфейса
+});
+        generateCollectibles(targetCollect + 2);
+        animate();
+        // Стартовый экран
+        startOverlay.classList.remove('hidden');
+        gameActive = false;
+    }
+    
+    main();
+</script>
+</body>
+</html>
