@@ -1,13 +1,17 @@
 # Third-Party Notices
 
-Этот файл содержит информацию о сторонних библиотеках, используемых в проекте.
-Лицензия на исходный код самого проекта доступна в файле [LICENSE](LICENSE).
+This file contains information about third-party libraries used in this project.
+
+The license for the project's own source code is provided in [LICENSE](LICENSE).
+Commercial use terms for the project's own source code are described in [COMMERCIAL-USE.md](COMMERCIAL-USE.md).
+
+The licenses of the third-party components listed below remain unchanged and apply separately from the license of this project.
 
 ## Mermaid
 
-Этот проект использует [Mermaid](https://mermaid.js.org/) — инструмент для создания диаграмм и графиков из текстовых описаний.
+This project uses [Mermaid](https://mermaid.js.org/) — a tool for generating diagrams and charts from text descriptions.
 
-### Лицензия
+### License
 
 The MIT License (MIT)
 
@@ -31,7 +35,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-### Использование в проекте
+### Use in This Project
 
-Файл `mermaid.min.js` включен в репозиторий без изменений и находится в директории `lib/`. 
-Версия Mermaid: 11.x (актуальная на момент последнего обновления).
+The `mermaid.min.js` file is included in the repository without modifications and is located in the `lib/` directory.
+Mermaid version: 11.x (current at the time of the last update).

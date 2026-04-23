@@ -83,6 +83,7 @@ jobs:
           [ -f story.js ] && cp story.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
           [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
+          [ -f COMMERCIAL-USE.md ] && cp COMMERCIAL-USE.md "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
           [ -f tools/game-tester.html ] && cp tools/game-tester.html "build/$APP_NAME/tools/"
           [ -f FIRST-STEPS.md ] && cp FIRST-STEPS.md "build/$APP_NAME/"

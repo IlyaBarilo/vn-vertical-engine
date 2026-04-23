@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Stars">
   </a>
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
+    <img src="https://img.shields.io/badge/free-noncommercial-orange?style=for-the-badge" alt="License">
   </a>
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
     <img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Release">
@@ -41,6 +41,10 @@ A lightweight **offline visual novel engine** built with HTML, CSS, and JavaScri
 Designed for **vertical screens**, **portrait displays**, and **real-world installations** — from kiosks to 4K TVs.
 
 No setup. No dependencies. Just open `index.html` and start.
+
+> Free for noncommercial use and educational institutions.
+> Commercial use requires separate written permission from the author.
+> Legal license text: PolyForm Noncommercial 1.0.0.
 
 ---
 
@@ -120,6 +124,7 @@ This engine is suitable for:
     ├── story.js
     ├── README.md
     ├── LICENSE
+    ├── COMMERCIAL-USE.md
     ├── NOTICE.md
     ├── FIRST-STEPS.md
     ├── FIRST-STEPS-RU.md
@@ -351,27 +356,38 @@ installations**.
 
 ### Source Code
 
-The engine source code (`engine/engine.js`, `engine/engine.css`, `index.html`,
-`engine/story-loader.js`) is licensed under the **MIT License**.
+Starting from version 0.5, the engine source code (`engine/engine.js`, `engine/engine.css`, `index.html`, `engine/story-loader.js`) is available under the **PolyForm Noncommercial 1.0.0** license.
+
+You may use, study, modify, and share this software for noncommercial purposes.
+
+Educational institutions may use this software free of charge under the default public license.
+
+Commercial use is not allowed unless you obtain separate written permission from the author.
 
 Copyright (c) 2026 Ilya Barilo
 
 See the full license text in the [LICENSE](LICENSE).
+See commercial terms in [COMMERCIAL-USE.md](COMMERCIAL-USE.md) (English / Russian).
 
+### Previous Versions
+
+Versions released before 0.5 remain available under the license they were originally published with.
 
 ## 📦 Content (Demo Assets)
 
-All media files located in the `assets/` folder - including character
-images, backgrounds, videos, audio files, and other materials used in
-the demo novel - are **NOT covered by the MIT License**.
+All media files located in the `assets/` folder - including character images,
+backgrounds, videos, audio files, and other materials used in the demo novel -
+are **NOT covered by the public source code license of this repository**.
 
-These files are provided **for demonstration purposes only**. You **are
-not allowed** to use them in your own projects (commercial or
-non-commercial) without obtaining separate permission from the copyright
-holder.
+The demo story content in `story.js` - including characters, dialogues, plot,
+and text content - is also **NOT covered by the public source code license**.
 
-When creating your own stories using this engine, you must replace all
-demo assets with your own content.
+These materials are provided for demonstration purposes only.
+You are not allowed to use them in your own projects (commercial or non-commercial)
+without obtaining separate permission from the copyright holder.
+
+When creating your own stories using this engine, you must replace all demo assets
+and demo story content with your own content.
 
 ---
 
