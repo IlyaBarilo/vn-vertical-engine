@@ -521,6 +521,14 @@ var elStatsBody = document.getElementById("statsBody");
 var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
 
+[elBg, elChar, elBlurBgImage].forEach(function (el) {
+  if (!el) return;
+  el.setAttribute("draggable", "false");
+  el.addEventListener("dragstart", function (e) {
+    e.preventDefault();
+  });
+});
+
 // Глобальный наблюдатель за именем
 var nameObserver = null;
 

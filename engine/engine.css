@@ -1616,14 +1616,26 @@ body {
   user-select: none !important;
 }
 
-html, body, .app, .stage {
-  touch-action: pan-y; /* запрещает пинч-зум, разрешает вертикальный скролл */
+/* Общую страницу не двигаем браузерными жестами на слое сцены */
+.stage,
+.novel-window,
+.bg,
+.char,
+.blur-bg-layer,
+.blur-bg-image,
+.overlay {
+  touch-action: none;
 }
 
-img, .bg, .char, .blur-bg-image {
-  -webkit-user-drag: none;
-  user-drag: none;
-  draggable: false;
+/* Запрещаем нативное перетаскивание картинок */
+img,
+.bg,
+.char,
+.blur-bg-image {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 .gameFrame {
