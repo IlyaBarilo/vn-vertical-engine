@@ -376,6 +376,8 @@ Versions released before 0.5 remain available under the license they were origin
 
 This license change applies to version 0.5 and later.
 
+---
+
 ## 📦 Content (Demo Assets)
 
 All files in the `assets/` folder and the demo story content in `story.js` are **not covered by the public license for the engine source code**.

@@ -1,7 +1,3 @@
-Required Notice: Copyright (c) 2026 Ilya Barilo
-Required Notice: This license applies only to the engine source code of this project.
-Required Notice: Demo assets in /assets and demo story content in story.js are not licensed under these terms.
-
 # Third-Party Notices
 
 This file contains information about third-party libraries used in this project.
