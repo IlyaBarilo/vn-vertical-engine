@@ -4765,6 +4765,12 @@ function getImgCountClass(count) {
 
 function buildCharactersGraph(story, options) {
   options = options || {};
+
+// Защита: если нет данных о персонажах, возвращаем пустой результат
+  if (!story || !story.assets || !story.assets.characters) {
+    return { mermaid: "", charNodes: [] };
+  }
+
   var compact = !!options.compact;
 
   var mermaid = "";
@@ -4772,8 +4778,23 @@ function buildCharactersGraph(story, options) {
   var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
   
   // Создаем узел "Персонажи"
-  mermaid += '    characters["<b>👥 Characters</b>"]\n';
-  mermaid += '    characters:::characters-group\n';  // Применяем CSS-класс
+  var charIds = (options.onlyCharIds && options.onlyCharIds.length)
+    ? options.onlyCharIds.slice().sort()
+    : Object.keys(characters).sort();
+
+  // Подсчёт общего количества эмоций (изображений) у всех персонажей
+  var totalEmotions = 0;
+  for (var i = 0; i < charIds.length; i++) {
+    var char = characters[charIds[i]];
+    if (char && char.images) {
+      totalEmotions += Object.keys(char.images).length;
+    }
+  }
+  
+  // Формируем заголовок с динамическим счётчиком
+  var groupLabel = '<b>👥 Characters (' + totalEmotions + '/' + charIds.length + ')</b>';
+  mermaid += '    characters["' + groupLabel + '"]\n';
+  mermaid += '    characters:::characters-group\n';
   
   // Создаем узлы для каждого персонажа
   var charNodes = [];
@@ -5046,7 +5067,7 @@ function buildGamesGraph(story, options) {
     if (!isUsed) {
       mermaid += '    class ' + gameNodeId + ' unreachable;\n';
     }
-    mermaid += '    games -.-> ' + gameNodeId + '\n';
+    mermaid += '    ' + gameNodeId + ' -.-> games;\n';
   }
 
   
