@@ -1197,16 +1197,26 @@ for (let i = 0; i < dangerChips.length; i++) {
     }
     
     function bindUIButtons() {
-        const stopProp = (e) => { e.preventDefault(); e.stopPropagation(); };
+        const stopPropagationOnly = (e) => { e.stopPropagation(); };
+        const stopPropagationAndPrevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+
         const buttons = [startBtn, retryBtn, confirmBtn];
         buttons.forEach(btn => {
-            ['pointerdown', 'touchstart', 'mousedown', 'click'].forEach(ev => {
-                btn.addEventListener(ev, stopProp);
+            // Для pointer/touch/mouse – только stopPropagation, чтобы click сработал
+            btn.addEventListener('pointerdown', stopPropagationOnly);
+            btn.addEventListener('touchstart', stopPropagationOnly);
+            btn.addEventListener('mousedown', stopPropagationOnly);
+            
+            // Для click – можно и preventDefault, и stopPropagation
+            btn.addEventListener('click', (e) => {
+                stopPropagationAndPrevent(e);
+                if (!resultSent) {
+                    if (btn === startBtn) startGameplay();
+                    else if (btn === retryBtn) retryGame();
+                    else if (btn === confirmBtn) confirmFinalResult();
+                }
             });
         });
-        startBtn.addEventListener('click', () => { if (!resultSent) startGameplay(); });
-        retryBtn.addEventListener('click', () => { if (!resultSent) retryGame(); });
-        confirmBtn.addEventListener('click', () => { confirmFinalResult(); });
     }
     
     // ========== ПЕРЕТАСКИВАНИЕ ДЖОЙСТИКА ==========
