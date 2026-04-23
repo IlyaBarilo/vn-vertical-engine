@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Stars">
   </a>
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/free-noncommercial-orange?style=for-the-badge" alt="License">
+    <img src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-orange?style=for-the-badge" alt="License">
   </a>
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
     <img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Release">
@@ -42,9 +42,10 @@ Designed for **vertical screens**, **portrait displays**, and **real-world insta
 
 No setup. No dependencies. Just open `index.html` and start.
 
-> Free for noncommercial use and educational institutions.
-> Commercial use requires separate written permission from the author.
-> Legal license text: PolyForm Noncommercial 1.0.0.
+> Free for noncommercial use.
+> Educational institutions may also use this software under the default public license.
+> See [LICENSE](LICENSE) for other permitted cases under PolyForm Noncommercial 1.0.0.
+> Commercial use outside those cases requires separate written permission from the author.
 
 ---
 
@@ -360,9 +361,9 @@ Starting from version 0.5, the engine source code (`engine/engine.js`, `engine/e
 
 You may use, study, modify, and share this software for noncommercial purposes.
 
-Educational institutions may use this software free of charge under the default public license.
+The default public license also permits use by educational institutions and certain other organizations expressly listed in PolyForm Noncommercial 1.0.0.
 
-Commercial use is not allowed unless you obtain separate written permission from the author.
+Commercial use outside those permitted cases is not allowed unless you obtain separate written permission from the author.
 
 Copyright (c) 2026 Ilya Barilo
 
@@ -373,21 +374,15 @@ See commercial terms in [COMMERCIAL-USE.md](COMMERCIAL-USE.md) (English / Russia
 
 Versions released before 0.5 remain available under the license they were originally published with.
 
+This license change applies to version 0.5 and later.
+
 ## 📦 Content (Demo Assets)
 
-All media files located in the `assets/` folder - including character images,
-backgrounds, videos, audio files, and other materials used in the demo novel -
-are **NOT covered by the public source code license of this repository**.
+All files in the `assets/` folder and the demo story content in `story.js` are **not covered by the public license for the engine source code**.
 
-The demo story content in `story.js` - including characters, dialogues, plot,
-and text content - is also **NOT covered by the public source code license**.
+They are provided for demonstration purposes only and may not be reused in commercial or noncommercial projects without separate permission from the copyright holder.
 
-These materials are provided for demonstration purposes only.
-You are not allowed to use them in your own projects (commercial or non-commercial)
-without obtaining separate permission from the copyright holder.
-
-When creating your own stories using this engine, you must replace all demo assets
-and demo story content with your own content.
+When creating your own stories using this engine, you must replace all demo assets and demo story content with your own content.
 
 ---
 

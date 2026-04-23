@@ -5,11 +5,13 @@ In case of discrepancy, the English version prevails.
 
 ## English
 
-The default public license for this project does not permit commercial use.
+The default public license for this project is PolyForm Noncommercial 1.0.0.
+
+That license does not authorize commercial use, except in cases expressly permitted by the license itself, including educational institutions and certain other listed organizations.
 
 If you want to use this engine in a commercial product, commercial service, paid deployment,
 internal business tool, or any other activity intended for commercial advantage or monetary
-compensation, you must first obtain separate written permission from the author.
+compensation outside those permitted cases, you must first obtain separate written permission from the author.
 
 To request a commercial license, please send:
 
@@ -23,17 +25,19 @@ To request a commercial license, please send:
 Contact:
 developer@barilo.ru
 
-Until such permission is granted in writing, commercial use is not allowed.
+Until such permission is granted in writing, commercial use outside the cases already permitted by the default public license is not allowed.
 
 ---
 
 ## Русский
 
-Публичная лицензия этого проекта не разрешает коммерческое использование.
+Публичная лицензия этого проекта — PolyForm Noncommercial 1.0.0.
+
+Эта лицензия не разрешает коммерческое использование, кроме случаев, прямо разрешённых самой лицензией, включая образовательные учреждения и некоторые другие перечисленные в ней организации.
 
 Если вы хотите использовать этот движок в коммерческом продукте, коммерческом сервисе,
 платном развёртывании, внутреннем бизнес-инструменте или в любой иной деятельности,
-направленной на получение коммерческой выгоды или денежного вознаграждения,
+направленной на получение коммерческой выгоды или денежного вознаграждения вне таких разрешённых случаев,
 вы должны заранее получить отдельное письменное разрешение автора.
 
 Чтобы запросить коммерческую лицензию, пожалуйста, укажите:
@@ -48,4 +52,4 @@ Until such permission is granted in writing, commercial use is not allowed.
 Контакт:
 developer@barilo.ru
 
-До получения такого письменного разрешения коммерческое использование не допускается.
+До получения такого письменного разрешения коммерческое использование вне случаев, уже разрешённых публичной лицензией по умолчанию, не допускается.
