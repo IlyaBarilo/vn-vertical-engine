@@ -2804,11 +2804,22 @@ function updateScreenTarget(clientX, clientY) {
 
   state.player.targetX = Math.max(-1, Math.min(1, nx));
   state.player.targetY = Math.max(-1, Math.min(1, ny));
+
+  // Визуальная обратная связь: смещение прицела
+  const reticle = document.getElementById('reticle');
+  if (reticle) {
+    const maxShift = 50 * scale; // максимальное смещение в пикселях
+    const shiftX = state.player.targetX * maxShift;
+    const shiftY = state.player.targetY * maxShift;
+    reticle.style.transform = `translate(${shiftX}px, ${shiftY}px)`;
+  }
 }
 
 function resetScreenTarget() {
   state.player.targetX = 0;
   state.player.targetY = 0;
+  const reticle = document.getElementById('reticle');
+  if (reticle) reticle.style.transform = '';
 }
 
 function bindScreenNavigation() {
@@ -2832,9 +2843,17 @@ function bindScreenNavigation() {
       resetScreenTarget();
     }, { passive: true });
 
-    window.addEventListener('pointercancel', () => {
+    window.addEventListener('pointercancel', (event) => {
+      if (isUiTarget(event.target)) return;
       screenNavActive = false;
       resetScreenTarget();
+      // Принудительно освобождаем захват, если он был
+      if (HAS_POINTER_EVENTS && event.pointerId != null) {
+        const elem = event.target;
+        if (elem && elem.releasePointerCapture && elem.hasPointerCapture?.(event.pointerId)) {
+          try { elem.releasePointerCapture(event.pointerId); } catch (_) {}
+        }
+      }
     }, { passive: true });
 
     return;
