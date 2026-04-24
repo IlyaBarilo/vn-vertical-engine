@@ -637,6 +637,25 @@
     },
   ];
 
+  // Настройки разлёта частиц при сборе объектов.
+  const BURST_TUNING = {
+    count: {
+      ring: 5,
+      route: 6,
+      memory: 8,
+      gate: 8,
+      core: 14,
+    },
+    zMin: 0.72,
+    zMax: 1.18,
+    velocityMin: -0.26,
+    velocityMax: 0.26,
+    lifeMin: 0.18,
+    lifeMax: 0.25,
+    sizeMin: 0.002,
+    sizeMax: 0.005,
+  };
+
 
   const CONFIG = {
     tunnelLength: 18,
@@ -696,7 +715,7 @@
 
     const BACKGROUND_FX = {
     farDust: {
-      enabled: true,
+      enabled: false,
 
       // Количество далёких мягких частиц
       count: 120,
@@ -1916,9 +1935,9 @@
       return;
     }
 
-    state.objects.push(createObject('memory', pickSign() * randomRange(0.12, 0.88), pickSign() * randomRange(0.05, 0.55), z, 0.2, { twinkle: Math.random() * Math.PI * 2 }));
-    if (Math.random() < 0.58) {
-      state.objects.push(createObject('noise', pickSign() * randomRange(0.25, 1.0), pickSign() * randomRange(0.12, 0.65), z + randomRange(0.4, 1.4), 0.2, { twinkle: Math.random() * Math.PI * 2 }));
+    state.objects.push(createObject('route', pickSign() * randomRange(0.18, 0.72), randomRange(-0.22, 0.22), z, 0.18, { spin: randomRange(0.3, 1.2) }));
+    if (Math.random() < 0.48) {
+      state.objects.push(createObject('overload', pickSign() * randomRange(0.35, 0.9), pickSign() * randomRange(0.12, 0.55), z + randomRange(0.6, 1.4), 0.22, { rot: randomRange(0, Math.PI * 2) }));
     }
   }
 
@@ -1929,7 +1948,7 @@
     if (Math.random() < 0.6) {
       state.objects.push(createObject('route', wave * 0.6 + randomRange(-0.22, 0.22), randomRange(-0.2, 0.2), z + randomRange(0.45, 1.1), 0.17, { spin: randomRange(0.4, 1.1) }));
     }
-    if (!state.coreReached && state.totalElapsed > 84 && !state.objects.some((o) => o.type === 'core')) {
+    if (!state.coreReached && state.totalElapsed > 54 && !state.objects.some((o) => o.type === 'core')) {
       state.objects.push(createObject('core', 0, 0, CONFIG.spawnZMax + 2.4, 0.9 * MAIN_TUNING.coreSizeMultiplier, { charge: 0, good: false }));
     }
   }
@@ -1961,16 +1980,17 @@
     state.forwardDistance += CONFIG.baseForwardSpeed * MAIN_TUNING.forwardSpeedMultiplier * diff.forwardMul * dt;
   }
 
-  function spawnBursts(x, y, amount, color) {
+  function spawnBursts(x, y, type, color) {
+    const amount = BURST_TUNING.count[type] || BURST_TUNING.count.route;
     for (let i = 0; i < amount; i++) {
       state.syncBursts.push({
         x,
         y,
-        z: randomRange(0.6, 1.2),
-        vx: randomRange(-0.4, 0.4),
-        vy: randomRange(-0.4, 0.4),
-        life: randomRange(0.45, 0.9),
-        size: randomRange(0.02, 0.08),
+        z: randomRange(BURST_TUNING.zMin, BURST_TUNING.zMax),
+        vx: randomRange(BURST_TUNING.velocityMin, BURST_TUNING.velocityMax),
+        vy: randomRange(BURST_TUNING.velocityMin, BURST_TUNING.velocityMax),
+        life: randomRange(BURST_TUNING.lifeMin, BURST_TUNING.lifeMax),
+        size: randomRange(BURST_TUNING.sizeMin, BURST_TUNING.sizeMax),
         color,
       });
     }
@@ -1984,15 +2004,15 @@
     if (obj.type === 'ring') {
       state.sync = Math.min(100, state.sync + CONFIG.ringReward);
       state.visualPulse = 0.12;
-      spawnBursts(obj.x, obj.y, 12, getStageRingColors(obj.stageIndex).burst);
+      spawnBursts(obj.x, obj.y, 'ring', getStageRingColors(obj.stageIndex).burst);
     } else if (obj.type === 'route') {
       state.sync = Math.min(100, state.sync + CONFIG.routeReward);
       showMessage('Маршрут подтверждён', 0.8);
-      spawnBursts(obj.x, obj.y, 14, 'rgba(140,200,255,0.8)');
+      spawnBursts(obj.x, obj.y, 'route', 'rgba(140,200,255,0.8)');
     } else if (obj.type === 'memory') {
       state.sync = Math.min(100, state.sync + CONFIG.memoryReward);
       showMessage('Узел памяти синхронизирован', 0.9);
-      spawnBursts(obj.x, obj.y, 18, 'rgba(182,148,255,0.8)');
+      spawnBursts(obj.x, obj.y, 'memory', 'rgba(182,148,255,0.8)');
     } else if (obj.type === 'overload') {
       if (state.totalElapsed - state.lastCollisionAt > 0.22) {
         state.lastCollisionAt = state.totalElapsed;
@@ -2033,15 +2053,12 @@
         state.sync = Math.min(100, state.sync + CONFIG.gateReward);
         state.integrity = Math.min(100, state.integrity + 3);
         showMessage('Ворота пройдены', 0.95);
-        spawnBursts(obj.x, obj.y, 22, 'rgba(144,255,226,0.88)');
+        spawnBursts(obj.x, obj.y, 'gate', 'rgba(144,255,226,0.88)');
       }
       updateHud();
     }
     if (!obj.good && !obj.failed && obj.z < 0.92) {
       obj.failed = true;
-      obj.hit = true;
-      state.integrity = Math.max(0, state.integrity - CONFIG.failPulsePenalty * getDiffConfig().penaltyMul);
-      state.hitFlash = 0.48;
       showMessage('Ворота пропущены', 0.85);
       updateHud();
     }
@@ -2074,7 +2091,7 @@
           state.coreReached = true;
           state.sync = Math.min(100, state.sync + 8);
           showMessage('Ядро достигнуто', 1.1);
-          spawnBursts(0, 0, 40, 'rgba(220,245,255,0.92)');
+          spawnBursts(0, 0, 'core', 'rgba(220,245,255,0.92)');
           updateHud();
         }
         if (!obj.good && obj.z < 0.78) {
