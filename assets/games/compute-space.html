@@ -226,6 +226,7 @@
     inset: 0;
     z-index: 110;
     pointer-events: none;
+    /* Screen-only control mode: legacy joystick/action UI is intentionally hidden. */
     display: none !important;
   }
   #joystickWrap {
@@ -449,7 +450,7 @@
         <button id="stabilizeButton" class="button ui-control" data-ui="true">Стабилизация</button>
       </div>
       <div id="phaseLabel" data-ui="true">Входной тоннель</div>
-      <div id="hintBubble" data-ui="true">Нажмите «Стабилизация» в окне синхронизации</div>
+      <div id="hintBubble" data-ui="true">Коснитесь экрана в окне синхронизации</div>
     </div>
 
     <div id="settingsPanel" data-ui="true">
@@ -467,10 +468,10 @@
         <h1 class="title">Вычислительное пространство</h1>
         <p class="subtitle">Погрузитесь внутрь цифровой модели университетской системы: удерживайте маршрут, собирайте узлы и стабилизируйте ядро.</p>
         <div class="tips" data-ui="true">
-          <div>• Левый круговой контрол задаёт направление полёта.</div>
+          <div>• Нажмите и удерживайте любую точку поля: направление от центра задаёт полёт.</div>
           <div>• Избегайте перегруженных блоков и шумовых кластеров.</div>
-          <div>• Кнопку «Стабилизация» нажимайте, когда появляются светящиеся ворота или активное окно у ядра.</div>
-          <div>• Оба элемента управления можно перетаскивать за верхнюю плашку ещё до старта игры.</div>
+          <div>• Во время светящихся ворот или активного окна ядра коснитесь экрана в нужном направлении.</div>
+          <div>• Служебная панель Render scale снижает нагрузку, если полёт начинает тормозить.</div>
         </div>
         <button id="startButton" class="button" data-ui="true">Начать</button>
       </div>
@@ -1261,8 +1262,6 @@
     startOverlay.classList.add('hidden');
     finishOverlay.classList.add('hidden');
     hud.classList.remove('hidden');
-    controlsLayer.classList.remove('hidden');
-    phaseLabel.classList.remove('hidden');
     if (!gameStarted && !finished) {
       gameStarted = true;
       lastTime = performance.now();
@@ -2776,8 +2775,6 @@
       finishGame(Number(finishButton.dataset.result) || 0);
     });
     bindScreenNavigation();
-    bindControlDragHandle(joystickDragHandle, 'joystick');
-    bindControlDragHandle(actionDragHandle, 'action');
     resolutionSlider.addEventListener('input', (event) => {
       stopEvent(event);
       setRenderScalePercent(event.target.value);
@@ -2797,111 +2794,128 @@
   }
 
   let screenNavActive = false;
+  let screenPointerId = null;
+  let screenTouchId = null;
 
-function updateScreenTarget(clientX, clientY) {
-  const nx = (clientX / viewportW) * 2 - 1;
-  const ny = (clientY / viewportH) * 2 - 1;
-
-  state.player.targetX = Math.max(-1, Math.min(1, nx));
-  state.player.targetY = Math.max(-1, Math.min(1, ny));
-
-  // Визуальная обратная связь: смещение прицела
-  const reticle = document.getElementById('reticle');
-  if (reticle) {
-    const maxShift = 50 * scale; // максимальное смещение в пикселях
-    const shiftX = state.player.targetX * maxShift;
-    const shiftY = state.player.targetY * maxShift;
-    reticle.style.transform = `translate(${shiftX}px, ${shiftY}px)`;
-  }
-}
-
-function resetScreenTarget() {
-  state.player.targetX = 0;
-  state.player.targetY = 0;
-  const reticle = document.getElementById('reticle');
-  if (reticle) reticle.style.transform = '';
-}
-
-function bindScreenNavigation() {
-  const isUiTarget = (target) =>
-    target && target.closest && target.closest('[data-ui="true"]');
-
-  if (HAS_POINTER_EVENTS) {
-    window.addEventListener('pointerdown', (event) => {
-      if (isUiTarget(event.target)) return;
-      screenNavActive = true;
-      updateScreenTarget(event.clientX, event.clientY);
-    }, { passive: true });
-
-    window.addEventListener('pointermove', (event) => {
-      if (!screenNavActive) return;
-      updateScreenTarget(event.clientX, event.clientY);
-    }, { passive: true });
-
-    window.addEventListener('pointerup', () => {
-      screenNavActive = false;
-      resetScreenTarget();
-    }, { passive: true });
-
-    window.addEventListener('pointercancel', (event) => {
-      if (isUiTarget(event.target)) return;
-      screenNavActive = false;
-      resetScreenTarget();
-      // Принудительно освобождаем захват, если он был
-      if (HAS_POINTER_EVENTS && event.pointerId != null) {
-        const elem = event.target;
-        if (elem && elem.releasePointerCapture && elem.hasPointerCapture?.(event.pointerId)) {
-          try { elem.releasePointerCapture(event.pointerId); } catch (_) {}
-        }
-      }
-    }, { passive: true });
-
-    return;
+  function canUseScreenInput() {
+    return gameStarted && !finished && !resultSent;
   }
 
-  let mouseActive = false;
+  function isStabilizationWindowActive() {
+    return !!state.activeGate ||
+      state.objects.some((o) => o.type === 'core' && o.z < 2.4 && o.z > 1.2 && !o.good);
+  }
 
-  window.addEventListener('mousedown', (event) => {
-    if (isUiTarget(event.target)) return;
-    mouseActive = true;
-    updateScreenTarget(event.clientX, event.clientY);
-  }, { passive: true });
+  function queueScreenStabilizationAction() {
+    if (isStabilizationWindowActive()) {
+      actionState.pressed = true;
+    }
+  }
 
-  window.addEventListener('mousemove', (event) => {
-    if (!mouseActive) return;
-    updateScreenTarget(event.clientX, event.clientY);
-  }, { passive: true });
+  function updateScreenTarget(clientX, clientY) {
+    const nx = (clientX / viewportW) * 2 - 1;
+    const ny = (clientY / viewportH) * 2 - 1;
 
-  window.addEventListener('mouseup', () => {
-    mouseActive = false;
-    resetScreenTarget();
-  }, { passive: true });
+    state.player.targetX = Math.max(-1, Math.min(1, nx));
+    state.player.targetY = Math.max(-1, Math.min(1, ny));
 
-  window.addEventListener('touchstart', (event) => {
-    const touch = event.changedTouches && event.changedTouches[0];
-    if (!touch) return;
-    if (isUiTarget(event.target)) return;
-    mouseActive = true;
-    updateScreenTarget(touch.clientX, touch.clientY);
-  }, { passive: true });
+    const reticle = document.getElementById('reticle');
+    if (reticle) {
+      const maxShift = 50 * scale;
+      reticle.style.transform =
+        `translate(${state.player.targetX * maxShift}px, ${state.player.targetY * maxShift}px)`;
+    }
 
-  window.addEventListener('touchmove', (event) => {
-    if (!mouseActive) return;
-    const touch = event.changedTouches && event.changedTouches[0];
-    if (!touch) return;
-    updateScreenTarget(touch.clientX, touch.clientY);
-  }, { passive: true });
+    queueScreenStabilizationAction();
+  }
 
-  window.addEventListener('touchend', () => {
-    mouseActive = false;
-    resetScreenTarget();
-  }, { passive: true });
+  function resetScreenTarget() {
+    screenNavActive = false;
+    screenPointerId = null;
+    screenTouchId = null;
+    actionState.pressed = false;
+    state.player.targetX = 0;
+    state.player.targetY = 0;
 
-  window.addEventListener('touchcancel', () => {
-    mouseActive = false;
-    resetScreenTarget();
-  }, { passive: true });
-}
+    const reticle = document.getElementById('reticle');
+    if (reticle) reticle.style.transform = '';
+  }
+
+  function beginScreenInput(event, clientX, clientY) {
+    if (screenNavActive || !canUseScreenInput() || isUiTarget(event.target)) return false;
+    if (event.cancelable) event.preventDefault();
+
+    screenNavActive = true;
+    updateScreenTarget(clientX, clientY);
+    return true;
+  }
+
+  function moveScreenInput(event, clientX, clientY) {
+    if (!screenNavActive || !canUseScreenInput()) return;
+    if (event.cancelable) event.preventDefault();
+
+    updateScreenTarget(clientX, clientY);
+  }
+
+  function bindScreenNavigation() {
+    if (HAS_POINTER_EVENTS) {
+      window.addEventListener('pointerdown', (event) => {
+        if (!beginScreenInput(event, event.clientX, event.clientY)) return;
+        screenPointerId = event.pointerId;
+      }, { passive: false });
+
+      window.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== screenPointerId) return;
+        moveScreenInput(event, event.clientX, event.clientY);
+      }, { passive: false });
+
+      window.addEventListener('pointerup', (event) => {
+        if (event.pointerId !== screenPointerId) return;
+        resetScreenTarget();
+      }, { passive: false });
+
+      window.addEventListener('pointercancel', (event) => {
+        if (event.pointerId !== screenPointerId) return;
+        resetScreenTarget();
+      }, { passive: false });
+
+      return;
+    }
+
+    window.addEventListener('mousedown', (event) => {
+      beginScreenInput(event, event.clientX, event.clientY);
+    }, { passive: false });
+
+    window.addEventListener('mousemove', (event) => {
+      moveScreenInput(event, event.clientX, event.clientY);
+    }, { passive: false });
+
+    window.addEventListener('mouseup', resetScreenTarget, { passive: false });
+
+    window.addEventListener('touchstart', (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      if (!touch) return;
+      if (!beginScreenInput(event, touch.clientX, touch.clientY)) return;
+      screenTouchId = touch.identifier;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (event) => {
+      const touch = Array.from(event.changedTouches || [])
+        .find((item) => item.identifier === screenTouchId);
+      if (!touch) return;
+      moveScreenInput(event, touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchend', (event) => {
+      if (!Array.from(event.changedTouches || []).some((item) => item.identifier === screenTouchId)) return;
+      resetScreenTarget();
+    }, { passive: false });
+
+    window.addEventListener('touchcancel', (event) => {
+      if (!Array.from(event.changedTouches || []).some((item) => item.identifier === screenTouchId)) return;
+      resetScreenTarget();
+    }, { passive: false });
+  }
 
   init();
 })();
