@@ -267,37 +267,6 @@
     height: calc(200px * var(--scale));
     pointer-events: auto;
   }
-  #stabilizeButton {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    border: calc(2px * var(--scale)) solid rgba(196, 233, 255, 0.24);
-    background:
-      radial-gradient(circle at 35% 30%, rgba(255,255,255,0.2), rgba(123, 134, 255, 0.22) 36%, rgba(21, 34, 94, 0.96) 78%);
-    box-shadow:
-      0 0 calc(28px * var(--scale)) rgba(114, 144, 255, 0.2),
-      inset 0 0 calc(26px * var(--scale)) rgba(165, 220, 255, 0.08);
-    color: #eff7ff;
-    font-size: calc(17px * var(--scale));
-    font-weight: 800;
-    letter-spacing: calc(1px * var(--scale));
-    text-transform: uppercase;
-    padding: calc(18px * var(--scale));
-    line-height: 1.1;
-    cursor: pointer;
-    transition: transform 0.08s ease, filter 0.08s ease, box-shadow 0.16s ease;
-  }
-  #stabilizeButton.active-window {
-    box-shadow:
-      0 0 calc(42px * var(--scale)) rgba(131, 246, 255, 0.35),
-      inset 0 0 calc(28px * var(--scale)) rgba(168, 255, 244, 0.16);
-    filter: brightness(1.08);
-  }
-  #stabilizeButton:active,
-  #stabilizeButton.is-pressed {
-    transform: scale(0.97);
-    filter: brightness(1.1);
-  }
   #phaseLabel {
     position: absolute;
     left: calc(34px * var(--scale));
@@ -487,10 +456,9 @@
       </div>
       <div id="actionWrap" class="ui-control" data-ui="true">
         <div id="actionDragHandle" class="dragHandle" data-ui="true">Перетащить</div>
-        <button id="stabilizeButton" class="button ui-control" data-ui="true">Стабилизация</button>
       </div>
       <div id="phaseLabel" data-ui="true">Входной тоннель</div>
-      <div id="hintBubble" data-ui="true">Совместите прицел с окном и коснитесь экрана</div>
+      <div id="hintBubble" data-ui="true">Держите курс через светящуюся цель</div>
     </div>
 
     <div id="settingsPanel" data-ui="true">
@@ -506,11 +474,11 @@
     <div id="startOverlay" class="overlay" data-ui="true">
       <div class="panel" data-ui="true">
         <h1 class="title">Вычислительное пространство</h1>
-        <p class="subtitle">Погрузитесь внутрь цифровой модели университетской системы: удерживайте маршрут, собирайте узлы и стабилизируйте ядро.</p>
+        <p class="subtitle">Погрузитесь внутрь цифровой модели университетской системы: удерживайте маршрут, собирайте узлы и дойдите до ядра.</p>
         <div class="tips" data-ui="true">
           <div>• Нажмите и удерживайте любую точку поля: направление от центра задаёт полёт.</div>
           <div>• Избегайте перегруженных блоков и шумовых кластеров.</div>
-          <div>• Стабилизация срабатывает, когда прицел совмещён со светящимися воротами или ядром: коснитесь экрана в этот момент, чтобы повысить синхронизацию и итоговый результат.</div>
+          <div>• Пролетайте через светящиеся ворота и держите курс к ядру: точное наведение повышает синхронизацию и итоговый результат.</div>
           <div>• Служебная панель Render scale снижает нагрузку, если полёт начинает тормозить.</div>
         </div>
         <button id="startButton" class="button" data-ui="true">Начать</button>
@@ -520,7 +488,7 @@
     <div id="finishOverlay" class="overlay hidden" data-ui="true">
       <div class="panel" data-ui="true">
         <h2 id="finishTitle" class="title">Синхронизация завершена</h2>
-        <p id="finishText" class="subtitle">Маршрут стабилизирован.</p>
+        <p id="finishText" class="subtitle">Маршрут завершён.</p>
         <div class="tips" data-ui="true">
           <div id="finishStats1">Стабильность: 0%</div>
           <div id="finishStats2">Синхронизация: 0%</div>
@@ -548,7 +516,7 @@
     // Насколько большими выглядят кольца и насколько легко в них попасть.
     ringSizeMultiplier: 1.9,
 
-    // Насколько большими выглядят ворота стабилизации.
+    // Насколько большими выглядят проходные ворота.
     gateSizeMultiplier: 1.22,
 
     // Размер финального ядра.
@@ -563,7 +531,7 @@
     // Дополнительная поблажка для полезных узлов.
     pickupCollisionBonus: 0.1,
 
-    // Насколько проще попасть в окно стабилизации.
+    // Насколько проще пройти через ворота и ядро.
     gateAlignMultiplier: 1.14,
 
     // Насколько рано объекты появляются впереди. Меньше значение = объекты кажутся крупнее раньше.
@@ -967,7 +935,6 @@
   const startButton = document.getElementById('startButton');
   const finishButton = document.getElementById('finishButton');
   const actionWrap = document.getElementById('actionWrap');
-  const stabilizeButton = document.getElementById('stabilizeButton');
   const joystickWrap = document.getElementById('joystickWrap');
   const joystickKnob = document.getElementById('joystickKnob');
   const joystickDragHandle = document.getElementById('joystickDragHandle');
@@ -1048,11 +1015,6 @@
     inputX: 0,
     inputY: 0,
     radius: 0,
-  };
-
-  const actionState = {
-    pressed: false,
-    pointerId: null,
   };
 
   // ============================================================
@@ -1996,7 +1958,7 @@
       state.activeGate = obj;
       showHint(0.16);
     }
-    if (actionState.pressed && isWindow) {
+    if (isWindow) {
       const dx = obj.x - state.player.x;
       const dy = obj.y - state.player.y;
       const aligned = Math.hypot(dx, dy) < (obj.radius * MAIN_TUNING.gateAlignMultiplier);
@@ -2005,11 +1967,9 @@
         obj.hit = true;
         state.sync = Math.min(100, state.sync + CONFIG.gateReward);
         state.integrity = Math.min(100, state.integrity + 3);
-        showMessage('Стабилизация подтверждена', 0.95);
+        showMessage('Ворота пройдены', 0.95);
         spawnBursts(obj.x, obj.y, 22, 'rgba(144,255,226,0.88)');
       }
-      actionState.pressed = false;
-      stabilizeButton.classList.remove('is-pressed');
       updateHud();
     }
     if (!obj.good && !obj.failed && obj.z < 0.92) {
@@ -2017,7 +1977,7 @@
       obj.hit = true;
       state.integrity = Math.max(0, state.integrity - CONFIG.failPulsePenalty * getDiffConfig().penaltyMul);
       state.hitFlash = 0.48;
-      showMessage('Окно стабилизации упущено', 0.85);
+      showMessage('Ворота пропущены', 0.85);
       updateHud();
     }
     if (state.activeGate === obj && (obj.good || obj.failed || obj.z < 0.7 || obj.z > 3.2)) {
@@ -2044,15 +2004,13 @@
         const dy = obj.y - state.player.y;
         const inFinalWindow = obj.z < 2.4 && obj.z > 1.2;
         if (inFinalWindow) showHint(0.16);
-        if (!obj.good && inFinalWindow && actionState.pressed && Math.hypot(dx, dy) < 0.7 * MAIN_TUNING.gateAlignMultiplier) {
+        if (!obj.good && inFinalWindow && Math.hypot(dx, dy) < 0.7 * MAIN_TUNING.gateAlignMultiplier) {
           obj.good = true;
           state.coreReached = true;
           state.sync = Math.min(100, state.sync + 8);
-          showMessage('Ядро синхронизировано', 1.1);
+          showMessage('Ядро достигнуто', 1.1);
           spawnBursts(0, 0, 40, 'rgba(220,245,255,0.92)');
           updateHud();
-          actionState.pressed = false;
-          stabilizeButton.classList.remove('is-pressed');
         }
         if (!obj.good && obj.z < 0.78) {
           state.coreReached = false;
@@ -2111,8 +2069,6 @@
     integrityFill.style.width = `${Math.max(0, Math.min(100, state.integrity)).toFixed(1)}%`;
     syncFill.style.width = `${Math.max(0, Math.min(100, state.sync)).toFixed(1)}%`;
     stageValue.textContent = `${state.stageIndex + 1} / 4`;
-    const activeWindow = !!state.activeGate || state.objects.some((o) => o.type === 'core' && o.z < 2.4 && o.z > 1.2 && !o.good);
-    stabilizeButton.classList.toggle('active-window', activeWindow && !finished);
   }
 
   function drawBackground() {
@@ -2561,9 +2517,6 @@
     state.player.targetX = 0;
     state.player.targetY = 0;
     resetJoystickKnob();
-    actionState.pressed = false;
-    actionState.pointerId = null;
-    stabilizeButton.classList.remove('is-pressed');
   }
 
   function startControlDrag(target, event, clientX, clientY) {
@@ -2670,30 +2623,6 @@
     resetJoystickKnob();
   }
 
-  function onActionStart(event) {
-    if (resultSent || finished) return;
-    actionState.pressed = true;
-    if (HAS_POINTER_EVENTS && event.pointerId != null) {
-      actionState.pointerId = event.pointerId;
-      try { stabilizeButton.setPointerCapture(event.pointerId); } catch (_) {}
-    }
-    stabilizeButton.classList.add('is-pressed');
-  }
-
-  function onActionEnd(event) {
-    if (HAS_POINTER_EVENTS && actionState.pointerId != null && event.pointerId != null && event.pointerId !== actionState.pointerId) return;
-    actionState.pressed = false;
-    actionState.pointerId = null;
-    stabilizeButton.classList.remove('is-pressed');
-    try {
-      if (event.target && event.pointerId != null && event.target.releasePointerCapture) {
-        if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
-          event.target.releasePointerCapture(event.pointerId);
-        }
-      }
-    } catch (_) {}
-  }
-
   function bindJoystick() {
     if (HAS_POINTER_EVENTS) {
       joystickWrap.addEventListener('pointerdown', (event) => {
@@ -2750,43 +2679,6 @@
     }, { passive: false });
   }
 
-  function bindActionButton() {
-    if (HAS_POINTER_EVENTS) {
-      stabilizeButton.addEventListener('pointerdown', (event) => {
-        stopEvent(event);
-        onActionStart(event);
-      }, { passive: false });
-      stabilizeButton.addEventListener('pointerup', (event) => {
-        stopEvent(event);
-        onActionEnd(event);
-      }, { passive: false });
-      stabilizeButton.addEventListener('pointercancel', (event) => {
-        stopEvent(event);
-        onActionEnd(event);
-      }, { passive: false });
-      return;
-    }
-    stabilizeButton.addEventListener('mousedown', (event) => {
-      stopEvent(event);
-      onActionStart(event);
-    }, { passive: false });
-    window.addEventListener('mouseup', (event) => {
-      onActionEnd(event);
-    }, { passive: false });
-    stabilizeButton.addEventListener('touchstart', (event) => {
-      stopEvent(event);
-      onActionStart(event);
-    }, { passive: false });
-    stabilizeButton.addEventListener('touchend', (event) => {
-      stopEvent(event);
-      onActionEnd(event);
-    }, { passive: false });
-    stabilizeButton.addEventListener('touchcancel', (event) => {
-      stopEvent(event);
-      onActionEnd(event);
-    }, { passive: false });
-  }
-
   function onMessage(event) {
     if (!event.data || event.data.type !== 'gameInit') return;
     initReceived = true;
@@ -2838,17 +2730,6 @@
     return gameStarted && !finished && !resultSent;
   }
 
-  function isStabilizationWindowActive() {
-    return !!state.activeGate ||
-      state.objects.some((o) => o.type === 'core' && o.z < 2.4 && o.z > 1.2 && !o.good);
-  }
-
-  function queueScreenStabilizationAction() {
-    if (isStabilizationWindowActive()) {
-      actionState.pressed = true;
-    }
-  }
-
   function updateScreenTarget(clientX, clientY) {
     const nx = (clientX / viewportW) * 2 - 1;
     const ny = (clientY / viewportH) * 2 - 1;
@@ -2863,14 +2744,12 @@
         `translate(${state.player.targetX * maxShift}px, ${state.player.targetY * maxShift}px)`;
     }
 
-    queueScreenStabilizationAction();
   }
 
   function resetScreenTarget() {
     screenNavActive = false;
     screenPointerId = null;
     screenTouchId = null;
-    actionState.pressed = false;
     state.player.targetX = 0;
     state.player.targetY = 0;
 
