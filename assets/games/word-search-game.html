@@ -1,0 +1,1926 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Поиск слов</title>
+<script>
+  document.title = "Загрузка...";
+</script>
+<style>
+  :root {
+    --scale: 1;
+    --cell-size: 40px;
+    --board-ratio: 0.6667;
+    --letter-ratio: 0.58;
+    --letter-font-family: Arial, Helvetica, sans-serif;
+    --letter-font-weight: 500;
+    --letter-color: #172026;
+    --letter-active-color: #0f171b;
+    --found-letter-darken-factor: 0.33;
+    --found-letter-opacity: 0.3;
+    --button-font-family: Roboto, Arial, Helvetica, sans-serif;
+    --small-button-font-size: calc(25px * var(--scale));
+    --small-button-font-weight: 700;
+    --hint-button-title-size: calc(25px * var(--scale));
+    --hint-button-title-weight: 700;
+    --hint-button-subtitle-size: calc(15px * var(--scale));
+    --hint-button-subtitle-weight: 400;
+    --finish-button-font-size: calc(25px * var(--scale));
+    --finish-button-font-weight: 800;
+    --start-theme-font-size: calc(24px * var(--scale));
+    --start-theme-font-weight: 800;
+    --start-theme-color: var(--accent);
+    --start-title-font-size: calc(36px * var(--scale));
+    --start-rule-font-size: calc(20px * var(--scale));
+    --start-hint-title-font-size: calc(24px * var(--scale));
+    --start-hint-rule-font-size: calc(20px * var(--scale));
+    --ui-radius: calc(8px * var(--scale));
+    --ui-gap: calc(14px * var(--scale));
+    --ink: #1f2428;
+    --muted: #68727f;
+    --panel: #fbfcfb;
+    --panel-strong: #ffffff;
+    --line: rgba(28, 42, 49, 0.14);
+    --accent: #137f73;
+    --accent-2: #d76f42;
+    --danger: #c74747;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    color: var(--ink);
+    background: #edf4ee;
+    font-family: Arial, Helvetica, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+  }
+
+  body[data-booting="1"] #gameRoot {
+    visibility: hidden;
+  }
+
+  button {
+    font: inherit;
+    touch-action: manipulation;
+  }
+
+  #gameRoot {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.06) 38%),
+      #edf4ee;
+    touch-action: none;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: var(--ui-gap);
+    padding: max(8px, calc(16px * var(--scale)));
+  }
+
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    align-items: stretch;
+    gap: calc(10px * var(--scale));
+    min-height: calc(62px * var(--scale));
+    z-index: 120;
+  }
+
+  .hudMetric,
+  .statusLine,
+  .hintBar,
+  .wordTray {
+    border: calc(1px * var(--scale)) solid var(--line);
+    border-radius: var(--ui-radius);
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 calc(10px * var(--scale)) calc(26px * var(--scale)) rgba(34, 48, 53, 0.08);
+  }
+
+  .hudMetric {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    padding: calc(8px * var(--scale)) calc(12px * var(--scale));
+  }
+
+  .hudMetric span {
+    color: var(--muted);
+    font-size: calc(15px * var(--scale));
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+
+  .hudMetric strong {
+    margin-top: calc(4px * var(--scale));
+    font-size: calc(28px * var(--scale));
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .smallButton {
+    min-width: calc(86px * var(--scale));
+    min-height: calc(58px * var(--scale));
+    padding: 0 calc(14px * var(--scale));
+    border: calc(1px * var(--scale)) solid rgba(199, 71, 71, 0.28);
+    border-radius: var(--ui-radius);
+    background: #fff7f3;
+    color: #7d2e2a;
+    font-family: var(--button-font-family);
+    font-size: var(--small-button-font-size);
+    font-weight: var(--small-button-font-weight);
+    cursor: pointer;
+  }
+
+  .smallButton:active,
+  .hintButton:active,
+  .finishButton:active {
+    transform: translateY(calc(1px * var(--scale)));
+  }
+
+  .boardArea {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .boardFrame {
+    position: relative;
+    width: min(100%, calc((100vh - calc(184px * var(--scale))) * var(--board-ratio)));
+    max-width: calc(780px * var(--scale));
+    height: auto;
+    max-height: 100%;
+    aspect-ratio: 10 / 15;
+    border-radius: var(--ui-radius);
+    padding: calc(6px * var(--scale));
+    background: #ffffff;
+    border: calc(1px * var(--scale)) solid rgba(31, 36, 40, 0.16);
+    box-shadow: 0 calc(18px * var(--scale)) calc(42px * var(--scale)) rgba(22, 36, 42, 0.13);
+  }
+
+  .board {
+    position: relative;
+    display: grid;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    border-radius: calc(6px * var(--scale));
+    border-top: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
+    border-left: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
+    background: #ffffff;
+    contain: layout;
+    touch-action: none;
+  }
+
+  .cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    min-height: 0;
+    border-right: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
+    border-bottom: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
+    color: var(--letter-color);
+    background: #fffef8;
+    overflow: visible;
+  }
+
+  .cell::before {
+    content: "";
+    position: absolute;
+    inset: calc(3px * var(--scale));
+    border-radius: calc(6px * var(--scale));
+    background: var(--cell-fill, transparent);
+    opacity: 0;
+    transform: scale(0.92);
+    transition: opacity 130ms ease, transform 130ms ease, background-color 130ms ease;
+    pointer-events: none;
+  }
+
+  .cell.found::before,
+  .cell.revealed::before,
+  .cell.directionStart::before {
+    opacity: var(--cell-opacity, 0.48);
+    transform: scale(1);
+  }
+
+  .cell.selected::before {
+    background: #34c4a4;
+    opacity: 0.78;
+    transform: scale(1);
+  }
+
+  .cell.wrong::before {
+    background: var(--danger);
+    opacity: 0.82;
+    transform: scale(1);
+  }
+
+  .letter {
+    position: relative;
+    z-index: 2;
+    display: inline-block;
+    font-family: var(--letter-font-family);
+    font-size: calc(var(--cell-size) * var(--letter-ratio));
+    font-weight: var(--letter-font-weight);
+    line-height: 1;
+    transform:
+      translate(calc(var(--letter-dx, 0) * 1%), calc(var(--letter-dy, 0) * 1%))
+      rotate(calc(var(--letter-rot, 0) * 1deg))
+      scale(var(--letter-scale, 1));
+    transition: transform 180ms ease, color 130ms ease;
+  }
+
+  .cell.simplified .letter,
+  .cell.found .letter {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+
+  .cell.selected .letter,
+  .cell.wrong .letter {
+    color: var(--letter-active-color);
+  }
+
+  .cell.found .letter {
+    color: var(--found-letter-color, var(--letter-active-color));
+    opacity: var(--found-letter-opacity);
+  }
+
+  .hintArrow {
+    position: absolute;
+    z-index: 4;
+    left: 50%;
+    top: 50%;
+    width: 70%;
+    height: max(3px, calc(5px * var(--scale)));
+    border-radius: 99px;
+    background: var(--arrow-color, var(--accent));
+    opacity: 0;
+    transform-origin: 0 50%;
+    transform: rotate(calc(var(--arrow-rot, 0) * 1deg));
+    pointer-events: none;
+    box-shadow: 0 0 calc(10px * var(--scale)) rgba(255, 255, 255, 0.86);
+  }
+
+  .hintArrow::after {
+    content: "";
+    position: absolute;
+    right: calc(-5px * var(--scale));
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-top: calc(6px * var(--scale)) solid transparent;
+    border-bottom: calc(6px * var(--scale)) solid transparent;
+    border-left: calc(10px * var(--scale)) solid var(--arrow-color, var(--accent));
+    transform: translateY(-50%);
+  }
+
+  .cell.directionStart .hintArrow {
+    opacity: 0.95;
+  }
+
+  .hintBar {
+    z-index: 120;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: calc(8px * var(--scale));
+    padding: calc(8px * var(--scale));
+  }
+
+  .hintBar.noSimplify {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hintButton {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: calc(3px * var(--scale));
+    min-width: 0;
+    min-height: calc(60px * var(--scale));
+    padding: calc(6px * var(--scale)) calc(8px * var(--scale));
+    border: calc(1px * var(--scale)) solid rgba(19, 127, 115, 0.28);
+    border-radius: var(--ui-radius);
+    background: #f1fbf8;
+    color: #114a45;
+    cursor: pointer;
+  }
+
+  .hintButton:nth-child(2) {
+    border-color: rgba(215, 111, 66, 0.34);
+    background: #fff6f0;
+    color: #7b3f28;
+  }
+
+  .hintButton:nth-child(3) {
+    border-color: rgba(75, 99, 171, 0.30);
+    background: #f4f6ff;
+    color: #283b82;
+  }
+
+  .hintButton:disabled,
+  .smallButton:disabled,
+  .finishButton:disabled {
+    opacity: 0.45;
+    cursor: default;
+    transform: none;
+  }
+
+  .hiddenControl {
+    display: none !important;
+  }
+
+  .hintButton strong {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--button-font-family);
+    font-size: var(--hint-button-title-size);
+    font-weight: var(--hint-button-title-weight);
+    line-height: 1.05;
+  }
+
+  .hintButton span {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--button-font-family);
+    font-size: var(--hint-button-subtitle-size);
+    font-weight: var(--hint-button-subtitle-weight);
+    line-height: 1.05;
+    opacity: 0.76;
+  }
+
+  .wordTray {
+    display: none;
+    z-index: 120;
+    padding: calc(8px * var(--scale));
+  }
+
+  .statusLine {
+    margin-bottom: calc(8px * var(--scale));
+    padding: calc(7px * var(--scale)) calc(10px * var(--scale));
+    color: var(--muted);
+    font-size: calc(14px * var(--scale));
+    line-height: 1.15;
+    min-height: calc(31px * var(--scale));
+    box-shadow: none;
+  }
+
+  .wordList {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(104px * var(--scale)), 1fr));
+    gap: calc(6px * var(--scale));
+  }
+
+  .wordChip {
+    min-width: 0;
+    border-radius: calc(7px * var(--scale));
+    border: calc(1px * var(--scale)) solid rgba(31, 36, 40, 0.12);
+    border-left: calc(7px * var(--scale)) solid var(--word-color, var(--accent));
+    background: var(--panel-strong);
+    padding: calc(5px * var(--scale)) calc(7px * var(--scale));
+    color: #243039;
+    font-size: clamp(8px, calc(14px * var(--scale)), 15px);
+    line-height: 1.05;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wordChip.found {
+    color: rgba(36, 48, 57, 0.54);
+    text-decoration: line-through;
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 300;
+    display: grid;
+    place-items: center;
+    padding: calc(24px * var(--scale));
+    background: rgba(236, 244, 237, 0.78);
+    backdrop-filter: blur(calc(5px * var(--scale)));
+  }
+
+  .overlay.hidden {
+    display: none !important;
+  }
+
+  .finishPanel {
+    width: min(calc(620px * var(--scale)), 92vw);
+    border: calc(1px * var(--scale)) solid var(--line);
+    border-radius: var(--ui-radius);
+    background: #ffffff;
+    padding: calc(28px * var(--scale));
+    text-align: center;
+    box-shadow: 0 calc(22px * var(--scale)) calc(60px * var(--scale)) rgba(22, 36, 42, 0.18);
+  }
+
+  .finishPanel h1 {
+    margin: 0 0 calc(10px * var(--scale));
+    font-size: calc(34px * var(--scale));
+    line-height: 1.05;
+    letter-spacing: 0;
+  }
+
+  .finishPanel p {
+    margin: 0 0 calc(20px * var(--scale));
+    color: var(--muted);
+    font-size: calc(18px * var(--scale));
+    line-height: 1.28;
+  }
+
+  .startPanel {
+    text-align: left;
+  }
+
+  .startPanel h1 {
+    text-align: left;
+  }
+
+  .finishPanel .startTheme {
+    margin: 0 0 calc(8px * var(--scale));
+    color: var(--start-theme-color);
+    font-size: var(--start-theme-font-size);
+    font-weight: var(--start-theme-font-weight);
+    line-height: 1.1;
+  }
+
+  .startPanel h1 {
+    font-size: var(--start-title-font-size);
+  }
+
+  .welcomeRules {
+    display: grid;
+    gap: calc(8px * var(--scale));
+    margin: 0 0 calc(22px * var(--scale));
+    padding: 0;
+    list-style: none;
+    color: #354047;
+    font-size: var(--start-rule-font-size);
+    line-height: 1.25;
+  }
+
+  .welcomeRules li {
+    padding-left: calc(16px * var(--scale));
+    border-left: calc(4px * var(--scale)) solid rgba(19, 127, 115, 0.28);
+  }
+
+  .startHintTitle {
+    margin: 0 0 calc(8px * var(--scale));
+    color: #26343b;
+    font-size: var(--start-hint-title-font-size);
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .welcomeHints {
+    display: grid;
+    gap: calc(7px * var(--scale));
+    margin: 0 0 calc(22px * var(--scale));
+    padding: 0;
+    list-style: none;
+    color: #4b5961;
+    font-size: var(--start-hint-rule-font-size);
+    line-height: 1.22;
+  }
+
+  .welcomeHints li {
+    padding-left: calc(16px * var(--scale));
+    border-left: calc(4px * var(--scale)) solid rgba(215, 111, 66, 0.30);
+  }
+
+  .finishButton {
+    min-width: calc(190px * var(--scale));
+    min-height: calc(58px * var(--scale));
+    border: 0;
+    border-radius: var(--ui-radius);
+    background: var(--accent);
+    color: white;
+    font-family: var(--button-font-family);
+    font-size: var(--finish-button-font-size);
+    font-weight: var(--finish-button-font-weight);
+    cursor: pointer;
+  }
+
+  @media (max-height: 700px) {
+    .screen {
+      gap: calc(8px * var(--scale));
+      padding: max(6px, calc(11px * var(--scale)));
+    }
+
+    .boardFrame {
+      width: min(100%, calc((100vh - calc(166px * var(--scale))) * var(--board-ratio)));
+    }
+
+    .statusLine {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body data-booting="1">
+<div id="gameRoot">
+  <div class="screen">
+    <header class="hud" data-ui="true">
+      <div class="hudMetric" data-ui="true">
+        <span>Найдено</span>
+        <strong id="foundCounter">0/0</strong>
+      </div>
+      <div class="hudMetric" data-ui="true">
+        <span>Подсказки</span>
+        <strong id="hintCounter">0</strong>
+      </div>
+      <div class="hudMetric" data-ui="true">
+        <span>Сложность</span>
+        <strong id="difficultyCounter">3</strong>
+      </div>
+      <button id="giveUpButton" class="smallButton" type="button" data-ui="true">Стоп</button>
+    </header>
+
+    <main class="boardArea">
+      <div class="boardFrame">
+        <div id="board" class="board" aria-label="Поле поиска слов"></div>
+      </div>
+    </main>
+
+    <section class="hintBar" data-ui="true">
+      <button id="letterHintButton" class="hintButton" type="button" data-ui="true">
+        <strong>Буква</strong>
+        <span id="letterHintNote">следующая</span>
+      </button>
+      <button id="directionHintButton" class="hintButton" type="button" data-ui="true">
+        <strong>Направление</strong>
+        <span>от начала</span>
+      </button>
+      <button id="simplifyHintButton" class="hintButton" type="button" data-ui="true">
+        <strong>Упростить</strong>
+        <span id="simplifyHintNote">часть поля</span>
+      </button>
+    </section>
+
+    <section class="wordTray" data-ui="true">
+      <div id="statusLine" class="statusLine" data-ui="true">Веди по соседним буквам и собирай слова.</div>
+      <div id="wordList" class="wordList" data-ui="true"></div>
+    </section>
+  </div>
+
+  <div id="startOverlay" class="overlay" data-ui="true">
+    <div class="finishPanel startPanel" data-ui="true">
+      <p id="startTheme" class="startTheme">Тема слов</p>
+      <h1 id="startTitle">Поиск слов</h1>
+      <ul id="welcomeRules" class="welcomeRules">
+        <li>Найди все слова, спрятанные на поле.</li>
+        <li>Веди по соседним буквам по вертикали или горизонтали.</li>
+        <li>Если путь выбран правильно, слово закрепится цветом.</li>
+      </ul>
+      <p class="startHintTitle">Подсказки</p>
+      <ul id="welcomeHints" class="welcomeHints">
+        <li>Буква открывает начало одного ненайденного слова.</li>
+        <li>Направление показывает, куда идти от первой буквы.</li>
+        <li>Упростить выравнивает часть букв на поле.</li>
+      </ul>
+      <button id="startButton" class="finishButton" type="button" data-ui="true">Начать</button>
+    </div>
+  </div>
+
+  <div id="finishOverlay" class="overlay hidden" data-ui="true">
+    <div class="finishPanel" data-ui="true">
+      <h1 id="finishTitle">Готово</h1>
+      <p id="finishText">Результат зафиксирован.</p>
+      <button id="finishButton" class="finishButton" type="button" data-ui="true">Продолжить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const BASE_W = 810;
+  const BASE_H = 1440;
+
+  const DEFAULT_GAME_DATA = {
+    id: "word-search-tech-2025-07-22",
+    title: "Цифровой поиск слов",
+    theme: "Компьютеры, устройства и интернет",
+    rules: [
+      "Найди все слова, спрятанные на поле.",
+      "Веди по соседним буквам по вертикали или горизонтали.",
+      "Если путь выбран правильно, слово закрепится цветом."
+    ],
+    hintRules: [
+      "Буква открывает начало одного ненайденного слова.",
+      "Направление показывает, куда идти от первой буквы.",
+      "Упростить выравнивает часть букв на поле.",
+      "Количество подсказок зависит от сложности."
+    ],
+    rows: 15,
+    cols: 10,
+    grid: [
+      "ЫЛРИАЛБРЕК",
+      "ГСУВНПКУХА",
+      "ФМБФШПАБКЛ",
+      "НОРТЕЬРТЯА",
+      "ИТОКЯЛОУОВ",
+      "САЕТНИРПНИ",
+      "ТЙРРБТОРТА",
+      "КАНЕРОБРУИ",
+      "СЕТРЕТЕАСК",
+      "АНРСЬЮКСНИ",
+      "НТЕНПМОДШУ",
+      "ИШДОРАЙЖНА",
+      "ЛШЫФТМСЙЪГ",
+      "НКМУНОРЫВО",
+      "ЮАЛПТЭДНБЛ"
+    ],
+    words: [
+      { id: 0, text: "КОМПЬЮТЕР", reversed: false, color: "#FFADAD", path: [[9,6], [10,6], [10,5], [10,4], [9,4], [9,5], [8,5], [8,4], [8,3]] },
+      { id: 1, text: "НОУТБУК", reversed: false, color: "#FFD6A5", path: [[5,8], [4,8], [4,7], [3,7], [2,7], [1,7], [1,6]] },
+      { id: 2, text: "СМАРТФОН", reversed: true, color: "#FDFFB6", path: [[10,3], [11,3], [12,3], [12,4], [11,4], [11,5], [12,5], [12,6]] },
+      { id: 3, text: "ПЛАНШЕТ", reversed: false, color: "#CAFFBF", path: [[1,5], [0,5], [0,4], [1,4], [2,4], [3,4], [3,3]] },
+      { id: 4, text: "МОНИТОР", reversed: true, color: "#9BF6FF", path: [[3,2], [4,2], [4,1], [4,0], [3,0], [3,1], [2,1]] },
+      { id: 5, text: "КЛАВИАТУРА", reversed: false, color: "#A0C4FF", path: [[2,8], [2,9], [3,9], [4,9], [5,9], [6,9], [6,8], [7,8], [7,7], [8,7]] },
+      { id: 6, text: "МЫШКА", reversed: false, color: "#BDB2FF", path: [[13,2], [12,2], [12,1], [13,1], [14,1]] },
+      { id: 7, text: "НАУШНИКИ", reversed: true, color: "#FFC6FF", path: [[7,9], [8,9], [9,9], [9,8], [10,8], [10,9], [11,9], [11,8]] },
+      { id: 8, text: "ПРИНТЕР", reversed: true, color: "#E0BBE4", path: [[6,2], [5,2], [5,3], [5,4], [5,5], [5,6], [5,7]] },
+      { id: 9, text: "СКАНЕР", reversed: false, color: "#FFB347", path: [[8,0], [7,0], [7,1], [7,2], [7,3], [6,3]] },
+      { id: 10, text: "ИНТЕРНЕТ", reversed: false, color: "#C8E6C9", path: [[11,0], [10,0], [10,1], [10,2], [9,2], [9,1], [8,1], [8,2]] },
+      { id: 11, text: "САЙТ", reversed: false, color: "#B2DFDB", path: [[5,0], [5,1], [6,1], [6,0]] },
+      { id: 12, text: "БЛОГ", reversed: true, color: "#D1C4E9", path: [[12,9], [13,9], [14,9], [14,8]] },
+      { id: 13, text: "ПАРОЛЬ", reversed: true, color: "#FFECB3", path: [[3,5], [4,5], [4,6], [3,6], [2,6], [2,5]] },
+      { id: 14, text: "ВИРУС", reversed: false, color: "#A7FFEB", path: [[1,3], [0,3], [0,2], [1,2], [1,1]] },
+      { id: 15, text: "ХАКЕР", reversed: true, color: "#C5CAE9", path: [[0,7], [0,8], [0,9], [1,9], [1,8]] },
+      { id: 16, text: "РОБОТ", reversed: true, color: "#FFE0B2", path: [[6,5], [7,5], [7,6], [6,6], [6,7]] },
+      { id: 17, text: "ДРОН", reversed: false, color: "#E6EE9C", path: [[14,6], [13,6], [13,5], [13,4]] }
+    ]
+  };
+
+  const DIFFICULTY_RULES = {
+    1: {
+      startReveal: 1,
+      maxLetterReveal: 3,
+      letterHintStep: 2,
+      hintBudget: 5,
+      directionBudget: 3,
+      simplifyPercent: 0.25,
+      maxRotation: 0,
+      maxOffsetPct: 0,
+      maxScalePct: 0,
+      gridAlpha: 0.24
+    },
+    2: {
+      startReveal: 1,
+      maxLetterReveal: 2,
+      letterHintStep: 1,
+      hintBudget: 4,
+      directionBudget: 2,
+      simplifyPercent: 0.20,
+      maxRotation: 0,
+      maxOffsetPct: 0,
+      maxScalePct: 0,
+      gridAlpha: 0.20
+    },
+    3: {
+      startReveal: 0,
+      maxLetterReveal: 1,
+      letterHintStep: 1,
+      hintBudget: 3,
+      directionBudget: 2,
+      simplifyPercent: 0.15,
+      maxRotation: 7,
+      maxOffsetPct: 0.1,
+      maxScalePct: 0.2,
+      gridAlpha: 0.0
+    },
+    4: {
+      startReveal: 0,
+      maxLetterReveal: 1,
+      letterHintStep: 1,
+      hintBudget: 2,
+      directionBudget: 1,
+      simplifyPercent: 0.10,
+      maxRotation: 45,
+      maxOffsetPct: 0.13,
+      maxScalePct: 0.12,
+      gridAlpha: 0.0
+    },
+    5: {
+      startReveal: 0,
+      maxLetterReveal: 1,
+      letterHintStep: 1,
+      hintBudget: 1,
+      directionBudget: 1,
+      simplifyPercent: 0.06,
+      maxRotation: 180,
+      maxOffsetPct: 0.5,
+      maxScalePct: 0.15,
+      gridAlpha: 0.0
+    }
+  };
+
+  const board = document.getElementById("board");
+  const boardFrame = document.querySelector(".boardFrame");
+  const foundCounter = document.getElementById("foundCounter");
+  const hintCounter = document.getElementById("hintCounter");
+  const difficultyCounter = document.getElementById("difficultyCounter");
+  const statusLine = document.getElementById("statusLine");
+  const wordList = document.getElementById("wordList");
+  const letterHintButton = document.getElementById("letterHintButton");
+  const directionHintButton = document.getElementById("directionHintButton");
+  const simplifyHintButton = document.getElementById("simplifyHintButton");
+  const hintBar = document.querySelector(".hintBar");
+  const letterHintNote = document.getElementById("letterHintNote");
+  const simplifyHintNote = document.getElementById("simplifyHintNote");
+  const giveUpButton = document.getElementById("giveUpButton");
+  const startOverlay = document.getElementById("startOverlay");
+  const startTheme = document.getElementById("startTheme");
+  const startTitle = document.getElementById("startTitle");
+  const welcomeRules = document.getElementById("welcomeRules");
+  const welcomeHints = document.getElementById("welcomeHints");
+  const startButton = document.getElementById("startButton");
+  const finishOverlay = document.getElementById("finishOverlay");
+  const finishTitle = document.getElementById("finishTitle");
+  const finishText = document.getElementById("finishText");
+  const finishButton = document.getElementById("finishButton");
+  const gameRoot = document.getElementById("gameRoot");
+
+  function setBooting(isBooting) {
+    document.body.dataset.booting = isBooting ? "1" : "0";
+  }
+
+  function primeShellData(rawData) {
+    if (!rawData || typeof rawData !== "object") return;
+
+    const source = rawData.gameData || rawData.puzzle || rawData.data || rawData;
+    if (!source || typeof source !== "object") return;
+
+    const title = String(source.title || "").trim();
+    const theme = String(source.theme || "").trim();
+
+    if (title) {
+      document.title = title;
+      startTitle.textContent = title;
+    }
+
+    if (theme) {
+      startTheme.textContent = theme;
+    }
+  }
+
+  const GENERIC_RULES = [
+    "Найди все слова, спрятанные на поле.",
+    "Веди по соседним буквам по вертикали или горизонтали.",
+    "Если путь выбран правильно, слово закрепится цветом."
+  ];
+
+  const GENERIC_HINT_RULES = [
+    "Буква открывает начало одного ненайденного слова.",
+    "Направление показывает, куда идти от первой буквы.",
+    "Упростить выравнивает часть букв на поле.",
+    "Количество подсказок зависит от сложности."
+  ];
+
+  const DATA_FIELDS = ["id", "title", "theme", "rules", "hintRules", "rows", "cols", "grid", "words", "difficultyRules"];
+
+  let gameData = normalizeGameData(DEFAULT_GAME_DATA);
+  let words = prepareWords(gameData.words);
+
+  const cellEls = new Map();
+  const wordChipEls = new Map();
+
+  let initReceived = false;
+  let mouseActive = false;
+  let activePointerId = null;
+
+  const state = {
+    initialized: false,
+    difficulty: 3,
+    rules: DIFFICULTY_RULES[3],
+    seedText: "",
+    resultSent: false,
+    locked: false,
+    pendingResult: 0,
+    selected: [],
+    selectedSet: new Set(),
+    wrongCells: new Set(),
+    found: new Set(),
+    revealedCounts: new Map(),
+    directionHints: new Set(),
+    directionHintsUsed: new Set(),
+    letterHintsUsed: new Set(),
+    simplifiedCells: new Set(),
+    hintBudget: 0,
+    directionBudget: 0,
+    hintQueues: {
+      letter: [],
+      direction: [],
+      simplify: []
+    },
+    visual: new Map(),
+    mistakes: 0
+  };
+
+  function cellKey(cell) {
+    return `${cell.r},${cell.c}`;
+  }
+
+  function coordKey(r, c) {
+    return `${r},${c}`;
+  }
+
+  function parseKey(key) {
+    const [r, c] = key.split(",").map(Number);
+    return { r, c };
+  }
+
+  function normalizeGameData(rawData) {
+    const source = rawData && typeof rawData === "object" ? rawData : DEFAULT_GAME_DATA;
+    const grid = normalizeGrid(source.grid || DEFAULT_GAME_DATA.grid);
+    const rows = Math.max(1, Number(source.rows ?? grid.length) || grid.length);
+    const cols = Math.max(1, Number(source.cols ?? (grid[0] ? grid[0].length : 0)) || (grid[0] ? grid[0].length : 0));
+
+    return {
+      id: String(source.id || DEFAULT_GAME_DATA.id || "word-search"),
+      title: String(source.title || "Поиск слов"),
+      theme: String(source.theme || "Тема слов"),
+      rules: normalizeRules(source.rules),
+      hintRules: normalizeHintRules(source.hintRules),
+      rows,
+      cols,
+      grid,
+      words: normalizeWords(source.words || DEFAULT_GAME_DATA.words),
+      difficultyRules: source.difficultyRules && typeof source.difficultyRules === "object" ? source.difficultyRules : {}
+    };
+  }
+
+  function decodeTextValue(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    return text.replace(/\\([\\;|:=])/g, "$1");
+  }
+
+  function splitEscaped(text, separator) {
+    const parts = [];
+    let current = "";
+    let escaped = false;
+    for (const char of String(text || "")) {
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        current += char;
+        continue;
+      }
+      if (char === separator) {
+        parts.push(current);
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    parts.push(current);
+    return parts;
+  }
+
+  function parseTextMap(text) {
+    const result = {};
+    splitEscaped(text, ";").forEach((part) => {
+      const chunk = String(part || "").trim();
+      if (!chunk) return;
+      const eqIndex = chunk.indexOf("=");
+      if (eqIndex <= 0) {
+        throw new Error(`Malformed puzzle data fragment: "${chunk}". Check ";" inside text fields.`);
+      }
+      const key = chunk.slice(0, eqIndex).trim();
+      const value = chunk.slice(eqIndex + 1).trim();
+      if (!key) {
+        throw new Error(`Malformed puzzle data fragment: "${chunk}".`);
+      }
+      result[key] = value;
+    });
+    return result;
+  }
+
+  function parseSizeValue(value) {
+    const match = String(value || "").trim().match(/^(\d+)x(\d+)$/i);
+    if (!match) return null;
+    return {
+      rows: Number(match[1]),
+      cols: Number(match[2])
+    };
+  }
+
+  function parseGridValue(value) {
+    const decoded = decodeTextValue(value);
+    if (!decoded) return [];
+    return splitEscaped(decoded, "|").map((row) => decodeTextValue(row)).filter(Boolean);
+  }
+
+  function parsePathValue(value) {
+    const decoded = decodeTextValue(value);
+    if (!decoded) return [];
+    return decoded.split(">").map((cell) => {
+      const match = cell.trim().match(/^(-?\d+),(-?\d+)$/);
+      if (!match) return null;
+      return [Number(match[1]), Number(match[2])];
+    }).filter(Boolean);
+  }
+
+  function parseWordEntry(entry, index) {
+    const parts = splitEscaped(String(entry || ""), ":");
+    if (parts.length < 4) return null;
+
+    const text = decodeTextValue(parts[0]).toUpperCase();
+    const color = decodeTextValue(parts[1]) || fallbackColor(index);
+    const reversedToken = decodeTextValue(parts[2]).toLowerCase();
+    const path = parsePathValue(parts.slice(3).join(":"));
+
+    if (!text || path.length === 0) return null;
+
+    return {
+      id: index,
+      text,
+      color,
+      reversed: reversedToken === "r1" || reversedToken === "true" || reversedToken === "1",
+      path
+    };
+  }
+
+  function parseWordsValue(value) {
+    const decoded = decodeTextValue(value);
+    if (!decoded) return [];
+    return splitEscaped(decoded, "|").map(parseWordEntry).filter(Boolean);
+  }
+
+  function parseRulesValue(value) {
+    const decoded = decodeTextValue(value);
+    if (!decoded) return [];
+    return splitEscaped(decoded, "|").map((item) => decodeTextValue(item)).filter(Boolean);
+  }
+
+  function parseWsgTextData(text) {
+    const fields = parseTextMap(text);
+    if (!fields.fmt || decodeTextValue(fields.fmt) !== "wsg-text") return null;
+
+    const version = Number(fields.v);
+    if (!Number.isFinite(version) || version < 1) return null;
+
+    const size = parseSizeValue(fields.size);
+    const grid = parseGridValue(fields.grid);
+    const wordsValue = parseWordsValue(fields.words);
+
+    const parsed = {
+      format: "wsg-text",
+      version,
+      id: decodeTextValue(fields.id) || undefined,
+      title: decodeTextValue(fields.title) || undefined,
+      theme: decodeTextValue(fields.theme) || undefined,
+      rows: size ? size.rows : undefined,
+      cols: size ? size.cols : undefined,
+      grid,
+      words: wordsValue
+    };
+
+    const rules = parseRulesValue(fields.rules);
+    if (rules.length) parsed.rules = rules;
+
+    const hintRules = parseRulesValue(fields.hintRules || fields.hints);
+    if (hintRules.length) parsed.hintRules = hintRules;
+
+    return parsed;
+  }
+
+  function parseSerializedGameData(rawValue) {
+    if (rawValue == null) return null;
+    if (typeof rawValue === "object") return rawValue;
+
+    const text = String(rawValue || "").trim();
+    if (!text) return null;
+
+    const wsgTextData = parseWsgTextData(text);
+    if (wsgTextData) return wsgTextData;
+
+    if (text.startsWith("{") || text.startsWith("[")) {
+      try {
+        return JSON.parse(text);
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeInitMessage(message) {
+    if (!message || typeof message !== "object") return {};
+
+    const nested = [
+      message.params,
+      message.gameParams,
+      message.payload,
+      message.config,
+      message.init,
+      message.options
+    ].find((item) => item && typeof item === "object") || {};
+
+    return {
+      ...nested,
+      ...message
+    };
+  }
+
+  function normalizeGrid(grid) {
+    if (!Array.isArray(grid)) return normalizeGrid(DEFAULT_GAME_DATA.grid);
+    return grid.map((row) => {
+      if (Array.isArray(row)) return row.map((letter) => String(letter || "")).join("");
+      return String(row || "");
+    }).filter((row) => row.length > 0);
+  }
+
+  function normalizeRules(rules) {
+    if (!Array.isArray(rules) || rules.length === 0) return [...GENERIC_RULES];
+    return rules.map((rule) => String(rule || "").trim()).filter(Boolean);
+  }
+
+  function normalizeHintRules(hintRules) {
+    if (!Array.isArray(hintRules) || hintRules.length === 0) return [...GENERIC_HINT_RULES];
+    return hintRules.map((rule) => String(rule || "").trim()).filter(Boolean);
+  }
+
+  function normalizeWords(sourceWords) {
+    if (!Array.isArray(sourceWords)) return normalizeWords(DEFAULT_GAME_DATA.words);
+    return sourceWords.map((word, index) => {
+      const path = Array.isArray(word.path) ? word.path.map(normalizePathCell).filter(Boolean) : [];
+      return {
+        id: Number.isFinite(Number(word.id)) ? Number(word.id) : index,
+        text: String(word.text || word.original || word.word || "").toUpperCase(),
+        reversed: Boolean(word.reversed),
+        color: String(word.color || fallbackColor(index)),
+        path
+      };
+    }).filter((word) => word.text && word.path.length > 0);
+  }
+
+  function normalizePathCell(cell) {
+    if (Array.isArray(cell) && cell.length >= 2) {
+      return [Number(cell[0]), Number(cell[1])];
+    }
+    if (cell && typeof cell === "object") {
+      return [Number(cell.r), Number(cell.c)];
+    }
+    return null;
+  }
+
+  function fallbackColor(index) {
+    const colors = ["#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"];
+    return colors[index % colors.length];
+  }
+
+  function prepareWords(sourceWords) {
+    return sourceWords.map((word) => {
+      const physicalPath = word.path.map(([r, c]) => ({ r, c }));
+      const displayPath = word.reversed ? [...physicalPath].reverse() : [...physicalPath];
+      return {
+        ...word,
+        path: physicalPath,
+        reversePath: [...physicalPath].reverse(),
+        displayPath,
+        pathKeys: physicalPath.map(cellKey),
+        reversePathKeys: [...physicalPath].reverse().map(cellKey),
+        displayPathKeys: displayPath.map(cellKey)
+      };
+    });
+  }
+
+  function loadGameData(params) {
+    const inlineData = {};
+    DATA_FIELDS.forEach((field) => {
+      if (params[field] !== undefined) inlineData[field] = params[field];
+    });
+
+    const externalData =
+      parseSerializedGameData(params.gameData) ||
+      parseSerializedGameData(params.puzzleData) ||
+      parseSerializedGameData(params.data) ||
+      parseSerializedGameData(window.WORD_SEARCH_GAME_DATA) ||
+      (params.gameData && typeof params.gameData === "object" ? params.gameData : {}) ||
+      (window.WORD_SEARCH_GAME_DATA && typeof window.WORD_SEARCH_GAME_DATA === "object" ? window.WORD_SEARCH_GAME_DATA : {});
+
+    gameData = normalizeGameData({
+      ...DEFAULT_GAME_DATA,
+      ...externalData,
+      ...inlineData
+    });
+    words = prepareWords(gameData.words);
+    document.title = gameData.title;
+  }
+
+  function clampDifficulty(value) {
+    const number = Math.round(Number(value));
+    if (!Number.isFinite(number)) return 3;
+    return Math.min(5, Math.max(1, number));
+  }
+
+  function paramsFromUrl() {
+    const searchParams = new URLSearchParams(window.location.search);
+    const diff = searchParams.get("diff") ?? searchParams.get("difficulty");
+    const params = {};
+    if (diff != null && diff !== "") {
+      params.difficulty = clampDifficulty(diff);
+    }
+    const seed = searchParams.get("seed");
+    if (seed != null && seed !== "") {
+      params.seed = seed;
+    }
+    const dateKey = searchParams.get("date");
+    if (dateKey != null && dateKey !== "") {
+      params.dateKey = dateKey;
+    }
+    return params;
+  }
+
+  function dateKeyFromNow() {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function hashString(text) {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function rngFromText(text) {
+    let seed = hashString(text);
+    return () => {
+      seed += 0x6D2B79F5;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffled(items, salt) {
+    const copy = [...items];
+    const rng = rngFromText(`${state.seedText}|${salt}`);
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function rgba(hex, alpha) {
+    const clean = hex.replace("#", "");
+    const bigint = parseInt(clean, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function cssNumber(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function darkenHex(hex, factor) {
+    const clean = hex.replace("#", "");
+    const bigint = parseInt(clean, 16);
+    if (!Number.isFinite(bigint)) return hex;
+
+    const safeFactor = Math.max(0, Math.min(1, Number(factor) || 0));
+    const r = Math.round(((bigint >> 16) & 255) * safeFactor);
+    const g = Math.round(((bigint >> 8) & 255) * safeFactor);
+    const b = Math.round((bigint & 255) * safeFactor);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function isUiTarget(target) {
+    return !!(
+      target &&
+      target.closest(".hintButton, .smallButton, .finishButton, .finishPanel, .overlay, .hud, .hintBar, .wordTray, [data-ui='true']")
+    );
+  }
+
+  function applyScale() {
+    const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+    document.documentElement.style.setProperty("--scale", Math.max(0.42, scale).toFixed(5));
+    window.requestAnimationFrame(updateBoardMetrics);
+  }
+
+  function updateBoardMetrics() {
+    const rect = board.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const cellWidth = rect.width / gameData.cols;
+    const cellHeight = rect.height / gameData.rows;
+    const cellSize = Math.min(cellWidth, cellHeight);
+    document.documentElement.style.setProperty("--cell-size", `${cellSize.toFixed(3)}px`);
+  }
+
+  function setupSeed(params) {
+    const gameId = params.gameId || "wordSearch";
+    const dateKey = params.dateKey || dateKeyFromNow();
+    const explicitSeed = params.seed == null ? "" : String(params.seed);
+    state.seedText = explicitSeed || `${gameId}|${gameData.id}|${dateKey}|${state.difficulty}`;
+  }
+
+  function setupVisualNoise() {
+    state.visual.clear();
+    for (let r = 0; r < gameData.rows; r++) {
+      for (let c = 0; c < gameData.cols; c++) {
+        const rng = rngFromText(`${state.seedText}|cell|${r}|${c}`);
+        const rotation = (rng() * 2 - 1) * state.rules.maxRotation;
+        const dx = (rng() * 2 - 1) * state.rules.maxOffsetPct * 100;
+        const dy = (rng() * 2 - 1) * state.rules.maxOffsetPct * 100;
+        const scale = 1 + rng() * state.rules.maxScalePct;
+        state.visual.set(coordKey(r, c), { rotation, dx, dy, scale });
+      }
+    }
+  }
+
+  function resetState(params) {
+    state.difficulty = clampDifficulty(params.difficulty ?? 3);
+    state.rules = {
+      ...(DIFFICULTY_RULES[state.difficulty] || DIFFICULTY_RULES[3]),
+      ...(gameData.difficultyRules[state.difficulty] || gameData.difficultyRules[String(state.difficulty)] || {})
+    };
+    setupSeed(params);
+
+    state.resultSent = false;
+    state.locked = false;
+    state.pendingResult = 0;
+    state.selected = [];
+    state.selectedSet = new Set();
+    state.wrongCells = new Set();
+    state.found = new Set();
+    state.revealedCounts = new Map();
+    state.directionHints = new Set();
+    state.directionHintsUsed = new Set();
+    state.letterHintsUsed = new Set();
+    state.simplifiedCells = new Set();
+    state.hintBudget = state.rules.hintBudget;
+    state.directionBudget = state.rules.directionBudget;
+    state.mistakes = 0;
+
+    words.forEach((word) => {
+      state.revealedCounts.set(word.id, Math.min(state.rules.startReveal, word.text.length));
+    });
+
+    const wordIds = words.map((word) => word.id);
+    const allCellKeys = [];
+    for (let r = 0; r < gameData.rows; r++) {
+      for (let c = 0; c < gameData.cols; c++) {
+        allCellKeys.push(coordKey(r, c));
+      }
+    }
+
+    state.hintQueues = {
+      letter: shuffled(wordIds, "letter-queue"),
+      direction: shuffled(wordIds, "direction-queue"),
+      simplify: shuffled(weightedSimplifyKeys(allCellKeys), "simplify-queue")
+    };
+
+    setupVisualNoise();
+  }
+
+  function weightedSimplifyKeys(allCellKeys) {
+    const wordCellKeys = [];
+    words.forEach((word) => {
+      word.pathKeys.forEach((key) => wordCellKeys.push(key, key));
+    });
+    return [...wordCellKeys, ...allCellKeys];
+  }
+
+  function initializeGame(params = {}) {
+    const effectiveParams = { ...params, ...paramsFromUrl() };
+    loadGameData(effectiveParams);
+    resetState(effectiveParams);
+    state.initialized = true;
+    state.locked = true;
+    gameRoot.style.pointerEvents = "";
+    startOverlay.classList.remove("hidden");
+    finishOverlay.classList.add("hidden");
+    startButton.disabled = false;
+    finishButton.disabled = false;
+    renderWelcome();
+    buildBoard();
+    updateBoardMetrics();
+    buildWordList();
+    updateAll();
+    setBooting(false);
+    window.requestAnimationFrame(updateBoardMetrics);
+    setStatus(`Сложность ${state.difficulty}. Найди все слова на поле.`);
+  }
+
+  function renderWelcome() {
+    startTitle.textContent = gameData.title;
+    startTheme.textContent = gameData.theme;
+    welcomeRules.innerHTML = "";
+    gameData.rules.forEach((rule) => {
+      const item = document.createElement("li");
+      item.textContent = rule;
+      welcomeRules.appendChild(item);
+    });
+    welcomeHints.innerHTML = "";
+    gameData.hintRules.forEach((rule) => {
+      const item = document.createElement("li");
+      item.textContent = rule;
+      welcomeHints.appendChild(item);
+    });
+  }
+
+  function startGame() {
+    if (!state.initialized || state.resultSent) return;
+    state.locked = false;
+    startButton.disabled = true;
+    startOverlay.classList.add("hidden");
+    setStatus("Игра началась. Веди по буквам, чтобы найти слово.");
+    updateAll();
+  }
+
+  function buildBoard() {
+    board.innerHTML = "";
+    cellEls.clear();
+    document.documentElement.style.setProperty("--board-ratio", (gameData.cols / gameData.rows).toFixed(5));
+    boardFrame.style.aspectRatio = `${gameData.cols} / ${gameData.rows}`;
+    board.style.gridTemplateColumns = `repeat(${gameData.cols}, minmax(0, 1fr))`;
+    board.style.gridTemplateRows = `repeat(${gameData.rows}, minmax(0, 1fr))`;
+    board.style.setProperty("--grid-alpha", String(state.rules.gridAlpha));
+
+    for (let r = 0; r < gameData.rows; r++) {
+      const row = gameData.grid[r] || "";
+      for (let c = 0; c < gameData.cols; c++) {
+        const cell = document.createElement("div");
+        const key = coordKey(r, c);
+        cell.className = "cell";
+        cell.dataset.r = String(r);
+        cell.dataset.c = String(c);
+        cell.dataset.key = key;
+        cell.setAttribute("aria-label", row[c] || "");
+
+        const letter = document.createElement("span");
+        letter.className = "letter";
+        letter.textContent = row[c] || "";
+        cell.appendChild(letter);
+
+        const arrow = document.createElement("span");
+        arrow.className = "hintArrow";
+        cell.appendChild(arrow);
+
+        board.appendChild(cell);
+        cellEls.set(key, cell);
+      }
+    }
+  }
+
+  function buildWordList() {
+    wordList.innerHTML = "";
+    wordChipEls.clear();
+    words.forEach((word) => {
+      const chip = document.createElement("div");
+      chip.className = "wordChip";
+      chip.textContent = word.text;
+      chip.style.setProperty("--word-color", word.color);
+      wordList.appendChild(chip);
+      wordChipEls.set(word.id, chip);
+    });
+  }
+
+  function updateAll() {
+    updateBoardState();
+    updateWordList();
+    updateHud();
+    updateHintButtons();
+  }
+
+  function updateBoardState() {
+    const foundCell = new Map();
+    const revealedCell = new Map();
+    const directionStart = new Map();
+
+    words.forEach((word) => {
+      if (state.found.has(word.id)) {
+        word.pathKeys.forEach((key) => foundCell.set(key, word));
+        return;
+      }
+
+      const revealCount = state.revealedCounts.get(word.id) || 0;
+      for (let i = 0; i < revealCount && i < word.displayPath.length; i++) {
+        const key = word.displayPathKeys[i];
+        const alpha = [0.62, 0.42, 0.28][i] || 0.22;
+        revealedCell.set(key, { word, alpha });
+      }
+
+      if (state.directionHints.has(word.id) && word.displayPath.length > 1) {
+        directionStart.set(word.displayPathKeys[0], word);
+      }
+    });
+
+    cellEls.forEach((cell, key) => {
+      cell.className = "cell";
+      cell.style.removeProperty("--cell-fill");
+      cell.style.removeProperty("--cell-opacity");
+      cell.style.removeProperty("--found-letter-color");
+      cell.style.removeProperty("--arrow-color");
+      cell.style.removeProperty("--arrow-rot");
+
+      const visual = state.visual.get(key);
+      const isSimplified = state.simplifiedCells.has(key);
+      const letter = cell.querySelector(".letter");
+      if (letter) {
+        letter.style.setProperty("--letter-rot", isSimplified ? "0" : visual.rotation.toFixed(3));
+        letter.style.setProperty("--letter-dx", isSimplified ? "0" : visual.dx.toFixed(3));
+        letter.style.setProperty("--letter-dy", isSimplified ? "0" : visual.dy.toFixed(3));
+        letter.style.setProperty("--letter-scale", isSimplified ? "1" : visual.scale.toFixed(3));
+      }
+
+      if (isSimplified) {
+        cell.classList.add("simplified");
+      }
+
+      if (foundCell.has(key)) {
+        const word = foundCell.get(key);
+        cell.classList.add("found");
+        cell.style.setProperty("--cell-fill", rgba(word.color, 0.88));
+        cell.style.setProperty("--cell-opacity", "0.72");
+        cell.style.setProperty("--found-letter-color", darkenHex(word.color, cssNumber("--found-letter-darken-factor", 0.33)));
+      } else if (revealedCell.has(key)) {
+        const { word, alpha } = revealedCell.get(key);
+        cell.classList.add("revealed");
+        cell.style.setProperty("--cell-fill", rgba(word.color, 0.92));
+        cell.style.setProperty("--cell-opacity", String(alpha));
+      }
+
+      if (directionStart.has(key)) {
+        const word = directionStart.get(key);
+        cell.classList.add("directionStart");
+        cell.style.setProperty("--cell-fill", rgba(word.color, 0.96));
+        cell.style.setProperty("--cell-opacity", "0.54");
+        cell.style.setProperty("--arrow-color", word.color);
+        cell.style.setProperty("--arrow-rot", String(directionAngle(word)));
+      }
+
+      if (state.selectedSet.has(key)) {
+        cell.classList.add("selected");
+      }
+
+      if (state.wrongCells.has(key)) {
+        cell.classList.add("wrong");
+      }
+    });
+  }
+
+  function directionAngle(word) {
+    const first = word.displayPath[0];
+    const second = word.displayPath[1];
+    const dr = second.r - first.r;
+    const dc = second.c - first.c;
+    if (dc > 0) return 0;
+    if (dr > 0) return 90;
+    if (dc < 0) return 180;
+    return -90;
+  }
+
+  function updateWordList() {
+    wordChipEls.forEach((chip, id) => {
+      chip.classList.toggle("found", state.found.has(id));
+    });
+  }
+
+  function updateHud() {
+    foundCounter.textContent = `${state.found.size}/${words.length}`;
+    hintCounter.textContent = String(state.hintBudget);
+    difficultyCounter.textContent = String(state.difficulty);
+  }
+
+  function updateHintButtons() {
+    const noBudget = state.hintBudget <= 0 || state.locked || state.resultSent;
+    const simplifyAvailable = canSimplifyField();
+    letterHintButton.disabled = noBudget || !nextLetterHintWord();
+    directionHintButton.disabled = noBudget || state.directionBudget <= 0 || !nextDirectionHintWord();
+    simplifyHintButton.classList.toggle("hiddenControl", !simplifyAvailable);
+    hintBar.classList.toggle("noSimplify", !simplifyAvailable);
+    simplifyHintButton.disabled = !simplifyAvailable || noBudget || !hasSimplifyCells();
+
+    if (state.rules.letterHintStep > 1) {
+      letterHintNote.textContent = "2-3 буквы";
+    } else if (state.rules.startReveal > 0) {
+      letterHintNote.textContent = "2-я буква";
+    } else {
+      letterHintNote.textContent = "1-я буква";
+    }
+    simplifyHintNote.textContent = `${Math.round(state.rules.simplifyPercent * 100)}% поля`;
+  }
+
+  function canSimplifyField() {
+    return (
+      Math.abs(Number(state.rules.maxRotation) || 0) > 0 ||
+      Math.abs(Number(state.rules.maxOffsetPct) || 0) > 0 ||
+      Math.abs(Number(state.rules.maxScalePct) || 0) > 0
+    );
+  }
+
+  function setStatus(text) {
+    statusLine.textContent = text;
+  }
+
+  function coordFromPoint(clientX, clientY) {
+    const rect = board.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
+    const c = Math.floor(x / (rect.width / gameData.cols));
+    const r = Math.floor(y / (rect.height / gameData.rows));
+    if (r < 0 || r >= gameData.rows || c < 0 || c >= gameData.cols) return null;
+    return { r, c };
+  }
+
+  function startSelection(point) {
+    if (!point || state.locked || state.resultSent) return;
+    clearWrongFlash();
+    state.selected = [];
+    state.selectedSet = new Set();
+    addSelectionCell(point);
+    updateBoardState();
+  }
+
+  function moveSelection(point) {
+    if (!point || state.locked || state.resultSent || state.selected.length === 0) return;
+    addSelectionCell(point);
+    updateBoardState();
+  }
+
+  function endSelection() {
+    if (state.locked || state.resultSent || state.selected.length === 0) return;
+    const match = findSelectedWord();
+    if (match) {
+      markWordFound(match);
+    } else if (state.selected.length > 1) {
+      flashWrong();
+      state.mistakes += 1;
+      setStatus("Такого слова здесь нет. Попробуй другой путь.");
+    }
+    state.selected = [];
+    state.selectedSet = new Set();
+    updateAll();
+  }
+
+  function addSelectionCell(point) {
+    const key = coordKey(point.r, point.c);
+    const last = state.selected[state.selected.length - 1];
+    if (last && last.r === point.r && last.c === point.c) return;
+
+    if (state.selected.length > 1) {
+      const prev = state.selected[state.selected.length - 2];
+      if (prev.r === point.r && prev.c === point.c) {
+        const removed = state.selected.pop();
+        state.selectedSet.delete(coordKey(removed.r, removed.c));
+        return;
+      }
+    }
+
+    if (state.selectedSet.has(key)) return;
+
+    if (last && !isAdjacent(last, point)) {
+      state.selected = [point];
+      state.selectedSet = new Set([key]);
+      return;
+    }
+
+    state.selected.push(point);
+    state.selectedSet.add(key);
+  }
+
+  function isAdjacent(a, b) {
+    return Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1;
+  }
+
+  function findSelectedWord() {
+    const selectedKeys = state.selected.map(cellKey);
+    return words.find((word) => {
+      if (state.found.has(word.id)) return false;
+      if (selectedKeys.length !== word.pathKeys.length) return false;
+      return sameKeys(selectedKeys, word.pathKeys) || sameKeys(selectedKeys, word.reversePathKeys);
+    });
+  }
+
+  function sameKeys(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function markWordFound(word) {
+    state.found.add(word.id);
+    state.directionHints.delete(word.id);
+    state.revealedCounts.set(word.id, word.text.length);
+    setStatus(`Найдено: ${word.text}`);
+    if (state.found.size === words.length) {
+      showFinish(1);
+    }
+  }
+
+  function flashWrong() {
+    state.wrongCells = new Set(state.selected.map(cellKey));
+    window.setTimeout(() => {
+      clearWrongFlash();
+      updateBoardState();
+    }, 260);
+  }
+
+  function clearWrongFlash() {
+    if (state.wrongCells.size === 0) return;
+    state.wrongCells = new Set();
+  }
+
+  function nextLetterHintWord() {
+    return state.hintQueues.letter
+      .map((id) => words.find((word) => word.id === id))
+      .find((word) => {
+        if (!word || state.found.has(word.id)) return false;
+        if (state.letterHintsUsed.has(word.id)) return false;
+        return (state.revealedCounts.get(word.id) || 0) < state.rules.maxLetterReveal;
+      });
+  }
+
+  function nextDirectionHintWord() {
+    return state.hintQueues.direction
+      .map((id) => words.find((word) => word.id === id))
+      .find((word) => {
+        if (!word || state.found.has(word.id)) return false;
+        if (state.directionHintsUsed.has(word.id)) return false;
+        return word.displayPath.length > 1;
+      });
+  }
+
+  function hasSimplifyCells() {
+    if (!canSimplifyField()) return false;
+    return state.hintQueues.simplify.some((key) => !state.simplifiedCells.has(key));
+  }
+
+  function consumeHint() {
+    if (state.hintBudget <= 0 || state.locked || state.resultSent) return false;
+    state.hintBudget -= 1;
+    return true;
+  }
+
+  function applyLetterHint() {
+    const word = nextLetterHintWord();
+    if (!word || !consumeHint()) return;
+    const current = state.revealedCounts.get(word.id) || 0;
+    const next = Math.min(word.text.length, state.rules.maxLetterReveal, current + state.rules.letterHintStep);
+    state.revealedCounts.set(word.id, next);
+    state.letterHintsUsed.add(word.id);
+    setStatus(`Открыта подсказка для слова: ${word.text}`);
+    updateAll();
+  }
+
+  function applyDirectionHint() {
+    const word = nextDirectionHintWord();
+    if (!word || state.directionBudget <= 0 || !consumeHint()) return;
+    state.directionBudget -= 1;
+    state.directionHints.add(word.id);
+    state.directionHintsUsed.add(word.id);
+    const current = state.revealedCounts.get(word.id) || 0;
+    state.revealedCounts.set(word.id, Math.max(current, 1));
+    setStatus(`Показано направление для слова: ${word.text}`);
+    updateAll();
+  }
+
+  function applySimplifyHint() {
+    if (!hasSimplifyCells() || !consumeHint()) return;
+    const totalCells = gameData.rows * gameData.cols;
+    const target = Math.max(1, Math.round(totalCells * state.rules.simplifyPercent));
+    let added = 0;
+    for (const key of state.hintQueues.simplify) {
+      if (state.simplifiedCells.has(key)) continue;
+      state.simplifiedCells.add(key);
+      added += 1;
+      if (added >= target) break;
+    }
+    setStatus(`Поле упрощено: выровнено ${added} букв.`);
+    updateAll();
+  }
+
+  function showFinish(result) {
+    if (state.resultSent) return;
+    state.locked = true;
+    state.pendingResult = Number(result) || 0;
+
+    if (state.pendingResult === 1) {
+      finishTitle.textContent = "Все слова найдены";
+      finishText.textContent = `Найдено ${state.found.size} из ${words.length}. Ошибок: ${state.mistakes}.`;
+      finishButton.textContent = "Продолжить";
+    } else {
+      finishTitle.textContent = "Попытка завершена";
+      finishText.textContent = `Найдено ${state.found.size} из ${words.length}.`;
+      finishButton.textContent = "Завершить";
+    }
+
+    finishOverlay.classList.remove("hidden");
+    updateAll();
+  }
+
+  function finishGame(result) {
+    if (state.resultSent) return;
+    state.resultSent = true;
+    state.locked = true;
+    finishButton.disabled = true;
+    gameRoot.style.pointerEvents = "none";
+    window.parent.postMessage({
+      type: "gameResult",
+      result: Number.isFinite(Number(result)) ? Number(result) : 0,
+      words: state.found.size
+    }, "*");
+  }
+
+  function bindUiButton(button, handler) {
+    const stopPropagationOnly = (event) => {
+      event.stopPropagation();
+    };
+
+    ["pointerdown", "pointerup", "touchstart", "touchend", "mousedown", "mouseup"]
+      .forEach((type) => button.addEventListener(type, stopPropagationOnly, { passive: false }));
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!button.disabled && !state.resultSent) handler(event);
+    });
+  }
+
+  function tryCapturePointer(event) {
+    if (!("PointerEvent" in window)) return;
+    if (event.pointerId == null || !board.setPointerCapture) return;
+    try {
+      board.setPointerCapture(event.pointerId);
+      activePointerId = event.pointerId;
+    } catch (_) {}
+  }
+
+  function tryReleasePointer(event) {
+    if (!("PointerEvent" in window)) return;
+    if (event.pointerId == null || !board.releasePointerCapture) return;
+    try {
+      if (board.hasPointerCapture && board.hasPointerCapture(event.pointerId)) {
+        board.releasePointerCapture(event.pointerId);
+      }
+    } catch (_) {}
+    if (activePointerId === event.pointerId) activePointerId = null;
+  }
+
+  function onGameInputStart(event, x, y) {
+    if (!state.initialized || state.locked || state.resultSent) return;
+    if (isUiTarget(event.target)) return;
+    if (event.cancelable) event.preventDefault();
+    tryCapturePointer(event);
+    startSelection(coordFromPoint(x, y));
+  }
+
+  function onGameInputMove(event, x, y) {
+    if (!state.initialized || state.locked || state.resultSent) return;
+    if (isUiTarget(event.target)) return;
+    if (event.cancelable) event.preventDefault();
+    moveSelection(coordFromPoint(x, y));
+  }
+
+  function onGameInputEnd(event) {
+    if (!state.initialized || state.resultSent) return;
+    if (event.cancelable) event.preventDefault();
+    tryReleasePointer(event);
+    endSelection();
+  }
+
+  function bindInput() {
+    if ("PointerEvent" in window) {
+      board.addEventListener("pointerdown", (event) => {
+        onGameInputStart(event, event.clientX, event.clientY);
+      }, { passive: false });
+
+      board.addEventListener("pointermove", (event) => {
+        if (activePointerId != null && event.pointerId !== activePointerId) return;
+        onGameInputMove(event, event.clientX, event.clientY);
+      }, { passive: false });
+
+      board.addEventListener("pointerup", onGameInputEnd, { passive: false });
+      board.addEventListener("pointercancel", onGameInputEnd, { passive: false });
+      return;
+    }
+
+    board.addEventListener("mousedown", (event) => {
+      mouseActive = true;
+      onGameInputStart(event, event.clientX, event.clientY);
+    }, { passive: false });
+
+    window.addEventListener("mousemove", (event) => {
+      if (!mouseActive) return;
+      onGameInputMove(event, event.clientX, event.clientY);
+    }, { passive: false });
+
+    window.addEventListener("mouseup", (event) => {
+      if (!mouseActive) return;
+      mouseActive = false;
+      onGameInputEnd(event);
+    }, { passive: false });
+
+    board.addEventListener("touchstart", (event) => {
+      if (isUiTarget(event.target)) {
+        event.preventDefault();
+        return;
+      }
+      const touch = event.changedTouches[0];
+      if (touch) onGameInputStart(event, touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    board.addEventListener("touchmove", (event) => {
+      if (isUiTarget(event.target)) {
+        event.preventDefault();
+        return;
+      }
+      const touch = event.changedTouches[0];
+      if (touch) onGameInputMove(event, touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    board.addEventListener("touchend", onGameInputEnd, { passive: false });
+    board.addEventListener("touchcancel", onGameInputEnd, { passive: false });
+  }
+
+  window.addEventListener("message", (event) => {
+    if (!event.data || event.data.type !== "gameInit") return;
+    initReceived = true;
+    initializeGame(normalizeInitMessage(event.data));
+  });
+
+  window.addEventListener("resize", () => {
+    applyScale();
+  });
+
+  bindUiButton(letterHintButton, applyLetterHint);
+  bindUiButton(directionHintButton, applyDirectionHint);
+  bindUiButton(simplifyHintButton, applySimplifyHint);
+  bindUiButton(giveUpButton, () => showFinish(0));
+  bindUiButton(startButton, startGame);
+  bindUiButton(finishButton, () => finishGame(state.pendingResult));
+
+  primeShellData(window.WORD_SEARCH_GAME_DATA);
+  applyScale();
+  bindInput();
+
+  window.setTimeout(() => {
+    if (initReceived) return;
+    initializeGame({ gameId: "localWordSearch" });
+  }, 250);
+})();
+</script>
+</body>
+</html>
