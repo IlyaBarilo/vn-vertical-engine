@@ -6320,4 +6320,27 @@ setTimeout(function() {
 
 
 
+// Запрет перетаскивания на фоне и карточке панели статистики
+var statsPanel = document.getElementById('statsPanel');
+var statsCard = document.querySelector('.statsCard');
+
+if (statsPanel) {
+  statsPanel.setAttribute('draggable', 'false');
+  statsPanel.addEventListener('dragstart', function(e) {
+    // Если цель — сам фон или его прямой потомок без особых разрешений
+    if (e.target === statsPanel || e.target === statsCard || e.target.closest('.statsCard') === statsCard) {
+      e.preventDefault();
+      return false;
+    }
+  });
+}
+
+if (statsCard) {
+  statsCard.setAttribute('draggable', 'false');
+  statsCard.addEventListener('dragstart', function(e) {
+    e.preventDefault();
+    return false;
+  });
+}
+
 })();
