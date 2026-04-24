@@ -2749,14 +2749,11 @@
 
   function onMessage(event) {
     if (!event.data || event.data.type !== 'gameInit') return;
-    if (initReceived || localInitPerformed) {
-      initReceived = true;
-      difficulty = Number(event.data.difficulty ?? difficulty) || difficulty;
-      return;
-    }
     initReceived = true;
-    difficulty = Number(event.data.difficulty ?? 2) || 2;
-    resetWorld();
+    difficulty = Number(event.data.difficulty ?? difficulty) || difficulty;
+    if (!gameStarted && !finished && !resultSent) {
+      resetWorld();
+    }
   }
 
   function localInit() {
