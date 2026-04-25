@@ -157,13 +157,14 @@ jobs:
             fi
           done
 
-      - name: Create ZIP archive
+      - name: Create ZIP archives
         run: |
           # VERSION уже подготовлена в Detect version
 
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
+          # Lite-архив оставляет код, документацию и HTML-игры, но удаляет изображения и аудио.
           cp -r "$APP_NAME" "${APP_NAME}-lite"
           find "${APP_NAME}-lite/assets" -type f \( \
             -iname "*.jpg" -o \
