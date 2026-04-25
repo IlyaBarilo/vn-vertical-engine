@@ -13,6 +13,10 @@ The main idea is simple:
 4. if you do, add them in the right places;
 5. after that, connect, test, and refine everything together.
 
+When downloading a release, use the full ZIP archive if you want to run the
+included demo as-is. Use the `-lite` ZIP archive if you want a smaller starting
+point without bundled images and audio; you can add your own media files later.
+
 ---
 
 ## Important

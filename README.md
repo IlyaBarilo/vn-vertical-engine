@@ -147,6 +147,9 @@ This engine is suitable for:
              ├── audio/
              └── games/
 
+In lite release archives, image and audio files are removed from `assets/`,
+but HTML mini-games and engine files remain.
+
 ---
 
 ## 🚀 Quick Start
@@ -154,6 +157,14 @@ This engine is suitable for:
 1.  Download the latest version:
 
 👉 **[Download Latest Release](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)**
+
+Release assets include two ZIP variants:
+
+- `vn-vertical-engine-VERSION.zip` — full package with demo images and audio.
+- `vn-vertical-engine-VERSION-lite.zip` — lightweight package without images and audio.
+
+Use the full archive to run the included demo as-is. Use the lite archive as a
+smaller starting point when you plan to add your own media files.
 
 2.  Extract the archive.
 
