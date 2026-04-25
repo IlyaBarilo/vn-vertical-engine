@@ -1527,7 +1527,7 @@ body {
   gap: 4px !important;
   margin-top: 6px !important;
   padding: 4px !important;
-  background-color: rgba(200,200,200,0.2) !important;
+  background-color: transparent !important;
   border-radius: 8px !important;
 }
 
@@ -1704,6 +1704,10 @@ body {
   display: inline-block !important;
   line-height: 0 !important;
   vertical-align: top !important;
+}
+
+.graphContainer .mermaid .node .cew {
+  background: transparent !important;
 }
 
 .graphContainer .mermaid .node .bgl {
