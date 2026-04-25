@@ -4599,10 +4599,13 @@ function buildMermaidGraph(story, unreachableList, options) {
   mermaid += "classDef games-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n";
   mermaid += "classDef game-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
 
+  var graphStats = computeStoryStats(story);
+
   var sharedGraphOptions = {
     compact: compact,
     attachTo: attachSceneId,
-    characterEmotionCounts: computeStoryStats(story).characterEmotionCounts || {}
+    characterEmotionCounts: graphStats.characterEmotionCounts || {},
+    backgroundCounts: graphStats.backgroundCounts || {}
   };
 
   if (scope === "intro") {
@@ -4888,6 +4891,7 @@ function buildCharactersGraph(story, options) {
 function buildBackgroundsGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
+  var backgroundCounts = options.backgroundCounts || {};
 
   var mermaid = "";
   var backgrounds = story.assets.backgrounds || {};
@@ -4957,12 +4961,16 @@ function buildBackgroundsGraph(story, options) {
       var bgId = bgIds[i];
       var imgSrc = getGraphImageSrc(allUniqueBgs[bgId]);
       var safeBgId = escapeHtml(bgId);
+      var bgUseCount = backgroundCounts[bgId] || 0;
 
       if (!imgSrc) continue;
 
-      bgImagesHtml += "<img src='" + imgSrc + "' " +
+      bgImagesHtml += "<span class='bgw " + bgCountClass + "'>" +
+                  "<img src='" + imgSrc + "' " +
                   "class='bg-thumbnail " + bgCountClass + "' " +
-                  "title='" + safeBgId + "' alt='' /> ";
+                  "title='" + safeBgId + "' alt='' />" +
+                  "<b class='bgc'>" + bgUseCount + "</b>" +
+                  "</span> ";
     }
       
     bgImagesHtml += "</div>";
@@ -5186,6 +5194,7 @@ function computeStoryStats(story) {
   var scenes = story.scenes || [];
 
   var usedBg = {};                 // bgId -> true
+  var backgroundCounts = {};       // bgId -> count
   var usedCh = {};                 // charId -> true
   var usedCharacterEmotions = {};  // charId -> { emotion: true }
   var characterEmotionCounts = {}; // charId -> { emotion: count }
@@ -5205,7 +5214,10 @@ function computeStoryStats(story) {
 
       if (act.type === "bg") {
         var bgId = extractAliasId(act.src, "bg");
-        if (bgId) usedBg[bgId] = true;
+        if (bgId) {
+          usedBg[bgId] = true;
+          backgroundCounts[bgId] = (backgroundCounts[bgId] || 0) + 1;
+        }
       }
 
       if (act.type === "char") {
@@ -5312,6 +5324,7 @@ function computeStoryStats(story) {
     sceneCount: scenes.length,
     usedBackgroundIds: usedBackgroundIds,
     unusedBackgroundIds: unusedBackgroundIds,
+    backgroundCounts: backgroundCounts,
     backgroundsDetailed: backgroundsDetailed,
     usedCharacterIds: usedCharacterIds,
     unusedCharacterIds: unusedCharacterIds,

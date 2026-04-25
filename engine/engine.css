@@ -1581,24 +1581,28 @@ body {
 
 /* одно изображение */
 .graphContainer .mermaid .node .cew.imgcount1,
+.graphContainer .mermaid .node .bgw.imgcount1,
 .graphContainer .mermaid .node img.imgcount1 {
   width: 120px !important;
 }
 
 /* 2-4 изображения, 2 в ряд */
 .graphContainer .mermaid .node .cew.imgcount2,
+.graphContainer .mermaid .node .bgw.imgcount2,
 .graphContainer .mermaid .node img.imgcount2 {
   width: 75px !important;
 }
 
 /* 5-9 изображений, 3 в ряд */
 .graphContainer .mermaid .node .cew.imgcount3,
+.graphContainer .mermaid .node .bgw.imgcount3,
 .graphContainer .mermaid .node img.imgcount3 {
   width: 60px !important;
 }
 
 /* 10-... изображений, 4 в ряд */
 .graphContainer .mermaid .node .cew.imgcount4,
+.graphContainer .mermaid .node .bgw.imgcount4,
 .graphContainer .mermaid .node img.imgcount4 {
   width: 40px !important;
 }
@@ -1609,26 +1613,30 @@ body {
   object-fit: contain !important;
 }
 
-.graphContainer .mermaid .node .cew {
+.graphContainer .mermaid .node .cew,
+.graphContainer .mermaid .node .bgw {
   position: relative !important;
   display: inline-block !important;
   line-height: 0 !important;
   vertical-align: top !important;
 }
 
-.graphContainer .mermaid .node .cew .char-emotion-thumbnail {
+.graphContainer .mermaid .node .cew .char-emotion-thumbnail,
+.graphContainer .mermaid .node .bgw .bg-thumbnail {
   display: block !important;
   width: 100% !important;
 }
 
-.graphContainer .mermaid .node .cew:hover .char-emotion-thumbnail {
+.graphContainer .mermaid .node .cew:hover .char-emotion-thumbnail,
+.graphContainer .mermaid .node .bgw:hover .bg-thumbnail {
   transform: scale(3.5) !important;
   z-index: 9999 !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
   cursor: zoom-out !important;
 }
 
-.graphContainer .mermaid .node .cec {
+.graphContainer .mermaid .node .cec,
+.graphContainer .mermaid .node .bgc {
   position: absolute !important;
   right: 7px !important;
   bottom: 4px !important;
