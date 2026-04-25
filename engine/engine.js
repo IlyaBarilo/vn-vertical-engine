@@ -4646,7 +4646,7 @@ function buildMermaidGraph(story, unreachableList, options) {
       if (node.allBgImages && node.allBgImages.length > 0) {
         var sceneBgCountClass = getImgCountClass(node.allBgImages.length);
 
-        label += "<div class='bg-images-container " + sceneBgCountClass + "' style='padding: 4px;'>";
+        label += "<div class='scene-bg-images-container " + sceneBgCountClass + "'>";
         
         for (var b = 0; b < node.allBgImages.length; b++) {
           var bg = node.allBgImages[b];
@@ -4654,7 +4654,7 @@ function buildMermaidGraph(story, unreachableList, options) {
           var safeBgId =  escapeHtml(bg.id || "");
 
           label += "<img src='" + imgSrc + "' " +
-                  "class='bg-thumbnail " + sceneBgCountClass + "' " +
+                  "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
                   "data-id='" + safeBgId + "' " +
                   "data-index='" + b + "' " +
                   "title='" + safeBgId + "' " +
