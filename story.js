@@ -54,6 +54,7 @@ gmCircuitRouting file=assets/games/snake-iso-game.html title="Маршрутиз
 gmMemoryProtocol file=assets/games/memory-game.html title="Лабораторный протокол: Импульс" description="Повтори последовательность световых импульсов. В нагруженном режиме сигналы идут быстрее, а серия становится длиннее." cover=assets/games/memory-game.jpg
 gmComputeSpace file=assets/games/compute-space.html title="Тестирование 3D-полета" description="Тестирование 3D-полета"
 gmBoardUnderVoltage file=assets/games/board-under-voltage.html title="Тестирование 3D-платы" description="Тестирование 3D-платы"
+gmWordSearch file=assets/games/word-search-game.html title="Поиск слов" description="Найди все слова на поле."
 
 [var]
 x = 10 # объявление переменных
@@ -66,6 +67,7 @@ benchmarkResult = 0
 circuitResult = 0
 memoryResult = 0
 memoryDifficulty = 1
+searchResult = 0
 
 [scene]
 # Формат описания сцен:
@@ -90,9 +92,12 @@ bgm bgmDay loop
 
 # Проверка работы игры
 # game gmCoffeeRush difficulty=1 result=coffeeResult x=1 y=100
-# anna: "coffee={coffeeResult}"
-# if coffeeResult == 1 -> cafeGood
-# if coffeeResult == 0 -> cafeBad
+# game gmWordSearch difficulty=3 result=searchResult data="fmt=wsg-text;v=1;id=tech_01;title=Поиск слов;theme=Компьютеры, устройства и интернет;size=5x5;grid=ЯАННИ|ПЕМЕА|ЕРАЛЛ|МТОГД|ШИРКО;words=КОД:#FFADAD:r1:3,4>4,4>4,3|АЛГОРИТМ:#FFD6A5:r1:3,0>3,1>4,1>4,2>3,2>3,3>2,3>2,2|ПЕРЕМЕННАЯ:#FDFFB6:r1:0,0>0,1>0,2>0,3>1,3>1,2>1,1>2,1>2,0>1,0"
+# anna: "res={searchResult}"
+# if searchResult == 1 -> cafeGood
+# if searchResult == 0 -> cafeBad
+
+
 
 show anna  # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
@@ -194,8 +199,65 @@ igor: "Можно прогнать расчёт, как раньше. А мож�
 menu
 "Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
 "Провести калибровку сенсорной панели" -> scBranchLabBenchmark
+"Собрать словарь алгоритма" -> scBranchLabWordSearchIntro
 "Открыть стенд маршрутизации контура" -> scBranchLabRoutingIntro
 "Пройти тест памяти световых импульсов" -> scBranchLabMemoryIntro
+
+
+
+scene scBranchLabWordSearchIntro
+
+bg bgBranchLab
+hide all
+
+"На боковом экране открыт учебный модуль: система перемешала ключевые термины и ждёт, когда их соберут обратно."
+
+show anna neutral
+anna: "Это не тест реакции, а проверка внимания. Нужно найти слова, из которых собирается логика программы."
+
+show igor smile
+igor: "То есть сначала приводим в порядок словарь, а потом уже запускаем сложные стенды?"
+
+goto scBranchLabWordSearchRun
+
+
+scene scBranchLabWordSearchRun
+
+bg bgBranchLab
+hide all
+
+"Ты запускаешь модуль поиска терминов."
+
+game gmWordSearch difficulty=2 result=searchResult data="fmt=wsg-text;v=1;id=algo;title=Поиск слов;theme=Алгоритмы;size=15x8;grid=ОКГВТОРВ|МАЖОПСЛЦ|ЦНДШЩПОЖ|ИКААГРОН|АЛЧУЦОСТ|ВСАМЕССЬ|ИСЕИВТСЙ|СУИЕЯИДЕ|ЛОВРЕСЕБ|ДАНЕШРИУ|ЕНИЕРУВС|ЫНКЕЕКОЛ|ЕШОДИКВИ|ФБРЯГАПК|ЭПОЛОЛЗЕ;words=ШАГ:#FFADAD:r0:2,3>3,3>3,4|ЦИКЛ:#FFD6A5:r0:2,0>3,0>3,1>4,1|УСЛОВИЕ:#FDFFB6:r0:7,1>7,0>8,0>8,1>8,2>7,2>7,3|ДАННЫЕ:#CAFFBF:r1:10,0>11,0>11,1>10,1>9,1>9,0|КОМАНДА:#9BF6FF:r0:0,1>0,0>1,0>1,1>2,1>2,2>3,2|ЛОГИКА:#A0C4FF:r1:13,5>12,5>12,4>13,4>14,4>14,5|ПОРЯДОК:#BDB2FF:r0:14,1>14,2>13,2>13,3>12,3>12,2>11,2|ПРОЦЕСС:#FFC6FF:r1:5,6>5,5>5,4>4,4>4,5>3,5>2,5|ДЕЙСТВИЕ:#E0BBE4:r0:7,6>7,7>6,7>6,6>6,5>6,4>6,3>6,2|РЕШЕНИЕ:#FFB347:r0:8,3>8,4>9,4>9,3>9,2>10,2>10,3|ПОВТОР:#C8E6C9:r0:1,4>1,3>0,3>0,4>0,5>0,6|УСЛОВИЕ:#B2DFDB:r1:8,6>9,6>10,6>11,6>11,7>10,7>9,7|МАССИВ:#D1C4E9:r0:5,3>5,2>5,1>6,1>6,0>5,0|РЕКУРСИЯ:#FFECB3:r0:10,4>11,4>11,5>10,5>9,5>8,5>7,5>7,4|СЛОЖНОСТЬ:#A7FFEB:r0:1,5>1,6>2,6>2,7>3,7>3,6>4,6>4,7>5,7"
+
+if searchResult == 1 -> scBranchLabWordSearchGood
+if searchResult == 0 -> scBranchLabWordSearchBad
+
+
+scene scBranchLabWordSearchGood
+
+bg bgBranchLab
+hide all
+
+"Термины собраны, и система подсветила связанный маршрут: код, цикл, массив, функция, алгоритм."
+
+show anna neutral
+anna: "Отлично. Даже простая словесная задача может работать как часть лабораторной сцены."
+
+goto scFinale01
+
+
+scene scBranchLabWordSearchBad
+
+bg bgBranchLab
+hide all
+
+"Часть терминов осталась несобранной, но модуль всё равно показал, где логика распалась."
+
+show igor neutral
+igor: "Ничего страшного. Для прототипа это тоже полезно: сразу видно, какие подсказки нужны игроку."
+
+goto scFinale01
 
 
 
