@@ -5026,17 +5026,17 @@ function buildGamesGraph(story, options) {
   var gamesCount = gameIds.length;
 
   var gameCountClass = getImgCountClass(gamesCount);
-  var gamesListHtml = "<div class='games-list-container " + gameCountClass + "'>";
+  var gamesListHtml = "<div class='games-list-box " + gameCountClass + "'>";
 
   if (gamesCount > 0) {
     for (var i = 0; i < gameIds.length; i++) {
       var gameId = gameIds[i];
 
       var safeGameId = escapeHtml(gameId);
-      gamesListHtml += "<div class='game-list-item'>" + safeGameId + "</div>";
+      gamesListHtml += "<span class='game-list-row'>" + safeGameId + "</span>";
     }
   } else {
-    gamesListHtml += "<div class='game-list-empty'>(none)</div>";
+    gamesListHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
   }
 
   gamesListHtml += "</div>";
