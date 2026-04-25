@@ -535,8 +535,90 @@ function parseActionParams(paramTokens) {
   return params;
 }
 
+function stripInlineComment(line) {
+  var text = String(line || '');
+  var quote = null;
+  var escaped = false;
+
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === '#') {
+      return text.slice(0, i).trim();
+    }
+  }
+
+  return text.trim();
+}
+
+function splitQuotedTokens(text) {
+  var tokens = [];
+  var current = '';
+  var quote = null;
+  var escaped = false;
+
+  String(text || '').trim().split('').forEach(function(ch) {
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      return;
+    }
+
+    if (ch === '\\') {
+      current += ch;
+      escaped = true;
+      return;
+    }
+
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      return;
+    }
+
+    if (ch === '"' || ch === "'") {
+      current += ch;
+      quote = ch;
+      return;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      return;
+    }
+
+    current += ch;
+  });
+
+  if (current) tokens.push(current);
+  return tokens;
+}
+
 function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
-  var tokens = cleanLine.split(/\s+/);
+  var tokens = splitQuotedTokens(cleanLine);
   if (tokens.length < 2) {
     addParseError(lineNumber, line, 'The game command must contain the game ID', true);
     return;
@@ -920,7 +1002,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
   // Парсинг сцен
   function parseSceneLine(line, story, currentScene, setCurrentScene, lineNumber) {
     // Удаляем комментарии, но сохраняем оригинал для вывода ошибок
-    const cleanLine = line.split('#')[0].trim();
+    const cleanLine = stripInlineComment(line);
     if (!cleanLine) return; // если строка была только комментарием
     
     // Используем cleanLine для парсинга, но line для вывода ошибок
