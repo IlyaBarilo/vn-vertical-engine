@@ -35,6 +35,26 @@
     --start-rule-font-size: calc(20px * var(--scale));
     --start-hint-title-font-size: calc(24px * var(--scale));
     --start-hint-rule-font-size: calc(20px * var(--scale));
+
+    /* Текстовый блок над полем: общая зона темы и подсказки */
+    --game-info-padding-top: calc(2px * var(--scale));
+    --game-info-padding-x: calc(8px * var(--scale));
+    --game-info-padding-bottom: 0px;
+
+    /* Заголовок темы над полем */
+    --game-theme-font-size: calc(32px * var(--scale));
+    --game-theme-font-weight: 800;
+    --game-theme-color: var(--accent);
+    --game-theme-margin-top: 6px;
+    --game-theme-margin-bottom: 6px;
+
+    /* Подсказка действия под темой */
+    --game-status-font-size: calc(20px * var(--scale));
+    --game-status-font-weight: 400;
+    --game-status-color: var(--muted);
+    --game-status-margin-top: calc(3px * var(--scale));
+    --game-status-margin-bottom: 6px;
+
     --ui-radius: calc(8px * var(--scale));
     --ui-gap: calc(14px * var(--scale));
     --ink: #1f2428;
@@ -45,6 +65,54 @@
     --accent: #137f73;
     --accent-2: #d76f42;
     --danger: #c74747;
+
+    /* Цветовая тема. Все значения можно переопределять через data style.* в формате #RRGGBB или #RRGGBBAA. */
+    --style-page-bg: #edf4eeff;
+    --style-root-bg: #edf4eeff;
+    --style-hud-bg: #ffffffdb;
+    --style-hud-border: #1c2a3124;
+    --style-hud-label-color: #68727fff;
+    --style-hud-value-color: #1f2428ff;
+    --style-stop-button-bg: #fff7f3ff;
+    --style-stop-button-border: #c7474748;
+    --style-stop-button-color: #7d2e2aff;
+    --style-board-frame-bg: #ffffffff;
+    --style-board-frame-border: #1f242829;
+    --style-board-bg: #ffffffff;
+    --style-cell-bg: #fffef8ff;
+    --style-grid-line-rgb: 42, 52, 56;
+    --grid-line-width: 1px;
+    --style-letter-color: #172026ff;
+    --style-letter-active-color: #0f171bff;
+    --style-selected-cell-bg: #34c4a4c7;
+    --style-wrong-cell-bg: #c74747d1;
+    --style-arrow-glow: #ffffffdb;
+    --style-hint-button-1-bg: #f1fbf8ff;
+    --style-hint-button-1-border: #137f7347;
+    --style-hint-button-1-color: #114a45ff;
+    --style-hint-button-2-bg: #fff6f0ff;
+    --style-hint-button-2-border: #d76f4257;
+    --style-hint-button-2-color: #7b3f28ff;
+    --style-hint-button-3-bg: #f4f6ffff;
+    --style-hint-button-3-border: #4b63ab4d;
+    --style-hint-button-3-color: #283b82ff;
+    --style-overlay-bg: #ecf4edc7;
+    --style-panel-bg: #ffffffff;
+    --style-panel-border: #1c2a3124;
+    --style-title-color: #1f2428ff;
+    --style-text-color: #68727fff;
+    --style-rule-color: #354047ff;
+    --style-rule-border: #137f7347;
+    --style-hint-title-color: #26343bff;
+    --style-hint-rule-color: #4b5961ff;
+    --style-hint-rule-border: #d76f424d;
+    --style-primary-button-bg: #137f73ff;
+    --style-primary-button-color: #ffffffff;
+    --style-word-chip-bg: #ffffffff;
+    --style-word-chip-border: #1f24281f;
+    --style-word-chip-color: #243039ff;
+    --style-word-chip-found-bg: #ffffff94;
+    --style-word-chip-found-color: #2430398a;
   }
 
   * {
@@ -58,8 +126,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    color: var(--ink);
-    background: #edf4ee;
+    color: var(--style-title-color);
+    background: var(--style-page-bg);
     font-family: Arial, Helvetica, sans-serif;
     touch-action: none;
     user-select: none;
@@ -87,7 +155,7 @@
     overflow: hidden;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.06) 38%),
-      #edf4ee;
+      var(--style-root-bg);
     touch-action: none;
   }
 
@@ -95,7 +163,7 @@
     position: absolute;
     inset: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: var(--ui-gap);
     padding: max(8px, calc(16px * var(--scale)));
   }
@@ -110,12 +178,10 @@
   }
 
   .hudMetric,
-  .statusLine,
-  .hintBar,
-  .wordTray {
-    border: calc(1px * var(--scale)) solid var(--line);
+  .hintBar {
+    border: calc(1px * var(--scale)) solid var(--style-hud-border);
     border-radius: var(--ui-radius);
-    background: rgba(255, 255, 255, 0.86);
+    background: var(--style-hud-bg);
     box-shadow: 0 calc(10px * var(--scale)) calc(26px * var(--scale)) rgba(34, 48, 53, 0.08);
   }
 
@@ -123,12 +189,14 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     min-width: 0;
     padding: calc(8px * var(--scale)) calc(12px * var(--scale));
   }
 
   .hudMetric span {
-    color: var(--muted);
+    text-align: center;
+    color: var(--style-hud-label-color);
     font-size: calc(15px * var(--scale));
     line-height: 1.05;
     white-space: nowrap;
@@ -136,19 +204,21 @@
 
   .hudMetric strong {
     margin-top: calc(4px * var(--scale));
+    text-align: center;
     font-size: calc(28px * var(--scale));
     line-height: 1;
     letter-spacing: 0;
+    color: var(--style-hud-value-color);
   }
 
   .smallButton {
     min-width: calc(86px * var(--scale));
     min-height: calc(58px * var(--scale));
     padding: 0 calc(14px * var(--scale));
-    border: calc(1px * var(--scale)) solid rgba(199, 71, 71, 0.28);
+    border: calc(1px * var(--scale)) solid var(--style-stop-button-border);
     border-radius: var(--ui-radius);
-    background: #fff7f3;
-    color: #7d2e2a;
+    background: var(--style-stop-button-bg);
+    color: var(--style-stop-button-color);
     font-family: var(--button-font-family);
     font-size: var(--small-button-font-size);
     font-weight: var(--small-button-font-weight);
@@ -178,8 +248,8 @@
     aspect-ratio: 10 / 15;
     border-radius: var(--ui-radius);
     padding: calc(6px * var(--scale));
-    background: #ffffff;
-    border: calc(1px * var(--scale)) solid rgba(31, 36, 40, 0.16);
+    background: var(--style-board-frame-bg);
+    border: calc(1px * var(--scale)) solid var(--style-board-frame-border);
     box-shadow: 0 calc(18px * var(--scale)) calc(42px * var(--scale)) rgba(22, 36, 42, 0.13);
   }
 
@@ -190,9 +260,9 @@
     height: 100%;
     overflow: visible;
     border-radius: calc(6px * var(--scale));
-    border-top: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
-    border-left: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
-    background: #ffffff;
+    border-top: var(--grid-line-width) solid rgba(var(--style-grid-line-rgb), var(--grid-alpha, 0.18));
+    border-left: var(--grid-line-width) solid rgba(var(--style-grid-line-rgb), var(--grid-alpha, 0.18));
+    background: var(--style-board-bg);
     contain: layout;
     touch-action: none;
   }
@@ -203,10 +273,10 @@
     place-items: center;
     min-width: 0;
     min-height: 0;
-    border-right: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
-    border-bottom: calc(1px * var(--scale)) solid rgba(42, 52, 56, var(--grid-alpha, 0.18));
-    color: var(--letter-color);
-    background: #fffef8;
+    border-right: var(--grid-line-width) solid rgba(var(--style-grid-line-rgb), var(--grid-alpha, 0.18));
+    border-bottom: var(--grid-line-width) solid rgba(var(--style-grid-line-rgb), var(--grid-alpha, 0.18));
+    color: var(--style-letter-color);
+    background: var(--style-cell-bg);
     overflow: visible;
   }
 
@@ -230,13 +300,13 @@
   }
 
   .cell.selected::before {
-    background: #34c4a4;
+    background: var(--style-selected-cell-bg);
     opacity: 0.78;
     transform: scale(1);
   }
 
   .cell.wrong::before {
-    background: var(--danger);
+    background: var(--style-wrong-cell-bg);
     opacity: 0.82;
     transform: scale(1);
   }
@@ -263,11 +333,11 @@
 
   .cell.selected .letter,
   .cell.wrong .letter {
-    color: var(--letter-active-color);
+    color: var(--style-letter-active-color);
   }
 
   .cell.found .letter {
-    color: var(--found-letter-color, var(--letter-active-color));
+    color: var(--found-letter-color, var(--style-letter-active-color));
     opacity: var(--found-letter-opacity);
   }
 
@@ -284,7 +354,7 @@
     transform-origin: 0 50%;
     transform: rotate(calc(var(--arrow-rot, 0) * 1deg));
     pointer-events: none;
-    box-shadow: 0 0 calc(10px * var(--scale)) rgba(255, 255, 255, 0.86);
+    box-shadow: 0 0 calc(10px * var(--scale)) var(--style-arrow-glow);
   }
 
   .hintArrow::after {
@@ -325,23 +395,23 @@
     min-width: 0;
     min-height: calc(60px * var(--scale));
     padding: calc(6px * var(--scale)) calc(8px * var(--scale));
-    border: calc(1px * var(--scale)) solid rgba(19, 127, 115, 0.28);
+    border: calc(1px * var(--scale)) solid var(--style-hint-button-1-border);
     border-radius: var(--ui-radius);
-    background: #f1fbf8;
-    color: #114a45;
+    background: var(--style-hint-button-1-bg);
+    color: var(--style-hint-button-1-color);
     cursor: pointer;
   }
 
   .hintButton:nth-child(2) {
-    border-color: rgba(215, 111, 66, 0.34);
-    background: #fff6f0;
-    color: #7b3f28;
+    border-color: var(--style-hint-button-2-border);
+    background: var(--style-hint-button-2-bg);
+    color: var(--style-hint-button-2-color);
   }
 
   .hintButton:nth-child(3) {
-    border-color: rgba(75, 99, 171, 0.30);
-    background: #f4f6ff;
-    color: #283b82;
+    border-color: var(--style-hint-button-3-border);
+    background: var(--style-hint-button-3-bg);
+    color: var(--style-hint-button-3-color);
   }
 
   .hintButton:disabled,
@@ -359,6 +429,7 @@
   .hintButton strong {
     display: block;
     max-width: 100%;
+    text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -371,6 +442,7 @@
   .hintButton span {
     display: block;
     max-width: 100%;
+    text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -382,23 +454,38 @@
   }
 
   .wordTray {
-    display: none;
     z-index: 120;
-    padding: calc(8px * var(--scale));
+    padding: var(--game-info-padding-top) var(--game-info-padding-x) var(--game-info-padding-bottom);
+    text-align: center;
   }
 
   .statusLine {
-    margin-bottom: calc(8px * var(--scale));
-    padding: calc(7px * var(--scale)) calc(10px * var(--scale));
-    color: var(--muted);
-    font-size: calc(14px * var(--scale));
-    line-height: 1.15;
-    min-height: calc(31px * var(--scale));
+    margin: var(--game-status-margin-top) 0 var(--game-status-margin-bottom);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--game-status-color);
+    font-size: var(--game-status-font-size);
+    font-weight: var(--game-status-font-weight);
+    line-height: 1.12;
+    min-height: 0;
     box-shadow: none;
   }
 
+  .gameTheme {
+    margin: var(--game-theme-margin-top) 0 var(--game-theme-margin-bottom);
+    padding: 0;
+    color: var(--game-theme-color);
+    font-size: var(--game-theme-font-size);
+    font-weight: var(--game-theme-font-weight);
+    line-height: 1.08;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .wordList {
-    display: grid;
+    display: none;
     grid-template-columns: repeat(auto-fit, minmax(calc(104px * var(--scale)), 1fr));
     gap: calc(6px * var(--scale));
   }
@@ -406,11 +493,11 @@
   .wordChip {
     min-width: 0;
     border-radius: calc(7px * var(--scale));
-    border: calc(1px * var(--scale)) solid rgba(31, 36, 40, 0.12);
+    border: calc(1px * var(--scale)) solid var(--style-word-chip-border);
     border-left: calc(7px * var(--scale)) solid var(--word-color, var(--accent));
-    background: var(--panel-strong);
+    background: var(--style-word-chip-bg);
     padding: calc(5px * var(--scale)) calc(7px * var(--scale));
-    color: #243039;
+    color: var(--style-word-chip-color);
     font-size: clamp(8px, calc(14px * var(--scale)), 15px);
     line-height: 1.05;
     font-weight: 700;
@@ -420,9 +507,9 @@
   }
 
   .wordChip.found {
-    color: rgba(36, 48, 57, 0.54);
+    color: var(--style-word-chip-found-color);
     text-decoration: line-through;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--style-word-chip-found-bg);
   }
 
   .overlay {
@@ -432,7 +519,7 @@
     display: grid;
     place-items: center;
     padding: calc(24px * var(--scale));
-    background: rgba(236, 244, 237, 0.78);
+    background: var(--style-overlay-bg);
     backdrop-filter: blur(calc(5px * var(--scale)));
   }
 
@@ -442,9 +529,9 @@
 
   .finishPanel {
     width: min(calc(620px * var(--scale)), 92vw);
-    border: calc(1px * var(--scale)) solid var(--line);
+    border: calc(1px * var(--scale)) solid var(--style-panel-border);
     border-radius: var(--ui-radius);
-    background: #ffffff;
+    background: var(--style-panel-bg);
     padding: calc(28px * var(--scale));
     text-align: center;
     box-shadow: 0 calc(22px * var(--scale)) calc(60px * var(--scale)) rgba(22, 36, 42, 0.18);
@@ -455,11 +542,12 @@
     font-size: calc(34px * var(--scale));
     line-height: 1.05;
     letter-spacing: 0;
+    color: var(--style-title-color);
   }
 
   .finishPanel p {
     margin: 0 0 calc(20px * var(--scale));
-    color: var(--muted);
+    color: var(--style-text-color);
     font-size: calc(18px * var(--scale));
     line-height: 1.28;
   }
@@ -490,19 +578,19 @@
     margin: 0 0 calc(22px * var(--scale));
     padding: 0;
     list-style: none;
-    color: #354047;
+    color: var(--style-rule-color);
     font-size: var(--start-rule-font-size);
     line-height: 1.25;
   }
 
   .welcomeRules li {
     padding-left: calc(16px * var(--scale));
-    border-left: calc(4px * var(--scale)) solid rgba(19, 127, 115, 0.28);
+    border-left: calc(4px * var(--scale)) solid var(--style-rule-border);
   }
 
   .startHintTitle {
     margin: 0 0 calc(8px * var(--scale));
-    color: #26343b;
+    color: var(--style-hint-title-color);
     font-size: var(--start-hint-title-font-size);
     font-weight: 800;
     line-height: 1.1;
@@ -514,14 +602,14 @@
     margin: 0 0 calc(22px * var(--scale));
     padding: 0;
     list-style: none;
-    color: #4b5961;
+    color: var(--style-hint-rule-color);
     font-size: var(--start-hint-rule-font-size);
     line-height: 1.22;
   }
 
   .welcomeHints li {
     padding-left: calc(16px * var(--scale));
-    border-left: calc(4px * var(--scale)) solid rgba(215, 111, 66, 0.30);
+    border-left: calc(4px * var(--scale)) solid var(--style-hint-rule-border);
   }
 
   .finishButton {
@@ -529,8 +617,8 @@
     min-height: calc(58px * var(--scale));
     border: 0;
     border-radius: var(--ui-radius);
-    background: var(--accent);
-    color: white;
+    background: var(--style-primary-button-bg);
+    color: var(--style-primary-button-color);
     font-family: var(--button-font-family);
     font-size: var(--finish-button-font-size);
     font-weight: var(--finish-button-font-weight);
@@ -549,6 +637,14 @@
 
     .statusLine {
       display: none;
+    }
+
+    .gameTheme {
+      font-size: calc(var(--game-theme-font-size) * 0.86);
+    }
+
+    .statusLine {
+      font-size: calc(var(--game-status-font-size) * 0.9);
     }
   }
 </style>
@@ -572,6 +668,12 @@
       <button id="giveUpButton" class="smallButton" type="button" data-ui="true">Стоп</button>
     </header>
 
+    <section class="wordTray" data-ui="true">
+      <div id="gameTheme" class="gameTheme" data-ui="true">Тема слов</div>
+      <div id="statusLine" class="statusLine" data-ui="true">Веди по соседним буквам и собирай слова.</div>
+      <div id="wordList" class="wordList" data-ui="true"></div>
+    </section>
+
     <main class="boardArea">
       <div class="boardFrame">
         <div id="board" class="board" aria-label="Поле поиска слов"></div>
@@ -593,10 +695,6 @@
       </button>
     </section>
 
-    <section class="wordTray" data-ui="true">
-      <div id="statusLine" class="statusLine" data-ui="true">Веди по соседним буквам и собирай слова.</div>
-      <div id="wordList" class="wordList" data-ui="true"></div>
-    </section>
   </div>
 
   <div id="startOverlay" class="overlay" data-ui="true">
@@ -636,7 +734,7 @@
 
   const DEFAULT_GAME_DATA = {
     id: "word-search-tech-2025-07-22",
-    title: "Цифровой поиск слов",
+    title: "Поиск слов",
     theme: "Компьютеры, устройства и интернет",
     rules: [
       "Найди все слова, спрятанные на поле.",
@@ -692,16 +790,16 @@
 
   const DIFFICULTY_RULES = {
     1: {
-      startReveal: 1,
-      maxLetterReveal: 3,
-      letterHintStep: 2,
-      hintBudget: 5,
-      directionBudget: 3,
-      simplifyPercent: 0.25,
-      maxRotation: 0,
-      maxOffsetPct: 0,
-      maxScalePct: 0,
-      gridAlpha: 0.24
+      startReveal: 1, // Сколько первых букв каждого слова открыто сразу.
+      maxLetterReveal: 3, // Максимум букв, которые можно открыть подсказками в одном слове.
+      letterHintStep: 2, // Сколько новых букв открывает одна подсказка "Буква".
+      hintBudget: 5, // Общий запас подсказок "Буква" и "Упростить".
+      directionBudget: 3, // Отдельный запас подсказок "Направление".
+      simplifyPercent: 0.25, // Доля клеток поля, которую выравнивает подсказка "Упростить".
+      maxRotation: 0, // Максимальный случайный поворот букв в градусах.
+      maxOffsetPct: 0, // Максимальный случайный сдвиг букв в процентах от размера клетки.
+      maxScalePct: 0, // Максимальное случайное изменение масштаба букв.
+      gridAlpha: 0.24 // Прозрачность линий сетки поля.
     },
     2: {
       startReveal: 1,
@@ -759,6 +857,7 @@
   const hintCounter = document.getElementById("hintCounter");
   const difficultyCounter = document.getElementById("difficultyCounter");
   const statusLine = document.getElementById("statusLine");
+  const gameTheme = document.getElementById("gameTheme");
   const wordList = document.getElementById("wordList");
   const letterHintButton = document.getElementById("letterHintButton");
   const directionHintButton = document.getElementById("directionHintButton");
@@ -815,7 +914,57 @@
     "Количество подсказок зависит от сложности."
   ];
 
-  const DATA_FIELDS = ["id", "title", "theme", "rules", "hintRules", "rows", "cols", "grid", "words", "difficultyRules"];
+  const DATA_FIELDS = ["id", "title", "theme", "rules", "hintRules", "rows", "cols", "grid", "words", "difficultyRules", "style"];
+
+  const STYLE_COLOR_FIELDS = {
+    themeColor: ["--game-theme-color", "--start-theme-color"],
+    statusColor: ["--game-status-color"],
+    pageBg: ["--style-page-bg"],
+    rootBg: ["--style-root-bg"],
+    hudBg: ["--style-hud-bg"],
+    hudBorder: ["--style-hud-border"],
+    hudLabelColor: ["--style-hud-label-color"],
+    hudValueColor: ["--style-hud-value-color"],
+    stopButtonBg: ["--style-stop-button-bg"],
+    stopButtonBorder: ["--style-stop-button-border"],
+    stopButtonColor: ["--style-stop-button-color"],
+    hintButton1Bg: ["--style-hint-button-1-bg"],
+    hintButton1Border: ["--style-hint-button-1-border"],
+    hintButton1Color: ["--style-hint-button-1-color"],
+    hintButton2Bg: ["--style-hint-button-2-bg"],
+    hintButton2Border: ["--style-hint-button-2-border"],
+    hintButton2Color: ["--style-hint-button-2-color"],
+    hintButton3Bg: ["--style-hint-button-3-bg"],
+    hintButton3Border: ["--style-hint-button-3-border"],
+    hintButton3Color: ["--style-hint-button-3-color"],
+    boardFrameBg: ["--style-board-frame-bg"],
+    boardFrameBorder: ["--style-board-frame-border"],
+    boardBg: ["--style-board-bg"],
+    cellBg: ["--style-cell-bg"],
+    gridLineColor: ["--style-grid-line-rgb"],
+    letterColor: ["--style-letter-color"],
+    letterActiveColor: ["--style-letter-active-color"],
+    selectedCellBg: ["--style-selected-cell-bg"],
+    wrongCellBg: ["--style-wrong-cell-bg"],
+    arrowGlow: ["--style-arrow-glow"],
+    overlayBg: ["--style-overlay-bg"],
+    panelBg: ["--style-panel-bg"],
+    panelBorder: ["--style-panel-border"],
+    titleColor: ["--style-title-color"],
+    textColor: ["--style-text-color"],
+    ruleColor: ["--style-rule-color"],
+    ruleBorder: ["--style-rule-border"],
+    hintTitleColor: ["--style-hint-title-color"],
+    hintRuleColor: ["--style-hint-rule-color"],
+    hintRuleBorder: ["--style-hint-rule-border"],
+    primaryButtonBg: ["--style-primary-button-bg"],
+    primaryButtonColor: ["--style-primary-button-color"],
+    wordChipBg: ["--style-word-chip-bg"],
+    wordChipBorder: ["--style-word-chip-border"],
+    wordChipColor: ["--style-word-chip-color"],
+    wordChipFoundBg: ["--style-word-chip-found-bg"],
+    wordChipFoundColor: ["--style-word-chip-found-color"]
+  };
 
   let gameData = normalizeGameData(DEFAULT_GAME_DATA);
   let words = prepareWords(gameData.words);
@@ -884,6 +1033,7 @@
       cols,
       grid,
       words: normalizeWords(source.words || DEFAULT_GAME_DATA.words),
+      style: normalizeStyleColors(source.style),
       difficultyRules: source.difficultyRules && typeof source.difficultyRules === "object" ? source.difficultyRules : {}
     };
   }
@@ -996,6 +1146,17 @@
     return splitEscaped(decoded, "|").map((item) => decodeTextValue(item)).filter(Boolean);
   }
 
+  function parseStyleFields(fields) {
+    const style = {};
+    Object.keys(fields || {}).forEach((key) => {
+      if (!key.startsWith("style.")) return;
+      const styleKey = key.slice("style.".length).trim();
+      if (!styleKey) return;
+      style[styleKey] = decodeTextValue(fields[key]);
+    });
+    return style;
+  }
+
   function parseWsgTextData(text) {
     const fields = parseTextMap(text);
     if (!fields.fmt || decodeTextValue(fields.fmt) !== "wsg-text") return null;
@@ -1016,7 +1177,8 @@
       rows: size ? size.rows : undefined,
       cols: size ? size.cols : undefined,
       grid,
-      words: wordsValue
+      words: wordsValue,
+      style: parseStyleFields(fields)
     };
 
     const rules = parseRulesValue(fields.rules);
@@ -1093,10 +1255,22 @@
         id: Number.isFinite(Number(word.id)) ? Number(word.id) : index,
         text: String(word.text || word.original || word.word || "").toUpperCase(),
         reversed: Boolean(word.reversed),
-        color: String(word.color || fallbackColor(index)),
+        color: normalizeHexColor(word.color, fallbackColor(index)),
         path
       };
     }).filter((word) => word.text && word.path.length > 0);
+  }
+
+  function normalizeStyleColors(style) {
+    const normalized = {};
+    if (!style || typeof style !== "object") return normalized;
+
+    Object.keys(STYLE_COLOR_FIELDS).forEach((key) => {
+      const color = normalizeHexColor(style[key], null);
+      if (color) normalized[key] = color;
+    });
+
+    return normalized;
   }
 
   function normalizePathCell(cell) {
@@ -1110,7 +1284,7 @@
   }
 
   function fallbackColor(index) {
-    const colors = ["#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"];
+    const colors = ["#FFADADFF", "#FFD6A5FF", "#FDFFB6FF", "#CAFFBFFF", "#9BF6FFFF", "#A0C4FFFF", "#BDB2FFFF", "#FFC6FFFF"];
     return colors[index % colors.length];
   }
 
@@ -1130,11 +1304,39 @@
     });
   }
 
+  function extractStyleParams(params) {
+    const style = {};
+    Object.keys(params || {}).forEach((key) => {
+      if (!key.startsWith("style.")) return;
+      const styleKey = key.slice("style.".length).trim();
+      if (!styleKey) return;
+      style[styleKey] = params[key];
+    });
+    return style;
+  }
+
+  function applyGameStyle(style) {
+    const rootStyle = document.documentElement.style;
+    Object.values(STYLE_COLOR_FIELDS).flat().forEach((cssVar) => {
+      rootStyle.removeProperty(cssVar);
+    });
+
+    Object.keys(style || {}).forEach((key) => {
+      const cssVars = STYLE_COLOR_FIELDS[key];
+      const color = normalizeHexColor(style[key], null);
+      if (!cssVars || !color) return;
+      cssVars.forEach((cssVar) => {
+        rootStyle.setProperty(cssVar, cssVar === "--style-grid-line-rgb" ? hexToRgbList(color) : color);
+      });
+    });
+  }
+
   function loadGameData(params) {
     const inlineData = {};
     DATA_FIELDS.forEach((field) => {
       if (params[field] !== undefined) inlineData[field] = params[field];
     });
+    const inlineStyle = extractStyleParams(params);
 
     const externalData =
       parseSerializedGameData(params.gameData) ||
@@ -1147,8 +1349,14 @@
     gameData = normalizeGameData({
       ...DEFAULT_GAME_DATA,
       ...externalData,
-      ...inlineData
+      ...inlineData,
+      style: {
+        ...(externalData && externalData.style ? externalData.style : {}),
+        ...(inlineData && inlineData.style ? inlineData.style : {}),
+        ...inlineStyle
+      }
     });
+    applyGameStyle(gameData.style);
     words = prepareWords(gameData.words);
     document.title = gameData.title;
   }
@@ -1215,13 +1423,36 @@
     return copy;
   }
 
-  function rgba(hex, alpha) {
-    const clean = hex.replace("#", "");
-    const bigint = parseInt(clean, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  function normalizeHexColor(value, fallback) {
+    const text = String(value || "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(text)) return `${text}FF`;
+    if (/^#[0-9a-f]{8}$/i.test(text)) return text;
+    return fallback;
+  }
+
+  function parseHexColor(value) {
+    const color = normalizeHexColor(value, null);
+    if (!color) return null;
+    const clean = color.slice(1);
+    return {
+      r: parseInt(clean.slice(0, 2), 16),
+      g: parseInt(clean.slice(2, 4), 16),
+      b: parseInt(clean.slice(4, 6), 16),
+      a: parseInt(clean.slice(6, 8), 16) / 255
+    };
+  }
+
+  function hexToRgbList(hex) {
+    const color = parseHexColor(hex);
+    if (!color) return "42, 52, 56";
+    return `${color.r}, ${color.g}, ${color.b}`;
+  }
+
+  function rgba(hex, alpha = 1) {
+    const color = parseHexColor(hex);
+    if (!color) return String(hex || "transparent");
+    const safeAlpha = Math.max(0, Math.min(1, Number(alpha)));
+    return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a * safeAlpha})`;
   }
 
   function cssNumber(name, fallback) {
@@ -1231,15 +1462,14 @@
   }
 
   function darkenHex(hex, factor) {
-    const clean = hex.replace("#", "");
-    const bigint = parseInt(clean, 16);
-    if (!Number.isFinite(bigint)) return hex;
+    const color = parseHexColor(hex);
+    if (!color) return hex;
 
     const safeFactor = Math.max(0, Math.min(1, Number(factor) || 0));
-    const r = Math.round(((bigint >> 16) & 255) * safeFactor);
-    const g = Math.round(((bigint >> 8) & 255) * safeFactor);
-    const b = Math.round((bigint & 255) * safeFactor);
-    return `rgb(${r}, ${g}, ${b})`;
+    const r = Math.round(color.r * safeFactor);
+    const g = Math.round(color.g * safeFactor);
+    const b = Math.round(color.b * safeFactor);
+    return `rgba(${r}, ${g}, ${b}, ${color.a})`;
   }
 
   function isUiTarget(target) {
@@ -1363,6 +1593,7 @@
   function renderWelcome() {
     startTitle.textContent = gameData.title;
     startTheme.textContent = gameData.theme;
+    gameTheme.textContent = gameData.theme;
     welcomeRules.innerHTML = "";
     gameData.rules.forEach((rule) => {
       const item = document.createElement("li");
@@ -1394,6 +1625,7 @@
     board.style.gridTemplateColumns = `repeat(${gameData.cols}, minmax(0, 1fr))`;
     board.style.gridTemplateRows = `repeat(${gameData.rows}, minmax(0, 1fr))`;
     board.style.setProperty("--grid-alpha", String(state.rules.gridAlpha));
+    board.style.setProperty("--grid-line-width", state.rules.gridAlpha > 0 ? `calc(1px * var(--scale))` : "0px");
 
     for (let r = 0; r < gameData.rows; r++) {
       const row = gameData.grid[r] || "";
