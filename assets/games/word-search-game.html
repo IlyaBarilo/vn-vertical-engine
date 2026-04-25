@@ -13,8 +13,8 @@
     --cell-size: 40px;
     --board-ratio: 0.6667;
     --letter-ratio: 0.58;
-    --letter-font-family: Arial, Helvetica, sans-serif;
-    --letter-font-weight: 500;
+    --letter-font-family: Roboto, Arial, Helvetica, sans-serif;
+    --letter-font-weight: 300;
     --letter-color: #172026;
     --letter-active-color: #0f171b;
     --found-letter-darken-factor: 0.33;
@@ -45,15 +45,15 @@
     --game-theme-font-size: calc(32px * var(--scale));
     --game-theme-font-weight: 800;
     --game-theme-color: var(--accent);
-    --game-theme-margin-top: 6px;
-    --game-theme-margin-bottom: 6px;
+    --game-theme-margin-top: calc(6px * var(--scale));
+    --game-theme-margin-bottom: calc(6px * var(--scale));
 
     /* Подсказка действия под темой */
     --game-status-font-size: calc(20px * var(--scale));
     --game-status-font-weight: 400;
     --game-status-color: var(--muted);
     --game-status-margin-top: calc(3px * var(--scale));
-    --game-status-margin-bottom: 6px;
+    --game-status-margin-bottom: calc(6px * var(--scale));
 
     --ui-radius: calc(8px * var(--scale));
     --ui-gap: calc(14px * var(--scale));
@@ -165,7 +165,7 @@
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: var(--ui-gap);
-    padding: max(8px, calc(16px * var(--scale)));
+    padding: calc(16px * var(--scale));
   }
 
   .hud {
@@ -417,7 +417,7 @@
   .hintButton:disabled,
   .smallButton:disabled,
   .finishButton:disabled {
-    opacity: 0.45;
+    opacity: 0.1;
     cursor: default;
     transform: none;
   }
@@ -636,10 +636,10 @@
     cursor: pointer;
   }
 
-  @media (max-height: 700px) {
+  @media (max-height: 560px) {
     .screen {
       gap: calc(8px * var(--scale));
-      padding: max(6px, calc(11px * var(--scale)));
+      padding: calc(11px * var(--scale));
     }
 
     .boardFrame {
@@ -648,14 +648,6 @@
 
     .statusLine {
       display: none;
-    }
-
-    .gameTheme {
-      font-size: calc(var(--game-theme-font-size) * 0.86);
-    }
-
-    .statusLine {
-      font-size: calc(var(--game-status-font-size) * 0.9);
     }
   }
 </style>
@@ -749,7 +741,7 @@
   const DEFAULT_LOCAL_VARIANT = "algo";
   const LOCAL_GAME_VARIANTS = {
     algo: "fmt=wsg-text;v=1;id=algo;title=Поиск слов;theme=Алгоритмы;size=15x8;grid=ОКГВТОРВ|МАЖОПСЛЦ|ЦНДШЩПОЖ|ИКААГРОН|АЛЧУЦОСТ|ВСАМЕССЬ|ИСЕИВТСЙ|СУИЕЯИДЕ|ЛОВРЕСЕБ|ДАНЕШРИУ|ЕНИЕРУВС|ЫНКЕЕКОЛ|ЕШОДИКВИ|ФБРЯГАПК|ЭПОЛОЛЗЕ;words=ШАГ:#FFADAD:r0:2,3>3,3>3,4|ЦИКЛ:#FFD6A5:r0:2,0>3,0>3,1>4,1|УСЛОВИЕ:#FDFFB6:r0:7,1>7,0>8,0>8,1>8,2>7,2>7,3|ДАННЫЕ:#CAFFBF:r1:10,0>11,0>11,1>10,1>9,1>9,0|КОМАНДА:#9BF6FF:r0:0,1>0,0>1,0>1,1>2,1>2,2>3,2|ЛОГИКА:#A0C4FF:r1:13,5>12,5>12,4>13,4>14,4>14,5|ПОРЯДОК:#BDB2FF:r0:14,1>14,2>13,2>13,3>12,3>12,2>11,2|ПРОЦЕСС:#FFC6FF:r1:5,6>5,5>5,4>4,4>4,5>3,5>2,5|ДЕЙСТВИЕ:#E0BBE4:r0:7,6>7,7>6,7>6,6>6,5>6,4>6,3>6,2|РЕШЕНИЕ:#FFB347:r0:8,3>8,4>9,4>9,3>9,2>10,2>10,3|ПОВТОР:#C8E6C9:r0:1,4>1,3>0,3>0,4>0,5>0,6|УСЛОВИЕ:#B2DFDB:r1:8,6>9,6>10,6>11,6>11,7>10,7>9,7|МАССИВ:#D1C4E9:r0:5,3>5,2>5,1>6,1>6,0>5,0|РЕКУРСИЯ:#FFECB3:r0:10,4>11,4>11,5>10,5>9,5>8,5>7,5>7,4|СЛОЖНОСТЬ:#A7FFEB:r0:1,5>1,6>2,6>2,7>3,7>3,6>4,6>4,7>5,7",
-    hacker: "fmt=wsg-text;v=1;id=hacker;title=Поиск слов;theme=Хакеры;size=15x8;grid=ЗЛТАПДКЭ|ВОЕКДОКБ|СМЗАЩРОС|УЫНДИТДР|РЕНАРАЯО|ИВИНГБРФ|ТЬШИФФУТ|СОМФФРСК|ПВИШИБЕШ|ТЗЯВРВТЬ|РЛУНЕЕРО|ООГИСРАЛ|ППЯРТЦПЬ|ЕУТАФОХЭ|ДОСЧИКЭШ;words=ПАРОЛЬ:#FFADAD:r0:12,6>11,6>10,6>10,7>11,7>12,7|ЛОГИН:#FFD6A5:r1:10,3>11,3>11,2>11,1>10,1|КОД:#FDFFB6:r0:1,6>2,6>3,6|СЕТЬ:#CAFFBF:r0:7,6>8,6>9,6>9,7|СЕРВЕР:#9BF6FF:r1:11,5>10,5>9,5>9,4>10,4>11,4|ВЗЛОМ:#A0C4FF:r0:1,0>0,0>0,1>1,1>2,1|ДОСТУП:#BDB2FF:r1:12,1>13,1>13,2>14,2>14,1>14,0|ШИФР:#FFC6FF:r1:7,5>7,4>8,4>8,3|ЗАЩИТА:#E0BBE4:r1:4,5>3,5>3,4>2,4>2,3>2,2|УЯЗВИМОСТЬ:#FFB347:r0:10,2>9,2>9,1>8,1>8,2>7,2>7,1>7,0>6,0>6,1|ВИРУС:#C8E6C9:r1:2,0>3,0>4,0>5,0>5,1|ДАННЫЕ:#B2DFDB:r1:4,1>3,1>3,2>4,2>4,3>3,3|ПОРТ:#D1C4E9:r0:12,0>11,0>10,0>9,0|ПАКЕТ:#FFECB3:r1:0,2>1,2>1,3>0,3>0,4|ТРАФИК:#A7FFEB:r1:14,5>14,4>13,4>13,3>12,3>12,4|ФИШИНГ:#C5CAE9:r0:6,4>6,3>6,2>5,2>5,3>5,4|БРУТФОРС:#FFE0B2:r1:2,7>3,7>4,7>5,7>6,7>6,6>5,6>5,5|БЭКДОР:#E6EE9C:r1:2,5>1,5>0,5>0,6>0,7>1,7|ХЭШ:#B39DDB:r0:13,6>13,7>14,7;style.pageBg=#07100FFF;style.rootBg=#07100FFF;style.themeColor=#55FF99FF;style.statusColor=#8CB8B0CC;style.hudBg=#0B1A18DD;style.hudBorder=#55FF9933;style.hudLabelColor=#8CB8B0CC;style.hudValueColor=#D8FFE6FF;style.stopButtonBg=#260C12EE;style.stopButtonBorder=#FF4D6D66;style.stopButtonColor=#FFB3C1FF;style.hintButton1Bg=#0B241EEE;style.hintButton1Border=#55FF9955;style.hintButton1Color=#C9FFE0FF;style.hintButton2Bg=#101B2AEE;style.hintButton2Border=#66CCFF55;style.hintButton2Color=#C7ECFFFF;style.hintButton3Bg=#1A1230EE;style.hintButton3Border=#B388FF55;style.hintButton3Color=#E4D2FFFF;style.boardFrameBg=#081412FF;style.boardFrameBorder=#55FF992B;style.boardBg=#06100EFF;style.cellBg=#0A1714FF;style.gridLineColor=#55FF99FF;style.letterColor=#C8FFE0FF;style.letterActiveColor=#FFFFFFFF;style.selectedCellBg=#55FF9977;style.wrongCellBg=#FF315F99;style.arrowGlow=#55FF9977;style.overlayBg=#020807DD;style.panelBg=#0B1513F4;style.panelBorder=#55FF993D;style.titleColor=#D8FFE6FF;style.textColor=#A9CFC7FF;style.ruleColor=#C8FFE0EE;style.ruleBorder=#55FF9955;style.hintTitleColor=#55FF99FF;style.hintRuleColor=#9FC8C0DD;style.hintRuleBorder=#66CCFF55;style.primaryButtonBg=#1EE884FF;style.primaryButtonColor=#04100BFF"
+    hacker: "fmt=wsg-text;v=1;id=hacker;title=Поиск слов;theme=Хакеры;size=15x8;grid=ЗЛТАПДКЭ|ВОЕКДОКБ|СМЗАЩРОС|УЫНДИТДР|РЕНАРАЯО|ИВИНГБРФ|ТЬШИФФУТ|СОМФФРСК|ПВИШИБЕШ|ТЗЯВРВТЬ|РЛУНЕЕРО|ООГИСРАЛ|ППЯРТЦПЬ|ЕУТАФОХЭ|ДОСЧИКЭШ;words=ПАРОЛЬ:#55FF99:r0:12,6>11,6>10,6>10,7>11,7>12,7|ЛОГИН:#66CCFF:r1:10,3>11,3>11,2>11,1>10,1|КОД:#B388FF:r0:1,6>2,6>3,6|СЕТЬ:#00F5D4:r0:7,6>8,6>9,6>9,7|СЕРВЕР:#4D96FF:r1:11,5>10,5>9,5>9,4>10,4>11,4|ВЗЛОМ:#FF4D6D:r0:1,0>0,0>0,1>1,1>2,1|ДОСТУП:#FFD166:r1:12,1>13,1>13,2>14,2>14,1>14,0|ШИФР:#C9FFE0:r1:7,5>7,4>8,4>8,3|ЗАЩИТА:#7CFF6B:r1:4,5>3,5>3,4>2,4>2,3>2,2|УЯЗВИМОСТЬ:#FF9F1C:r0:10,2>9,2>9,1>8,1>8,2>7,2>7,1>7,0>6,0>6,1|ВИРУС:#F15BB5:r1:2,0>3,0>4,0>5,0>5,1|ДАННЫЕ:#9BFFEC:r1:4,1>3,1>3,2>4,2>4,3>3,3|ПОРТ:#48CAE4:r0:12,0>11,0>10,0>9,0|ПАКЕТ:#80ED99:r1:0,2>1,2>1,3>0,3>0,4|ТРАФИК:#A0FF4F:r1:14,5>14,4>13,4>13,3>12,3>12,4|ФИШИНГ:#FF6B6B:r0:6,4>6,3>6,2>5,2>5,3>5,4|БРУТФОРС:#E0AAFF:r1:2,7>3,7>4,7>5,7>6,7>6,6>5,6>5,5|БЭКДОР:#E4D2FF:r1:2,5>1,5>0,5>0,6>0,7>1,7|ХЭШ:#A9CFC7:r0:13,6>13,7>14,7;style.pageBg=#07100FFF;style.rootBg=#07100FFF;style.themeColor=#55FF99FF;style.statusColor=#8CB8B0CC;style.hudBg=#0B1A18DD;style.hudBorder=#55FF9933;style.hudLabelColor=#8CB8B0CC;style.hudValueColor=#D8FFE6FF;style.stopButtonBg=#260C12EE;style.stopButtonBorder=#FF4D6D66;style.stopButtonColor=#FFB3C1FF;style.hintButton1Bg=#0B241EEE;style.hintButton1Border=#55FF9955;style.hintButton1Color=#C9FFE0FF;style.hintButton2Bg=#101B2AEE;style.hintButton2Border=#66CCFF55;style.hintButton2Color=#C7ECFFFF;style.hintButton3Bg=#1A1230EE;style.hintButton3Border=#B388FF55;style.hintButton3Color=#E4D2FFFF;style.boardFrameBg=#081412FF;style.boardFrameBorder=#55FF992B;style.boardBg=#06100EFF;style.cellBg=#0A1714FF;style.gridLineColor=#55FF99FF;style.letterColor=#C8FFE0FF;style.letterActiveColor=#FFFFFFFF;style.selectedCellBg=#55FF995C;style.wrongCellBg=#FF4D6D73;style.arrowGlow=#55FF9977;style.overlayBg=#020807DD;style.panelBg=#0B1513F4;style.panelBorder=#55FF993D;style.titleColor=#D8FFE6FF;style.textColor=#A9CFC7FF;style.ruleColor=#C8FFE0EE;style.ruleBorder=#55FF9955;style.hintTitleColor=#55FF99FF;style.hintRuleColor=#9FC8C0DD;style.hintRuleBorder=#66CCFF55;style.primaryButtonBg=#1EE884FF;style.primaryButtonColor=#04100BFF"
   };
 
   const DEFAULT_GAME_DATA = {
@@ -865,8 +857,8 @@
       directionBudget: 1,
       simplifyPercent: 0.06,
       maxRotation: 180,
-      maxOffsetPct: 0.5,
-      maxScalePct: 0.15,
+      maxOffsetPct: 0.3,
+      maxScalePct: 0.5,
       gridAlpha: 0.0
     }
   };
@@ -935,7 +927,7 @@
     "Количество подсказок зависит от сложности."
   ];
 
-  const DATA_FIELDS = ["id", "title", "theme", "rules", "hintRules", "rows", "cols", "grid", "words", "difficultyRules", "style"];
+  const DATA_FIELDS = ["id", "title", "theme", "rules", "hintRules", "rows", "cols", "grid", "words", "sourceWords", "difficultyRules", "style"];
 
   const STYLE_COLOR_FIELDS = {
     themeColor: ["--game-theme-color", "--start-theme-color"],
@@ -1044,6 +1036,7 @@
     const grid = normalizeGrid(source.grid || DEFAULT_GAME_DATA.grid);
     const rows = Math.max(1, Number(source.rows ?? grid.length) || grid.length);
     const cols = Math.max(1, Number(source.cols ?? (grid[0] ? grid[0].length : 0)) || (grid[0] ? grid[0].length : 0));
+    const normalizedWords = normalizeWords(source.words || DEFAULT_GAME_DATA.words);
 
     return {
       id: String(source.id || DEFAULT_GAME_DATA.id || "word-search"),
@@ -1054,7 +1047,8 @@
       rows,
       cols,
       grid,
-      words: normalizeWords(source.words || DEFAULT_GAME_DATA.words),
+      words: normalizedWords,
+      sourceWords: normalizeSourceWords(source.sourceWords, normalizedWords),
       style: normalizeStyleColors(source.style),
       difficultyRules: source.difficultyRules && typeof source.difficultyRules === "object" ? source.difficultyRules : {}
     };
@@ -1168,6 +1162,14 @@
     return splitEscaped(decoded, "|").map((item) => decodeTextValue(item)).filter(Boolean);
   }
 
+  function parseSourceWordsValue(value) {
+    const decoded = decodeTextValue(value);
+    if (!decoded) return [];
+    return splitEscaped(decoded, "|")
+      .map((item) => decodeTextValue(item).trim().toUpperCase())
+      .filter(Boolean);
+  }
+
   function parseStyleFields(fields) {
     const style = {};
     Object.keys(fields || {}).forEach((key) => {
@@ -1200,6 +1202,7 @@
       cols: size ? size.cols : undefined,
       grid,
       words: wordsValue,
+      sourceWords: parseSourceWordsValue(fields.sourceWords),
       style: parseStyleFields(fields)
     };
 
@@ -1281,6 +1284,19 @@
         path
       };
     }).filter((word) => word.text && word.path.length > 0);
+  }
+
+  function normalizeSourceWords(sourceWords, placedWords) {
+    if (Array.isArray(sourceWords) && sourceWords.length > 0) {
+      const normalized = sourceWords
+        .map((word) => String(word || "").trim().toUpperCase())
+        .filter(Boolean);
+      if (normalized.length > 0) return normalized;
+    }
+
+    return (Array.isArray(placedWords) ? placedWords : [])
+      .map((word) => String(word.text || "").trim().toUpperCase())
+      .filter(Boolean);
   }
 
   function normalizeStyleColors(style) {
@@ -1410,7 +1426,7 @@
     if (dateKey != null && dateKey !== "") {
       params.dateKey = dateKey;
     }
-    const variant = searchParams.get("variant");
+    const variant = searchParams.get("game") ?? searchParams.get("variant");
     if (variant != null && variant !== "") {
       params.variant = variant;
     }
@@ -1988,7 +2004,7 @@
     const next = Math.min(word.text.length, state.rules.maxLetterReveal, current + state.rules.letterHintStep);
     state.revealedCounts.set(word.id, next);
     state.letterHintsUsed.add(word.id);
-    setStatus(`Открыта подсказка для слова: ${word.text}`);
+    setStatus("Показана первая буква слова");
     updateAll();
   }
 
@@ -2000,7 +2016,7 @@
     state.directionHintsUsed.add(word.id);
     const current = state.revealedCounts.get(word.id) || 0;
     state.revealedCounts.set(word.id, Math.max(current, 1));
-    setStatus(`Показано направление для слова: ${word.text}`);
+    setStatus("Показана буква и направление");
     updateAll();
   }
 
@@ -2026,11 +2042,11 @@
 
     if (state.pendingResult === 1) {
       finishTitle.textContent = "Все слова найдены";
-      finishText.textContent = `Найдено ${state.found.size} из ${words.length}. Ошибок: ${state.mistakes}.`;
+      finishText.textContent = `Найдено ${state.found.size} из ${words.length}. Ошибок: ${state.mistakes}. Сложность: ${state.difficulty}.`;
       finishButton.textContent = "Продолжить";
     } else {
       finishTitle.textContent = "Попытка завершена";
-      finishText.textContent = `Найдено ${state.found.size} из ${words.length}.`;
+      finishText.textContent = `Найдено ${state.found.size} из ${words.length}. Сложность: ${state.difficulty}.`;
       finishButton.textContent = "Завершить";
     }
 
