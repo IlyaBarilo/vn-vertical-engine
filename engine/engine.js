@@ -4601,7 +4601,8 @@ function buildMermaidGraph(story, unreachableList, options) {
 
   var sharedGraphOptions = {
     compact: compact,
-    attachTo: attachSceneId
+    attachTo: attachSceneId,
+    characterEmotionCounts: computeStoryStats(story).characterEmotionCounts || {}
   };
 
   if (scope === "intro") {
@@ -4780,6 +4781,7 @@ function buildCharactersGraph(story, options) {
   }
 
   var compact = !!options.compact;
+  var characterEmotionCounts = options.characterEmotionCounts || {};
 
   var mermaid = "";
   var characters = story.assets.characters || {};
@@ -4827,13 +4829,19 @@ function buildCharactersGraph(story, options) {
         var emotion = emotionIds[e];
         var imgSrc = getGraphImageSrc(char.images[emotion]);
         var safeEmotion = escapeHtml(emotion);
+        var emotionUseCount = (characterEmotionCounts[charId] && characterEmotionCounts[charId][emotion])
+          ? characterEmotionCounts[charId][emotion]
+          : 0;
 
-        emotionsHtml += "<img src='" + imgSrc + "' " +
+        emotionsHtml += "<span class='cew " + emotionCountClass + "'>" +
+                  "<img src='" + imgSrc + "' " +
                   "class='char-emotion-thumbnail " + emotionCountClass + "' " +
                   "style='object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;' " +
                   "onmouseover='this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;' " +
                   "onmouseout='this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;' " +
-                  "title='" + safeEmotion + "' alt='' /> ";
+                  "title='" + safeEmotion + "' alt='' />" +
+                  "<b class='cec'>" + emotionUseCount + "</b>" +
+                  "</span> ";
 
       }
 
@@ -5183,6 +5191,7 @@ function computeStoryStats(story) {
   var usedBg = {};                 // bgId -> true
   var usedCh = {};                 // charId -> true
   var usedCharacterEmotions = {};  // charId -> { emotion: true }
+  var characterEmotionCounts = {}; // charId -> { emotion: count }
 
   var sayCount = 0;
   var textCount = 0;
@@ -5209,9 +5218,13 @@ function computeStoryStats(story) {
           if (!usedCharacterEmotions[act.charId]) {
             usedCharacterEmotions[act.charId] = {};
           }
+          if (!characterEmotionCounts[act.charId]) {
+            characterEmotionCounts[act.charId] = {};
+          }
 
           if (act.emotion) {
             usedCharacterEmotions[act.charId][act.emotion] = true;
+            characterEmotionCounts[act.charId][act.emotion] = (characterEmotionCounts[act.charId][act.emotion] || 0) + 1;
           }
         }
       }
@@ -5305,6 +5318,7 @@ function computeStoryStats(story) {
     backgroundsDetailed: backgroundsDetailed,
     usedCharacterIds: usedCharacterIds,
     unusedCharacterIds: unusedCharacterIds,
+    characterEmotionCounts: characterEmotionCounts,
     usedCharactersDetailed: usedCharactersDetailed,
     sayCount: sayCount,
     textCount: textCount,

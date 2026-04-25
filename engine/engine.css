@@ -1580,21 +1580,25 @@ body {
 /* Ширина элементов изображений в элементе сцены и других */
 
 /* одно изображение */
+.graphContainer .mermaid .node .cew.imgcount1,
 .graphContainer .mermaid .node img.imgcount1 {
   width: 120px !important;
 }
 
 /* 2-4 изображения, 2 в ряд */
+.graphContainer .mermaid .node .cew.imgcount2,
 .graphContainer .mermaid .node img.imgcount2 {
   width: 75px !important;
 }
 
 /* 5-9 изображений, 3 в ряд */
+.graphContainer .mermaid .node .cew.imgcount3,
 .graphContainer .mermaid .node img.imgcount3 {
   width: 60px !important;
 }
 
 /* 10-... изображений, 4 в ряд */
+.graphContainer .mermaid .node .cew.imgcount4,
 .graphContainer .mermaid .node img.imgcount4 {
   width: 40px !important;
 }
@@ -1603,6 +1607,39 @@ body {
 .bg-thumbnail,
 .game-thumbnail {
   object-fit: contain !important;
+}
+
+.graphContainer .mermaid .node .cew {
+  position: relative !important;
+  display: inline-block !important;
+  line-height: 0 !important;
+  vertical-align: top !important;
+}
+
+.graphContainer .mermaid .node .cew .char-emotion-thumbnail {
+  display: block !important;
+  width: 100% !important;
+}
+
+.graphContainer .mermaid .node .cec {
+  position: absolute !important;
+  right: 7px !important;
+  bottom: 4px !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  display: block !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+  pointer-events: none !important;
+  font-style: normal !important;
+  text-shadow: 0 1px 3px #000000, 0 0 4px #000000 !important;
 }
 
 
