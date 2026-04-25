@@ -1618,16 +1618,16 @@ body {
   transform: scale(3.5) !important;
   z-index: 9999 !important;
   position: relative !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
-  border: 0.25px solid #606060 !important;
+  box-shadow: none !important;
+  border: none !important;
   cursor: zoom-out !important;
 }
 
 .bg-thumbnail:hover {
   transform: scale(3.5) !important;
   z-index: 9999 !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
-  border: 0.25px solid #606060 !important;
+  box-shadow: none !important;
+  border: none !important;
   cursor: zoom-out !important;
 }
 
@@ -1751,6 +1751,52 @@ body {
   z-index: 9999 !important;
   box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
   cursor: zoom-out !important;
+}
+
+/* Normalize thumbnail rendering across browsers (Chrome/Firefox):
+   avoid subpixel borders/padding/background halos around transparent images. */
+.graphContainer .mermaid .node .char-emotion-thumbnail,
+.graphContainer .mermaid .node .bg-thumbnail,
+.graphContainer .mermaid .node .scene-bg-thumbnail,
+.graphContainer .mermaid .node .bgi {
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  background-color: transparent !important;
+}
+
+/* Characters only: keep a subtle thin frame. */
+.graphContainer .mermaid .node .char-emotion-thumbnail {
+  border: 1px solid rgba(120,120,120,0.55) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+}
+
+.graphContainer .mermaid .node .char-emotion-thumbnail:hover {
+  border: 1px solid rgba(90,90,90,0.7) !important;
+}
+
+/* Scene images: restore subtle thin frame. */
+.graphContainer .mermaid .node .scene-bg-thumbnail {
+  border: 1px solid rgba(120,120,120,0.55) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+}
+
+.graphContainer .mermaid .node .scene-bg-thumbnail:hover {
+  border: 1px solid rgba(90,90,90,0.7) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+}
+
+/* Background images: restore subtle thin frame. */
+.graphContainer .mermaid .node .bg-thumbnail,
+.graphContainer .mermaid .node .bgi {
+  border: 1px solid rgba(120,120,120,0.55) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+}
+
+.graphContainer .mermaid .node .bg-thumbnail:hover,
+.graphContainer .mermaid .node .bgw:hover .bgi {
+  border: 1px solid rgba(90,90,90,0.7) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
 }
 
 .graphContainer .mermaid .node .cec,
