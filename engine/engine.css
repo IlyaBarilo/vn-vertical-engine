@@ -1659,21 +1659,43 @@ body {
   vertical-align: top !important;
 }
 
+.graphContainer .mermaid .node .bgl {
+  display: inline-flex !important;
+  width: fit-content !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+  gap: 4px !important;
+  margin: 6px auto !important;
+  padding: 6px !important;
+  background-color: rgba(220,220,220,0.3) !important;
+  border-radius: 8px !important;
+}
+
 .graphContainer .mermaid .node .cew .char-emotion-thumbnail {
   display: block !important;
   width: 100% !important;
 }
 
-.graphContainer .mermaid .node .bgw .bg-thumbnail {
+.graphContainer .mermaid .node .bgw .bgi {
   display: block !important;
   width: 100% !important;
   height: auto !important;
   object-fit: cover !important;
+  background-color: #e8e8e8 !important;
+  border-radius: 6px !important;
+  border: 1px solid #a0a0a0 !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
   transform-origin: center center !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+  cursor: zoom-in !important;
 }
 
 .graphContainer .mermaid .node .cew:hover .char-emotion-thumbnail,
-.graphContainer .mermaid .node .bgw:hover .bg-thumbnail {
+.graphContainer .mermaid .node .bgw:hover .bgi {
   transform: scale(3.5) !important;
   z-index: 9999 !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;

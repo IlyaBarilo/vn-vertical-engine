@@ -4954,7 +4954,7 @@ function buildBackgroundsGraph(story, options) {
   if (!compact) {
     var bgCountClass = getImgCountClass(bgIds.length);
 
-    var bgImagesHtml = "<div class='bg-images-container " + bgCountClass + "' style='display:flex; flex-wrap:wrap; gap:4px; justify-content:center; align-items:flex-start; padding:4px;'>";
+    var bgImagesHtml = "<div class='bgl " + bgCountClass + "'>";
 
 
     for (var i = 0; i < bgIds.length; i++) {
@@ -4967,7 +4967,7 @@ function buildBackgroundsGraph(story, options) {
 
       bgImagesHtml += "<span class='bgw " + bgCountClass + "'>" +
                   "<img src='" + imgSrc + "' " +
-                  "class='bg-thumbnail " + bgCountClass + "' " +
+                  "class='bgi " + bgCountClass + "' " +
                   "title='" + safeBgId + "' alt='' />" +
                   "<b class='bgc'>" + bgUseCount + "</b>" +
                   "</span> ";
