@@ -34,9 +34,25 @@ bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 # - image - изображение персонажа
 # - name - имя персонажа
 # - color - цвет подсветки имени персонажа
-anna file=assets/characters/ch-anna-neutral.png name="Анна" color=#0F0  # По умолчанию emotion=neutral
+anna file=assets/characters/ch-anna-calm.png name="Анна" color=#0F0 # По умолчанию emotion=calm
+anna emotion=calm file=assets/characters/ch-anna-calm.png
+anna emotion=welcome file=assets/characters/ch-anna-welcome.png
+anna emotion=explain file=assets/characters/ch-anna-explain.png
+anna emotion=thinking file=assets/characters/ch-anna-thinking.png
+anna emotion=laugh file=assets/characters/ch-anna-laugh.png
+anna emotion=support file=assets/characters/ch-anna-support.png
+anna emotion=excited file=assets/characters/ch-anna-excited.png
+igor file=assets/characters/ch-igor-calm.png name="Игорь" color=#F00
+igor emotion=welcome file=assets/characters/ch-igor-welcome.png
+igor emotion=explain file=assets/characters/ch-igor-explain.png
+igor emotion=thinking file=assets/characters/ch-igor-thinking.png
+igor emotion=laugh file=assets/characters/ch-igor-laugh.png
+igor emotion=support file=assets/characters/ch-igor-support.png
+igor emotion=excited file=assets/characters/ch-igor-excited.png
+igor emotion=calm file=assets/characters/ch-igor-calm.png
+igor emotion=neutral file=assets/characters/ch-igor-neutral.png
 igor emotion=smile file=assets/characters/ch-igor-smile.png
-igor emotion=neutral file=assets/characters/ch-igor-neutral-test.png name="Игорь" color=#F00
+
 ivan emotion=neutral file=assets/characters/ch-ivan-smile-test.png name="Иван" color=#060
 
 [audio] 
@@ -99,22 +115,22 @@ bgm bgmDay loop
 
 
 
-show anna  # если не указана эмоция, то используется neutral
+show anna welcome # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
 
 show igor smile
 igor: "Круто. И всё это — один HTML-файл, без сервера?"
 
-show anna neutral
+show anna explain
 anna: "Да. Фон подстраивается под 7×16 и всегда центрируется."
 
-show igor smile
+show igor explain
 igor: "А персонаж один за раз — это даже удобно: меньше путаницы на экране."
 
-show anna neutral
+show anna explain
 anna: "Плюс можно добавлять мини-игры и возвращать результат — для ветвлений."
 
-show igor smile
+show igor excited
 igor: "Тогда давай сделаем выбор: пусть посетитель решит, куда пойдём дальше!"
 
 goto scScene02
@@ -131,8 +147,7 @@ hide all
 
 "Страницы шуршат, где-то вдалеке щёлкает клавиатура. Идея почти готова."
 
-show anna neutral
-
+show anna thinking
 anna: "Есть вопрос: куда ведём посетителя дальше, чтобы он почувствовал атмосферу вуза?"
 
 # bgm bgmMystery
@@ -154,11 +169,13 @@ hide all
 bg bgBranchCafe2
 
 # Диалоги персонажей без показа на экране
-anna: "Кофе здесь просто божественный! Особенно тот латте с карамелью."
+anna: "Кофе здесь просто восхитительный! Особенно тот латте с карамелью."
 igor: "Зато какие мемы рождаются после трёх чашек! Помнишь тот с котом-программистом?"
 
+show anna laugh
 anna: "Ой, не напоминай! Мы потом неделю смеялись."
 
+show anna explain
 anna: "Кажется, бариста не справляется с наплывом. Хочешь помочь?"
 
 game gmCoffeeRush difficulty=3 result=coffeeResult
@@ -212,10 +229,10 @@ hide all
 
 "На боковом экране открыт учебный модуль: система перемешала ключевые термины и ждёт, когда их соберут обратно."
 
-show anna neutral
+show anna explain
 anna: "Это не тест реакции, а проверка внимания. Нужно найти слова, из которых собирается логика программы."
 
-show igor smile
+show igor thinking
 igor: "То есть сначала приводим в порядок словарь, а потом уже запускаем сложные стенды?"
 
 goto scBranchLabWordSearchRun
@@ -241,7 +258,7 @@ hide all
 
 "Термины собраны, и система подсветила связанный маршрут: код, цикл, массив, функция, алгоритм."
 
-show anna neutral
+show anna calm
 anna: "Отлично. Даже простая словесная задача может работать как часть лабораторной сцены."
 
 goto scFinale01
@@ -254,7 +271,7 @@ hide all
 
 "Часть терминов осталась несобранной, но модуль всё равно показал, где логика распалась."
 
-show igor neutral
+show igor support
 igor: "Ничего страшного. Для прототипа это тоже полезно: сразу видно, какие подсказки нужны игроку."
 
 goto scFinale01
@@ -273,14 +290,15 @@ set z = z + x * 2 + 2
 
 "Попытка №{labStep}. Система пересчитала параметры: x = {x}, z = {z}."
 
-show igor smile
+show igor explain
 igor: "Смотри, я снова запустил модель. Теперь x = {x}."
 
-show anna neutral
+show anna explain
 anna: "А производный параметр уже равен {z}. Похоже, система постепенно выходит на устойчивый режим."
 
 if labStep > 2 -> scFinale01
 
+show anna excited
 anna: "Это ещё не финал. Давай прогоним расчёт ещё раз."
 
 goto scBranchLabCalc
@@ -299,7 +317,7 @@ hide all
 "На одном из стендов уже открыт режим калибровки. Система предлагает проверить, насколько быстро экран реагирует на касания и как держит нагрузку."
 "Если всё работает стабильно, такую панель можно использовать для интерактивных игровых сцен и совместного управления."
 
-show anna neutral
+show anna explain
 anna: "Это как раз то, что нужно для нашей истории. Проверим отклик, multitouch и точность?"
 
 show igor smile
@@ -320,10 +338,10 @@ hide all
 
 "Диагностика завершена успешно. Экран уверенно реагирует на касания, поддерживает multitouch и подходит для интерактивных сцен."
 
-show anna neutral
+show anna excited
 anna: "Отлично. Значит, такие механики можно смело встраивать в историю."
 
-show igor smile
+show igor excited
 igor: "Вот теперь лаборатория выглядит не просто как декорация, а как место, где рождаются игровые идеи."
 
 goto scFinale01
@@ -337,10 +355,10 @@ hide all
 
 "Диагностика показала, что системе ещё есть куда расти: часть проверок оказалась нестабильной."
 
-show anna neutral
+show anna support
 anna: "Ничего страшного. Зато теперь понятно, что именно нужно доработать."
 
-show igor neutral
+show igor support
 igor: "Это тоже полезный результат. Любая хорошая система начинается с честной проверки."
 
 goto scFinale01
@@ -357,11 +375,13 @@ hide all
 "Во дворе тихо: фонари рисуют дорожки света, и даже шаги звучат как часть саундтрека."
 "Над кампусом — глубокое вечернее небо. Анна вдруг улыбается, будто придумала маленькое испытание."
 
-show anna neutral
+show anna excited
 anna: "Знаешь, вечер — лучшее время для воображения. Давай представим, что мы проводим маленький спутник сквозь поток космическких обломков."
 
 show igor smile
 igor: "То есть вместо обычной прогулки — ночной челлендж?"
+
+show igor excited
 igor: "Мне нравится. Если пройдём маршрут чисто, вечер точно запомнится."
 
 "Ты сосредотачиваешься на экране и берёшь управление."
@@ -384,10 +404,10 @@ hide all
 "Траектория пройдена идеально — ни одного столкновения."
 "Кажется, ночной кампус и правда превращает даже простую прогулку в маленькое приключение."
 
-show anna neutral
+show anna excited
 anna: "Вот это было красиво. Такой вечер хочется запомнить."
 
-show igor smile
+show igor calm
 igor: "Пожалуй, лучший маршрут на сегодня мы уже нашли."
 
 goto scFinale01
@@ -403,10 +423,10 @@ hide all
 "Маршрут оказался сложнее, чем казалось, и несколько опасных обломков всё-таки сбили темп."
 "Но вечер от этого не стал хуже — наоборот, в нём появилось ещё больше азарта и живого ощущения пути."
 
-show anna neutral
+show anna support
 anna: "Ничего, не идеальный маршрут тоже остаётся историей."
 
-show igor neutral
+show igor support
 igor: "Согласен. Иногда вечер запоминается именно потому, что не идёт по плану."
 
 goto scFinale01
@@ -433,10 +453,10 @@ hide all
 "На дальнем столе собран отдельный стенд: прозрачная плата, активные дорожки и контур, который нужно провести через узлы без перегрузки."
 "Это уже не просто диагностика, а практическое испытание реакции и точности."
 
-show anna neutral
+show anna excited
 anna: "Вот это уже интересно. Здесь мы не просто смотрим на систему, а ведём сигнал по реальной схеме."
 
-show igor smile
+show igor explain
 igor: "Давай выберем режим: простой и напряжённый."
 
 goto scBranchLabRoutingDifficulty
@@ -447,7 +467,7 @@ scene scBranchLabRoutingDifficulty
 bg bgBranchLab
 hide all
 
-show anna neutral
+show anna thinking
 anna: "Какой режим запускаем?"
 
 menu
@@ -499,10 +519,10 @@ hide all
 
 "На одном из участков сигнал сорвался, и стенд остановил прогон."
 
-show anna neutral
+show anna support
 anna: "Ничего страшного. Даже сбой здесь выглядит как часть эксперимента."
 
-show igor neutral
+show igor support
 igor: "Зато напряжение в сцене чувствуется сразу. Для истории это тоже работает."
 
 goto scFinale01
@@ -522,7 +542,7 @@ hide all
 show anna neutral
 anna: "Вот это уже ближе к игровому эпизоду. Не просто касание, а проверка памяти и темпа."
 
-show igor smile
+show igor explain
 igor: "Давай оставим два режима: обычный и напряжённый. Для новеллы этого вполне достаточно."
 
 goto scBranchLabMemoryDifficulty
@@ -533,7 +553,7 @@ scene scBranchLabMemoryDifficulty
 bg bgBranchLab
 hide all
 
-show anna neutral
+show anna thinking
 anna: "Какой режим теста запускаем?"
 
 menu
@@ -582,10 +602,10 @@ hide all
 
 "Серия световых импульсов воспроизведена без ошибок. Стенд подтвердил, что память и темп удерживаются стабильно."
 
-show anna neutral
+show anna excited
 anna: "Отлично. Такой тест хорошо дополняет лабораторию: здесь важна не только реакция, но и концентрация."
 
-show igor smile
+show igor excited
 igor: "Да, это уже другой тип мини-игры, и он ощущается очень к месту."
 
 goto scFinale01
@@ -599,10 +619,10 @@ hide all
 
 "На одной из серий ты сбиваешься, и стенд останавливает испытание."
 
-show anna neutral
+show anna support
 anna: "Ничего страшного. Даже ошибка здесь работает как часть эксперимента."
 
-show igor neutral
+show igor thinking
 igor: "Зато сразу видно, как меняется напряжение, когда на память идёт реальная нагрузка."
 
 goto scFinale01
