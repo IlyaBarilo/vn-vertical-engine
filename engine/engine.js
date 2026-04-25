@@ -4836,9 +4836,6 @@ function buildCharactersGraph(story, options) {
         emotionsHtml += "<span class='cew " + emotionCountClass + "'>" +
                   "<img src='" + imgSrc + "' " +
                   "class='char-emotion-thumbnail " + emotionCountClass + "' " +
-                  "style='object-fit: contain; background-color: #f0f0f0; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s ease; cursor: zoom-in;' " +
-                  "onmouseover='this.style.transform=&apos;scale(3.5)&apos;; this.style.zIndex=&apos;9999&apos;; this.style.boxShadow=&apos;0 8px 24px rgba(0,0,0,0.3)&apos;;' " +
-                  "onmouseout='this.style.transform=&apos;scale(1)&apos;; this.style.zIndex=&apos;1&apos;; this.style.boxShadow=&apos;0 2px 4px rgba(0,0,0,0.1)&apos;;' " +
                   "title='" + safeEmotion + "' alt='' />" +
                   "<b class='cec'>" + emotionUseCount + "</b>" +
                   "</span> ";
