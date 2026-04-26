@@ -2910,6 +2910,11 @@ function applyUiScale() {
 
   document.documentElement.style.setProperty("--uiScale", finalScale);
 
+  // Масштаб относительно эталонного разрешения (без UI_FONT_SCALE).
+  // Используется для эффектов, которые должны зависеть только от размера
+  // экрана, а не от настройки UI (например, blur фона).
+  document.documentElement.style.setProperty("--viewportScale", autoScale);
+
   // Должно совпадать с --baseFontPx в CSS.
   var baseFontPx = 16;
   var baseFontSize = baseFontPx * finalScale;
@@ -5424,23 +5429,31 @@ function escapeHtml(s) {
 
 // Применяет интерфейсные параметры в CSS variables.
 // Приоритет уже должен быть собран заранее в meta.
+//
+// Значение применяется ТОЛЬКО если оно явно задано в meta (например,
+// через [meta] blurStrength=30 в story.js). Если в meta ничего нет,
+// inline-стиль очищается и берётся CSS-дефолт из engine.css (:root).
+// Так CSS-дефолты остаются единым источником правды для подбора значений.
 function applyUIStyleVariables(meta) {
   var root = document.documentElement;
 
   Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
     var config = UI_STYLE_CONFIG[metaKey];
-    var value = config.default;
 
-    if (meta && meta[metaKey] !== undefined && meta[metaKey] !== null) {
-      if (isValidUIConfigValue(meta[metaKey], config)) {
-        value = meta[metaKey];
-      }
+    var hasMetaValue = meta
+      && meta[metaKey] !== undefined
+      && meta[metaKey] !== null
+      && isValidUIConfigValue(meta[metaKey], config);
+
+    if (hasMetaValue) {
+      root.style.setProperty(
+        config.cssVar,
+        String(meta[metaKey]) + (config.unit || '')
+      );
+    } else {
+      // Снимаем inline-override, чтобы заработал дефолт из CSS (:root).
+      root.style.removeProperty(config.cssVar);
     }
-
-    root.style.setProperty(
-      config.cssVar,
-      String(value) + (config.unit || '')
-    );
   });
 }
 
