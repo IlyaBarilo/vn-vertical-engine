@@ -99,39 +99,52 @@ jobs:
           [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
-          # Копируем медиафайлы из assets/backgrounds
+          # Копируем assets по типам файлов (для полной сборки).
+          # Оставляем явный контроль форматов, но покрываем современные расширения.
           if [ -d assets/backgrounds ]; then
             find assets/backgrounds -type f \( \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
-              -iname "*.png" \
+              -iname "*.png" -o \
+              -iname "*.webp" -o \
+              -iname "*.gif" -o \
+              -iname "*.svg" -o \
+              -iname "*.avif" \
             \) -exec cp {} "build/$APP_NAME/assets/backgrounds/" \;
           fi
 
-          # Копируем медиафайлы из assets/characters
           if [ -d assets/characters ]; then
             find assets/characters -type f \( \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
-              -iname "*.png" \
+              -iname "*.png" -o \
+              -iname "*.webp" -o \
+              -iname "*.gif" -o \
+              -iname "*.svg" -o \
+              -iname "*.avif" \
             \) -exec cp {} "build/$APP_NAME/assets/characters/" \;
           fi
 
-          # Копируем медиафайлы из assets/audio
           if [ -d assets/audio ]; then
             find assets/audio -type f \( \
               -iname "*.mp3" -o \
-              -iname "*.wav" \
+              -iname "*.wav" -o \
+              -iname "*.ogg" -o \
+              -iname "*.m4a" -o \
+              -iname "*.aac" \
             \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
           fi
 
-          # Копируем мини-игры и изображения к ним
           if [ -d assets/games ]; then
             find assets/games -type f \( \
+              -iname "*.html" -o \
               -iname "*.jpg" -o \
               -iname "*.jpeg" -o \
               -iname "*.png" -o \
-              -iname "*.html" \
+              -iname "*.webp" -o \
+              -iname "*.gif" -o \
+              -iname "*.svg" -o \
+              -iname "*.avif" \
             \) -exec cp {} "build/$APP_NAME/assets/games/" \;
           fi
 
