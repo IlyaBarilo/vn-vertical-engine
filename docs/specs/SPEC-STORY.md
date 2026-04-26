@@ -477,6 +477,30 @@ if score >= 10 -> bonus_scene
 if isReady == true -> start_now
 ```
 
+Также поддерживается блочная форма условных действий:
+
+```text
+if score >= 10
+set coins = coins + 5
+anna: "Бонус начислен."
+goto bonus_scene
+end
+```
+
+Расширенная форма с несколькими ветками:
+
+```text
+if memoryResult == 1
+set wins = wins + 1
+goto good_end
+elif memoryResult == 0
+set losses = losses + 1
+goto bad_end
+else
+goto fallback_end
+end
+```
+
 Поддерживаемые операторы сравнения:
 - `==`
 - `!=`

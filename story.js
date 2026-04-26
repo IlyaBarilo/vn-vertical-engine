@@ -113,8 +113,6 @@ bgm bgmDay loop
 # if searchResult == 1 -> cafeGood
 # if searchResult == 0 -> cafeBad
 
-
-
 show anna welcome # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
 
@@ -180,23 +178,20 @@ anna: "Кажется, бариста не справляется с наплы�
 
 game gmCoffeeRush difficulty=3 result=coffeeResult
 
-if coffeeResult == 1 -> scCafeGood
-if coffeeResult == 0 -> scCafeBad
 
-goto scFinale01
+# Пример ветвления условия
 
-
-
-scene scCafeGood
-bg bgBranchCafe3
-"Ты отлично справился с потоком заказов."
-goto scFinale01
-
-scene scCafeBad
-bg bgBranchCafe3
-"Поток оказался слишком быстрым, но атмосфера всё равно запомнилась."
-goto scFinale01
-
+if coffeeResult == 1
+  "Ты отлично справился с потоком заказов."
+  goto scFinale01
+elif coffeeResult == 0
+  "Поток оказался слишком быстрым, но атмосфера всё равно запомнилась."
+  goto scFinale01
+else
+  # Просто как пример. Такого не должно быть
+  "Результат игры не ясен."
+  goto scFinale01
+end
 
 
 scene scBranchLab01

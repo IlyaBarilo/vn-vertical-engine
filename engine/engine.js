@@ -1725,6 +1725,8 @@ function executeAction(action) {
         return false;
       }
     }
+    case "if_block":
+      return executeIfBlock(action);
     case "if":
       // if: { cond: "vars.score >= 3", then: "a", else: "b" }
       // ВНИМАНИЕ: без eval для безопасности. Поддержим только простую форму:
@@ -1756,6 +1758,42 @@ function executeIfSafe(action) {
   if (ok && action.then) gotoScene(action.then);
   if (!ok && action.else) gotoScene(action.else);
 
+  return false;
+}
+
+function executeIfBlock(action) {
+  if (!action || !Array.isArray(action.branches)) return false;
+
+  var selectedActions = null;
+
+  for (var i = 0; i < action.branches.length; i++) {
+    var branch = action.branches[i];
+    if (!branch || !branch.condition) continue;
+
+    try {
+      var fn = new Function("vars", "with(vars){ return (" + branch.condition + "); }");
+      var ok = !!fn(state.vars);
+      if (ok) {
+        selectedActions = Array.isArray(branch.actions) ? branch.actions : [];
+        break;
+      }
+    } catch (e) {
+      console.error("[VN] if_block condition error:", branch.condition, e);
+      return false;
+    }
+  }
+
+  if (!selectedActions) {
+    selectedActions = Array.isArray(action.elseActions) ? action.elseActions : [];
+  }
+
+  if (selectedActions.length === 0) return false;
+
+  var scene = state.sceneMap[state.sceneId];
+  if (!scene || !Array.isArray(scene.actions)) return false;
+
+  var clone = JSON.parse(JSON.stringify(selectedActions));
+  Array.prototype.splice.apply(scene.actions, [state.actionIndex, 0].concat(clone));
   return false;
 }
 

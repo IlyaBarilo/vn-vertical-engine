@@ -178,6 +178,9 @@
     };
 
     let currentScene = null;
+    const sceneParseState = {
+      ifStack: []
+    };
     let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'game', 'var', 'scene'
     let lineNumber = 0;
 
@@ -269,15 +272,25 @@
           parseVarLine(lineNumber, line, story);
           break;
         case 'scene':
-          parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
+          parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber, sceneParseState);
           break;
         default:
           // Если секция не определена, но строка начинается с 'scene'
           if (line.startsWith('scene ')) {
             currentSection = 'scene';
-            parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber);
+            parseSceneLine(line, story, currentScene, (scene) => { currentScene = scene; }, lineNumber, sceneParseState);
           }
       }
+    }
+
+    if (sceneParseState.ifStack.length > 0) {
+      var unclosedBlock = sceneParseState.ifStack[sceneParseState.ifStack.length - 1];
+      addParseError(
+        unclosedBlock.lineNumber || 0,
+        "if",
+        'Unclosed conditional block: missing "end"',
+        true
+      );
     }
     
     // Добавляем последнюю сцену
@@ -999,8 +1012,22 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     }
   }
 
+  function getCurrentIfActions(parseState) {
+    if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) return null;
+    var block = parseState.ifStack[parseState.ifStack.length - 1];
+    if (!block) return null;
+    if (block.inElse) return block.ifAction.elseActions;
+    return block.currentBranch.actions;
+  }
+
+  function getSceneTargetActions(currentScene, parseState) {
+    var nestedActions = getCurrentIfActions(parseState);
+    if (nestedActions) return nestedActions;
+    return currentScene.actions;
+  }
+
   // Парсинг сцен
-  function parseSceneLine(line, story, currentScene, setCurrentScene, lineNumber) {
+  function parseSceneLine(line, story, currentScene, setCurrentScene, lineNumber, parseState) {
     // Удаляем комментарии, но сохраняем оригинал для вывода ошибок
     const cleanLine = stripInlineComment(line);
     if (!cleanLine) return; // если строка была только комментарием
@@ -1012,6 +1039,11 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
     // Новая сцена
     if (cleanLine.startsWith('scene ')) {
+      if (parseState && parseState.ifStack && parseState.ifStack.length > 0) {
+        addParseError(lineNumber, line, 'Unclosed conditional block before new scene. Add "end".', true);
+        return;
+      }
+
       // Сохраняем предыдущую сцену
       if (currentScene) {
         story.scenes.push(currentScene);
@@ -1049,7 +1081,66 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     
-    const actions = currentScene.actions;
+    if (cleanLine === 'end') {
+      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
+        addParseError(lineNumber, line, 'Unexpected "end" without opened if-block', true);
+        return;
+      }
+      parseState.ifStack.pop();
+      return;
+    }
+
+    if (cleanLine.startsWith('elif ')) {
+      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
+        addParseError(lineNumber, line, 'Unexpected "elif" without opened if-block', true);
+        return;
+      }
+
+      var elifCondition = cleanLine.substring(5).trim();
+      if (!elifCondition) {
+        addParseError(lineNumber, line, 'The condition in "elif" cannot be empty', true);
+        return;
+      }
+
+      if (elifCondition.indexOf('->') !== -1) {
+        addParseError(lineNumber, line, '"elif" supports block syntax only. Use: elif condition', true);
+        return;
+      }
+
+      var elifBlock = parseState.ifStack[parseState.ifStack.length - 1];
+      if (elifBlock.inElse) {
+        addParseError(lineNumber, line, '"elif" cannot be used after "else"', true);
+        return;
+      }
+
+      var elifBranch = {
+        condition: elifCondition,
+        actions: []
+      };
+      elifBlock.ifAction.branches.push(elifBranch);
+      elifBlock.currentBranch = elifBranch;
+      elifBlock.inElse = false;
+      return;
+    }
+
+    if (cleanLine === 'else') {
+      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
+        addParseError(lineNumber, line, 'Unexpected "else" without opened if-block', true);
+        return;
+      }
+
+      var elseBlock = parseState.ifStack[parseState.ifStack.length - 1];
+      if (elseBlock.inElse) {
+        addParseError(lineNumber, line, 'Duplicate "else" in the same if-block', true);
+        return;
+      }
+
+      elseBlock.ifAction.elseActions = [];
+      elseBlock.inElse = true;
+      return;
+    }
+
+    const actions = getSceneTargetActions(currentScene, parseState);
     
     // bg [имя]
     if (cleanLine.startsWith('bg ')) {
@@ -1168,17 +1259,56 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         return;
       }
 
-      parseGameAction(lineNumber, line, cleanLine, story, currentScene);
+      var targetSceneForGame = currentScene;
+      if (parseState && parseState.ifStack && parseState.ifStack.length > 0) {
+        targetSceneForGame = {
+          actions: actions
+        };
+      }
+
+      parseGameAction(lineNumber, line, cleanLine, story, targetSceneForGame);
       return;
     }
 
-    // if expression -> sceneId
+    // if expression -> sceneId (совместимость)
+    // if expression / elif expression / else / end (новый блочный синтаксис)
     if (cleanLine.startsWith('if ')) {
       const ifBody = cleanLine.substring(3).trim();
       const parts = ifBody.split('->');
 
+      if (parts.length === 1) {
+        const condition = ifBody.trim();
+        if (!condition) {
+          addParseError(lineNumber, line, 'The condition in the if statement cannot be empty', true);
+          return;
+        }
+
+        const ifAction = {
+          type: 'if_block',
+          branches: [
+            {
+              condition: condition,
+              actions: []
+            }
+          ],
+          elseActions: null
+        };
+
+        actions.push(ifAction);
+
+        if (parseState && parseState.ifStack) {
+          parseState.ifStack.push({
+            ifAction: ifAction,
+            currentBranch: ifAction.branches[0],
+            inElse: false,
+            lineNumber: lineNumber
+          });
+        }
+        return;
+      }
+
       if (parts.length !== 2) {
-        addParseError(lineNumber, line, 'Invalid if syntax. Use: if x > 0 -> nextScene', true);
+        addParseError(lineNumber, line, 'Invalid if syntax. Use: if x > 0 -> nextScene or if x > 0 ... end', true);
         return;
       }
 
@@ -1355,8 +1485,10 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     let linkCount = 0;
     let errorCount = 0;
     
-    story.scenes.forEach(scene => {
-      scene.actions.forEach((action, actionIndex) => {
+    function validateActionList(actionList, sceneId) {
+      if (!Array.isArray(actionList)) return;
+
+      actionList.forEach((action) => {
         // Проверка goto
         if (action.type === 'goto' && action.target) {
           linkCount++;
@@ -1364,7 +1496,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
             errorCount++;
             addParseError(
               0, 
-              `Сцена ${scene.id}`, 
+              `Сцена ${sceneId}`, 
               `Navigating to a non-existent scene "${action.target}"`, true
             );
           }
@@ -1379,7 +1511,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
                 errorCount++;
                 addParseError(
                   0, 
-                  `Scene ${scene.id}`, 
+                  `Scene ${sceneId}`, 
                   `The menu item "${choice.text || 'no text'}" leads to the non-existent scene "${choice.goto}"`, true
                 );
               }
@@ -1391,12 +1523,25 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
           if (!sceneIds.has(action.target)) {
             addParseError(
               0,
-              `scene ${scene.id}`,
+              `scene ${sceneId}`,
               `The conditional transition leads to the non-existent scene "${action.target}"`
             );
           }
         }
+
+        if (action.type === 'if_block') {
+          if (Array.isArray(action.branches)) {
+            action.branches.forEach(function(branch) {
+              validateActionList(branch && branch.actions ? branch.actions : [], sceneId);
+            });
+          }
+          validateActionList(action.elseActions || [], sceneId);
+        }
       });
+    }
+
+    story.scenes.forEach(scene => {
+      validateActionList(scene.actions || [], scene.id);
     });
     
     console.log('[Loader] Проверено ссылок:', linkCount);
