@@ -59,6 +59,7 @@
     /* Подсказка действия под темой */
     --game-status-font-size: calc(32px * var(--scale));
     --game-status-font-weight: 400;
+    --game-status-line-height: 1.12;
     --game-status-color: var(--muted);
     --game-status-margin-top: calc(3px * var(--scale));
     --game-status-margin-bottom: calc(6px * var(--scale));
@@ -481,9 +482,21 @@
     color: var(--game-status-color);
     font-size: var(--game-status-font-size);
     font-weight: var(--game-status-font-weight);
-    line-height: 1.12;
+    line-height: var(--game-status-line-height);
     min-height: 0;
+    overflow: hidden;
     box-shadow: none;
+  }
+
+  .statusLine[data-status-lines="1"] {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .statusLine[data-status-lines="2"] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .gameTheme {
@@ -1002,6 +1015,11 @@
   let lastInitParams = {};
   let mouseActive = false;
   let activePointerId = null;
+  let statusLineFrame = 0;
+  let statusLineRows = 0;
+  let lastLayoutWidth = 0;
+  let lastLayoutHeight = 0;
+  let lastLayoutOrientation = "";
 
   const state = {
     initialized: false,
@@ -1541,9 +1559,43 @@
   }
 
   function applyScale() {
+    if (!shouldUpdateLayoutForViewport()) return;
+    rememberLayoutViewport();
     const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
     document.documentElement.style.setProperty("--scale", Math.max(0.42, scale).toFixed(5));
-    window.requestAnimationFrame(updateBoardMetrics);
+    window.requestAnimationFrame(() => {
+      updateBoardMetrics();
+      if (statusLineRows) scheduleStatusLineLock(false);
+    });
+  }
+
+  function currentOrientation() {
+    return window.innerWidth >= window.innerHeight ? "landscape" : "portrait";
+  }
+
+  function shouldUpdateLayoutForViewport() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const orientation = currentOrientation();
+
+    if (!lastLayoutWidth || !lastLayoutHeight) return true;
+    if (orientation !== lastLayoutOrientation) return true;
+
+    const widthDelta = Math.abs(width - lastLayoutWidth);
+    const heightDelta = Math.abs(height - lastLayoutHeight);
+    const isActiveGame = state.initialized && !state.locked && !state.resultSent;
+
+    if (isActiveGame) {
+      return widthDelta >= 24;
+    }
+
+    return widthDelta >= 12 || heightDelta >= 12;
+  }
+
+  function rememberLayoutViewport() {
+    lastLayoutWidth = window.innerWidth;
+    lastLayoutHeight = window.innerHeight;
+    lastLayoutOrientation = currentOrientation();
   }
 
   function updateBoardMetrics() {
@@ -1554,6 +1606,52 @@
     const cellHeight = rect.height / gameData.rows;
     const cellSize = Math.min(cellWidth, cellHeight);
     document.documentElement.style.setProperty("--cell-size", `${cellSize.toFixed(3)}px`);
+  }
+
+  function clearStatusLineLock(resetRows = false) {
+    if (statusLineFrame) {
+      window.cancelAnimationFrame(statusLineFrame);
+      statusLineFrame = 0;
+    }
+    statusLine.style.removeProperty("height");
+    statusLine.style.removeProperty("min-height");
+    statusLine.style.removeProperty("max-height");
+    statusLine.removeAttribute("data-status-lines");
+    if (resetRows) statusLineRows = 0;
+  }
+
+  function scheduleStatusLineLock(detectRows = false) {
+    if (statusLineFrame) {
+      window.cancelAnimationFrame(statusLineFrame);
+    }
+    statusLineFrame = window.requestAnimationFrame(() => {
+      statusLineFrame = window.requestAnimationFrame(() => {
+        statusLineFrame = 0;
+        if (detectRows || !statusLineRows) {
+          clearStatusLineLock(true);
+          const lineHeight = statusLineLineHeight();
+          statusLineRows = Math.min(2, Math.max(1, Math.round(statusLine.scrollHeight / lineHeight)));
+        }
+        applyStatusLineLock();
+      });
+    });
+  }
+
+  function statusLineLineHeight() {
+    const style = window.getComputedStyle(statusLine);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight;
+    const fontSize = Number.parseFloat(style.fontSize);
+    return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.12 : 18;
+  }
+
+  function applyStatusLineLock() {
+    if (!statusLineRows) return;
+    const height = statusLineLineHeight() * statusLineRows;
+    statusLine.dataset.statusLines = String(statusLineRows);
+    statusLine.style.height = `${height.toFixed(3)}px`;
+    statusLine.style.minHeight = `${height.toFixed(3)}px`;
+    statusLine.style.maxHeight = `${height.toFixed(3)}px`;
   }
 
   function setupSeed(params) {
@@ -1634,6 +1732,7 @@
     lastInitParams = { ...params };
     const effectiveParams = { ...params, ...paramsFromUrl() };
     loadGameData(effectiveParams);
+    clearStatusLineLock(true);
     resetState(effectiveParams);
     state.initialized = true;
     state.locked = true;
@@ -1652,6 +1751,7 @@
     setBooting(false);
     window.requestAnimationFrame(updateBoardMetrics);
     setStatus(`Сложность ${state.difficulty}. Найди все слова на поле.`);
+    scheduleStatusLineLock(true);
   }
 
   function renderWelcome() {
@@ -1677,8 +1777,10 @@
     state.locked = false;
     startButton.disabled = true;
     startOverlay.classList.add("hidden");
-    setStatus("Игра началась. Веди по буквам, чтобы найти слово.");
+    clearStatusLineLock(true);
+    setStatus("Веди по буквам, чтобы найти слово.");
     updateAll();
+    scheduleStatusLineLock(true);
   }
 
   function buildBoard() {
