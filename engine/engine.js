@@ -744,6 +744,15 @@ function setStatsView(view) {
     renderGamesCatalog();
   }
 
+  if (
+    currentStatsView === "text" &&
+    previousView !== "text" &&
+    elStatsPanel &&
+    !elStatsPanel.classList.contains("hidden")
+  ) {
+    renderStats();
+  }
+
   applyUiLanguage();
 }
 
@@ -3883,6 +3892,9 @@ function collectEnvironmentInfo() {
 // Проверка файлов на соответствие требованиям
 function checkAssetsFiles() {
   return new Promise((resolve) => {
+    const IMAGE_CHECK_TIMEOUT_MS = 30000;
+    const AUDIO_CHECK_TIMEOUT_MS = 30000;
+    const GAME_CHECK_TIMEOUT_MS = 15000;
     const result = {
       missing: [],
       sizeErrors: [], // файлы с неправильными размерами
@@ -4097,7 +4109,7 @@ function checkAssetsFiles() {
                   errorCount++;
                   checkComplete();
               }
-          }, 5000);
+          }, IMAGE_CHECK_TIMEOUT_MS);
           
           img.onload = function() {
               if (isResolved) return;
@@ -4132,21 +4144,13 @@ function checkAssetsFiles() {
               checkComplete();
           };
           
-          img.src = path + '?' + Date.now(); // добавляем timestamp чтобы избежать кэша
+          // Используем кэш браузера, чтобы не провоцировать ложные timeout на медленных сетях.
+          img.src = path;
         } else if (path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) {
           // Проверка аудиофайла
           const audio = new Audio();
           let isResolved = false;
-          
-          const timeout = setTimeout(() => {
-            if (!isResolved) {
-              isResolved = true;
-              errorCount++;
-              checkComplete();
-            }
-          }, 5000);
-          
-          audio.oncanplaythrough = function() {
+          function onAudioLoaded() {
             if (isResolved) return;
             isResolved = true;
             clearTimeout(timeout);
@@ -4163,7 +4167,18 @@ function checkAssetsFiles() {
             
             loadedCount++;
             checkComplete();
-          };
+          }
+          
+          const timeout = setTimeout(() => {
+            if (!isResolved) {
+              isResolved = true;
+              errorCount++;
+              checkComplete();
+            }
+          }, AUDIO_CHECK_TIMEOUT_MS);
+          
+          audio.onloadedmetadata = onAudioLoaded;
+          audio.oncanplaythrough = onAudioLoaded;
           
           audio.onerror = function() {
             if (isResolved) return;
@@ -4174,7 +4189,8 @@ function checkAssetsFiles() {
             checkComplete();
           };
           
-          audio.src = path + '?' + Date.now();
+          audio.preload = "metadata";
+          audio.src = path;
         
         } else if (path.match(/\.(html|htm)$/i)) {
           // Проверка HTML-файла игры
@@ -4197,10 +4213,23 @@ function checkAssetsFiles() {
             loadedCount++;
             checkComplete();
           } else {
-            const requestUrl = path + '?' + Date.now();
+            var controller = null;
+            var timeoutId = null;
+            var requestInit = { method: 'HEAD' };
+            if (typeof AbortController !== "undefined") {
+              controller = new AbortController();
+              requestInit.signal = controller.signal;
+              timeoutId = setTimeout(function() {
+                if (controller) controller.abort();
+              }, GAME_CHECK_TIMEOUT_MS);
+            }
 
-            fetch(requestUrl, { method: 'GET' })
+            fetch(path, requestInit)
               .then(function(response) {
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                  timeoutId = null;
+                }
                 if (!response.ok) {
                   throw new Error('HTTP ' + response.status);
                 }
@@ -4218,6 +4247,10 @@ function checkAssetsFiles() {
                 checkComplete();
               })
               .catch(function() {
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                  timeoutId = null;
+                }
                 errorCount++;
                 checkComplete();
               });
