@@ -2345,12 +2345,10 @@ function showChoices(choices) {
       btn.appendChild(text);
 
       btn.addEventListener("click", function () {
-        // звук на кнопку (если задан)
         if (choice.sfx) {
           playSfx(resolveAsset(choice.sfx), 1);
         }
 
-        // применить set
         if (choice.set && typeof choice.set === "object") {
           for (var k in choice.set) {
             if (Object.prototype.hasOwnProperty.call(choice.set, k)) {
@@ -2361,12 +2359,19 @@ function showChoices(choices) {
 
         hideChoices();
 
-        // переход
-        if (choice.goto) {
+        if (Array.isArray(choice.actions) && choice.actions.length > 0) {
+          var sceneNow = state.sceneMap[state.sceneId];
+          if (sceneNow && Array.isArray(sceneNow.actions)) {
+            var clonedChoiceActions = JSON.parse(JSON.stringify(choice.actions));
+            Array.prototype.splice.apply(
+              sceneNow.actions,
+              [state.actionIndex, 0].concat(clonedChoiceActions)
+            );
+          }
+        } else if (choice.goto) {
           gotoScene(choice.goto);
         }
 
-        // продолжить выполнение
         state.waitingNext = false;
         runCurrent();
       });
@@ -4228,6 +4233,55 @@ function checkAssetsFiles() {
 
 
 
+function forEachOutgoingTarget(actions, cb, currentLabel) {
+  if (!Array.isArray(actions)) return;
+  var label = currentLabel || "";
+
+  for (var i = 0; i < actions.length; i++) {
+    var act = actions[i];
+    if (!act || !act.type) continue;
+
+    if (act.type === "goto" && act.target) {
+      cb({ to: act.target, label: label });
+      continue;
+    }
+
+    if (act.type === "if_expr" && act.target) {
+      cb({ to: act.target, label: String(act.condition || "") });
+      continue;
+    }
+
+    if (act.type === "if_block") {
+      if (Array.isArray(act.branches)) {
+        for (var b = 0; b < act.branches.length; b++) {
+          var br = act.branches[b];
+          if (br && Array.isArray(br.actions)) {
+            forEachOutgoingTarget(br.actions, cb, String(br.condition || ""));
+          }
+        }
+      }
+      if (Array.isArray(act.elseActions)) {
+        forEachOutgoingTarget(act.elseActions, cb, "else");
+      }
+      continue;
+    }
+
+    if (act.type === "choice" && Array.isArray(act.choices)) {
+      for (var c = 0; c < act.choices.length; c++) {
+        var ch = act.choices[c];
+        if (!ch) continue;
+        var chLabel = String(ch.text || "");
+        if (ch.goto) {
+          cb({ to: ch.goto, label: chLabel });
+        }
+        if (Array.isArray(ch.actions)) {
+          forEachOutgoingTarget(ch.actions, cb, chLabel);
+        }
+      }
+    }
+  }
+}
+
 function buildAdjacency(story) {
   var scenes = story.scenes || [];
   var sceneMap = {};
@@ -4244,28 +4298,9 @@ function buildAdjacency(story) {
     var sc = scenes[s];
     if (!sc || !sc.id) continue;
 
-    var actions = sc.actions || [];
-    for (var a = 0; a < actions.length; a++) {
-      var act = actions[a];
-      if (!act || !act.type) continue;
-
-      if (act.type === "goto" && act.target) {
-        adj[sc.id].push({ to: act.target, label: "" });
-      }
-
-      if (act.type === "if_expr" && act.target) {
-        adj[sc.id].push({ to: act.target, label: String(act.condition || "") });
-      }
-
-      if (act.type === "choice" && act.choices && act.choices.length) {
-        for (var c = 0; c < act.choices.length; c++) {
-          var ch = act.choices[c];
-          if (ch && ch.goto) {
-            adj[sc.id].push({ to: ch.goto, label: String(ch.text || "") });
-          }
-        }
-      }
-    }
+    forEachOutgoingTarget(sc.actions || [], function (edge) {
+      adj[sc.id].push({ to: edge.to, label: edge.label });
+    });
   }
 
   return { sceneMap: sceneMap, adj: adj };
@@ -4513,45 +4548,21 @@ function buildMermaidGraph(story, unreachableList, options) {
         }
       }
 
-      // goto -> ребро
-      if (act.type === "goto" && act.target) {
-        edges.push({ from: scene.id, to: act.target, label: "" });
-        outgoingEdges[scene.id]++;
-        
-        if (!incomingEdges[act.target]) incomingEdges[act.target] = 0;
-        incomingEdges[act.target]++;
-      }
-      
-      if (act.type === "if_expr" && act.target) {
+      forEachOutgoingTarget([act], function (edge) {
+        var lbl = String(edge.label || "");
+        if (lbl.length > 40) lbl = lbl.substring(0, 40) + "...";
+
         edges.push({
           from: scene.id,
-          to: act.target,
-          label: String(act.condition || "")
+          to: edge.to,
+          label: lbl
         });
 
         outgoingEdges[scene.id] = (outgoingEdges[scene.id] || 0) + 1;
 
-        if (!incomingEdges[act.target]) incomingEdges[act.target] = 0;
-        incomingEdges[act.target]++;
-      }
-
-      // choice -> ребро с текстом пункта меню
-      if (act.type === "choice" && act.choices && act.choices.length) {
-        for (var c = 0; c < act.choices.length; c++) {
-          var ch = act.choices[c];
-          if (ch && ch.goto) {
-            edges.push({ 
-              from: scene.id, 
-              to: ch.goto, 
-              label: String(ch.text || "").substring(0, 40) + (ch.text.length > 40 ? "..." : "")
-            });
-            outgoingEdges[scene.id]++;
-            
-            if (!incomingEdges[ch.goto]) incomingEdges[ch.goto] = 0;
-            incomingEdges[ch.goto]++;
-          }
-        }
-      }
+        if (!incomingEdges[edge.to]) incomingEdges[edge.to] = 0;
+        incomingEdges[edge.to]++;
+      });
     }
     
     // СОРТИРУЕМ фоны по порядку появления (на всякий случай)

@@ -113,6 +113,24 @@ bgm bgmDay loop
 # if searchResult == 1 -> cafeGood
 # if searchResult == 0 -> cafeBad
 
+menu
+choice "Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
+choice "Провести калибровку сенсорной панели"
+goto scBranchLabBenchmark
+choice "Собрать словарь алгоритма" -> scBranchLabWordSearchIntro
+choice "Открыть стенд маршрутизации контура" -> scBranchLabRoutingIntro
+choice "Пройти тест памяти световых импульсов" -> scBranchLabMemoryIntro
+end
+
+menu
+"Запустить расчёт и посмотреть, как система выходит на устойчивый режим" -> scBranchLabCalc
+"Провести калибровку сенсорной панели" -> scBranchLabBenchmark
+"Собрать словарь алгоритма" -> scBranchLabWordSearchIntro
+"Открыть стенд маршрутизации контура" -> scBranchLabRoutingIntro
+"Пройти тест памяти световых импульсов" -> scBranchLabMemoryIntro
+
+
+
 show anna welcome # если не указана эмоция, то используется neutral
 anna: "Добро пожаловать в наш вуз! Это демо визуальной новеллы для вертикального экрана."
 

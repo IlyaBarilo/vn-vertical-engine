@@ -179,7 +179,7 @@
 
     let currentScene = null;
     const sceneParseState = {
-      ifStack: []
+      blockStack: []
     };
     let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'game', 'var', 'scene'
     let lineNumber = 0;
@@ -283,14 +283,29 @@
       }
     }
 
-    if (sceneParseState.ifStack.length > 0) {
-      var unclosedBlock = sceneParseState.ifStack[sceneParseState.ifStack.length - 1];
-      addParseError(
-        unclosedBlock.lineNumber || 0,
-        "if",
-        'Unclosed conditional block: missing "end"',
-        true
-      );
+    if (sceneParseState.blockStack.length > 0) {
+      // Автозакрытие старых меню (без "choice") в конце файла
+      var topEofBlk = sceneParseState.blockStack[sceneParseState.blockStack.length - 1];
+      while (topEofBlk && topEofBlk.type === 'menu' && topEofBlk.menuAction && !topEofBlk.menuAction.hasChoiceKw) {
+        sceneParseState.blockStack.pop();
+        topEofBlk = sceneParseState.blockStack.length > 0
+          ? sceneParseState.blockStack[sceneParseState.blockStack.length - 1]
+          : null;
+      }
+
+      if (sceneParseState.blockStack.length > 0) {
+        var unclosedBlock = sceneParseState.blockStack[sceneParseState.blockStack.length - 1];
+        var unclosedKind = unclosedBlock && unclosedBlock.type === 'menu' ? 'menu' : 'if';
+        var unclosedMsg = unclosedKind === 'menu'
+          ? 'Unclosed menu block: missing "end"'
+          : 'Unclosed conditional block: missing "end"';
+        addParseError(
+          unclosedBlock.lineNumber || 0,
+          unclosedKind,
+          unclosedMsg,
+          true
+        );
+      }
     }
     
     // Добавляем последнюю сцену
@@ -1012,18 +1027,55 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     }
   }
 
-  function getCurrentIfActions(parseState) {
-    if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) return null;
-    var block = parseState.ifStack[parseState.ifStack.length - 1];
+  function getTopBlock(parseState) {
+    if (!parseState || !parseState.blockStack || parseState.blockStack.length === 0) return null;
+    return parseState.blockStack[parseState.blockStack.length - 1];
+  }
+
+  function getCurrentBlockActions(parseState) {
+    var block = getTopBlock(parseState);
     if (!block) return null;
-    if (block.inElse) return block.ifAction.elseActions;
-    return block.currentBranch.actions;
+    if (block.type === 'if') {
+      if (block.inElse) return block.ifAction.elseActions;
+      return block.currentBranch.actions;
+    }
+    if (block.type === 'menu') {
+      if (block.currentChoice) return block.currentChoice.actions;
+      return null;
+    }
+    return null;
   }
 
   function getSceneTargetActions(currentScene, parseState) {
-    var nestedActions = getCurrentIfActions(parseState);
+    var nestedActions = getCurrentBlockActions(parseState);
     if (nestedActions) return nestedActions;
+    if (getTopBlock(parseState) && getTopBlock(parseState).type === 'menu') {
+      // внутри меню без открытого choice-блока обычные команды запрещены
+      return null;
+    }
     return currentScene.actions;
+  }
+
+  function findOpenMenuBlock(parseState) {
+    if (!parseState || !parseState.blockStack) return null;
+    for (var i = parseState.blockStack.length - 1; i >= 0; i--) {
+      var b = parseState.blockStack[i];
+      if (b && b.type === 'menu') return b;
+    }
+    return null;
+  }
+
+  // Старый формат меню (без "choice") не имеет "end" и должен
+  // автоматически закрываться при первой не-choice команде.
+  function autoCloseOldStyleMenu(parseState) {
+    if (!parseState || !parseState.blockStack) return;
+    var top = parseState.blockStack[parseState.blockStack.length - 1];
+    while (top && top.type === 'menu' && top.menuAction && !top.menuAction.hasChoiceKw) {
+      parseState.blockStack.pop();
+      top = parseState.blockStack.length > 0
+        ? parseState.blockStack[parseState.blockStack.length - 1]
+        : null;
+    }
   }
 
   // Парсинг сцен
@@ -1039,9 +1091,23 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
     // Новая сцена
     if (cleanLine.startsWith('scene ')) {
-      if (parseState && parseState.ifStack && parseState.ifStack.length > 0) {
-        addParseError(lineNumber, line, 'Unclosed conditional block before new scene. Add "end".', true);
-        return;
+      if (parseState && parseState.blockStack && parseState.blockStack.length > 0) {
+        // Автозакрытие старого меню (без ключевого слова choice) при начале новой сцены
+        var topBlk = parseState.blockStack[parseState.blockStack.length - 1];
+        while (topBlk && topBlk.type === 'menu' && topBlk.menuAction && !topBlk.menuAction.hasChoiceKw) {
+          parseState.blockStack.pop();
+          topBlk = parseState.blockStack.length > 0 ? parseState.blockStack[parseState.blockStack.length - 1] : null;
+        }
+
+        if (parseState.blockStack.length > 0) {
+          var stillOpen = parseState.blockStack[parseState.blockStack.length - 1];
+          var openKind = stillOpen && stillOpen.type === 'menu' ? 'menu' : 'if';
+          var openMsg = openKind === 'menu'
+            ? 'Unclosed menu block before new scene. Add "end".'
+            : 'Unclosed conditional block before new scene. Add "end".';
+          addParseError(lineNumber, line, openMsg, true);
+          return;
+        }
       }
 
       // Сохраняем предыдущую сцену
@@ -1082,16 +1148,26 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     }
     
     if (cleanLine === 'end') {
-      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
-        addParseError(lineNumber, line, 'Unexpected "end" without opened if-block', true);
+      var topEnd = getTopBlock(parseState);
+      if (!topEnd) {
+        addParseError(lineNumber, line, 'Unexpected "end" without opened block', true);
         return;
       }
-      parseState.ifStack.pop();
+
+      if (topEnd.type === 'menu') {
+        if (!topEnd.menuAction || !topEnd.menuAction.hasChoiceKw) {
+          addParseError(lineNumber, line, '"end" is not used for old-style menu (with "->"). Add "end" only when menu items use "choice".', true);
+          return;
+        }
+      }
+
+      parseState.blockStack.pop();
       return;
     }
 
     if (cleanLine.startsWith('elif ')) {
-      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
+      var elifTop = getTopBlock(parseState);
+      if (!elifTop || elifTop.type !== 'if') {
         addParseError(lineNumber, line, 'Unexpected "elif" without opened if-block', true);
         return;
       }
@@ -1107,8 +1183,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         return;
       }
 
-      var elifBlock = parseState.ifStack[parseState.ifStack.length - 1];
-      if (elifBlock.inElse) {
+      if (elifTop.inElse) {
         addParseError(lineNumber, line, '"elif" cannot be used after "else"', true);
         return;
       }
@@ -1117,30 +1192,195 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         condition: elifCondition,
         actions: []
       };
-      elifBlock.ifAction.branches.push(elifBranch);
-      elifBlock.currentBranch = elifBranch;
-      elifBlock.inElse = false;
+      elifTop.ifAction.branches.push(elifBranch);
+      elifTop.currentBranch = elifBranch;
+      elifTop.inElse = false;
       return;
     }
 
     if (cleanLine === 'else') {
-      if (!parseState || !parseState.ifStack || parseState.ifStack.length === 0) {
+      var elseTop = getTopBlock(parseState);
+      if (!elseTop || elseTop.type !== 'if') {
         addParseError(lineNumber, line, 'Unexpected "else" without opened if-block', true);
         return;
       }
 
-      var elseBlock = parseState.ifStack[parseState.ifStack.length - 1];
-      if (elseBlock.inElse) {
+      if (elseTop.inElse) {
         addParseError(lineNumber, line, 'Duplicate "else" in the same if-block', true);
         return;
       }
 
-      elseBlock.ifAction.elseActions = [];
-      elseBlock.inElse = true;
+      elseTop.ifAction.elseActions = [];
+      elseTop.inElse = true;
       return;
     }
 
+    // menu [имя]: открывает блок меню
+    if (cleanLine === 'menu') {
+      // Если на вершине старое меню (без "choice") — автозакрываем
+      autoCloseOldStyleMenu(parseState);
+
+      var menuAction = {
+        type: 'choice',
+        choices: [],
+        hasChoiceKw: false
+      };
+
+      var enclosingActions = getSceneTargetActions(currentScene, parseState);
+      if (enclosingActions === null) {
+        addParseError(lineNumber, line, 'Nested "menu" must be inside an opened "choice" block', true);
+        return;
+      }
+      enclosingActions.push(menuAction);
+
+      parseState.blockStack.push({
+        type: 'menu',
+        menuAction: menuAction,
+        currentChoice: null,
+        lineNumber: lineNumber
+      });
+      return;
+    }
+
+    // choice "Текст" или choice "Текст" -> scene
+    if (cleanLine.startsWith('choice ') || cleanLine === 'choice') {
+      var menuBlock = getTopBlock(parseState);
+      if (!menuBlock || menuBlock.type !== 'menu') {
+        addParseError(lineNumber, line, '"choice" can be used only inside "menu" block', true);
+        return;
+      }
+
+      // Проверка смешения форматов: до этого уже были старые пункты "..." -> sc
+      if (!menuBlock.menuAction.hasChoiceKw && menuBlock.menuAction.choices.length > 0) {
+        addParseError(
+          lineNumber,
+          line,
+          'Mixed menu formats: cannot mix "..." -> scene with "choice".',
+          true
+        );
+        return;
+      }
+
+      var choiceBody = cleanLine.substring(6).trim();
+      var choiceMatchKw = choiceBody.match(/^"([^"]+)"\s*(?:->\s*(.+))?$/);
+      if (!choiceMatchKw) {
+        addParseError(lineNumber, line, 'Invalid "choice" syntax. Use: choice "text" or choice "text" -> sceneId', true);
+        return;
+      }
+
+      var choiceText = choiceMatchKw[1].trim();
+      var choiceTarget = choiceMatchKw[2] ? choiceMatchKw[2].trim() : '';
+
+      if (!choiceText) {
+        addParseError(lineNumber, line, 'Empty text in "choice"', true);
+        return;
+      }
+
+      if (choiceTarget && choiceTarget.includes(' ')) {
+        addParseError(lineNumber, line, `The target scene "${choiceTarget}" in the choice contains spaces. Scene IDs cannot contain spaces.`, true);
+        return;
+      }
+
+      menuBlock.menuAction.hasChoiceKw = true;
+
+      var newChoice = {
+        text: choiceText,
+        actions: []
+      };
+
+      if (choiceTarget) {
+        newChoice.actions.push({
+          type: 'goto',
+          target: choiceTarget
+        });
+      }
+
+      menuBlock.menuAction.choices.push(newChoice);
+      menuBlock.currentChoice = newChoice;
+      return;
+    }
+
+    // Выбор: "Текст" -> сцена (старый формат)
+    // Обрабатывается ДО проверки actions===null, потому что не использует общий actions
+    // (пишет напрямую в menuAction.choices)
+    const oldChoiceMatch = cleanLine.match(/^"(.+)"\s*->\s*(.+)$/);
+    if (oldChoiceMatch) {
+      console.log(`[PARSER LINE ${lineNumber}] MATCH: choice (old)`);
+      const choiceText = oldChoiceMatch[1].trim();
+      const choiceTarget = oldChoiceMatch[2].trim();
+
+      if (!choiceText) {
+        addParseError(lineNumber, line, "Empty text in menu item", true);
+      }
+      if (!choiceTarget) {
+        addParseError(lineNumber, line, "No target scene specified in menu item", true);
+      }
+
+      if (choiceTarget.includes(' ')) {
+        addParseError(
+          lineNumber,
+          line,
+          `The target scene "${choiceTarget}" in the menu item contains spaces. Scene IDs cannot contain spaces.`,
+          true
+        );
+        return;
+      }
+
+      var openMenuOld = findOpenMenuBlock(parseState);
+      if (openMenuOld && openMenuOld.menuAction.hasChoiceKw) {
+        addParseError(
+          lineNumber,
+          line,
+          'Mixed menu formats: if you use "choice", all items must use "choice".',
+          true
+        );
+        return;
+      }
+
+      var targetMenuActionOld = openMenuOld ? openMenuOld.menuAction : null;
+
+      if (!targetMenuActionOld) {
+        // Нет открытого menu блока — старая логика fallback:
+        // ищем последний choice action в actions сцены / текущей if-ветки
+        const fallbackActions = getSceneTargetActions(currentScene, parseState);
+        if (fallbackActions === null) {
+          // Этого не должно случиться: openMenuOld бы уже нашёлся
+          addParseError(lineNumber, line, 'Commands inside "menu" must be placed inside a "choice" block', true);
+          return;
+        }
+        for (let i = fallbackActions.length - 1; i >= 0; i--) {
+          if (fallbackActions[i].type === 'choice') {
+            targetMenuActionOld = fallbackActions[i];
+            break;
+          }
+        }
+        if (!targetMenuActionOld) {
+          targetMenuActionOld = {
+            type: 'choice',
+            choices: [],
+            hasChoiceKw: false
+          };
+          fallbackActions.push(targetMenuActionOld);
+        }
+      }
+
+      targetMenuActionOld.choices.push({
+        text: choiceText || "Выбор",
+        goto: choiceTarget || "unknown"
+      });
+      return;
+    }
+
+    // Любая другая команда (show, set, goto, bg, if и т.д.) автозакрывает
+    // открытое старое меню (без "choice"). Старый формат не имеет "end".
+    autoCloseOldStyleMenu(parseState);
+
     const actions = getSceneTargetActions(currentScene, parseState);
+
+    if (actions === null) {
+      addParseError(lineNumber, line, 'Commands inside "menu" must be placed inside a "choice" block', true);
+      return;
+    }
     
     // bg [имя]
     if (cleanLine.startsWith('bg ')) {
@@ -1232,11 +1472,6 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     
-    // menu (игнорируем)
-    if (cleanLine === 'menu') {
-      return;
-    }
-    
     // calc varName = expression
     if (cleanLine.startsWith('set ')) {
       const expression = cleanLine.substring(4).trim();
@@ -1259,12 +1494,9 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         return;
       }
 
-      var targetSceneForGame = currentScene;
-      if (parseState && parseState.ifStack && parseState.ifStack.length > 0) {
-        targetSceneForGame = {
-          actions: actions
-        };
-      }
+      var targetSceneForGame = (actions === currentScene.actions)
+        ? currentScene
+        : { actions: actions };
 
       parseGameAction(lineNumber, line, cleanLine, story, targetSceneForGame);
       return;
@@ -1296,8 +1528,9 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
         actions.push(ifAction);
 
-        if (parseState && parseState.ifStack) {
-          parseState.ifStack.push({
+        if (parseState && parseState.blockStack) {
+          parseState.blockStack.push({
+            type: 'if',
             ifAction: ifAction,
             currentBranch: ifAction.branches[0],
             inElse: false,
@@ -1387,58 +1620,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     
-    // Выбор: Текст -> сцена
-    const choiceMatch = cleanLine.match(/^"(.+)"\s*->\s*(.+)$/);
-    if (choiceMatch) {
-      console.log(`[PARSER LINE ${lineNumber}] MATCH: choice`);
-      const text = choiceMatch[1].trim();
-      const target = choiceMatch[2].trim();
-      
-      if (!text) {
-        addParseError(lineNumber, line, "Empty text in menu item", true);
-      }
-      if (!target) {
-        addParseError(lineNumber, line, "No target scene specified in menu item", true);
-      }
-
-      // ========== НОВАЯ ПРОВЕРКА ==========
-      if (target.includes(' ')) {
-        addParseError(
-          lineNumber, 
-          line, 
-          `The target scene "${target}" in the menu item contains spaces. Scene IDs cannot contain spaces.`, 
-          true
-        );
-        return;
-      }
-      // ====================
-
-      // Ищем последний action типа choice
-      let choiceAction = null;
-      for (let i = actions.length - 1; i >= 0; i--) {
-        if (actions[i].type === 'choice') {
-          choiceAction = actions[i];
-          break;
-        }
-      }
-      
-      // Если нет choice action, создаём новый
-      if (!choiceAction) {
-        choiceAction = {
-          type: 'choice',
-          choices: []
-        };
-        actions.push(choiceAction);
-      }
-      
-      choiceAction.choices.push({
-        text: text || "Выбор",
-        goto: target || "unknown"
-      });
-      return;
-    }
-    
-     // Текст в кавычках (авторский)
+    // Текст в кавычках (авторский)
     const textMatch = cleanLine.match(/^"(.+)"$/);
     if (textMatch) {
       console.log(`[PARSER LINE ${lineNumber}] MATCH: text`);
@@ -1504,17 +1686,20 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         
         // Проверка choice
         if (action.type === 'choice' && action.choices) {
-          action.choices.forEach((choice, choiceIndex) => {
+          action.choices.forEach((choice) => {
             if (choice.goto) {
               linkCount++;
               if (!sceneIds.has(choice.goto)) {
                 errorCount++;
                 addParseError(
-                  0, 
-                  `Scene ${sceneId}`, 
+                  0,
+                  `Scene ${sceneId}`,
                   `The menu item "${choice.text || 'no text'}" leads to the non-existent scene "${choice.goto}"`, true
                 );
               }
+            }
+            if (Array.isArray(choice.actions)) {
+              validateActionList(choice.actions, sceneId);
             }
           });
         }
