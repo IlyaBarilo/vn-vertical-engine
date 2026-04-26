@@ -12,7 +12,7 @@
     --scale: 1;
     --cell-size: 40px;
     --board-ratio: 0.6667;
-    --letter-ratio: 0.58;
+    --letter-ratio: 0.68;
     --letter-font-family: Roboto, Arial, Helvetica, sans-serif;
     --letter-font-weight: 300;
     --letter-color: #172026;
@@ -20,21 +20,29 @@
     --found-letter-darken-factor: 0.33;
     --found-letter-opacity: 0.3;
     --button-font-family: Roboto, Arial, Helvetica, sans-serif;
-    --small-button-font-size: calc(25px * var(--scale));
+    --small-button-font-size: calc(42px * var(--scale));
     --small-button-font-weight: 700;
-    --hint-button-title-size: calc(25px * var(--scale));
+    --hint-button-title-size: calc(42px * var(--scale));
     --hint-button-title-weight: 700;
-    --hint-button-subtitle-size: calc(15px * var(--scale));
+    --hint-button-subtitle-size: calc(32px * var(--scale));
     --hint-button-subtitle-weight: 400;
-    --finish-button-font-size: calc(25px * var(--scale));
+    --finish-title-font-size: calc(32px * var(--scale));
+    --finish-title-font-weight: 800;
+    --finish-text-font-size: calc(32px * var(--scale));
+    --finish-text-font-weight: 400;
+    --finish-button-font-size: calc(42px * var(--scale));
     --finish-button-font-weight: 800;
-    --start-theme-font-size: calc(24px * var(--scale));
+    --start-theme-font-size: calc(48px * var(--scale));
     --start-theme-font-weight: 800;
     --start-theme-color: var(--accent);
-    --start-title-font-size: calc(36px * var(--scale));
-    --start-rule-font-size: calc(20px * var(--scale));
-    --start-hint-title-font-size: calc(24px * var(--scale));
-    --start-hint-rule-font-size: calc(20px * var(--scale));
+    --start-title-font-size: calc(32px * var(--scale));
+    --start-rule-font-size: calc(32px * var(--scale));
+    --start-hint-title-font-size: calc(36px * var(--scale));
+    --start-hint-rule-font-size: calc(32px * var(--scale));
+    --hud-label-font-size: calc(32px * var(--scale));
+    --hud-label-font-weight: 400;
+    --hud-value-font-size: calc(42px * var(--scale));
+    --hud-value-font-weight: 700;
 
     /* Текстовый блок над полем: общая зона темы и подсказки */
     --game-info-padding-top: calc(2px * var(--scale));
@@ -42,14 +50,14 @@
     --game-info-padding-bottom: 0px;
 
     /* Заголовок темы над полем */
-    --game-theme-font-size: calc(32px * var(--scale));
+    --game-theme-font-size: calc(48px * var(--scale));
     --game-theme-font-weight: 800;
     --game-theme-color: var(--accent);
     --game-theme-margin-top: calc(6px * var(--scale));
     --game-theme-margin-bottom: calc(6px * var(--scale));
 
     /* Подсказка действия под темой */
-    --game-status-font-size: calc(20px * var(--scale));
+    --game-status-font-size: calc(32px * var(--scale));
     --game-status-font-weight: 400;
     --game-status-color: var(--muted);
     --game-status-margin-top: calc(3px * var(--scale));
@@ -197,7 +205,8 @@
   .hudMetric span {
     text-align: center;
     color: var(--style-hud-label-color);
-    font-size: calc(15px * var(--scale));
+    font-size: var(--hud-label-font-size);
+    font-weight: var(--hud-label-font-weight);
     line-height: 1.05;
     white-space: nowrap;
   }
@@ -205,7 +214,8 @@
   .hudMetric strong {
     margin-top: calc(4px * var(--scale));
     text-align: center;
-    font-size: calc(28px * var(--scale));
+    font-size: var(--hud-value-font-size);
+    font-weight: var(--hud-value-font-weight);
     line-height: 1;
     letter-spacing: 0;
     color: var(--style-hud-value-color);
@@ -543,7 +553,8 @@
 
   .finishPanel h1 {
     margin: 0 0 calc(10px * var(--scale));
-    font-size: calc(34px * var(--scale));
+    font-size: var(--finish-title-font-size);
+    font-weight: var(--finish-title-font-weight);
     line-height: 1.05;
     letter-spacing: 0;
     color: var(--style-title-color);
@@ -552,7 +563,8 @@
   .finishPanel p {
     margin: 0 0 calc(20px * var(--scale));
     color: var(--style-text-color);
-    font-size: calc(18px * var(--scale));
+    font-size: var(--finish-text-font-size);
+    font-weight: var(--finish-text-font-weight);
     line-height: 1.28;
   }
 
@@ -592,7 +604,7 @@
     border-left: calc(4px * var(--scale)) solid var(--style-rule-border);
   }
 
-  .startHintTitle {
+  .finishPanel .startHintTitle {
     margin: 0 0 calc(8px * var(--scale));
     color: var(--style-hint-title-color);
     font-size: var(--start-hint-title-font-size);
@@ -737,11 +749,11 @@
 
   const BASE_W = 810;
   const BASE_H = 1440;
-  const IS_FILE_LAUNCH = window.location.protocol === "file:";
   const DEFAULT_LOCAL_VARIANT = "algo";
   const LOCAL_GAME_VARIANTS = {
     algo: "fmt=wsg-text;v=1;id=algo;title=Поиск слов;theme=Алгоритмы;size=15x8;grid=ОКГВТОРВ|МАЖОПСЛЦ|ЦНДШЩПОЖ|ИКААГРОН|АЛЧУЦОСТ|ВСАМЕССЬ|ИСЕИВТСЙ|СУИЕЯИДЕ|ЛОВРЕСЕБ|ДАНЕШРИУ|ЕНИЕРУВС|ЫНКЕЕКОЛ|ЕШОДИКВИ|ФБРЯГАПК|ЭПОЛОЛЗЕ;words=ШАГ:#FFADAD:r0:2,3>3,3>3,4|ЦИКЛ:#FFD6A5:r0:2,0>3,0>3,1>4,1|УСЛОВИЕ:#FDFFB6:r0:7,1>7,0>8,0>8,1>8,2>7,2>7,3|ДАННЫЕ:#CAFFBF:r1:10,0>11,0>11,1>10,1>9,1>9,0|КОМАНДА:#9BF6FF:r0:0,1>0,0>1,0>1,1>2,1>2,2>3,2|ЛОГИКА:#A0C4FF:r1:13,5>12,5>12,4>13,4>14,4>14,5|ПОРЯДОК:#BDB2FF:r0:14,1>14,2>13,2>13,3>12,3>12,2>11,2|ПРОЦЕСС:#FFC6FF:r1:5,6>5,5>5,4>4,4>4,5>3,5>2,5|ДЕЙСТВИЕ:#E0BBE4:r0:7,6>7,7>6,7>6,6>6,5>6,4>6,3>6,2|РЕШЕНИЕ:#FFB347:r0:8,3>8,4>9,4>9,3>9,2>10,2>10,3|ПОВТОР:#C8E6C9:r0:1,4>1,3>0,3>0,4>0,5>0,6|УСЛОВИЕ:#B2DFDB:r1:8,6>9,6>10,6>11,6>11,7>10,7>9,7|МАССИВ:#D1C4E9:r0:5,3>5,2>5,1>6,1>6,0>5,0|РЕКУРСИЯ:#FFECB3:r0:10,4>11,4>11,5>10,5>9,5>8,5>7,5>7,4|СЛОЖНОСТЬ:#A7FFEB:r0:1,5>1,6>2,6>2,7>3,7>3,6>4,6>4,7>5,7",
-    hacker: "fmt=wsg-text;v=1;id=hacker;title=Поиск слов;theme=Хакеры;size=15x8;grid=ЗЛТАПДКЭ|ВОЕКДОКБ|СМЗАЩРОС|УЫНДИТДР|РЕНАРАЯО|ИВИНГБРФ|ТЬШИФФУТ|СОМФФРСК|ПВИШИБЕШ|ТЗЯВРВТЬ|РЛУНЕЕРО|ООГИСРАЛ|ППЯРТЦПЬ|ЕУТАФОХЭ|ДОСЧИКЭШ;words=ПАРОЛЬ:#55FF99:r0:12,6>11,6>10,6>10,7>11,7>12,7|ЛОГИН:#66CCFF:r1:10,3>11,3>11,2>11,1>10,1|КОД:#B388FF:r0:1,6>2,6>3,6|СЕТЬ:#00F5D4:r0:7,6>8,6>9,6>9,7|СЕРВЕР:#4D96FF:r1:11,5>10,5>9,5>9,4>10,4>11,4|ВЗЛОМ:#FF4D6D:r0:1,0>0,0>0,1>1,1>2,1|ДОСТУП:#FFD166:r1:12,1>13,1>13,2>14,2>14,1>14,0|ШИФР:#C9FFE0:r1:7,5>7,4>8,4>8,3|ЗАЩИТА:#7CFF6B:r1:4,5>3,5>3,4>2,4>2,3>2,2|УЯЗВИМОСТЬ:#FF9F1C:r0:10,2>9,2>9,1>8,1>8,2>7,2>7,1>7,0>6,0>6,1|ВИРУС:#F15BB5:r1:2,0>3,0>4,0>5,0>5,1|ДАННЫЕ:#9BFFEC:r1:4,1>3,1>3,2>4,2>4,3>3,3|ПОРТ:#48CAE4:r0:12,0>11,0>10,0>9,0|ПАКЕТ:#80ED99:r1:0,2>1,2>1,3>0,3>0,4|ТРАФИК:#A0FF4F:r1:14,5>14,4>13,4>13,3>12,3>12,4|ФИШИНГ:#FF6B6B:r0:6,4>6,3>6,2>5,2>5,3>5,4|БРУТФОРС:#E0AAFF:r1:2,7>3,7>4,7>5,7>6,7>6,6>5,6>5,5|БЭКДОР:#E4D2FF:r1:2,5>1,5>0,5>0,6>0,7>1,7|ХЭШ:#A9CFC7:r0:13,6>13,7>14,7;style.pageBg=#07100FFF;style.rootBg=#07100FFF;style.themeColor=#55FF99FF;style.statusColor=#8CB8B0CC;style.hudBg=#0B1A18DD;style.hudBorder=#55FF9933;style.hudLabelColor=#8CB8B0CC;style.hudValueColor=#D8FFE6FF;style.stopButtonBg=#260C12EE;style.stopButtonBorder=#FF4D6D66;style.stopButtonColor=#FFB3C1FF;style.hintButton1Bg=#0B241EEE;style.hintButton1Border=#55FF9955;style.hintButton1Color=#C9FFE0FF;style.hintButton2Bg=#101B2AEE;style.hintButton2Border=#66CCFF55;style.hintButton2Color=#C7ECFFFF;style.hintButton3Bg=#1A1230EE;style.hintButton3Border=#B388FF55;style.hintButton3Color=#E4D2FFFF;style.boardFrameBg=#081412FF;style.boardFrameBorder=#55FF992B;style.boardBg=#06100EFF;style.cellBg=#0A1714FF;style.gridLineColor=#55FF99FF;style.letterColor=#C8FFE0FF;style.letterActiveColor=#FFFFFFFF;style.selectedCellBg=#55FF995C;style.wrongCellBg=#FF4D6D73;style.arrowGlow=#55FF9977;style.overlayBg=#020807DD;style.panelBg=#0B1513F4;style.panelBorder=#55FF993D;style.titleColor=#D8FFE6FF;style.textColor=#A9CFC7FF;style.ruleColor=#C8FFE0EE;style.ruleBorder=#55FF9955;style.hintTitleColor=#55FF99FF;style.hintRuleColor=#9FC8C0DD;style.hintRuleBorder=#66CCFF55;style.primaryButtonBg=#1EE884FF;style.primaryButtonColor=#04100BFF"
+    hacker: "fmt=wsg-text;v=1;id=hacker;title=Поиск слов;theme=Хакеры;size=15x8;grid=ЗЛТАПДКЭ|ВОЕКДОКБ|СМЗАЩРОС|УЫНДИТДР|РЕНАРАЯО|ИВИНГБРФ|ТЬШИФФУТ|СОМФФРСК|ПВИШИБЕШ|ТЗЯВРВТЬ|РЛУНЕЕРО|ООГИСРАЛ|ППЯРТЦПЬ|ЕУТАФОХЭ|ДОСЧИКЭШ;words=ПАРОЛЬ:#55FF99:r0:12,6>11,6>10,6>10,7>11,7>12,7|ЛОГИН:#66CCFF:r1:10,3>11,3>11,2>11,1>10,1|КОД:#B388FF:r0:1,6>2,6>3,6|СЕТЬ:#00F5D4:r0:7,6>8,6>9,6>9,7|СЕРВЕР:#4D96FF:r1:11,5>10,5>9,5>9,4>10,4>11,4|ВЗЛОМ:#FF4D6D:r0:1,0>0,0>0,1>1,1>2,1|ДОСТУП:#FFD166:r1:12,1>13,1>13,2>14,2>14,1>14,0|ШИФР:#C9FFE0:r1:7,5>7,4>8,4>8,3|ЗАЩИТА:#7CFF6B:r1:4,5>3,5>3,4>2,4>2,3>2,2|УЯЗВИМОСТЬ:#FF9F1C:r0:10,2>9,2>9,1>8,1>8,2>7,2>7,1>7,0>6,0>6,1|ВИРУС:#F15BB5:r1:2,0>3,0>4,0>5,0>5,1|ДАННЫЕ:#9BFFEC:r1:4,1>3,1>3,2>4,2>4,3>3,3|ПОРТ:#48CAE4:r0:12,0>11,0>10,0>9,0|ПАКЕТ:#80ED99:r1:0,2>1,2>1,3>0,3>0,4|ТРАФИК:#A0FF4F:r1:14,5>14,4>13,4>13,3>12,3>12,4|ФИШИНГ:#FF6B6B:r0:6,4>6,3>6,2>5,2>5,3>5,4|БРУТФОРС:#E0AAFF:r1:2,7>3,7>4,7>5,7>6,7>6,6>5,6>5,5|БЭКДОР:#E4D2FF:r1:2,5>1,5>0,5>0,6>0,7>1,7|ХЭШ:#A9CFC7:r0:13,6>13,7>14,7;style.pageBg=#07100FFF;style.rootBg=#07100FFF;style.themeColor=#55FF99FF;style.statusColor=#8CB8B0CC;style.hudBg=#0B1A18DD;style.hudBorder=#55FF9933;style.hudLabelColor=#8CB8B0CC;style.hudValueColor=#D8FFE6FF;style.stopButtonBg=#260C12EE;style.stopButtonBorder=#FF4D6D66;style.stopButtonColor=#FFB3C1FF;style.hintButton1Bg=#0B241EEE;style.hintButton1Border=#55FF9955;style.hintButton1Color=#C9FFE0FF;style.hintButton2Bg=#101B2AEE;style.hintButton2Border=#66CCFF55;style.hintButton2Color=#C7ECFFFF;style.hintButton3Bg=#1A1230EE;style.hintButton3Border=#B388FF55;style.hintButton3Color=#E4D2FFFF;style.boardFrameBg=#081412FF;style.boardFrameBorder=#55FF992B;style.boardBg=#06100EFF;style.cellBg=#0A1714FF;style.gridLineColor=#55FF99FF;style.letterColor=#C8FFE0FF;style.letterActiveColor=#FFFFFFFF;style.selectedCellBg=#55FF995C;style.wrongCellBg=#FF4D6D73;style.arrowGlow=#55FF9977;style.overlayBg=#020807DD;style.panelBg=#0B1513F4;style.panelBorder=#55FF993D;style.titleColor=#D8FFE6FF;style.textColor=#A9CFC7FF;style.ruleColor=#C8FFE0EE;style.ruleBorder=#55FF9955;style.hintTitleColor=#55FF99FF;style.hintRuleColor=#9FC8C0DD;style.hintRuleBorder=#66CCFF55;style.primaryButtonBg=#1EE884FF;style.primaryButtonColor=#04100BFF",
+    kostroma: "fmt=wsg-text;v=1;id=tech_01;title=Поиск слов;theme=Кострома;size=15x8;grid=ЯРЭАЕДКА|ДЫСМСЕБК|ЫРАРЕФЕС|РЕКФАСФО|ЕСНИНУСЛ|ЧТЖГЯОВЫ|ДВОАЛНАМ|ОЗПУЕНЫО|ЕТТВАХТР|РВСКИЙАЯ|ЕОАГЛОВА|МРААЛАКЧ|ТТЧНАКРО|ОСЗЕЙЛУО|ЭМУСНЕГР;words=ВОЛГА:#8ECDF0:r0:10,6>10,5>10,4>10,3>10,2|СУСАНИН:#8BD6A0:r0:4,6>4,5>3,5>3,4>4,4>4,3>4,2|СНЕГУРОЧКА:#C7D7FF:r0:14,3>14,4>14,5>14,6>13,6>12,6>12,7>11,7>11,6>11,5|КАЛАНЧА:#F6D58A:r1:11,2>12,2>12,3>11,3>11,4>12,4>12,5|РЯДЫ:#F0B07A:r0:0,1>0,0>1,0>2,0|СЫР:#FFE16A:r1:2,1>1,1>1,2|ЛЕН:#D6E88F:r1:7,5>7,4>6,4|РОМАНОВЫ:#D9C6F5:r0:8,7>7,7>6,7>6,6>6,5>5,5>5,6>5,7|БЕСЕДКА:#A7E3D0:r1:0,7>0,6>0,5>0,4>1,4>1,5>1,6|ОСТРОВСКИЙ:#A8C8FF:r1:9,5>9,4>9,3>9,2>9,1>10,1>11,1>12,1>13,1>13,0|ГАУПТВАХТА:#D8A1E6:r0:5,3>6,3>7,3>7,2>8,2>8,3>8,4>8,5>8,6>9,6|МУЗЕЙ:#BFC7FF:r0:14,1>14,2>13,2>13,3>13,4|ЗОДЧЕСТВО:#B8D58A:r1:6,2>6,1>5,1>4,1>4,0>5,0>6,0>7,0>7,1|ЛОСЕФЕРМА:#9FDEB0:r1:0,3>1,3>2,3>2,4>2,5>2,6>2,7>3,7>4,7|ТЕРЕМ:#F7C66A:r0:8,1>8,0>9,0>10,0>11,0|РЕКА:#9DDBF2:r1:2,2>3,2>3,1>3,0;sourceWords=ВОЛГА|СУСАНИН|СНЕГУРОЧКА|КАЛАНЧА|РЯДЫ|СЫР|ЛЕН|РОМАНОВЫ|БЕСЕДКА|ОСТРОВСКИЙ|ГАУПТВАХТА|МУЗЕЙ|ЗОДЧЕСТВО|ЛОСЕФЕРМА|ТЕРЕМ|ЗОЛОТО|ПРИЧАЛ|РЕКА|МОНАСТЫРЬ|НАБЕРЕЖНАЯ|ЮВЕЛИРЫ;style.pageBg=#D8F2FFFF;style.rootBg=#D8F2FFFF;style.themeColor=#1F78A8FF;style.statusColor=#376B7ECC;style.hudBg=#F4FBFFFF;style.hudBorder=#7FC8E866;style.hudLabelColor=#4D7686CC;style.hudValueColor=#1E4252FF;style.stopButtonBg=#FFF4E0EE;style.stopButtonBorder=#E86F5C66;style.stopButtonColor=#A84738FF;style.hintButton1Bg=#E8F8EEFF;style.hintButton1Border=#8FD19E88;style.hintButton1Color=#2F6B42FF;style.hintButton2Bg=#E3F6FFFF;style.hintButton2Border=#7FC8E888;style.hintButton2Color=#1F78A8FF;style.hintButton3Bg=#FFF4D6FF;style.hintButton3Border=#FFD76A99;style.hintButton3Color=#7A5A16FF;style.boardFrameBg=#EAF8FFFF;style.boardFrameBorder=#7FC8E888;style.boardBg=#F8FDFFFF;style.cellBg=#FFFFFFAA;style.gridLineColor=#7FC8E844;style.letterColor=#1E4252FF;style.letterActiveColor=#0F2E3AFF;style.selectedCellBg=#4FB3DFAA;style.wrongCellBg=#E86F5C88;style.arrowGlow=#FFD76A99;style.overlayBg=#D8F2FFDD;style.panelBg=#F4FBFFF4;style.panelBorder=#7FC8E888;style.titleColor=#57A3CCFF;style.textColor=#375B68DD;style.ruleColor=#2E5968EE;style.ruleBorder=#7FC8E866;style.hintTitleColor=#57A3CCFF;style.hintRuleColor=#375B68DD;style.hintRuleBorder=#7FC8E866;style.primaryButtonBg=#FFD76AFF;style.primaryButtonColor=#2F3A20FF"
   };
 
   const DEFAULT_GAME_DATA = {
@@ -986,6 +998,7 @@
   const wordChipEls = new Map();
 
   let initReceived = false;
+  let launchedFromEngine = false;
   let lastInitParams = {};
   let mouseActive = false;
   let activePointerId = null;
@@ -1630,7 +1643,7 @@
     startButton.disabled = false;
     restartButton.disabled = false;
     finishButton.disabled = false;
-    finishButton.classList.toggle("hidden", IS_FILE_LAUNCH);
+    finishButton.classList.toggle("hidden", !launchedFromEngine);
     renderWelcome();
     buildBoard();
     updateBoardMetrics();
@@ -2187,6 +2200,7 @@
   window.addEventListener("message", (event) => {
     if (!event.data || event.data.type !== "gameInit") return;
     initReceived = true;
+    launchedFromEngine = true;
     initializeGame(normalizeInitMessage(event.data));
   });
 
