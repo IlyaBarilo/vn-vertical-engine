@@ -4586,7 +4586,7 @@ function findCyclesSCC(story) {
 //
 // scope "resources" — компактный граф для обзора ресурсов (в коде и UI раньше назывался «intro»;
 // это НЕ «вступительная глава» сюжета). На диаграмме только стартовая сцена и минимум рёбер (Mermaid
-// не раздувается). Блоки characters / background / games — те же полные списки, что и при scope
+// не раздувается). Блоки characters / background / games / audio — те же полные списки, что и при scope
 // "full" (only*Ids не задаются): пунктир к attachSceneId = meta.start лишь якорит узлы на старте.
 function buildMermaidGraph(story, unreachableList, options) {
   options = options || {};
@@ -4790,6 +4790,9 @@ function buildMermaidGraph(story, unreachableList, options) {
   mermaid += "\n";
 
   mermaid += buildGamesGraph(story, sharedGraphOptions);
+  mermaid += "\n";
+
+  mermaid += buildAudioGraph(story, sharedGraphOptions);
   mermaid += "\n";
 
   // Создаем узлы с многострочными метками
@@ -5168,7 +5171,7 @@ function buildBackgroundsGraph(story, options) {
   }
   videoListHtml += "</div>";
 
-  var parentLabel = '<b>📷 background (' + totalCount + ')</b>';
+  var parentLabel = '<b>📷 Background (' + totalCount + ')</b>';
   var imagesLabel = '<b>🖼️ bg-images (' + imgCount + ')</b>';
   var videoLabel = '<b>🎬 bg-video (' + vidCount + ')</b>';
 
@@ -5192,6 +5195,45 @@ function buildBackgroundsGraph(story, options) {
   mermaid += "    bg_images -.-> background;\n";
   mermaid += "    bg_video -.-> background;\n";
   mermaid += "    background -.-> " + attachTo + ";\n";
+
+  return mermaid;
+}
+
+// Узел Audio: один сводный блок со списком id из [audio] / story.assets.audio (без отдельных узлов по трекам).
+function buildAudioGraph(story, options) {
+  options = options || {};
+  var compact = !!options.compact;
+
+  var mermaid = "";
+  var audioAssets = (story.assets && story.assets.audio) ? story.assets.audio : {};
+  var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
+
+  var audioIds = Object.keys(audioAssets).sort();
+  var audioCount = audioIds.length;
+
+  var listCountClass = getImgCountClass(audioCount || 1);
+  var listHtml = "<div class='games-list-box " + listCountClass + "'>";
+
+  if (audioCount > 0) {
+    for (var i = 0; i < audioIds.length; i++) {
+      listHtml += "<span class='game-list-row'>" + escapeHtml(audioIds[i]) + "</span>";
+    }
+  } else {
+    listHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
+  }
+
+  listHtml += "</div>";
+
+  var parentLabel = '<b>🎵 Audio (' + audioCount + ')</b>';
+  if (!compact) {
+    parentLabel += "<br/>" + listHtml;
+  }
+
+  // id не "audio": возможна сцена с тем же id; подпись узла остаётся «Audio».
+  var parentNodeId = "story_audio";
+  mermaid += '    ' + parentNodeId + '["' + parentLabel + '"]\n';
+  mermaid += '    ' + parentNodeId + ':::games-group\n';
+  mermaid += '    ' + parentNodeId + ' -.-> ' + attachTo + "\n";
 
   return mermaid;
 }
@@ -5406,6 +5448,7 @@ function computeStoryStats(story) {
   var choiceCount = 0;
   var bgmActions = 0;
   var sfxActions = 0;
+  var audioCounts = {};
 
   for (var s = 0; s < scenes.length; s++) {
     var actions = scenes[s].actions || [];
@@ -5443,7 +5486,15 @@ function computeStoryStats(story) {
       if (act.type === "say") sayCount++;
       if (act.type === "text") textCount++;
       if (act.type === "choice") choiceCount++;
-      if (act.type === "bgm") bgmActions++;
+      if (act.type === "bgm") {
+        bgmActions++;
+        if (act.src) {
+          var audioIdFromBgm = extractAliasId(act.src, "audio");
+          if (audioIdFromBgm) {
+            audioCounts[audioIdFromBgm] = (audioCounts[audioIdFromBgm] || 0) + 1;
+          }
+        }
+      }
       if (act.type === "sfx") sfxActions++;
     }
   }
@@ -5536,7 +5587,8 @@ function computeStoryStats(story) {
     textCount: textCount,
     choiceCount: choiceCount,
     bgmActions: bgmActions,
-    sfxActions: sfxActions
+    sfxActions: sfxActions,
+    audioCounts: audioCounts
   };
 } // function
 
