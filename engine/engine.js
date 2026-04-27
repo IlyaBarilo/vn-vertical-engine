@@ -1912,7 +1912,12 @@ function gotoScene(sceneId) {
 // =========================================================
 
 function setBackground(src, fallbackSrc) {
-  if (!src) return;
+  if (!src) {
+    if (fallbackSrc) {
+      setBackground(fallbackSrc, "");
+    }
+    return;
+  }
   
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallbackSrc = normalizeAssetUrl(fallbackSrc || "");
@@ -1923,17 +1928,14 @@ function setBackground(src, fallbackSrc) {
       console.warn('[IMG] skip failed background src:', normalizedSrc);
       failedAssets.images[normalizedSrc + "_logged"] = true;
     }
-  return;
-}
+    if (isVideo && normalizedFallbackSrc) {
+      console.warn('[VIDEO] primary marked as failed, using fallback:', normalizedFallbackSrc);
+      setBackground(normalizedFallbackSrc, "");
+    }
+    return;
+  }
 
   if (isVideo) {
-    if (elBg) {
-      elBg.onerror = null;
-      elBg.removeAttribute('src');
-      elBg.src = "";
-      elBg.classList.add("hidden");
-    }
-
     if (elBgVideo) {
       elBgVideo.onerror = null;
       elBgVideo.onloadeddata = null;
@@ -1961,9 +1963,13 @@ function setBackground(src, fallbackSrc) {
       elBgVideo.onloadeddata = function() {
         var currentVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
         if (currentVideoSrc !== normalizedSrc) return;
+        // Переключаемся на видео только после успешной загрузки первого кадра.
+        if (elBg) {
+          elBg.classList.add("hidden");
+        }
+        elBgVideo.classList.remove("hidden");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
       };
-      elBgVideo.classList.remove("hidden");
       elBgVideo.src = normalizedSrc;
       elBgVideo.muted = true;
       elBgVideo.loop = true;
@@ -1977,8 +1983,10 @@ function setBackground(src, fallbackSrc) {
     }
 
     if (typeof updateBlurBackground === 'function') {
-      // Сразу показываем fallback для blur (если задан), затем заменяем первым кадром видео.
-      updateBlurBackground(normalizedFallbackSrc || "");
+      // Пока видео грузится, для blur используем fallback (если задан).
+      if (normalizedFallbackSrc) {
+        updateBlurBackground(normalizedFallbackSrc);
+      }
     }
     return;
   }
