@@ -3501,17 +3501,34 @@ function renderStats() {
         return f && f.skippedCheck;
       });
       if (skippedNetworkAssets.length > 0) {
-        text +=
-          "ℹ️ Network verification skipped for these assets " +
-          "(HTML games and video files are not probed in the browser):\n\n";
-        skippedNetworkAssets.forEach(function (item, index) {
-          text += (index + 1) + ". " + item.path + "\n";
-          text += "   Used in:\n";
-          (item.refs || []).forEach(function (ref) {
-            text += "   - " + ref + "\n";
-          });
-          text += "\n";
+        // HTML games and video files are not probed in the browser
+        text += "Skipped for check files (html/mp4):\n";
+        var skippedByExt = {};
+        var skippedExtOrder = [];
+        skippedNetworkAssets.map(function (item, index) {
+          var path = String(item.path || "");
+          var fileName = path.split(/[\\/]/).pop();
+          var extMatch = fileName.match(/\.([^.]+)$/);
+          return {
+            fileName: fileName,
+            ext: extMatch ? extMatch[1].toLowerCase() : "",
+            index: index
+          };
+        }).sort(function (a, b) {
+          if (a.ext < b.ext) return -1;
+          if (a.ext > b.ext) return 1;
+          return a.index - b.index;
+        }).forEach(function (item) {
+          if (!skippedByExt[item.ext]) {
+            skippedByExt[item.ext] = [];
+            skippedExtOrder.push(item.ext);
+          }
+          skippedByExt[item.ext].push(item.fileName);
         });
+        skippedExtOrder.forEach(function (ext) {
+          text += ext + ": " + skippedByExt[ext].join(", ") + "\n";
+        });
+        text += "\n";
       }
       
       // Ошибки размеров изображений

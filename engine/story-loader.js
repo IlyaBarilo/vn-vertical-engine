@@ -599,6 +599,44 @@ function stripInlineComment(line) {
   return text.trim();
 }
 
+function stripAssetInlineComment(line) {
+  var text = String(line || '');
+  var quote = null;
+  var escaped = false;
+
+  if (/^\s*#/.test(text)) return '';
+
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === '#' && (i === 0 || /\s/.test(text.charAt(i - 1)))) {
+      return text.slice(0, i).trim();
+    }
+  }
+
+  return text.trim();
+}
+
 function splitQuotedTokens(text) {
   var tokens = [];
   var current = '';
@@ -778,14 +816,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
   function parseNewStyleAssetLine(lineNumber, line, category, story) {
-    var cleanLine = line.trim();
-    if (!cleanLine) return false;
-
-    // убираем комментарий, но не трогаем color=#...
-    if (cleanLine.includes('#') && !cleanLine.match(/=\s*#/)) {
-      cleanLine = cleanLine.split('#')[0].trim();
-    }
-
+    var cleanLine = stripAssetInlineComment(line);
     if (!cleanLine) return false;
 
     // Новый формат: id arg=value arg=value
@@ -891,6 +922,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
   // Парсинг ресурсов (bg, char, audio)
   function parseAssetLine(lineNumber, line, category, story) {
+    line = stripAssetInlineComment(line);
+    if (!line) return;
     console.log('[Loader] parseAssetLine:', line, 'category:', category);
     
     // Сначала пробуем новый формат:
@@ -911,15 +944,6 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    // Удаляем комментарии
-    // Удаляем комментарии, но сохраняем # если это цвет (после =)
-    if (line.includes('#') && !line.match(/=\s*#/)) {
-      line = line.split('#')[0].trim();
-    } else if (line.includes('#') && line.match(/=\s*#/)) {
-      // Это цвет - оставляем как есть
-      console.log('[Loader] Обнаружен цвет:', line);
-    }
-    
     console.log('[Loader] after comment removal:', line);
     
     if (!line) return;
