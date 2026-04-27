@@ -1614,6 +1614,19 @@ body {
   box-sizing: border-box !important;
 }
 
+.scene-bg-video-ids {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  margin: 4px auto 0 !important;
+  padding: 4px 6px !important;
+  text-align: center !important;
+  word-break: break-word !important;
+  color: #444 !important;
+  background-color: rgba(220,220,220,0.25) !important;
+  border-radius: 6px !important;
+  box-sizing: border-box !important;
+}
+
 .graphContainer .mermaid .node .scene-bg-thumbnail {
   display: block !important;
   height: auto !important;

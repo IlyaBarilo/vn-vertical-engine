@@ -115,11 +115,11 @@ const UI_I18N = {
     hintContinue: "Click to continue",
     statsTitle: "Script Statistics",
     fullGraphButton: "📊 Full Graph",
-    objectGraphButton: "🧩 Object Graph",
+    resourcesGraphButton: "📦 Resources graph",
     gamesButton: "🎮 Games",
     textButton: "📄 Text",
     fullGraphButtonTitle: "Show full graph",
-    objectGraphButtonTitle: "Show object graph",
+    resourcesGraphButtonTitle: "Compact resources graph: start scene only, same full asset blocks as the main graph",
     gamesButtonTitle: "Show games catalog",
     textButtonTitle: "Show text statistics",
     closeStats: "Close stats",
@@ -155,11 +155,11 @@ const UI_I18N = {
     hintContinue: "Нажмите, чтобы продолжить",
     statsTitle: "Статистика сценария",
     fullGraphButton: "📊 Граф полный",
-    objectGraphButton: "🧩 Граф объектов",
+    resourcesGraphButton: "📦 Граф ресурсов",
     gamesButton: "🎮 Игры",
     textButton: "📄 Текст",
     fullGraphButtonTitle: "Показать полный граф",
-    objectGraphButtonTitle: "Показать граф объектов",
+    resourcesGraphButtonTitle: "Компактный граф ресурсов: на схеме только стартовая сцена, блоки ассетов — полные, как на основном графе",
     gamesButtonTitle: "Показать каталог игр",
     textButtonTitle: "Показать текстовую статистику",
     closeStats: "Закрыть статистику",
@@ -247,12 +247,12 @@ function applyUiLanguage() {
     btnShowFullGraph.setAttribute("aria-pressed", window.currentStatsView === "graph-full" ? "true" : "false");
   }
 
-  var btnShowObjectGraph = document.getElementById("btnShowObjectGraph");
-  if (btnShowObjectGraph) {
-    btnShowObjectGraph.textContent = t("objectGraphButton");
-    btnShowObjectGraph.title = t("objectGraphButtonTitle");
-    btnShowObjectGraph.classList.toggle("is-active", window.currentStatsView === "graph-objects");
-    btnShowObjectGraph.setAttribute("aria-pressed", window.currentStatsView === "graph-objects" ? "true" : "false");
+  var btnShowResourcesGraph = document.getElementById("btnShowResourcesGraph");
+  if (btnShowResourcesGraph) {
+    btnShowResourcesGraph.textContent = t("resourcesGraphButton");
+    btnShowResourcesGraph.title = t("resourcesGraphButtonTitle");
+    btnShowResourcesGraph.classList.toggle("is-active", window.currentStatsView === "graph-resources");
+    btnShowResourcesGraph.setAttribute("aria-pressed", window.currentStatsView === "graph-resources" ? "true" : "false");
   }
 
   var btnShowGames = document.getElementById("btnShowGames");
@@ -596,7 +596,7 @@ profiler.mark('DOM has been loaded');
 
 // Элементы управления статистикой и графиком
 var btnShowFullGraph = document.getElementById("btnShowFullGraph");
-var btnShowObjectGraph = document.getElementById("btnShowObjectGraph");
+var btnShowResourcesGraph = document.getElementById("btnShowResourcesGraph");
 var btnShowGames = document.getElementById("btnShowGames");
 var btnShowText = document.getElementById("btnShowText");
 var graphContainer = document.getElementById("graphContainer");
@@ -623,7 +623,9 @@ var currentMermaidVariants = {
     code: "",
     useCompact: false
   },
-  intro: {
+  // Второй вариант графа: scope "resources" в buildMermaidGraph (раньше «intro»).
+  // Компактная диаграмма (одна сцена), блоки ассетов — полные, см. комментарий у buildMermaidGraph.
+  resources: {
     fullCode: "",
     compactCode: "",
     code: "",
@@ -639,9 +641,9 @@ if (btnShowFullGraph) {
   });
 }
 
-if (btnShowObjectGraph) {
-  btnShowObjectGraph.addEventListener("click", function() {
-    setStatsView("graph-objects");
+if (btnShowResourcesGraph) {
+  btnShowResourcesGraph.addEventListener("click", function() {
+    setStatsView("graph-resources");
   });
 }
 
@@ -685,8 +687,8 @@ if (btnRefreshGraph) {
 }
 
 function getMermaidVariantForStatsView(view) {
-  if (view === "graph-objects") {
-    return currentMermaidVariants.intro;
+  if (view === "graph-resources") {
+    return currentMermaidVariants.resources;
   }
 
   return currentMermaidVariants.full;
@@ -3834,10 +3836,10 @@ function renderStats() {
         scope: "full"
       });
 
-      // intro пока по умолчанию строим в полной версии,
-      // даже если full ушёл в compact
-      currentMermaidVariants.intro = buildMermaidVariant(STORY, reach.unreachable, {
-        scope: "intro",
+      // Граф ресурсов: всегда полная (не compact) версия, даже если full ушёл в compact —
+      // диаграмма маленькая, так читаемее блоки ассетов.
+      currentMermaidVariants.resources = buildMermaidVariant(STORY, reach.unreachable, {
+        scope: "resources",
         forceFull: true
       });
 
@@ -3856,10 +3858,10 @@ function renderStats() {
         text += "compact length: " + currentMermaidVariants.full.compactCode.length + "\n";
       }
 
-      text += "\n[intro]\n";
-      text += "full length: " + currentMermaidVariants.intro.fullCode.length + "\n";
-      if (currentMermaidVariants.intro.useCompact && currentMermaidVariants.intro.compactCode) {
-        text += "compact length: " + currentMermaidVariants.intro.compactCode.length + "\n";
+      text += "\n[resources]\n";
+      text += "full length: " + currentMermaidVariants.resources.fullCode.length + "\n";
+      if (currentMermaidVariants.resources.useCompact && currentMermaidVariants.resources.compactCode) {
+        text += "compact length: " + currentMermaidVariants.resources.compactCode.length + "\n";
       }
 
       text += "\n=== MERMAID GRAPH ===\n\n";
@@ -4577,8 +4579,15 @@ function findCyclesSCC(story) {
 }
 
 
-// engine.js - обновленная функция buildMermaidGraph
-
+// Сборка Mermaid-графа сценария.
+//
+// scope "full" — все сцены и переходы. На больших историях Mermaid может не отрисовать диаграмму;
+// тогда buildMermaidVariant переключается на compact (крупнее узлы, меньше деталей в метках).
+//
+// scope "resources" — компактный граф для обзора ресурсов (в коде и UI раньше назывался «intro»;
+// это НЕ «вступительная глава» сюжета). На диаграмме только стартовая сцена и минимум рёбер (Mermaid
+// не раздувается). Блоки characters / background / games — те же полные списки, что и при scope
+// "full" (only*Ids не задаются): пунктир к attachSceneId = meta.start лишь якорит узлы на старте.
 function buildMermaidGraph(story, unreachableList, options) {
   options = options || {};
 
@@ -4741,36 +4750,6 @@ function buildMermaidGraph(story, unreachableList, options) {
     nodesById[nodes[ni].id] = nodes[ni];
   }
 
-  var introCharIds = null;
-  var introGameIds = null;
-  var introBgIds = null;
-
-  if (scope === "intro") {
-    var introNode = nodesById[startId];
-
-    if (introNode) {
-      introCharIds = (introNode.characters || []).slice();
-      introGameIds = (introNode.games || []).slice();
-
-      var introBgMap = {};
-      introBgIds = [];
-      if (introNode.allBgImages && introNode.allBgImages.length) {
-        for (var ib = 0; ib < introNode.allBgImages.length; ib++) {
-          var bgItem = introNode.allBgImages[ib];
-          if (bgItem && bgItem.id && !introBgMap[bgItem.id]) {
-            introBgMap[bgItem.id] = true;
-            introBgIds.push(bgItem.id);
-          }
-        }
-      }
-    } else {
-      introCharIds = [];
-      introGameIds = [];
-      introBgIds = [];
-    }
-  }
-
-
 
 
   // Формируем Mermaid граф
@@ -4803,12 +4782,6 @@ function buildMermaidGraph(story, unreachableList, options) {
     backgroundCounts: graphStats.backgroundCounts || {}
   };
 
-  if (scope === "intro") {
-    sharedGraphOptions.onlyCharIds = introCharIds;
-    sharedGraphOptions.onlyBgIds = introBgIds;
-    sharedGraphOptions.onlyGameIds = introGameIds;
-  }
-
   var charGraphData = buildCharactersGraph(story, sharedGraphOptions);
   mermaid += charGraphData.mermaid;
   mermaid += "\n";
@@ -4822,7 +4795,7 @@ function buildMermaidGraph(story, unreachableList, options) {
   // Создаем узлы с многострочными метками
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
-    if (scope === "intro" && node.id !== startId) {
+    if (scope === "resources" && node.id !== startId) {
       continue;
     }
 
@@ -4839,24 +4812,44 @@ function buildMermaidGraph(story, unreachableList, options) {
 
     if(!compact) {
       if (node.allBgImages && node.allBgImages.length > 0) {
-        var sceneBgCountClass = getImgCountClass(node.allBgImages.length);
-
-        label += "<div class='scene-bg-images-container " + sceneBgCountClass + "'>";
-        
-        for (var b = 0; b < node.allBgImages.length; b++) {
-          var bg = node.allBgImages[b];
-          var imgSrc = getGraphImageSrc(bg.src);
-          var safeBgId =  escapeHtml(bg.id || "");
-
-          label += "<img src='" + imgSrc + "' " +
-                  "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
-                  "data-id='" + safeBgId + "' " +
-                  "data-index='" + b + "' " +
-                  "title='" + safeBgId + "' " +
-                  "alt='' /> ";
+        var sceneBgImagesOnly = [];
+        var sceneBgVideoIds = [];
+        for (var b0 = 0; b0 < node.allBgImages.length; b0++) {
+          var bg0 = node.allBgImages[b0];
+          if (bg0 && isVideoAssetPath(bg0.src)) {
+            if (bg0.id) sceneBgVideoIds.push(bg0.id);
+          } else {
+            sceneBgImagesOnly.push(bg0);
+          }
         }
-        
-        label += '</div>';
+
+        var sceneThumbCount = sceneBgImagesOnly.length + sceneBgVideoIds.length;
+        var sceneBgCountClass = getImgCountClass(sceneThumbCount || 1);
+
+        if (sceneBgImagesOnly.length > 0) {
+          label += "<div class='scene-bg-images-container " + sceneBgCountClass + "'>";
+
+          for (var b = 0; b < sceneBgImagesOnly.length; b++) {
+            var bg = sceneBgImagesOnly[b];
+            var imgSrc = getGraphImageSrc(bg.src);
+            var safeBgId = escapeHtml(bg.id || "");
+
+            label += "<img src='" + imgSrc + "' " +
+                    "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
+                    "data-id='" + safeBgId + "' " +
+                    "data-index='" + b + "' " +
+                    "title='" + safeBgId + "' " +
+                    "alt='' /> ";
+          }
+
+          label += '</div>';
+        }
+
+        if (sceneBgVideoIds.length > 0) {
+          label += "<div class='scene-bg-video-ids'>🎬 " +
+            sceneBgVideoIds.map(function (vid) { return escapeHtml(vid); }).join(", ") +
+            "</div>";
+        }
       }
     }
 
@@ -4931,7 +4924,7 @@ function buildMermaidGraph(story, unreachableList, options) {
   for (var e = 0; e < edges.length; e++) {
     var ed = edges[e];
 
-    if (scope === "intro") {
+    if (scope === "resources") {
       if (ed.from !== startId || ed.to !== startId) {
         continue;
       }
@@ -5082,7 +5075,8 @@ function buildCharactersGraph(story, options) {
     };
 }
 
-// Функция для создания элемента "Фоны" со всеми уникальными фонами
+// Функция для создания блока фонов: родитель background → bg_images (только картинки) и
+// bg_video (список id как у games), затем связь background → стартовая сцена.
 function buildBackgroundsGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -5092,7 +5086,7 @@ function buildBackgroundsGraph(story, options) {
   var backgrounds = story.assets.backgrounds || {};
   var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
   var scenes = story.scenes || [];
-  
+
   var allUniqueBgs = {};
 
   if (options.onlyBgIds && options.onlyBgIds.length) {
@@ -5103,8 +5097,6 @@ function buildBackgroundsGraph(story, options) {
       }
     }
   } else {
-    
-
     for (var s = 0; s < scenes.length; s++) {
       var scene = scenes[s];
       if (!scene || !scene.actions) continue;
@@ -5121,71 +5113,86 @@ function buildBackgroundsGraph(story, options) {
       }
     }
   }
-  
-  for (var s = 0; s < scenes.length; s++) {
-    var scene = scenes[s];
-    if (!scene || !scene.actions) continue;
-    
-    var actions = scene.actions;
-    for (var a = 0; a < actions.length; a++) {
-      var act = actions[a];
-      if (act.type === "bg" && act.src) {
-        var bgId = extractAliasId(act.src, "bg");
-        if (bgId && backgrounds[bgId]) {
-          allUniqueBgs[bgId] = getBackgroundAssetPrimaryPath(backgrounds[bgId]);
-        }
-      }
-    }
-  }
-    
-  // Формируем HTML для изображений фонов
+
   var bgIds = Object.keys(allUniqueBgs).sort();
 
-  // Подсчитываем количество фонов
-  var bgCount = bgIds.length;
+  var imageBgIds = [];
+  var videoBgIds = [];
+  for (var j = 0; j < bgIds.length; j++) {
+    var bid = bgIds[j];
+    var primary = allUniqueBgs[bid];
+    if (isVideoAssetPath(primary)) {
+      videoBgIds.push(bid);
+    } else {
+      imageBgIds.push(bid);
+    }
+  }
 
-  var bgImagesHtml = '';
+  var imgCount = imageBgIds.length;
+  var vidCount = videoBgIds.length;
+  var totalCount = imgCount + vidCount;
 
-  if (!compact) {
-    var bgCountClass = getImgCountClass(bgIds.length);
+  var bgImagesHtml = "";
+  if (!compact && imgCount > 0) {
+    var imgCountClass = getImgCountClass(imgCount);
+    bgImagesHtml = "<div class='bgl " + imgCountClass + "'>";
 
-    var bgImagesHtml = "<div class='bgl " + bgCountClass + "'>";
-
-
-    for (var i = 0; i < bgIds.length; i++) {
-      var bgId = bgIds[i];
-      var imgSrc = getGraphImageSrc(allUniqueBgs[bgId]);
-      var safeBgId = escapeHtml(bgId);
-      var bgUseCount = backgroundCounts[bgId] || 0;
+    for (var i = 0; i < imageBgIds.length; i++) {
+      var imgBgId = imageBgIds[i];
+      var imgSrc = getGraphImageSrc(allUniqueBgs[imgBgId]);
+      var safeImgBgId = escapeHtml(imgBgId);
+      var bgUseCount = backgroundCounts[imgBgId] || 0;
 
       if (!imgSrc) continue;
 
-      bgImagesHtml += "<span class='bgw " + bgCountClass + "'>" +
-                  "<img src='" + imgSrc + "' " +
-                  "class='bgi " + bgCountClass + "' " +
-                  "title='" + safeBgId + "' alt='' />" +
-                  "<b class='bgc'>" + bgUseCount + "</b>" +
-                  "</span> ";
+      bgImagesHtml += "<span class='bgw " + imgCountClass + "'>" +
+        "<img src='" + imgSrc + "' " +
+        "class='bgi " + imgCountClass + "' " +
+        "title='" + safeImgBgId + "' alt='' />" +
+        "<b class='bgc'>" + bgUseCount + "</b>" +
+        "</span> ";
     }
-      
+
     bgImagesHtml += "</div>";
   }
 
-  // Формируем метку элемента
-  var label = '<b>🖼️ Backgrounds (' + bgCount + ')</b>';
-  if (!compact) {
-    label += '<br/>' + bgImagesHtml;
+  var videoListClass = getImgCountClass(vidCount || 1);
+  var videoListHtml = "<div class='games-list-box " + videoListClass + "'>";
+  if (vidCount > 0) {
+    for (var v = 0; v < videoBgIds.length; v++) {
+      var vidId = videoBgIds[v];
+      videoListHtml += "<span class='game-list-row'>" + escapeHtml(vidId) + "</span>";
+    }
+  } else {
+    videoListHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
   }
-  
-  
-  // Добавляем узел "Фоны" с серым фоном
-  mermaid += '    backgrounds["' + label + '"]\n';
-  mermaid += '    backgrounds:::backgrounds-group\n';  // Исправлено: используем :::
+  videoListHtml += "</div>";
 
-  // Добавляем пунктирную связь с первой главой
-  mermaid += '\n    %% Connection between backgrounds and the first chapter\n';
-  mermaid += '    backgrounds -.-> ' + attachTo + ';\n';
-  
+  var parentLabel = '<b>📷 background (' + totalCount + ')</b>';
+  var imagesLabel = '<b>🖼️ bg-images (' + imgCount + ')</b>';
+  var videoLabel = '<b>🎬 bg-video (' + vidCount + ')</b>';
+
+  if (!compact) {
+    if (bgImagesHtml) {
+      imagesLabel += "<br/>" + bgImagesHtml;
+    }
+    videoLabel += "<br/>" + videoListHtml;
+  }
+
+  mermaid += '    background["' + parentLabel + '"]\n';
+  mermaid += '    background:::backgrounds-group\n';
+
+  mermaid += '    bg_images["' + imagesLabel + '"]\n';
+  mermaid += '    bg_images:::backgrounds-group\n';
+
+  mermaid += '    bg_video["' + videoLabel + '"]\n';
+  mermaid += '    bg_video:::games-group\n';
+
+  mermaid += "\n    %% Background group: images + video → background → start scene\n";
+  mermaid += "    bg_images -.-> background;\n";
+  mermaid += "    bg_video -.-> background;\n";
+  mermaid += "    background -.-> " + attachTo + ";\n";
+
   return mermaid;
 }
 
@@ -5989,12 +5996,12 @@ var panzoomState = {
 
 var savedPanzoomByView = {
   "graph-full": null,
-  "graph-objects": null
+  "graph-resources": null
 };
 
 function getPanzoomStateKeyForView(view) {
   if (view === "graph-full" || view === "full") return "graph-full";
-  if (view === "graph-objects" || view === "intro") return "graph-intro";
+  if (view === "graph-resources") return "graph-resources";
   return null;
 }
 
@@ -6366,7 +6373,7 @@ function initPanzoom() {
   resetPanzoom();
 }
 
-
+// options.scope: "full" | "resources" (см. buildMermaidGraph). forceFull — не переходить в compact.
 function buildMermaidVariant(story, unreachableList, options) {
   options = options || {};
 
