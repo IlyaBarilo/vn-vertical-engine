@@ -3496,6 +3496,23 @@ function renderStats() {
       } else {
         text += "✅ All files found\n\n";
       }
+
+      var skippedNetworkHtml = fileStats.files.filter(function (f) {
+        return f && f.skippedCheck && f.category === "game";
+      });
+      if (skippedNetworkHtml.length > 0) {
+        text +=
+          "ℹ️ HTML games: existence on the device/server is not checked in the " +
+          "browser (no network probe). Declared paths:\n\n";
+        skippedNetworkHtml.forEach(function (item, index) {
+          text += (index + 1) + ". " + item.path + "\n";
+          text += "   Used in:\n";
+          (item.refs || []).forEach(function (ref) {
+            text += "   - " + ref + "\n";
+          });
+          text += "\n";
+        });
+      }
       
       // Ошибки размеров изображений
       if (fileStats.sizeErrors.length > 0) {
@@ -4006,13 +4023,12 @@ function collectEnvironmentInfo() {
 }
 
 
-// Проверка файлов через fetch с HEAD запросом (работает в file:// ограниченно)
-// Проверка файлов на соответствие требованиям
+// Проверка файлов: изображения/видео/аудио через теги (без fetch). HTML-игры в браузере
+// не проверяем по сети (fetch/HEAD и connect-src, смешанный контент и т.д.).
 function checkAssetsFiles() {
   return new Promise((resolve) => {
-    const IMAGE_CHECK_TIMEOUT_MS = 30000;
-    const AUDIO_CHECK_TIMEOUT_MS = 30000;
-    const GAME_CHECK_TIMEOUT_MS = 15000;
+    const IMAGE_CHECK_TIMEOUT_MS = 5000;
+    const AUDIO_CHECK_TIMEOUT_MS = 5000;
     const result = {
       missing: [],
       sizeErrors: [], // файлы с неправильными размерами
@@ -4366,68 +4382,28 @@ function checkAssetsFiles() {
           audio.src = path;
         
         } else if (path.match(/\.(html|htm)$/i)) {
-          // Проверка HTML-файла игры
           const firstFile = pathGroups[path][0];
-          const isFileProtocol = window.location.protocol === 'file:';
-
-          if (isFileProtocol) {
+          if (window.location.protocol === "file:") {
             console.warn("[ASSET CHECK][GAME] skip verification on file://", path);
-
-            fileResults[path] = {
-              success: true,
-              data: {
-                path: path,
-                category: firstFile.category,
-                refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`),
-                skippedCheck: true
-              }
-            };
-
-            loadedCount++;
-            checkComplete();
           } else {
-            var controller = null;
-            var timeoutId = null;
-            var requestInit = { method: 'HEAD' };
-            if (typeof AbortController !== "undefined") {
-              controller = new AbortController();
-              requestInit.signal = controller.signal;
-              timeoutId = setTimeout(function() {
-                if (controller) controller.abort();
-              }, GAME_CHECK_TIMEOUT_MS);
-            }
-
-            fetch(path, requestInit)
-              .then(function(response) {
-                if (timeoutId) {
-                  clearTimeout(timeoutId);
-                  timeoutId = null;
-                }
-                if (!response.ok) {
-                  throw new Error('HTTP ' + response.status);
-                }
-
-                fileResults[path] = {
-                  success: true,
-                  data: {
-                    path: path,
-                    category: firstFile.category,
-                    refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
-                  }
-                };
-
-                loadedCount++;
-                checkComplete();
-              })
-              .catch(function() {
-                if (timeoutId) {
-                  clearTimeout(timeoutId);
-                  timeoutId = null;
-                }
-                errorCount++;
-                checkComplete();
-              });
+            console.warn(
+              "[ASSET CHECK][GAME] skip HTML network verification in browser (no fetch)",
+              path
+            );
           }
+
+          fileResults[path] = {
+            success: true,
+            data: {
+              path: path,
+              category: firstFile.category,
+              refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`),
+              skippedCheck: true
+            }
+          };
+
+          loadedCount++;
+          checkComplete();
         } else {
           console.warn("[ASSET CHECK] unsupported file type:", path);
           errorCount++;
