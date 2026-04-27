@@ -521,6 +521,7 @@ var elStatsBody = document.getElementById("statsBody");
 // Новые DOM-элементы
 var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
+var blurFrameCaptureSeq = 0;
 
 [elBg, elBgVideo, elChar, elBlurBgImage].forEach(function (el) {
   if (!el) return;
@@ -1935,6 +1936,7 @@ function setBackground(src, fallbackSrc) {
 
     if (elBgVideo) {
       elBgVideo.onerror = null;
+      elBgVideo.onloadeddata = null;
       elBgVideo.onerror = function() {
         var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
         console.warn('[VIDEO] background load error:', badVideoSrc);
@@ -1956,6 +1958,11 @@ function setBackground(src, fallbackSrc) {
         elBgVideo.load();
         elBgVideo.classList.add("hidden");
       };
+      elBgVideo.onloadeddata = function() {
+        var currentVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
+        if (currentVideoSrc !== normalizedSrc) return;
+        updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
+      };
       elBgVideo.classList.remove("hidden");
       elBgVideo.src = normalizedSrc;
       elBgVideo.muted = true;
@@ -1970,7 +1977,8 @@ function setBackground(src, fallbackSrc) {
     }
 
     if (typeof updateBlurBackground === 'function') {
-      updateBlurBackground("");
+      // Сразу показываем fallback для blur (если задан), затем заменяем первым кадром видео.
+      updateBlurBackground(normalizedFallbackSrc || "");
     }
     return;
   }
@@ -1979,6 +1987,8 @@ function setBackground(src, fallbackSrc) {
     try {
       elBgVideo.pause();
     } catch (e) {}
+    elBgVideo.onloadeddata = null;
+    elBgVideo.onerror = null;
     elBgVideo.removeAttribute('src');
     elBgVideo.load();
     elBgVideo.classList.add("hidden");
@@ -5959,6 +5969,48 @@ function updateBlurBackground(src) {
   } else {
     console.log('[Engine] src пустой, скрываем размытый фон');
     elBlurBgLayer.classList.add("hidden");
+  }
+}
+
+function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
+  if (!elBlurBgLayer || !elBlurBgImage) return;
+  if (!STORY.meta || !STORY.meta.blurBackground) return;
+
+  var captureSeq = ++blurFrameCaptureSeq;
+  var fallback = normalizeAssetUrl(fallbackSrc || "");
+
+  if (fallback) {
+    updateBlurBackground(fallback);
+  }
+
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return;
+  }
+
+  try {
+    var maxDim = 960;
+    var srcW = videoEl.videoWidth;
+    var srcH = videoEl.videoHeight;
+    var scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+    var targetW = Math.max(1, Math.round(srcW * scale));
+    var targetH = Math.max(1, Math.round(srcH * scale));
+
+    var canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(videoEl, 0, 0, targetW, targetH);
+    var frameDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    if (!frameDataUrl) return;
+
+    // Защита от гонки: применяем только последний захват кадра.
+    if (captureSeq !== blurFrameCaptureSeq) return;
+    updateBlurBackground(frameDataUrl);
+  } catch (e) {
+    console.warn('[VIDEO] failed to capture first frame for blur:', e);
   }
 }
 
