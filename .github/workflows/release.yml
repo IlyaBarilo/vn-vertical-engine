@@ -109,7 +109,9 @@ jobs:
               -iname "*.webp" -o \
               -iname "*.gif" -o \
               -iname "*.svg" -o \
-              -iname "*.avif" \
+              -iname "*.avif" -o \
+              -iname "*.mp4" -o \
+              -iname "*.mov" \
             \) -exec cp {} "build/$APP_NAME/assets/backgrounds/" \;
           fi
 
@@ -121,7 +123,9 @@ jobs:
               -iname "*.webp" -o \
               -iname "*.gif" -o \
               -iname "*.svg" -o \
-              -iname "*.avif" \
+              -iname "*.avif" -o \
+              -iname "*.mp4" -o \
+              -iname "*.mov" \
             \) -exec cp {} "build/$APP_NAME/assets/characters/" \;
           fi
 
@@ -144,7 +148,9 @@ jobs:
               -iname "*.webp" -o \
               -iname "*.gif" -o \
               -iname "*.svg" -o \
-              -iname "*.avif" \
+              -iname "*.avif" -o \
+              -iname "*.mp4" -o \
+              -iname "*.mov" \
             \) -exec cp {} "build/$APP_NAME/assets/games/" \;
           fi
 
