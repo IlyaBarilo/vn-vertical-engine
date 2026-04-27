@@ -419,6 +419,7 @@ const MAX_NOVEL_ASPECT_H = 16;
 var elTitle = document.getElementById("title");
 var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
+var elBgVideo = document.getElementById("bgVideoLayer");
 var elChar = document.getElementById("charLayer");
 
 // Жёстко скрываем персонажа на старте, чтобы не было первого "всплеска" когда появляется большого размера
@@ -521,7 +522,7 @@ var elStatsBody = document.getElementById("statsBody");
 var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
 
-[elBg, elChar, elBlurBgImage].forEach(function (el) {
+[elBg, elBgVideo, elChar, elBlurBgImage].forEach(function (el) {
   if (!el) return;
   el.setAttribute("draggable", "false");
   el.addEventListener("dragstart", function (e) {
@@ -988,6 +989,25 @@ function normalizeAssetUrl(url) {
   } catch (e) {
     return String(url);
   }
+}
+
+function isVideoAssetPath(path) {
+  return /\.(mp4|webm)$/i.test(String(path || ""));
+}
+
+function getBackgroundAssetPrimaryPath(assetEntry) {
+  if (!assetEntry) return "";
+  if (typeof assetEntry === "string") return assetEntry;
+  if (typeof assetEntry === "object" && typeof assetEntry.file === "string") {
+    return assetEntry.file;
+  }
+  return "";
+}
+
+function getBackgroundAssetFallbackPath(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return "";
+  if (typeof assetEntry.fallback === "string") return assetEntry.fallback;
+  return "";
 }
 
 function getGraphImageSrc(src) {
@@ -1490,7 +1510,8 @@ function executeAction(action) {
 
   switch (action.type) {
     case "bg":
-      setBackground(resolveAsset(action.src));
+      var bgAssetInfo = resolveBackgroundAsset(action.src);
+      setBackground(bgAssetInfo.file, bgAssetInfo.fallback);
       return false;
 
     case "char":
@@ -1889,10 +1910,12 @@ function gotoScene(sceneId) {
 //                   ВИЗУАЛ
 // =========================================================
 
-function setBackground(src) {
+function setBackground(src, fallbackSrc) {
   if (!src) return;
   
   var normalizedSrc = normalizeAssetUrl(src);
+  var normalizedFallbackSrc = normalizeAssetUrl(fallbackSrc || "");
+  var isVideo = isVideoAssetPath(normalizedSrc);
 
   if (failedAssets.images[normalizedSrc]) {
     if (!failedAssets.images[normalizedSrc + "_logged"]) {
@@ -1902,27 +1925,87 @@ function setBackground(src) {
   return;
 }
 
-  elBg.onerror = null;
-
-  elBg.onerror = function() {
-    var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
-    badSrc = normalizeAssetUrl(badSrc);
-
-    console.warn('[IMG] background load error:', badSrc);
-
-    if (badSrc) {
-      failedAssets.images[badSrc] = true;
+  if (isVideo) {
+    if (elBg) {
+      elBg.onerror = null;
+      elBg.removeAttribute('src');
+      elBg.src = "";
+      elBg.classList.add("hidden");
     }
 
+    if (elBgVideo) {
+      elBgVideo.onerror = null;
+      elBgVideo.onerror = function() {
+        var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
+        console.warn('[VIDEO] background load error:', badVideoSrc);
+
+        if (badVideoSrc) {
+          failedAssets.images[badVideoSrc] = true;
+        }
+
+        if (normalizedFallbackSrc) {
+          console.warn('[VIDEO] fallback image used:', normalizedFallbackSrc);
+          setBackground(normalizedFallbackSrc, "");
+          return;
+        }
+
+        try {
+          elBgVideo.pause();
+        } catch (e) {}
+        elBgVideo.removeAttribute('src');
+        elBgVideo.load();
+        elBgVideo.classList.add("hidden");
+      };
+      elBgVideo.classList.remove("hidden");
+      elBgVideo.src = normalizedSrc;
+      elBgVideo.muted = true;
+      elBgVideo.loop = true;
+      elBgVideo.playsInline = true;
+      var playPromise = elBgVideo.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(function (e) {
+          console.warn('[VIDEO] background autoplay blocked or failed:', normalizedSrc, e);
+        });
+      }
+    }
+
+    if (typeof updateBlurBackground === 'function') {
+      updateBlurBackground("");
+    }
+    return;
+  }
+
+  if (elBgVideo) {
+    try {
+      elBgVideo.pause();
+    } catch (e) {}
+    elBgVideo.removeAttribute('src');
+    elBgVideo.load();
+    elBgVideo.classList.add("hidden");
+  }
+
+  if (elBg) {
+    elBg.classList.remove("hidden");
     elBg.onerror = null;
-    elBg.removeAttribute('src');
 
-    // ДОБАВИТЬ:
-    elBg.src = ""; // ← сброс окончательный
-  };
+    elBg.onerror = function() {
+      var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
+      badSrc = normalizeAssetUrl(badSrc);
 
-  elBg.src = normalizedSrc;
-  
+      console.warn('[IMG] background load error:', badSrc);
+
+      if (badSrc) {
+        failedAssets.images[badSrc] = true;
+      }
+
+      elBg.onerror = null;
+      elBg.removeAttribute('src');
+      elBg.src = "";
+    };
+
+    elBg.src = normalizedSrc;
+  }
+
   // Обновляем размытый фон тем же изображением
   if (typeof updateBlurBackground === 'function') {
     updateBlurBackground(normalizedSrc);
@@ -2877,15 +2960,16 @@ function resolveAsset(ref, charId, emotion) {
     
     const result = STORY.assets.backgrounds[key];
     console.log('[Engine resolveAsset] Found background:', result);
+    var bgPath = getBackgroundAssetPrimaryPath(result);
 
-    if (result) {
-      var normalizedBg = normalizeAssetUrl(result);
+    if (bgPath) {
+      var normalizedBg = normalizeAssetUrl(bgPath);
       if (failedAssets.images[normalizedBg]) {
         console.log('[Engine resolveAsset] Background marked as failed:', normalizedBg);
         return "";
       }
     }
-    return result || "";
+    return bgPath || "";
   }
   
   if (group === "audio") {
@@ -2901,6 +2985,22 @@ function resolveAsset(ref, charId, emotion) {
   
   console.log('[Engine resolveAsset] No match found for group:', group);
   return "";
+}
+
+function resolveBackgroundAsset(ref) {
+  var file = resolveAsset(ref);
+  var fallback = "";
+
+  if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
+    var bgId = ref.substring(4);
+    var bgEntry = STORY.assets.backgrounds[bgId];
+    fallback = getBackgroundAssetFallbackPath(bgEntry);
+  }
+
+  return {
+    file: file,
+    fallback: fallback
+  };
 }
 
 
@@ -3912,7 +4012,15 @@ function checkAssetsFiles() {
     // Фоны
     if (STORY.assets.backgrounds) {
       Object.entries(STORY.assets.backgrounds).forEach(([id, path]) => {
-        allFiles.push({ id, path, type: 'bg', category: 'background', ref: id });
+        var primaryPath = getBackgroundAssetPrimaryPath(path);
+        var fallbackPath = getBackgroundAssetFallbackPath(path);
+
+        if (primaryPath) {
+          allFiles.push({ id, path: primaryPath, type: 'bg', category: 'background', ref: id });
+        }
+        if (fallbackPath) {
+          allFiles.push({ id: id + "_fallback", path: fallbackPath, type: 'bg', category: 'background', ref: id + " (fallback)" });
+        }
       });
     }
     
@@ -4037,6 +4145,7 @@ function checkAssetsFiles() {
             console.log("[ASSET CHECK] checking path:", path, {
               group: pathGroups[path],
               isImage: /\.(jpg|jpeg|png|gif|webp)$/i.test(path),
+              isVideo: /\.(mp4|webm)$/i.test(path),
               isAudio: /\.(mp3|wav|ogg|flac|m4a)$/i.test(path),
               isGameHtml: /\.(html|htm)$/i.test(path)
             });
@@ -4146,6 +4255,52 @@ function checkAssetsFiles() {
           
           // Используем кэш браузера, чтобы не провоцировать ложные timeout на медленных сетях.
           img.src = path;
+        } else if (path.match(/\.(mp4|webm)$/i)) {
+          // Проверка видеофайла
+          const video = document.createElement('video');
+          let isResolved = false;
+
+          function onVideoLoaded() {
+            if (isResolved) return;
+            isResolved = true;
+            clearTimeout(timeout);
+
+            fileResults[path] = {
+              success: true,
+              data: {
+                path: path,
+                width: video.videoWidth || 0,
+                height: video.videoHeight || 0,
+                category: 'bg',
+                duration: Math.round(video.duration || 0),
+                refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
+              }
+            };
+
+            loadedCount++;
+            checkComplete();
+          }
+
+          const timeout = setTimeout(() => {
+            if (!isResolved) {
+              isResolved = true;
+              errorCount++;
+              checkComplete();
+            }
+          }, IMAGE_CHECK_TIMEOUT_MS);
+
+          video.onloadedmetadata = onVideoLoaded;
+          video.oncanplay = onVideoLoaded;
+          video.onerror = function() {
+            if (isResolved) return;
+            isResolved = true;
+            clearTimeout(timeout);
+            errorCount++;
+            checkComplete();
+          };
+
+          video.preload = 'metadata';
+          video.src = path;
         } else if (path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) {
           // Проверка аудиофайла
           const audio = new Audio();
@@ -4554,7 +4709,7 @@ function buildMermaidGraph(story, unreachableList, options) {
           // Получаем реальный путь к изображению
           var bgSrc = null;
           if (story.assets && story.assets.backgrounds) {
-            bgSrc = story.assets.backgrounds[bgId];
+            bgSrc = getBackgroundAssetPrimaryPath(story.assets.backgrounds[bgId]);
           }
           
           // ИСПРАВЛЕНО: проверяем, есть ли уже такой фон в массиве
@@ -4991,7 +5146,7 @@ function buildBackgroundsGraph(story, options) {
     for (var ob = 0; ob < options.onlyBgIds.length; ob++) {
       var onlyBgId = options.onlyBgIds[ob];
       if (onlyBgId && backgrounds[onlyBgId]) {
-        allUniqueBgs[onlyBgId] = backgrounds[onlyBgId];
+        allUniqueBgs[onlyBgId] = getBackgroundAssetPrimaryPath(backgrounds[onlyBgId]);
       }
     }
   } else {
@@ -5007,7 +5162,7 @@ function buildBackgroundsGraph(story, options) {
         if (act.type === "bg" && act.src) {
           var bgId = extractAliasId(act.src, "bg");
           if (bgId && backgrounds[bgId]) {
-            allUniqueBgs[bgId] = backgrounds[bgId];
+            allUniqueBgs[bgId] = getBackgroundAssetPrimaryPath(backgrounds[bgId]);
           }
         }
       }
@@ -5024,7 +5179,7 @@ function buildBackgroundsGraph(story, options) {
       if (act.type === "bg" && act.src) {
         var bgId = extractAliasId(act.src, "bg");
         if (bgId && backgrounds[bgId]) {
-          allUniqueBgs[bgId] = backgrounds[bgId];
+          allUniqueBgs[bgId] = getBackgroundAssetPrimaryPath(backgrounds[bgId]);
         }
       }
     }

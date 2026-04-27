@@ -814,6 +814,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       if (key === 'image' || key === 'src') key = 'file';
       if (key === 'emo') key = 'emotion';
       if (key === 'coverimage' || key === 'thumbnail' || key === 'logo') key = 'cover';
+      if (key === 'poster' || key === 'fallbackimage') key = 'fallback';
 
       args[key] = value;
     }
@@ -828,7 +829,14 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         return true;
       }
 
-      story.assets[category][assetId] = args.file;
+      if (category === 'backgrounds' && args.fallback) {
+        story.assets.backgrounds[assetId] = {
+          file: args.file,
+          fallback: args.fallback
+        };
+      } else {
+        story.assets[category][assetId] = args.file;
+      }
       return true;
     }
 

@@ -24,6 +24,7 @@ bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
 bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
 bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
 bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
+bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg
 bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
@@ -196,11 +197,15 @@ end
 
 scene scBranchLab01
 
-bg bgBranchLab
+# Применение фона с видео
+bg bgBranchLabVideo
 hide all
 
 "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
 "Здесь можно не только запускать расчёты, но и проверять, как система ведёт себя в интерактивных сценариях."
+
+# Применение фона с изображением, чтобы не отвлекало от персонажа
+bg bgBranchLab
 
 show anna neutral
 anna: "Похоже, лаборатория сегодня свободна. Чем займёмся?"

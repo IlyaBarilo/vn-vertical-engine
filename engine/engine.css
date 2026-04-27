@@ -1852,6 +1852,7 @@ body {
 .stage,
 .novel-window,
 .bg,
+#bgVideoLayer,
 .char,
 .blur-bg-layer,
 .blur-bg-image,
@@ -1864,6 +1865,13 @@ img,
 .bg,
 .char,
 .blur-bg-image {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+video {
   -webkit-user-drag: none !important;
   user-drag: none !important;
   -webkit-user-select: none !important;
