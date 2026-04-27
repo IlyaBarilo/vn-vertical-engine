@@ -3401,7 +3401,7 @@ function renderStats() {
 
   // Добавляем информацию профилера
   var profilerInfo = profiler.getReport();
-  
+
   // Асинхронно проверяем файлы
   checkAssetsFiles()
   .then(function(fileStats) {
@@ -3497,14 +3497,14 @@ function renderStats() {
         text += "✅ All files found\n\n";
       }
 
-      var skippedNetworkHtml = fileStats.files.filter(function (f) {
-        return f && f.skippedCheck && f.category === "game";
+      var skippedNetworkAssets = fileStats.files.filter(function (f) {
+        return f && f.skippedCheck;
       });
-      if (skippedNetworkHtml.length > 0) {
+      if (skippedNetworkAssets.length > 0) {
         text +=
-          "ℹ️ HTML games: existence on the device/server is not checked in the " +
-          "browser (no network probe). Declared paths:\n\n";
-        skippedNetworkHtml.forEach(function (item, index) {
+          "ℹ️ Network verification skipped for these assets " +
+          "(HTML games and video files are not probed in the browser):\n\n";
+        skippedNetworkAssets.forEach(function (item, index) {
           text += (index + 1) + ". " + item.path + "\n";
           text += "   Used in:\n";
           (item.refs || []).forEach(function (ref) {
@@ -4023,50 +4023,44 @@ function collectEnvironmentInfo() {
 }
 
 
-// Проверка файлов: изображения/видео/аудио через теги (без fetch). HTML-игры в браузере
-// не проверяем по сети (fetch/HEAD и connect-src, смешанный контент и т.д.).
+// Проверка файлов: изображения и аудио через теги <Image>/<Audio>.
+// Видео и HTML-игры по сети не проверяем (см. ниже), чтобы не упираться в
+// тяжёлый <video> preload и в CSP/смешанный контент при fetch.
 function checkAssetsFiles() {
   return new Promise((resolve) => {
-    const IMAGE_CHECK_TIMEOUT_MS = 5000;
-    const AUDIO_CHECK_TIMEOUT_MS = 5000;
     const result = {
       missing: [],
       sizeErrors: [], // файлы с неправильными размерами
       files: []
     };
-    
+
     if (!STORY.assets) {
       resolve(result);
       return;
     }
-    
+
     // Собираем все файлы из ассетов
     const allFiles = [];
-    
+
     // Фоны
     if (STORY.assets.backgrounds) {
       Object.entries(STORY.assets.backgrounds).forEach(([id, path]) => {
         var primaryPath = getBackgroundAssetPrimaryPath(path);
-        var fallbackPath = getBackgroundAssetFallbackPath(path);
-
         if (primaryPath) {
           allFiles.push({ id, path: primaryPath, type: 'bg', category: 'background', ref: id });
         }
-        if (fallbackPath) {
-          allFiles.push({ id: id + "_fallback", path: fallbackPath, type: 'bg', category: 'background', ref: id + " (fallback)" });
-        }
       });
     }
-    
+
     // Персонажи (изображения)
     if (STORY.assets.characters) {
       Object.entries(STORY.assets.characters).forEach(([charId, char]) => {
         if (char.images) {
           Object.entries(char.images).forEach(([emotion, path]) => {
-            allFiles.push({ 
-              id: `${charId}_${emotion}`, 
-              path, 
-              type: 'char', 
+            allFiles.push({
+              id: `${charId}_${emotion}`,
+              path,
+              type: 'char',
               category: 'character',
               ref: `${charId} (${emotion})`,
               charId: charId,
@@ -4076,7 +4070,7 @@ function checkAssetsFiles() {
         }
       });
     }
-      
+
     // Аудио
     if (STORY.assets.audio) {
       Object.entries(STORY.assets.audio).forEach(([id, path]) => {
@@ -4098,19 +4092,14 @@ function checkAssetsFiles() {
       });
     }
 
-
-
     // Игры
     if (STORY.assets.games) {
       Object.entries(STORY.assets.games).forEach(([id, game]) => {
         var gamePath = "";
 
-        // Новый формат: объект { file, title, description, cover }
         if (game && typeof game === "object") {
           gamePath = typeof game.file === "string" ? game.file.trim() : "";
-        }
-        // На всякий случай поддержка старого формата, если где-то остался
-        else if (typeof game === "string") {
+        } else if (typeof game === "string") {
           gamePath = game.trim();
         }
 
@@ -4135,14 +4124,11 @@ function checkAssetsFiles() {
     console.log("[ASSET CHECK] STORY.assets.games =", STORY.assets.games);
     console.log("[ASSET CHECK] allFiles after games =", allFiles);
 
-
-
-
     if (allFiles.length === 0) {
       resolve(result);
       return;
     }
-    
+
     // Группируем по пути
     const pathGroups = {};
     allFiles.forEach(file => {
@@ -4151,7 +4137,7 @@ function checkAssetsFiles() {
       }
       pathGroups[file.path].push(file);
     });
-    
+
     console.log("[ASSET CHECK] pathGroups =", pathGroups);
 
     const uniquePaths = Object.keys(pathGroups);
@@ -4161,9 +4147,9 @@ function checkAssetsFiles() {
     let loadedCount = 0;
     let errorCount = 0;
     const totalPaths = uniquePaths.length;
-    
+
     const fileResults = {};
-    
+
     function checkComplete() {
       console.log("[ASSET CHECK] progress", {
         totalPaths: totalPaths,
@@ -4186,18 +4172,18 @@ function checkAssetsFiles() {
 
             if (fileResults[path] && fileResults[path].success) {
               result.files.push(fileResults[path].data);
-              
+
               // Проверяем соответствие требованиям
               const fileData = fileResults[path].data;
               if (fileData.width && fileData.height) {
                 let required = { width: 0, height: 0 };
-                
+
                 if (fileData.category === 'bg') {
                   required = { width: 1080, height: 1920 };
                 } else if (fileData.category === 'char') {
                   required = { width: 500, height: 1200 };
                 }
-                
+
                 if (required.width > 0 && required.height > 0) {
                   const errors = [];
                   if (fileData.width < required.width) {
@@ -4206,7 +4192,7 @@ function checkAssetsFiles() {
                   if (fileData.height < required.height) {
                     errors.push(`height ${fileData.height}px < ${required.height}px`);
                   }
-                  
+
                   if (errors.length > 0) {
                     result.sizeErrors.push({
                       path: path,
@@ -4226,7 +4212,7 @@ function checkAssetsFiles() {
               });
             }
           });
-          
+
           console.log("[ASSET CHECK] complete", {
             totalPaths: totalPaths,
             loadedCount: loadedCount,
@@ -4238,31 +4224,30 @@ function checkAssetsFiles() {
           resolve(result);
         }
       }
-      
-      // Проверяем каждый уникальный файл через Image объект
+
+      // Проверяем каждый уникальный файл
       uniquePaths.forEach(path => {
         if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
           // Проверка изображения
           const img = new Image();
           let isResolved = false;
-          
+
           const timeout = setTimeout(() => {
               if (!isResolved) {
                   isResolved = true;
                   errorCount++;
                   checkComplete();
               }
-          }, IMAGE_CHECK_TIMEOUT_MS);
-          
+          }, 5000);
+
           img.onload = function() {
               if (isResolved) return;
               isResolved = true;
               clearTimeout(timeout);
-              
-              // Определяем категорию по первому файлу в группе
+
               const firstFile = pathGroups[path][0];
               const category = firstFile.type; // 'bg' или 'char'
-              
+
               fileResults[path] = {
                   success: true,
                   data: {
@@ -4273,47 +4258,40 @@ function checkAssetsFiles() {
                       refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
                   }
               };
-              
+
               loadedCount++;
               checkComplete();
           };
-          
+
           img.onerror = function() {
               if (isResolved) return;
               isResolved = true;
               clearTimeout(timeout);
-              
+
               errorCount++;
               checkComplete();
           };
-          
-          // Используем кэш браузера, чтобы не провоцировать ложные timeout на медленных сетях.
-          img.src = path;
+
+          img.src = path + '?' + Date.now(); // timestamp чтобы избежать кэша
         } else if (path.match(/\.(mp4|webm)$/i)) {
-          // Проверка видеофайла
-          const video = document.createElement('video');
+          // Видео по сети не проверяем — слишком тяжело и часто даёт ложные таймауты.
+          const firstFile = pathGroups[path][0];
+          fileResults[path] = {
+            success: true,
+            data: {
+              path: path,
+              category: firstFile.category,
+              refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`),
+              skippedCheck: true
+            }
+          };
+
+          loadedCount++;
+          checkComplete();
+        } else if (path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) {
+          // Проверка аудиофайла
+          const audio = new Audio();
           let isResolved = false;
-
-          function onVideoLoaded() {
-            if (isResolved) return;
-            isResolved = true;
-            clearTimeout(timeout);
-
-            fileResults[path] = {
-              success: true,
-              data: {
-                path: path,
-                width: video.videoWidth || 0,
-                height: video.videoHeight || 0,
-                category: 'bg',
-                duration: Math.round(video.duration || 0),
-                refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
-              }
-            };
-
-            loadedCount++;
-            checkComplete();
-          }
 
           const timeout = setTimeout(() => {
             if (!isResolved) {
@@ -4321,29 +4299,13 @@ function checkAssetsFiles() {
               errorCount++;
               checkComplete();
             }
-          }, IMAGE_CHECK_TIMEOUT_MS);
+          }, 5000);
 
-          video.onloadedmetadata = onVideoLoaded;
-          video.oncanplay = onVideoLoaded;
-          video.onerror = function() {
+          audio.oncanplaythrough = function() {
             if (isResolved) return;
             isResolved = true;
             clearTimeout(timeout);
-            errorCount++;
-            checkComplete();
-          };
 
-          video.preload = 'metadata';
-          video.src = path;
-        } else if (path.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) {
-          // Проверка аудиофайла
-          const audio = new Audio();
-          let isResolved = false;
-          function onAudioLoaded() {
-            if (isResolved) return;
-            isResolved = true;
-            clearTimeout(timeout);
-            
             fileResults[path] = {
               success: true,
               data: {
@@ -4353,45 +4315,25 @@ function checkAssetsFiles() {
                 refs: pathGroups[path].map(f => `${f.category}: ${f.ref}`)
               }
             };
-            
+
             loadedCount++;
             checkComplete();
-          }
-          
-          const timeout = setTimeout(() => {
-            if (!isResolved) {
-              isResolved = true;
-              errorCount++;
-              checkComplete();
-            }
-          }, AUDIO_CHECK_TIMEOUT_MS);
-          
-          audio.onloadedmetadata = onAudioLoaded;
-          audio.oncanplaythrough = onAudioLoaded;
-          
+          };
+
           audio.onerror = function() {
             if (isResolved) return;
             isResolved = true;
             clearTimeout(timeout);
-            
+
             errorCount++;
             checkComplete();
           };
-          
-          audio.preload = "metadata";
-          audio.src = path;
-        
-        } else if (path.match(/\.(html|htm)$/i)) {
-          const firstFile = pathGroups[path][0];
-          if (window.location.protocol === "file:") {
-            console.warn("[ASSET CHECK][GAME] skip verification on file://", path);
-          } else {
-            console.warn(
-              "[ASSET CHECK][GAME] skip HTML network verification in browser (no fetch)",
-              path
-            );
-          }
 
+          audio.src = path + '?' + Date.now();
+
+        } else if (path.match(/\.(html|htm)$/i)) {
+          // HTML-игры по сети не проверяем (без fetch — CSP/смешанный контент).
+          const firstFile = pathGroups[path][0];
           fileResults[path] = {
             success: true,
             data: {
