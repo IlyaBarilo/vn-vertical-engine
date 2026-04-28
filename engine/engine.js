@@ -986,9 +986,17 @@ var audio = {
   sfx: new Audio(),
   muted: true,
   masterVolume: 0.2,
+  // Множитель приглушения BGM (ducking): 1 = без приглушения.
+  bgmDuckingMultiplier: 1,
+  bgmDuckingTimer: null,
   // для плавного затухания (если понадобится)
   fadeTimer: null
 };
+// Глобальные дефолты ducking объявляем рядом с аудио-состоянием,
+// чтобы они были инициализированы до любых вызовов setBackground().
+var DEFAULT_BGM_DUCKING_MULTIPLIER = 0.4; // 40% громкости BGM во время фонового видео
+var DEFAULT_BGM_DUCKING_ATTACK_MS = 250;  // скорость приглушения
+var DEFAULT_BGM_DUCKING_RELEASE_MS = 450; // скорость возврата громкости
 
 var failedAssets = {
   audio: Object.create(null),
@@ -1153,6 +1161,8 @@ btnMute.addEventListener("click", function () {
 
   if (wasMuted && !audio.muted) {
     resumeBgmIfNeeded('btnMute unmute');
+    // После явного анмута пользователем пробуем запустить и фоновое видео со звуком.
+    resumeBackgroundVideoIfNeeded('btnMute unmute');
   }
 });
 
@@ -1169,6 +1179,8 @@ sliderVolume.addEventListener("input", function () {
 
   if (!audio.muted && audio.masterVolume > 0) {
     resumeBgmIfNeeded('slider input');
+    // Слайдер громкости — тоже пользовательское действие: используем его для возобновления видео-аудио.
+    resumeBackgroundVideoIfNeeded('slider input');
   }
 });
 
@@ -1495,6 +1507,8 @@ function onNext(e) {
   console.log("[VN] onNext ВЫПОЛНЯЕТСЯ, запускаем runCurrent()");
 
   runCurrent();
+  // Клик "дальше" — гарантированный user gesture, поэтому пытаемся поднять звук фонового видео.
+  resumeBackgroundVideoIfNeeded('onNext');
 }
 
 function renderTextVars(text) {
@@ -1925,6 +1939,8 @@ function gotoScene(sceneId) {
 
 function setBackground(src, fallbackSrc) {
   if (!src) {
+    // Если фоновое видео больше не задано, возвращаем BGM к обычной громкости.
+    setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'setBackground empty src');
     if (fallbackSrc) {
       setBackground(fallbackSrc, "");
     }
@@ -1954,6 +1970,8 @@ function setBackground(src, fallbackSrc) {
       elBgVideo.onerror = function() {
         var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
         console.warn('[VIDEO] background load error:', badVideoSrc);
+        // Ошибка видео: сразу отпускаем ducking, чтобы BGM не оставался приглушённым.
+        setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'bg video load error');
 
         if (badVideoSrc) {
           failedAssets.images[badVideoSrc] = true;
@@ -1981,11 +1999,14 @@ function setBackground(src, fallbackSrc) {
         }
         elBgVideo.classList.remove("hidden");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
+        // Когда видео реально показано в фоне, мягко приглушаем BGM.
+        setBgmDuckingTarget(DEFAULT_BGM_DUCKING_MULTIPLIER, DEFAULT_BGM_DUCKING_ATTACK_MS, 'bg video shown');
       };
       elBgVideo.src = normalizedSrc;
-      elBgVideo.muted = true;
       elBgVideo.loop = true;
       elBgVideo.playsInline = true;
+      // Синхронизируем звук bg-video с общими аудио-настройками движка.
+      applyAudioSettings();
       var playPromise = elBgVideo.play();
       if (playPromise && typeof playPromise.catch === "function") {
         playPromise.catch(function (e) {
@@ -2004,6 +2025,8 @@ function setBackground(src, fallbackSrc) {
   }
 
   if (elBgVideo) {
+    // Переходим с видео на изображение/другой слой: возвращаем BGM к нормальному уровню.
+    setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'bg image shown');
     try {
       elBgVideo.pause();
     } catch (e) {}
@@ -2686,10 +2709,79 @@ function applyAudioSettings() {
   // ВАЖНО: индивидуальная громкость треков умножается на master
   // Поэтому тут ставим базово master, а конкретную громкость задаём в playBgm/playSfx.
   // Но чтобы не усложнять, мы держим "currentBgmVolume" отдельно.
-  audio.bgm.volume = clamp((audio.currentBgmVolume != null ? audio.currentBgmVolume : 0.7) * v, 0, 1);
+  // Ducking применяется только к BGM и плавно меняется отдельной функцией.
+  audio.bgm.volume = clamp((audio.currentBgmVolume != null ? audio.currentBgmVolume : 0.7) * v * (audio.bgmDuckingMultiplier != null ? audio.bgmDuckingMultiplier : 1), 0, 1);
   audio.sfx.volume = clamp((audio.currentSfxVolume != null ? audio.currentSfxVolume : 1) * v, 0, 1);
+  // Фоновое видео подчиняется тем же настройкам, что и остальной звук интерфейса.
+  if (elBgVideo) {
+    elBgVideo.muted = audio.muted || v <= 0;
+    elBgVideo.volume = clamp(v, 0, 1);
+  }
 
   logAudioState('applyAudioSettings');
+}
+
+// ---------- BGM ducking ----------
+// Константы ducking вынесены в начало аудио-блока, чтобы не попасть в TDZ при раннем вызове bg.
+// Плавно переводит множитель ducking к целевому значению.
+function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
+  var target = clamp(typeof targetMultiplier === "number" ? targetMultiplier : 1, 0, 1);
+  var duration = Math.max(0, Math.floor(typeof fadeMs === "number" ? fadeMs : 0));
+
+  if (audio.bgmDuckingTimer) {
+    clearInterval(audio.bgmDuckingTimer);
+    audio.bgmDuckingTimer = null;
+  }
+
+  var start = clamp(typeof audio.bgmDuckingMultiplier === "number" ? audio.bgmDuckingMultiplier : 1, 0, 1);
+  if (duration === 0 || Math.abs(start - target) < 0.0001) {
+    audio.bgmDuckingMultiplier = target;
+    applyAudioSettings();
+    console.log('[AUDIO] ducking set immediately', { reason: reason, target: target });
+    return;
+  }
+
+  var steps = Math.max(1, Math.floor(duration / 25));
+  var stepTime = Math.max(20, Math.floor(duration / steps));
+  var i = 0;
+
+  audio.bgmDuckingTimer = setInterval(function () {
+    i++;
+    var t = i / steps;
+    audio.bgmDuckingMultiplier = lerp(start, target, t);
+    applyAudioSettings();
+
+    if (i >= steps) {
+      clearInterval(audio.bgmDuckingTimer);
+      audio.bgmDuckingTimer = null;
+      audio.bgmDuckingMultiplier = target;
+      applyAudioSettings();
+      console.log('[AUDIO] ducking transition completed', { reason: reason, target: target });
+    }
+  }, stepTime);
+}
+
+// Возобновляет фоновое видео после пользовательского жеста, если звук в интерфейсе уже включен.
+function resumeBackgroundVideoIfNeeded(reason) {
+  if (!elBgVideo) return;
+  if (!elBgVideo.src) return;
+  if (elBgVideo.classList.contains("hidden")) return;
+  if (audio.muted || audio.masterVolume <= 0) return;
+
+  applyAudioSettings();
+
+  try {
+    var p = elBgVideo.play();
+    if (p && typeof p.then === "function") {
+      p.then(function () {
+        console.log('[VIDEO] background play() success, reason =', reason);
+      }).catch(function (err) {
+        console.log('[VIDEO] background play() blocked/failed, reason =', reason, err);
+      });
+    }
+  } catch (e) {
+    console.log('[VIDEO] background play() exception, reason =', reason, e);
+  }
 }
 
 function logAudioState(label) {
