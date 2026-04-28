@@ -986,6 +986,8 @@ var audio = {
   sfx: new Audio(),
   muted: true,
   masterVolume: 0.2,
+  // Громкость фонового видео как доля от master (0..1). По умолчанию 0 = без звука.
+  currentBgVideoVolume: 0,
   // Множитель приглушения BGM (ducking): 1 = без приглушения.
   bgmDuckingMultiplier: 1,
   bgmDuckingTimer: null,
@@ -994,7 +996,7 @@ var audio = {
 };
 // Глобальные дефолты ducking объявляем рядом с аудио-состоянием,
 // чтобы они были инициализированы до любых вызовов setBackground().
-var DEFAULT_BGM_DUCKING_MULTIPLIER = 0.4; // 40% громкости BGM во время фонового видео
+var DEFAULT_BGM_DUCKING_MULTIPLIER = 0.0; // 0% громкости BGM во время фонового видео
 var DEFAULT_BGM_DUCKING_ATTACK_MS = 250;  // скорость приглушения
 var DEFAULT_BGM_DUCKING_RELEASE_MS = 450; // скорость возврата громкости
 
@@ -1029,6 +1031,12 @@ function getBackgroundAssetFallbackPath(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object") return "";
   if (typeof assetEntry.fallback === "string") return assetEntry.fallback;
   return "";
+}
+
+function getBackgroundAssetVolume(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  if (typeof assetEntry.volume !== "number") return null;
+  return clamp(assetEntry.volume, 0, 1);
 }
 
 function getGraphImageSrc(src) {
@@ -1538,7 +1546,7 @@ function executeAction(action) {
   switch (action.type) {
     case "bg":
       var bgAssetInfo = resolveBackgroundAsset(action.src);
-      setBackground(bgAssetInfo.file, bgAssetInfo.fallback);
+      setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume);
       return false;
 
     case "char":
@@ -1937,12 +1945,14 @@ function gotoScene(sceneId) {
 //                   ВИЗУАЛ
 // =========================================================
 
-function setBackground(src, fallbackSrc) {
+function setBackground(src, fallbackSrc, videoVolume) {
   if (!src) {
     // Если фоновое видео больше не задано, возвращаем BGM к обычной громкости.
     setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'setBackground empty src');
+    // Без фонового видео громкость его канала всегда 0.
+    audio.currentBgVideoVolume = 0;
     if (fallbackSrc) {
-      setBackground(fallbackSrc, "");
+      setBackground(fallbackSrc, "", null);
     }
     return;
   }
@@ -1967,6 +1977,9 @@ function setBackground(src, fallbackSrc) {
     if (elBgVideo) {
       elBgVideo.onerror = null;
       elBgVideo.onloadeddata = null;
+      // Если volume не задан в [bg], по умолчанию не озвучиваем фоновое видео.
+      var resolvedVideoVolume = (typeof videoVolume === "number") ? clamp(videoVolume, 0, 1) : 0;
+      audio.currentBgVideoVolume = resolvedVideoVolume;
       elBgVideo.onerror = function() {
         var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
         console.warn('[VIDEO] background load error:', badVideoSrc);
@@ -2027,6 +2040,7 @@ function setBackground(src, fallbackSrc) {
   if (elBgVideo) {
     // Переходим с видео на изображение/другой слой: возвращаем BGM к нормальному уровню.
     setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'bg image shown');
+    audio.currentBgVideoVolume = 0;
     try {
       elBgVideo.pause();
     } catch (e) {}
@@ -2712,10 +2726,12 @@ function applyAudioSettings() {
   // Ducking применяется только к BGM и плавно меняется отдельной функцией.
   audio.bgm.volume = clamp((audio.currentBgmVolume != null ? audio.currentBgmVolume : 0.7) * v * (audio.bgmDuckingMultiplier != null ? audio.bgmDuckingMultiplier : 1), 0, 1);
   audio.sfx.volume = clamp((audio.currentSfxVolume != null ? audio.currentSfxVolume : 1) * v, 0, 1);
-  // Фоновое видео подчиняется тем же настройкам, что и остальной звук интерфейса.
+  // Фоновое видео имеет собственный множитель volume (из [bg]) относительно master.
   if (elBgVideo) {
-    elBgVideo.muted = audio.muted || v <= 0;
-    elBgVideo.volume = clamp(v, 0, 1);
+    var videoMultiplier = clamp((audio.currentBgVideoVolume != null ? audio.currentBgVideoVolume : 0), 0, 1);
+    var effectiveVideoVolume = clamp(v * videoMultiplier, 0, 1);
+    elBgVideo.muted = audio.muted || effectiveVideoVolume <= 0;
+    elBgVideo.volume = effectiveVideoVolume;
   }
 
   logAudioState('applyAudioSettings');
@@ -3112,16 +3128,19 @@ function resolveAsset(ref, charId, emotion) {
 function resolveBackgroundAsset(ref) {
   var file = resolveAsset(ref);
   var fallback = "";
+  var volume = null;
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
     var bgEntry = STORY.assets.backgrounds[bgId];
     fallback = getBackgroundAssetFallbackPath(bgEntry);
+    volume = getBackgroundAssetVolume(bgEntry);
   }
 
   return {
     file: file,
-    fallback: fallback
+    fallback: fallback,
+    volume: volume
   };
 }
 

@@ -860,11 +860,38 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         return true;
       }
 
-      if (category === 'backgrounds' && args.fallback) {
-        story.assets.backgrounds[assetId] = {
-          file: args.file,
-          fallback: args.fallback
+      if (category === 'backgrounds') {
+        // Для фонов поддерживаем расширенный объект:
+        // file=..., fallback=..., volume=...
+        // volume — доля от master (0..1), по умолчанию в движке для видео = 0.
+        var bgEntry = {
+          file: args.file
         };
+
+        if (args.fallback) {
+          bgEntry.fallback = args.fallback;
+        }
+
+        if (args.volume !== undefined) {
+          var parsedVolume = parseFloat(String(args.volume));
+          if (!isFinite(parsedVolume)) {
+            addParseError(lineNumber, line, `Invalid background volume "${args.volume}". Use a number from 0 to 1.`, true);
+            return true;
+          }
+          if (parsedVolume < 0 || parsedVolume > 1) {
+            addParseError(lineNumber, line, `Background volume "${args.volume}" is out of range. Use 0..1.`, true);
+            return true;
+          }
+          bgEntry.volume = parsedVolume;
+        }
+
+        // Для простых строк без fallback/volume сохраняем старый формат (string),
+        // чтобы не ломать обратную совместимость.
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined) {
+          story.assets.backgrounds[assetId] = args.file;
+        } else {
+          story.assets.backgrounds[assetId] = bgEntry;
+        }
       } else {
         story.assets[category][assetId] = args.file;
       }
