@@ -4813,46 +4813,41 @@ function buildMermaidGraph(story, unreachableList, options) {
     var imageGap = 2;             // Расстояние между миниатюрами
     var containerPadding = 8;     // Внутренние отступы контейнера
 
-    if(!compact) {
-      if (node.allBgImages && node.allBgImages.length > 0) {
-        var sceneBgImagesOnly = [];
-        var sceneBgVideoIds = [];
-        for (var b0 = 0; b0 < node.allBgImages.length; b0++) {
-          var bg0 = node.allBgImages[b0];
-          if (bg0 && isVideoAssetPath(bg0.src)) {
-            if (bg0.id) sceneBgVideoIds.push(bg0.id);
-          } else {
-            sceneBgImagesOnly.push(bg0);
-          }
+    var sceneVideoBgCount = 0;
+    var sceneBgImagesOnly = [];
+    if (node.allBgImages && node.allBgImages.length > 0) {
+      for (var b0 = 0; b0 < node.allBgImages.length; b0++) {
+        var bg0 = node.allBgImages[b0];
+        if (!bg0) continue;
+        if (isVideoAssetPath(bg0.src)) {
+          if (bg0.id) sceneVideoBgCount++;
+        } else {
+          sceneBgImagesOnly.push(bg0);
+        }
+      }
+    }
+
+    if (!compact) {
+      if (sceneBgImagesOnly.length > 0) {
+
+        var sceneBgCountClass = getImgCountClass(sceneBgImagesOnly.length || 1);
+
+        label += "<div class='scene-bg-images-container " + sceneBgCountClass + "'>";
+
+        for (var b = 0; b < sceneBgImagesOnly.length; b++) {
+          var bg = sceneBgImagesOnly[b];
+          var imgSrc = getGraphImageSrc(bg.src);
+          var safeBgId = escapeHtml(bg.id || "");
+
+          label += "<img src='" + imgSrc + "' " +
+                  "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
+                  "data-id='" + safeBgId + "' " +
+                  "data-index='" + b + "' " +
+                  "title='" + safeBgId + "' " +
+                  "alt='' /> ";
         }
 
-        var sceneThumbCount = sceneBgImagesOnly.length + sceneBgVideoIds.length;
-        var sceneBgCountClass = getImgCountClass(sceneThumbCount || 1);
-
-        if (sceneBgImagesOnly.length > 0) {
-          label += "<div class='scene-bg-images-container " + sceneBgCountClass + "'>";
-
-          for (var b = 0; b < sceneBgImagesOnly.length; b++) {
-            var bg = sceneBgImagesOnly[b];
-            var imgSrc = getGraphImageSrc(bg.src);
-            var safeBgId = escapeHtml(bg.id || "");
-
-            label += "<img src='" + imgSrc + "' " +
-                    "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
-                    "data-id='" + safeBgId + "' " +
-                    "data-index='" + b + "' " +
-                    "title='" + safeBgId + "' " +
-                    "alt='' /> ";
-          }
-
-          label += '</div>';
-        }
-
-        if (sceneBgVideoIds.length > 0) {
-          label += "<div class='scene-bg-video-ids'>🎬 " +
-            sceneBgVideoIds.map(function (vid) { return escapeHtml(vid); }).join(", ") +
-            "</div>";
-        }
+        label += "</div>";
       }
     }
 
@@ -4869,6 +4864,9 @@ function buildMermaidGraph(story, unreachableList, options) {
 
     // Добавляем счетчики
     var counters = [];
+    if (sceneVideoBgCount > 0) {
+      counters.push("🎬" + sceneVideoBgCount);
+    }
     if (node.bgCount != 0) {
       counters.push("🖼️" + node.uniqueBgCount + (node.bgCount > node.uniqueBgCount ? "(" + node.bgCount + ")" : ""));
     }
@@ -4878,7 +4876,7 @@ function buildMermaidGraph(story, unreachableList, options) {
     if (node.bgmCount != 0) {
       counters.push("🎵" + node.bgmCount);
     }
-    
+
     // Объединяем статистику в одну строку
     var allStats = statsParts.concat(counters).join(" ");
     if (allStats.length > 0) {
