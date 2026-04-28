@@ -329,7 +329,7 @@ if (window.mermaid) {
     suppressErrorRendering: false,
 
     // главное для больших графов
-    maxTextSize: 150000,
+    maxTextSize: 350000,
     maxEdges: 5000,
 
     theme: 'default',
@@ -3474,7 +3474,7 @@ function renderStats() {
       text += "=== SCRIPT STATISTICS ===\n\n";
       text += "Title: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
       text += "Scenes: " + stats.sceneCount + "\n";
-      text += "Choice menu: " + stats.choiceCount + "\n";
+      text += "Menu: " + stats.choiceCount + "\n";
       text += "Games: " + declaredGames.length + "\n\n";
 
 
@@ -6042,7 +6042,7 @@ var zoomResetBtn = document.getElementById("zoomResetBtn");
 var panzoomState = {
   scale: 1,
   fitScale: 1,
-  minScale: 0.1,      // Минимальный масштаб до 10%
+  minScale: 0.005,    // Минимальный масштаб до 0.5% (в 20 раз ниже прежнего лимита)
   maxScale: 500,       // Максимальный масштаб до 50000% (500x)
   translateX: 0,
   translateY: 0,
@@ -6530,7 +6530,7 @@ function renderMermaidGraph() {
     setTimeout(function() {
       try {
         window.mermaid.init({
-          maxTextSize: 150000,
+          maxTextSize: 350000,
           maxEdges: 5000,
           theme: 'default',
           flowchart: {
