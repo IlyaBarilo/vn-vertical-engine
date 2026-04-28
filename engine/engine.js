@@ -329,7 +329,7 @@ if (window.mermaid) {
     suppressErrorRendering: false,
 
     // главное для больших графов
-    maxTextSize: 200000,
+    maxTextSize: 150000,
     maxEdges: 5000,
 
     theme: 'default',
@@ -6465,8 +6465,8 @@ function buildMermaidVariant(story, unreachableList, options) {
 function shouldUseCompactMermaid(fullCode, stats) {
   if (!fullCode) return false;
 
-  if (fullCode.length > 35000) return true;
-  //35000
+  if (fullCode.length > 49900) return true;
+  // 49900
 
   if (stats && stats.sceneCount > 120) return true;
   if (stats && stats.edgeCount > 400) return true;
@@ -6499,6 +6499,8 @@ function renderMermaidGraph() {
       if (window.mermaid) {
         try {
           window.mermaid.init({
+            maxTextSize: 150000,
+            maxEdges: 5000,
             theme: 'default',
             flowchart: {
               useMaxWidth: true,
