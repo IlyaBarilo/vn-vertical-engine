@@ -5169,7 +5169,7 @@ function buildBackgroundsGraph(story, options) {
   }
   videoListHtml += "</div>";
 
-  var parentLabel = '<b>📷 Background (' + totalCount + ')</b>';
+  var parentLabel = '<b>📷 Backgrounds (' + totalCount + ')</b>';
   var imagesLabel = '<b>🖼️ bg-images (' + imgCount + ')</b>';
   var videoLabel = '<b>🎬 bg-video (' + vidCount + ')</b>';
 
