@@ -696,7 +696,17 @@ function getMermaidVariantForStatsView(view) {
 
 function syncCurrentMermaidCodeWithView() {
   var variant = getMermaidVariantForStatsView(currentStatsView);
-  currentMermaidCode = (variant && variant.code) ? variant.code : "";
+  if (!variant) {
+    currentMermaidCode = "";
+    return;
+  }
+
+  if (currentStatsView === "graph-full" && variant.fullCode) {
+    currentMermaidCode = variant.fullCode;
+    return;
+  }
+
+  currentMermaidCode = variant.code || variant.fullCode || "";
 }
 
 function setStatsView(view) {
@@ -6446,7 +6456,7 @@ function buildMermaidVariant(story, unreachableList, options) {
   }
 
   var compactCode = "";
-  if (useCompact) {
+  if (!forceFull) {
     compactCode = buildMermaidGraph(story, unreachableList, {
       compact: true,
       scope: scope
@@ -6456,7 +6466,7 @@ function buildMermaidVariant(story, unreachableList, options) {
   return {
     fullCode: fullCode,
     compactCode: compactCode,
-    code: useCompact ? compactCode : fullCode,
+    code: fullCode,
     useCompact: useCompact
   };
 }
@@ -6478,48 +6488,82 @@ function shouldUseCompactMermaid(fullCode, stats) {
 function renderMermaidGraph() {
   if (!window.STORY) return;
   if (!currentMermaidCode) return;
+  if (!mermaidGraph) return;
 
-  // Вставляем код в контейнер
-  if (mermaidGraph) {
-    // ПОЛНАЯ ОЧИСТКА: удаляем все дочерние элементы
+  var variant = getMermaidVariantForStatsView(currentStatsView);
+  var renderQueue = [];
+
+  if (currentStatsView === "graph-full" && variant) {
+    if (variant.fullCode) renderQueue.push(variant.fullCode);
+    if (variant.compactCode && variant.compactCode !== variant.fullCode) {
+      renderQueue.push(variant.compactCode);
+    }
+  } else {
+    renderQueue.push(currentMermaidCode);
+  }
+
+  if (!renderQueue.length) return;
+
+  function clearMermaidContainer() {
     while (mermaidGraph.firstChild) {
       mermaidGraph.removeChild(mermaidGraph.firstChild);
     }
-
-    // Удаляем все возможные атрибуты Mermaid
     mermaidGraph.removeAttribute('data-processed');
     mermaidGraph.removeAttribute('data-mermaid-svg');
     mermaidGraph.removeAttribute('data-mermaid-type');
+  }
 
-    // Вставляем уже готовый код
-    mermaidGraph.textContent = currentMermaidCode;
+  function hasMermaidRenderError() {
+    var text = (mermaidGraph.textContent || "").toLowerCase();
+    if (text.indexOf("maximum text size in diagram exceeded") !== -1) return true;
+    if (text.indexOf("syntax error in text") !== -1) return true;
+    return !mermaidGraph.querySelector('svg');
+  }
 
-    // Принудительно запускаем Mermaid с задержкой для полной очистки
+  function tryRenderFromQueue(index) {
+    var code = renderQueue[index];
+    if (!code || !window.mermaid) return;
+
+    clearMermaidContainer();
+    mermaidGraph.textContent = code;
+
     setTimeout(function() {
-      if (window.mermaid) {
-        try {
-          window.mermaid.init({
-            maxTextSize: 150000,
-            maxEdges: 5000,
-            theme: 'default',
-            flowchart: {
-              useMaxWidth: true,
-              htmlLabels: true,
-              curve: 'basis',
-              padding: 4,
-              nodeSpacing: 60,
-              rankSpacing: 100,
-              borderRadius: 10
-            },
-            securityLevel: 'loose',
-            startOnLoad: false
-          }, mermaidGraph);
-        } catch (e) {
-          console.error("Mermaid init/render error:", e);
+      try {
+        window.mermaid.init({
+          maxTextSize: 150000,
+          maxEdges: 5000,
+          theme: 'default',
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: 'basis',
+            padding: 4,
+            nodeSpacing: 60,
+            rankSpacing: 100,
+            borderRadius: 10
+          },
+          securityLevel: 'loose',
+          startOnLoad: false
+        }, mermaidGraph);
+      } catch (e) {
+        console.error("Mermaid init/render error:", e);
+        if (index + 1 < renderQueue.length) {
+          console.warn("[GRAPH] Full render failed, trying compact fallback.");
+          tryRenderFromQueue(index + 1);
         }
+        return;
       }
+
+      setTimeout(function() {
+        if (hasMermaidRenderError() && index + 1 < renderQueue.length) {
+          console.warn("[GRAPH] Full render produced Mermaid error, trying compact fallback.");
+          tryRenderFromQueue(index + 1);
+        }
+      }, 120);
     }, 50);
   }
+
+  tryRenderFromQueue(0);
 }
 
 
