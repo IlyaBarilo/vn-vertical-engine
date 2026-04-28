@@ -13,6 +13,8 @@ If you want to use this engine in a commercial product, commercial service, paid
 internal business tool, or any other activity intended for commercial advantage or monetary
 compensation outside those permitted cases, you must first obtain separate written permission from the author.
 
+Commercial licenses may be supplied with an individual license key or license file.
+
 To request a commercial license, please send:
 
 - your name or company name
@@ -39,6 +41,8 @@ Until such permission is granted in writing, commercial use outside the cases al
 платном развёртывании, внутреннем бизнес-инструменте или в любой иной деятельности,
 направленной на получение коммерческой выгоды или денежного вознаграждения вне таких разрешённых случаев,
 вы должны заранее получить отдельное письменное разрешение автора.
+
+Коммерческие лицензии могут поставляться с индивидуальным лицензионным ключом или лицензионным файлом.
 
 Чтобы запросить коммерческую лицензию, пожалуйста, укажите:
 
