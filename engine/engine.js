@@ -353,6 +353,303 @@ if (window.APP_VERSION === "__VERSION__") {
   window.APP_VERSION = "0.0.0.0dev";
 }
 
+// =========================================================
+// ЛИЦЕНЗИРОВАНИЕ
+// =========================================================
+
+var VN_LICENSE_KEY_PREFIX = "VNV1";
+var VN_LICENSE_PRODUCT_ID = "vn-vertical-engine";
+var VN_LICENSE_PUBLIC_KEY_PEM = [
+  "-----BEGIN PUBLIC KEY-----",
+  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAryWstNi/un/SfbCR/zBy",
+  "LtGWzGo3/6g+1jDnQxUYiklUCtrWRz2UPryscp27T2WozjCVo5xFen0laVuLfmYd",
+  "BW0GgB7A8D/4xHeGa69oJr122rUTRv+X0PrU0rGgANqYVJ4J2O2b8pACfLd2+kL+",
+  "1ySX2fQrWlxgSzBmTboXJhk9bnp/snAwkj+sE/5HMCtJ7oEjOas1JOtprwR/fy2H",
+  "Hm2QNifOT6w36rUSL+xHVZI5ITeK0zyzbm6rsCXVAVo/Iz2d52nOj8zJZgGHvlTN",
+  "Neik9+0QXBCKeDYvuBOtyn6M499DQtArpoiYiWspdchELF+TCGTfr4SVf2pgYzke",
+  "IQIDAQAB",
+  "-----END PUBLIC KEY-----"
+].join("\n");
+
+var licenseStartRequested = false;
+window.VN_LICENSE = createLicenseState("pending", false, null, "License has not been checked yet.");
+
+// Создаёт единый объект состояния лицензии, чтобы остальной движок не зависел от деталей проверки подписи.
+function createLicenseState(status, valid, payload, message) {
+  return {
+    valid: !!valid,
+    status: status || "unknown",
+    mode: valid ? "registered" : "unregistered",
+    payload: payload || null,
+    message: message || "",
+    checkedAt: new Date().toISOString()
+  };
+}
+
+// Возвращает productId, на который должна быть выписана лицензия для текущей сборки.
+function getExpectedLicenseProductId() {
+  return VN_LICENSE_PRODUCT_ID;
+}
+
+// Забирает ключ из опционального license-key.js и не падает, если файл отсутствует.
+function getRawLicenseKey() {
+  return String(window.VN_LICENSE_KEY || "").trim();
+}
+
+// Декодирует base64url-сегмент лицензионного ключа в байты для JSON и подписи.
+function base64UrlToBytes(value) {
+  var base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) base64 += "=";
+
+  var binary = atob(base64);
+  var bytes = new Uint8Array(binary.length);
+
+  for (var i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+}
+
+// Декодирует UTF-8 байты payload обратно в JSON-строку лицензии.
+function bytesToUtf8Text(bytes) {
+  if (window.TextDecoder) {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  var binary = "";
+  for (var i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return decodeURIComponent(escape(binary));
+}
+
+// Кодирует байты подписи в hex-строку, потому что jsrsasign принимает подписи в hex.
+function bytesToHex(bytes) {
+  var hex = "";
+  for (var i = 0; i < bytes.length; i++) {
+    hex += ("0" + bytes[i].toString(16)).slice(-2);
+  }
+
+  return hex;
+}
+
+// Проверяет наличие локально подключённой MIT-библиотеки jsrsasign; без неё лицензии не валидируются.
+function isJsrsasignAvailable() {
+  return !!(
+    window.KJUR &&
+    window.KJUR.crypto &&
+    window.KJUR.crypto.Signature &&
+    window.KEYUTIL
+  );
+}
+
+// Проверяет RSA-PSS подпись через локальный jsrsasign, чтобы на всех устройствах был один путь проверки.
+function verifyLicenseSignature(dataToVerify, signatureBytes) {
+  if (!isJsrsasignAvailable()) {
+    return Promise.resolve(null);
+  }
+
+  try {
+    var signature = new window.KJUR.crypto.Signature({
+      alg: "SHA256withRSAandMGF1",
+      psssaltlen: 32
+    });
+
+    signature.init(window.KEYUTIL.getKey(VN_LICENSE_PUBLIC_KEY_PEM));
+    signature.updateString(dataToVerify);
+
+    return Promise.resolve(!!signature.verify(bytesToHex(signatureBytes)));
+  } catch (error) {
+    console.warn("[LICENSE] jsrsasign verification failed:", error);
+    return Promise.resolve(false);
+  }
+}
+
+// Разбирает строку VNV1.<payload>.<signature> и отделяет подписанные данные от подписи.
+function parseLicensePayload(rawKey) {
+  var parts = String(rawKey || "").trim().split(".");
+  if (parts.length !== 3 || parts[0] !== VN_LICENSE_KEY_PREFIX) {
+    throw new Error("Invalid license key format.");
+  }
+
+  var payloadText = bytesToUtf8Text(base64UrlToBytes(parts[1]));
+  var payload = JSON.parse(payloadText);
+
+  return {
+    payload: payload,
+    dataToVerify: parts[0] + "." + parts[1],
+    signatureBytes: base64UrlToBytes(parts[2])
+  };
+}
+
+// Считает срок действия лицензии; дата без времени действует до конца указанного UTC-дня.
+function getLicenseExpiryTime(expiresAt) {
+  if (expiresAt === null || expiresAt === undefined || String(expiresAt).trim() === "") {
+    return null;
+  }
+
+  var value = String(expiresAt).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    value += "T23:59:59.999Z";
+  }
+
+  var time = Date.parse(value);
+  return isNaN(time) ? NaN : time;
+}
+
+// Проверяет бизнес-поля лицензии после успешной криптографической проверки подписи.
+function validateLicensePayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "License payload is empty.";
+  }
+
+  if (payload.schema !== 1) {
+    return "Unsupported license schema.";
+  }
+
+  if (payload.productId !== getExpectedLicenseProductId()) {
+    return "License belongs to another product.";
+  }
+
+  if (!/^[A-Z0-9]{2,5}-\d{2}-\d{4}-\d{6}$/.test(String(payload.licenseId || ""))) {
+    return "License ID format is invalid.";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "channel")) {
+    return "License payload contains obsolete channel field.";
+  }
+
+  var quantity = payload.installations !== undefined ? payload.installations : payload.seats;
+  var quantityNumber = Number(quantity);
+  if (quantity !== undefined && (!isFinite(quantityNumber) || quantityNumber < 1)) {
+    return "License quantity must be positive.";
+  }
+
+  var expiryTime = getLicenseExpiryTime(payload.expiresAt);
+  if (isNaN(expiryTime)) {
+    return "License expiration date is invalid.";
+  }
+
+  if (expiryTime !== null && Date.now() > expiryTime) {
+    return "License has expired.";
+  }
+
+  return "";
+}
+
+// Выполняет полный цикл проверки: наличие ключа, формат, подпись и допустимость полей.
+function resolveLicenseState() {
+  var rawKey = getRawLicenseKey();
+  if (!rawKey) {
+    return Promise.resolve(createLicenseState("missing", false, null, "License key file is missing."));
+  }
+
+  var parsed;
+  try {
+    parsed = parseLicensePayload(rawKey);
+  } catch (error) {
+    return Promise.resolve(createLicenseState("invalid-format", false, null, error.message));
+  }
+
+  return verifyLicenseSignature(parsed.dataToVerify, parsed.signatureBytes).then(function(isSignatureValid) {
+    if (isSignatureValid === null) {
+      return createLicenseState("missing-verifier", false, parsed.payload, "The local jsrsasign signature verifier is missing.");
+    }
+
+    if (!isSignatureValid) {
+      return createLicenseState("invalid-signature", false, null, "License signature is invalid.");
+    }
+
+    var validationError = validateLicensePayload(parsed.payload);
+    if (validationError) {
+      return createLicenseState("invalid-payload", false, parsed.payload, validationError);
+    }
+
+    return createLicenseState("valid", true, parsed.payload, "License is valid.");
+  }).catch(function(error) {
+    return createLicenseState("check-error", false, parsed ? parsed.payload : null, error.message);
+  });
+}
+
+// Кладёт статус лицензии в переменные сценария, чтобы история могла реагировать на режим поставки.
+function applyLicenseStateToStoryVars() {
+  if (!state || !state.vars) return;
+
+  var license = window.VN_LICENSE || {};
+  var payload = license.payload || {};
+
+  state.vars.__licenseValid = !!license.valid;
+  state.vars.__licenseStatus = license.status || "unknown";
+  state.vars.__licenseMode = license.mode || "unregistered";
+  state.vars.__licenseCustomer = payload.customer || "";
+  state.vars.__licenseId = payload.licenseId || "";
+  state.vars.__licenseInstallations = payload.installations || payload.seats || 0;
+}
+
+// Формирует короткий блок для текстовой статистики, чтобы установщик сразу видел статус лицензии.
+function formatLicenseStatsText() {
+  var license = window.VN_LICENSE || {};
+  var payload = license.payload || {};
+  var hasPayload = !!license.payload;
+  var quantity = payload.installations || payload.seats || 0;
+  var lines = [];
+
+  if (license.status === "missing") {
+    return [
+      "License file: license-key.js not found",
+      "Public license: noncommercial use is permitted under PolyForm Noncommercial 1.0.0.",
+      "Permitted organizations include educational institutions and other organizations listed in the public license."
+    ].join("\n") + "\n";
+  }
+
+  lines.push("License mode: " + (license.mode || "unknown"));
+  lines.push("License status: " + (license.status || "unknown"));
+
+  if (license.message) {
+    lines.push("License message: " + license.message);
+  }
+
+  if (payload.customer) {
+    lines.push("Licensed to: " + payload.customer);
+  }
+
+  if (payload.licenseId) {
+    lines.push("License ID: " + payload.licenseId);
+  }
+
+  if (quantity) {
+    lines.push("Licensed installations: " + quantity);
+  }
+
+  if (payload.issuedAt) {
+    lines.push("License issued: " + payload.issuedAt);
+  }
+
+  if (hasPayload) {
+    lines.push("License expires: " + (payload.expiresAt || "never"));
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+// Запускает историю только после завершения проверки лицензии, но не блокирует незарегистрированный режим.
+function startLicensedEngine() {
+  if (licenseStartRequested) return;
+  licenseStartRequested = true;
+  window.VN_LICENSE = createLicenseState("checking", false, null, "License check is running.");
+
+  resolveLicenseState().then(function(license) {
+    window.VN_LICENSE = license;
+    console.log("[LICENSE]", license.status, license.mode, license.message);
+    restart();
+  }).catch(function(error) {
+    window.VN_LICENSE = createLicenseState("check-error", false, null, error.message);
+    console.warn("[LICENSE] check failed:", error);
+    restart();
+  });
+}
+
 // Единый конфиг параметров интерфейса
 // cssVar   — CSS-переменная
 // default  — значение по умолчанию
@@ -1242,7 +1539,7 @@ window.addEventListener("message", function (event) {
 });
 
 // ---------- Старт ----------
-restart();
+startLicensedEngine();
 
 // =========================================================
 //                   ОСНОВНЫЕ ФУНКЦИИ
@@ -1260,6 +1557,7 @@ function restart() {
 
   // Никаких сохранений: просто сбрасываем переменные и идём в start.
   state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
+  applyLicenseStateToStoryVars();
   state.inGame = false;
   hideChoices();
   closeGameFrameVisualOnly();
@@ -3580,7 +3878,8 @@ function renderStats() {
 
 
 
-      text += `Software version: ${window.APP_VERSION}\n\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
+      text += `Software version: ${window.APP_VERSION}\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
+      text += formatLicenseStatsText() + "\n";
 
       text += "=== SCRIPT STATISTICS ===\n\n";
       text += "Title: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";

@@ -39,3 +39,21 @@ SOFTWARE.
 
 The `mermaid.min.js` file is included in the repository without modifications and is located in the `lib/` directory.
 Mermaid version: 11.x (current at the time of the last update).
+
+## jsrsasign
+
+This project uses [jsrsasign](https://kjur.github.io/jsrsasign/) — a JavaScript cryptography library used here for offline license signature verification.
+
+### License
+
+The MIT License (MIT)
+
+Copyright (c) 2010-2023 Kenji Urushima
+
+The full license notice is included in `lib/jsrsasign-all-min.js` and is available from the project license page:
+https://kjur.github.io/jsrsasign/license/
+
+### Use in This Project
+
+The `jsrsasign-all-min.js` file is included in the repository without modifications and is located in the `lib/` directory.
+jsrsasign version: 11.1.0.
