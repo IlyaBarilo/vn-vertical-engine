@@ -880,6 +880,12 @@ elStage.addEventListener("click", function (e) {
     modalHidden: elGameModal.classList.contains("hidden"),
     inGame: state.inGame
   });
+
+  if (state.inVideo) {
+    // Поля вокруг полноэкранной видео-вставки тоже должны работать как область пропуска.
+    handleStoryVideoSkip(e);
+    return;
+  }
   
   if (isUiClick(e.target)) return;
   onNext();
@@ -2287,6 +2293,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
     }
     if (isVideo && normalizedFallbackSrc) {
       console.warn('[VIDEO] primary marked as failed, using fallback:', normalizedFallbackSrc);
+      hideKeptStoryVideoAfterBgReady("bg video already failed");
       setBackground(normalizedFallbackSrc, "");
     }
     return;
@@ -2311,6 +2318,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
 
         if (normalizedFallbackSrc) {
           console.warn('[VIDEO] fallback image used:', normalizedFallbackSrc);
+          hideKeptStoryVideoAfterBgReady("bg video fallback image");
           setBackground(normalizedFallbackSrc, "");
           return;
         }
@@ -2321,6 +2329,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
         elBgVideo.removeAttribute('src');
         elBgVideo.load();
         elBgVideo.classList.add("hidden");
+        hideKeptStoryVideoAfterBgReady("bg video load error");
       };
       elBgVideo.onloadeddata = function() {
         var currentVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
@@ -2330,6 +2339,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
           elBg.classList.add("hidden");
         }
         elBgVideo.classList.remove("hidden");
+        hideKeptStoryVideoAfterBgReady("bg video loaded");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
         // Когда видео реально показано в фоне, мягко приглушаем BGM.
         setBgmDuckingTarget(DEFAULT_BGM_DUCKING_MULTIPLIER, DEFAULT_BGM_DUCKING_ATTACK_MS, 'bg video shown');
@@ -2874,11 +2884,14 @@ function hideChoices() {
 
 var STORY_VIDEO_DEFAULT_FALLBACK_DURATION = 5;
 var STORY_VIDEO_SEEK_TIMEOUT_MS = 2500;
+var STORY_VIDEO_SKIP_GUARD_MS = 450;
 var storyVideoRuntime = {
   action: null,
   done: false,
   fallback: false,
   skipAllowed: true,
+  skipEnabledAt: 0,
+  keepUntilBgVideoReady: false,
   seekTimer: null,
   stopTimer: null,
   fallbackTimer: null
@@ -2944,6 +2957,7 @@ function showStoryVideoPoster(posterSrc, fit) {
 }
 
 function cleanupStoryVideoVisualOnly() {
+  storyVideoRuntime.keepUntilBgVideoReady = false;
   // Визуальная очистка отделена от finishStoryVideo(), чтобы рестарт не продолжал сцену.
   clearStoryVideoTimers();
   resetStoryVideoMediaHandlers();
@@ -2973,12 +2987,47 @@ function cleanupStoryVideoVisualOnly() {
   applyAudioSettings();
 }
 
+function nextActionIsBackgroundVideo() {
+  // Если сразу после сюжетного видео идет bg-видео, держим старый слой до первого кадра нового фона.
+  var scene = state.sceneMap[state.sceneId];
+  if (!scene || !scene.actions) return false;
+
+  var nextAction = scene.actions[state.actionIndex];
+  if (!nextAction || nextAction.type !== "bg") return false;
+
+  var bgAssetInfo = resolveBackgroundAsset(nextAction.src);
+  return isVideoAssetPath(bgAssetInfo.file);
+}
+
+function hideKeptStoryVideoAfterBgReady(reason) {
+  // Новый видео-фон уже готов, поэтому можно убрать слой сюжетного видео без вспышки старой картинки.
+  if (!storyVideoRuntime.keepUntilBgVideoReady) return;
+  cleanupStoryVideoVisualOnly();
+  console.log("[VIDEO] kept story video layer hidden:", reason || "bg ready");
+}
+
 function finishStoryVideo(reason) {
   // Сюжетное видео автоматически продолжает список команд после ended, stop, skip или fallback-таймаута.
   if (storyVideoRuntime.done) return;
   storyVideoRuntime.done = true;
 
-  cleanupStoryVideoVisualOnly();
+  var keepUntilBgVideoReady = nextActionIsBackgroundVideo();
+  if (keepUntilBgVideoReady) {
+    clearStoryVideoTimers();
+    resetStoryVideoMediaHandlers();
+    storyVideoRuntime.keepUntilBgVideoReady = true;
+    setStoryVideoSkipHint("", false);
+    if (elStoryVideoFallbackText) elStoryVideoFallbackText.classList.add("hidden");
+    if (elStoryVideo) {
+      try {
+        elStoryVideo.pause();
+      } catch (e) {}
+    }
+    audio.currentStoryVideoVolume = 0;
+    applyAudioSettings();
+  } else {
+    cleanupStoryVideoVisualOnly();
+  }
   state.inVideo = false;
   state.waitingNext = false;
   state.nextLocked = false;
@@ -3004,6 +3053,7 @@ function showStoryVideoFallback(action, reason) {
 
   storyVideoRuntime.fallback = true;
   storyVideoRuntime.skipAllowed = true;
+  storyVideoRuntime.skipEnabledAt = Date.now();
   audio.currentStoryVideoVolume = 0;
   applyAudioSettings();
   setBgmDuckingForActiveVideos("story video fallback: " + (reason || "fallback"));
@@ -3122,6 +3172,7 @@ function startStoryVideo(action) {
   storyVideoRuntime.done = false;
   storyVideoRuntime.fallback = false;
   storyVideoRuntime.skipAllowed = action.skippable !== false;
+  storyVideoRuntime.skipEnabledAt = Date.now() + STORY_VIDEO_SKIP_GUARD_MS;
 
   var src = normalizeAssetUrl(action.src);
   var posterSrc = normalizeAssetUrl(action.poster || "");
@@ -3163,6 +3214,10 @@ function startStoryVideo(action) {
 
 function handleStoryVideoSkip(e) {
   if (!state.inVideo) return;
+  if (Date.now() < (storyVideoRuntime.skipEnabledAt || 0)) {
+    swallowEvent(e);
+    return;
+  }
   if (!storyVideoRuntime.skipAllowed && !storyVideoRuntime.fallback) return;
   swallowEvent(e);
   finishStoryVideo("skip");
@@ -6843,7 +6898,8 @@ function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
     if (captureSeq !== blurFrameCaptureSeq) return;
     updateBlurBackground(frameDataUrl);
   } catch (e) {
-    console.warn('[VIDEO] failed to capture first frame for blur:', e);
+    // На file:// и при CORS браузер может запретить canvas export; оставляем poster/текущий blur.
+    console.log('[VIDEO] first frame blur capture skipped:', e && e.name ? e.name : e);
   }
 }
 
