@@ -292,6 +292,52 @@ body {
   z-index: 4;
 }
 
+/* Story video sits above the scene UI and uses the blur background layer for outer fields. */
+.story-video-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+}
+
+.story-video-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: #000;
+}
+
+.story-video-skip-hint {
+  position: absolute;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  padding: 0.4em 0.7em;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.48);
+  color: rgba(255,255,255,0.92);
+  font-size: clamp(0.78rem, 1.6vw, 0.95rem);
+  line-height: 1.2;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.story-video-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  color: rgba(255,255,255,0.82);
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  text-align: center;
+  background: #050505;
+}
+
 /* Верхняя панель */
 .topbar {
   position: absolute;
@@ -1853,6 +1899,8 @@ body {
 .novel-window,
 .bg,
 #bgVideoLayer,
+.story-video-overlay,
+.story-video-media,
 .char,
 .blur-bg-layer,
 .blur-bg-image,
@@ -1864,7 +1912,8 @@ body {
 img,
 .bg,
 .char,
-.blur-bg-image {
+.blur-bg-image,
+.story-video-media {
   -webkit-user-drag: none !important;
   user-drag: none !important;
   -webkit-user-select: none !important;

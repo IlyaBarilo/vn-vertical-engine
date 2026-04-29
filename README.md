@@ -147,7 +147,7 @@ This engine is suitable for:
              ├── audio/
              └── games/
 
-In lite release archives, image and audio files are removed from `assets/`,
+In lite release archives, image, video, and audio files are removed from `assets/`,
 but HTML mini-games and engine files remain.
 
 ---
@@ -244,6 +244,9 @@ igor color=#F00  # values can also be extended in separate lines
 [audio]
 bgmDay file=assets/audio/bgm-campus-day.mp3
 
+[video]
+introClip file=assets/video/intro.mp4 poster=assets/video/intro.jpg volume=0.8
+
 [var]
 resultGame = 0
 
@@ -322,6 +325,12 @@ Narrator:
     bgm musicId
     bgm musicId loop
     bgm stop
+
+### Video
+
+    video videoId
+    video videoId start=1 stop=10
+    video videoId skippable=false skipText="Skip" fit=contain
 
 ---
 

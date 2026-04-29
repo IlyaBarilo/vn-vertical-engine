@@ -56,6 +56,9 @@ igor emotion=smile file=assets/characters/ch-igor-smile.png
 
 ivan emotion=neutral file=assets/characters/ch-ivan-smile-test.png name="Иван" color=#060
 
+[video]
+videoLab file=assets/backgrounds/bg-it-lab.mp4 poster=assets/backgrounds/bg-it-lab.jpg volume=0.8
+
 [audio] 
 # Формат описания для музыки:
 # название_музыки = путь_и_название_файла
@@ -197,15 +200,21 @@ end
 
 scene scBranchLab01
 
+video videoLab skippable=true 
+# fit=contain fit=cover skipText="Далее" 
+
+hide all
+
 # Применение фона с видео
 bg bgBranchLabVideo
-hide all
 
 "Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
 "Здесь можно не только запускать расчёты, но и проверять, как система ведёт себя в интерактивных сценариях."
 
+
+
 # Применение фона с изображением, чтобы не отвлекало от персонажа
-bg bgBranchLab
+# bg bgBranchLab
 
 show anna neutral
 anna: "Похоже, лаборатория сегодня свободна. Чем займёмся?"

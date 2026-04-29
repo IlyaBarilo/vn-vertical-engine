@@ -13,7 +13,8 @@
     actionsCount: 0,
     charactersCount: 0,
     backgroundsCount: 0,
-    audioCount: 0
+    audioCount: 0,
+    videosCount: 0
   };
   
   function loaderMark(name) {
@@ -125,6 +126,7 @@
     if (!story.assets.characters) story.assets.characters = {};
     if (!story.assets.audio) story.assets.audio = {};
     if (!story.assets.games) story.assets.games = {};
+    if (!story.assets.videos) story.assets.videos = {};
 
     Object.keys(story.assets.characters).forEach(function(charId) {
       var char = story.assets.characters[charId];
@@ -167,7 +169,8 @@
         backgrounds: {},
         characters: {},
         audio: {},
-        games: {}
+        games: {},
+        videos: {}
       },
       audioSettings: {
         masterVolume: 0.2,
@@ -181,7 +184,7 @@
     const sceneParseState = {
       blockStack: []
     };
-    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'game', 'var', 'scene'
+    let currentSection = null; // 'meta', 'bg', 'char', 'audio', 'game', 'video', 'var', 'scene'
     let lineNumber = 0;
 
     const lines = text.split(/\r?\n/);
@@ -234,6 +237,11 @@
         continue;
       }
 
+      if (/^\s*\[video\]\s*$/i.test(line)) {
+        currentSection = 'video';
+        continue;
+      }
+
       if (/^\s*\[var\]\s*$/i.test(line)) {
         currentSection = 'var';
         continue;
@@ -267,6 +275,9 @@
           break;
         case 'game':
           parseAssetLine(lineNumber, line, 'games', story);
+          break;
+        case 'video':
+          parseAssetLine(lineNumber, line, 'videos', story);
           break;
         case 'var':
           parseVarLine(lineNumber, line, story);
@@ -417,6 +428,7 @@
       
       window.LOADER_STATS.audioCount = story.assets.audio ? Object.keys(story.assets.audio).length : 0;
       window.LOADER_STATS.gamesCount = story.assets.games ? Object.keys(story.assets.games).length : 0;
+      window.LOADER_STATS.videosCount = story.assets.videos ? Object.keys(story.assets.videos).length : 0;
     }
 
     loaderMark('stats_collected');
@@ -426,7 +438,8 @@
       backgrounds: window.LOADER_STATS.backgroundsCount,
       characters: window.LOADER_STATS.charactersCount,
       audio: window.LOADER_STATS.audioCount,
-      games: window.LOADER_STATS.gamesCount
+      games: window.LOADER_STATS.gamesCount,
+      videos: window.LOADER_STATS.videosCount
     });
 
 
@@ -735,6 +748,101 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
   });
 }
 
+function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
+  // Story videos are blocking actions: the engine continues after ended/stop/skip.
+  var tokens = splitQuotedTokens(cleanLine);
+  if (tokens.length < 2) {
+    addParseError(lineNumber, line, 'The video command must contain the video ID', true);
+    return;
+  }
+
+  var videoId = tokens[1];
+
+  if (!story.assets.videos || !story.assets.videos[videoId]) {
+    addParseError(lineNumber, line, 'Video "' + videoId + '" is not declared in [video]', true);
+    return;
+  }
+
+  var params = parseActionParams(tokens.slice(2));
+  var videoAsset = story.assets.videos[videoId];
+  var videoSrc = videoAsset && typeof videoAsset === 'object'
+    ? String(videoAsset.file || '').trim()
+    : '';
+
+  if (!videoSrc) {
+    addParseError(lineNumber, line, 'Video "' + videoId + '" does not contain file=... in [video]', true);
+    return;
+  }
+
+  var action = {
+    type: 'video',
+    videoId: videoId,
+    src: videoSrc,
+    poster: videoAsset.poster || '',
+    volume: typeof videoAsset.volume === 'number' ? videoAsset.volume : 0
+  };
+
+  if (params.start !== undefined) {
+    if (typeof params.start !== 'number' || params.start < 0) {
+      addParseError(lineNumber, line, 'The video start= value must be a number from 0', true);
+      return;
+    }
+    action.start = params.start;
+  }
+
+  if (params.stop !== undefined) {
+    if (typeof params.stop !== 'number' || params.stop <= 0) {
+      addParseError(lineNumber, line, 'The video stop= value must be a positive number', true);
+      return;
+    }
+    action.stop = params.stop;
+  }
+
+  if (action.stop !== undefined && action.stop <= (action.start || 0)) {
+    addParseError(lineNumber, line, 'The video stop= value must be greater than start=', true);
+    return;
+  }
+
+  if (params.skippable !== undefined) {
+    if (typeof params.skippable !== 'boolean') {
+      addParseError(lineNumber, line, 'The video skippable= value must be true or false', true);
+      return;
+    }
+    action.skippable = params.skippable;
+  }
+
+  if (params.skipText !== undefined) {
+    action.skipText = String(params.skipText);
+  }
+
+  if (params.fit !== undefined) {
+    var fit = String(params.fit || '').toLowerCase();
+    if (fit !== 'cover' && fit !== 'contain') {
+      addParseError(lineNumber, line, 'The video fit= value must be cover or contain', true);
+      return;
+    }
+    action.fit = fit;
+  }
+
+  if (params.fallbackDuration !== undefined) {
+    if (typeof params.fallbackDuration !== 'number' || params.fallbackDuration <= 0) {
+      addParseError(lineNumber, line, 'The video fallbackDuration= value must be a positive number', true);
+      return;
+    }
+    action.fallbackDuration = params.fallbackDuration;
+  }
+
+  if (params.volume !== undefined) {
+    if (typeof params.volume !== 'number' || params.volume < 0 || params.volume > 1) {
+      addParseError(lineNumber, line, 'The video volume= value must be a number from 0 to 1', true);
+      return;
+    }
+    action.volume = params.volume;
+  }
+
+  currentScene.actions.push(action);
+}
+
 
 
 
@@ -845,7 +953,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       if (key === 'image' || key === 'src') key = 'file';
       if (key === 'emo') key = 'emotion';
       if (key === 'coverimage' || key === 'thumbnail' || key === 'logo') key = 'cover';
-      if (key === 'poster' || key === 'fallbackimage') key = 'fallback';
+      if (key === 'fallbackimage') key = 'fallback';
 
       args[key] = value;
     }
@@ -868,8 +976,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
           file: args.file
         };
 
-        if (args.fallback) {
-          bgEntry.fallback = args.fallback;
+        if (args.fallback || args.poster) {
+          bgEntry.fallback = args.fallback || args.poster;
         }
 
         if (args.volume !== undefined) {
@@ -916,6 +1024,39 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       if (args.cover !== undefined) game.cover = args.cover;
 
       story.assets.games[assetId] = game;
+      return true;
+    }
+
+    if (category === 'videos') {
+      if (!args.file) {
+        addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
+        return true;
+      }
+
+      var video = story.assets.videos[assetId];
+      if (!video || typeof video !== 'object') {
+        video = {};
+      }
+
+      video.file = args.file;
+
+      if (args.poster !== undefined) video.poster = args.poster;
+      if (args.fallback !== undefined && video.poster === undefined) video.poster = args.fallback;
+
+      if (args.volume !== undefined) {
+        var parsedVideoVolume = parseFloat(String(args.volume));
+        if (!isFinite(parsedVideoVolume)) {
+          addParseError(lineNumber, line, `Invalid video volume "${args.volume}". Use a number from 0 to 1.`, true);
+          return true;
+        }
+        if (parsedVideoVolume < 0 || parsedVideoVolume > 1) {
+          addParseError(lineNumber, line, `Video volume "${args.volume}" is out of range. Use 0..1.`, true);
+          return true;
+        }
+        video.volume = parsedVideoVolume;
+      }
+
+      story.assets.videos[assetId] = video;
       return true;
     }
 
@@ -971,6 +1112,16 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
+    if (category === 'videos') {
+      addParseError(
+        lineNumber,
+        line,
+        'In [video], use only the new format: videoId file=... poster=... volume=...',
+        true
+      );
+      return;
+    }
+
     console.log('[Loader] after comment removal:', line);
     
     if (!line) return;
@@ -989,14 +1140,14 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
 
-    // ========== запрещаем пробелы в ключах для bg / audio / games ==========
-    if (category === 'backgrounds' || category === 'audio' || category === 'games') {
+    // ========== запрещаем пробелы в ключах для bg / audio / games / video ==========
+    if (category === 'backgrounds' || category === 'audio' || category === 'games' || category === 'videos') {
       // Проверяем, есть ли пробелы в ключе
       if (key.includes(' ')) {
         addParseError(
           lineNumber, 
           line, 
-          `The key name "${key}" contains spaces. In the section [${category === 'backgrounds' ? 'bg' : category === 'audio' ? 'audio' : 'game'}] names cannot contain spaces. Use camelCase (bgDay) or hyphens (bg-day).`, 
+          `The key name "${key}" contains spaces. In the section [${category === 'backgrounds' ? 'bg' : category === 'audio' ? 'audio' : category === 'videos' ? 'video' : 'game'}] names cannot contain spaces. Use camelCase (bgDay) or hyphens (bg-day).`,
           true
         );
         return; // Прерываем обработку этой строки
@@ -1561,6 +1712,20 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
+    if (cleanLine.startsWith('video ')) {
+      if (!currentScene) {
+        addParseError(lineNumber, line, 'The video command is used outside of a scene', true);
+        return;
+      }
+
+      var targetSceneForVideo = (actions === currentScene.actions)
+        ? currentScene
+        : { actions: actions };
+
+      parseVideoAction(lineNumber, line, cleanLine, story, targetSceneForVideo);
+      return;
+    }
+
     // if expression -> sceneId (совместимость)
     // if expression / elif expression / else / end (новый блочный синтаксис)
     if (cleanLine.startsWith('if ')) {
@@ -1812,7 +1977,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
         backgrounds: {},
         characters: {},
         audio: {},
-        games: {}
+        games: {},
+        videos: {}
       },
       scenes: [{
         id: "error_scene",

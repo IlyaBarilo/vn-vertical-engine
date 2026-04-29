@@ -143,7 +143,9 @@ const UI_I18N = {
     gamesLastLaunchClosed: "Last launch: {title}, difficulty {difficulty}, closed manually",
     gamesLastLaunchResult: "Last launch: {title}, difficulty {difficulty}, result {result}",
     gamesLaunchFailed: "Unable to launch the game",
-    gamesNoGames: "No games found"
+    gamesNoGames: "No games found",
+    videoSkipHint: "Click to skip",
+    videoUnavailable: "Video unavailable"
   },
   ru: {
     mute: "Звук",
@@ -183,7 +185,9 @@ const UI_I18N = {
     gamesLastLaunchClosed: "Последний запуск: {title}, сложность {difficulty}, игра закрыта вручную",
     gamesLastLaunchResult: "Последний запуск: {title}, сложность {difficulty}, результат {result}",
     gamesLaunchFailed: "Не удалось запустить игру",
-    gamesNoGames: "Игры не найдены"
+    gamesNoGames: "Игры не найдены",
+    videoSkipHint: "Нажмите, чтобы пропустить",
+    videoUnavailable: "Видео недоступно"
   }
 };
 
@@ -718,6 +722,11 @@ var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
 var elChar = document.getElementById("charLayer");
+var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
+var elStoryVideo = document.getElementById("storyVideoLayer");
+var elStoryVideoPoster = document.getElementById("storyVideoPoster");
+var elStoryVideoFallbackText = document.getElementById("storyVideoFallbackText");
+var elStoryVideoSkipHint = document.getElementById("storyVideoSkipHint");
 
 // Жёстко скрываем персонажа на старте, чтобы не было первого "всплеска" когда появляется большого размера
 if (elChar) {
@@ -820,7 +829,7 @@ var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
 var blurFrameCaptureSeq = 0;
 
-[elBg, elBgVideo, elChar, elBlurBgImage].forEach(function (el) {
+[elBg, elBgVideo, elStoryVideo, elStoryVideoPoster, elChar, elBlurBgImage].forEach(function (el) {
   if (!el) return;
   el.setAttribute("draggable", "false");
   el.addEventListener("dragstart", function (e) {
@@ -860,6 +869,7 @@ function isUiClick(target) {
     (target.closest(".topbar") ||
     target.closest("#dialog") ||
     target.closest("#choices") ||
+    target.closest("#storyVideoOverlay") ||
     target.closest("#gameModal") ||
     target.closest("#statsGameModal")));
 }
@@ -1269,6 +1279,8 @@ var state = {
   // Флаг: открыта ли мини-игра
   inGame: false,
   currentGame: null,
+  // Story video blocks scene execution until ended, skipped, or fallback timeout.
+  inVideo: false,
   lastNextAt: 0,
   nextLocked: false
 };
@@ -1285,6 +1297,8 @@ var audio = {
   masterVolume: 0.2,
   // Громкость фонового видео как доля от master (0..1). По умолчанию 0 = без звука.
   currentBgVideoVolume: 0,
+  // Story-video volume is separate from background-video volume and resets after each insert.
+  currentStoryVideoVolume: 0,
   // Множитель приглушения BGM (ducking): 1 = без приглушения.
   bgmDuckingMultiplier: 1,
   bgmDuckingTimer: null,
@@ -1554,12 +1568,15 @@ function restart() {
   state.currentGame = null;
   state.waitingNext = false;
   state.nextLocked = false;
+  state.inVideo = false;
 
   // Никаких сохранений: просто сбрасываем переменные и идём в start.
   state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
   applyLicenseStateToStoryVars();
   state.inGame = false;
   hideChoices();
+  // Restart must stop a pending story video without continuing the old scene.
+  cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
   hideOverlay();
 
@@ -1652,8 +1669,8 @@ if (state.sceneId === 'scene_02') {
 
   // обработка списка actions
   while (true) {
-    // если открыта игра — не продолжаем
-    if (state.inGame) return;
+    // Game/video actions own the flow until their close/finish callback resumes it.
+    if (state.inGame || state.inVideo) return;
 
     var scene = state.sceneMap[state.sceneId];
     if (!scene) {
@@ -1746,7 +1763,7 @@ function onNext(e) {
     dt: Date.now() - lastNextTime
   });
 
-  if (state.inGame) return;
+  if (state.inGame || state.inVideo) return;
   if (elGameModal && !elGameModal.classList.contains("hidden")) return;
 
   console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
@@ -1778,7 +1795,7 @@ function onNext(e) {
   }
   
   if (!elChoices.classList.contains("hidden")) return;
-  if (state.inGame) return;
+  if (state.inGame || state.inVideo) return;
 
   // ВАЖНО: проверяем, ждём ли мы следующего действия
   if (!state.waitingNext) {
@@ -2100,6 +2117,10 @@ function executeAction(action) {
       // game: { id: "quiz1", src: "games/quiz1/index.html", onResult: { setKey: "quizScore", goto: "..." } }
       openGame(action);
       return true;
+
+    case "video":
+      startStoryVideo(action);
+      return "async";
 
     default:
       // неизвестный action — пропускаем
@@ -2848,6 +2869,320 @@ function hideChoices() {
 }
 
 // =========================================================
+//                   STORY VIDEO
+// =========================================================
+
+var STORY_VIDEO_DEFAULT_FALLBACK_DURATION = 5;
+var STORY_VIDEO_SEEK_TIMEOUT_MS = 2500;
+var storyVideoRuntime = {
+  action: null,
+  done: false,
+  fallback: false,
+  skipAllowed: true,
+  seekTimer: null,
+  stopTimer: null,
+  fallbackTimer: null
+};
+
+function clearStoryVideoTimers() {
+  // All video exits use the same timer cleanup so old events cannot advance a later video.
+  if (storyVideoRuntime.seekTimer) {
+    clearTimeout(storyVideoRuntime.seekTimer);
+    storyVideoRuntime.seekTimer = null;
+  }
+  if (storyVideoRuntime.stopTimer) {
+    clearTimeout(storyVideoRuntime.stopTimer);
+    storyVideoRuntime.stopTimer = null;
+  }
+  if (storyVideoRuntime.fallbackTimer) {
+    clearTimeout(storyVideoRuntime.fallbackTimer);
+    storyVideoRuntime.fallbackTimer = null;
+  }
+}
+
+function resetStoryVideoMediaHandlers() {
+  // Handlers are cleared before reusing the same video element for another story insert.
+  if (!elStoryVideo) return;
+  elStoryVideo.onloadedmetadata = null;
+  elStoryVideo.onloadeddata = null;
+  elStoryVideo.onseeked = null;
+  elStoryVideo.ontimeupdate = null;
+  elStoryVideo.onended = null;
+  elStoryVideo.onerror = null;
+}
+
+function normalizeStoryVideoFit(fit) {
+  var value = String(fit || "cover").toLowerCase();
+  return value === "contain" ? "contain" : "cover";
+}
+
+function applyStoryVideoFit(fit) {
+  // The same fit applies to the video and poster so fallback does not jump visually.
+  var objectFit = normalizeStoryVideoFit(fit);
+  if (elStoryVideo) elStoryVideo.style.objectFit = objectFit;
+  if (elStoryVideoPoster) elStoryVideoPoster.style.objectFit = objectFit;
+}
+
+function setStoryVideoSkipHint(text, visible) {
+  if (!elStoryVideoSkipHint) return;
+  elStoryVideoSkipHint.textContent = text || t("videoSkipHint") || "Click to skip";
+  elStoryVideoSkipHint.classList.toggle("hidden", !visible);
+}
+
+function showStoryVideoPoster(posterSrc, fit) {
+  // Poster is used both while the movie prepares and as the fallback image.
+  if (!elStoryVideoPoster) return;
+  applyStoryVideoFit(fit);
+  if (posterSrc) {
+    elStoryVideoPoster.src = posterSrc;
+    elStoryVideoPoster.classList.remove("hidden");
+    if (typeof updateBlurBackground === "function") updateBlurBackground(posterSrc);
+  } else {
+    elStoryVideoPoster.removeAttribute("src");
+    elStoryVideoPoster.classList.add("hidden");
+  }
+}
+
+function cleanupStoryVideoVisualOnly() {
+  // Visual cleanup is separate from finishStoryVideo() so restart can stop video without continuing the scene.
+  clearStoryVideoTimers();
+  resetStoryVideoMediaHandlers();
+
+  if (elStoryVideo) {
+    try {
+      elStoryVideo.pause();
+    } catch (e) {}
+    elStoryVideo.removeAttribute("src");
+    elStoryVideo.load();
+    elStoryVideo.classList.add("hidden");
+  }
+
+  if (elStoryVideoPoster) {
+    elStoryVideoPoster.removeAttribute("src");
+    elStoryVideoPoster.classList.add("hidden");
+  }
+
+  if (elStoryVideoFallbackText) {
+    elStoryVideoFallbackText.classList.add("hidden");
+  }
+
+  setStoryVideoSkipHint("", false);
+  if (elStoryVideoOverlay) elStoryVideoOverlay.classList.add("hidden");
+
+  audio.currentStoryVideoVolume = 0;
+  applyAudioSettings();
+}
+
+function finishStoryVideo(reason) {
+  // A story video resumes the action list automatically after ended, stop, skip, or fallback timeout.
+  if (storyVideoRuntime.done) return;
+  storyVideoRuntime.done = true;
+
+  cleanupStoryVideoVisualOnly();
+  state.inVideo = false;
+  state.waitingNext = false;
+  state.nextLocked = false;
+  setBgmDuckingForActiveVideos("story video finished: " + (reason || "done"));
+
+  setTimeout(function () {
+    runCurrent();
+  }, 0);
+}
+
+function showStoryVideoFallback(action, reason) {
+  // Fallback is always skippable and time-limited, even when the intended video is not skippable.
+  if (storyVideoRuntime.done) return;
+  clearStoryVideoTimers();
+  resetStoryVideoMediaHandlers();
+
+  var fallbackDuration = Math.max(
+    0.1,
+    Number(action && action.fallbackDuration !== undefined ? action.fallbackDuration : STORY_VIDEO_DEFAULT_FALLBACK_DURATION)
+  );
+  var posterSrc = normalizeAssetUrl((action && action.poster) || "");
+  var skipText = (action && action.skipText) || t("videoSkipHint") || "Click to skip";
+
+  storyVideoRuntime.fallback = true;
+  storyVideoRuntime.skipAllowed = true;
+  audio.currentStoryVideoVolume = 0;
+  applyAudioSettings();
+  setBgmDuckingForActiveVideos("story video fallback: " + (reason || "fallback"));
+
+  if (elStoryVideo) {
+    try {
+      elStoryVideo.pause();
+    } catch (e) {}
+    elStoryVideo.classList.add("hidden");
+  }
+
+  if (elStoryVideoOverlay) elStoryVideoOverlay.classList.remove("hidden");
+  showStoryVideoPoster(posterSrc, action && action.fit);
+
+  if (elStoryVideoFallbackText) {
+    elStoryVideoFallbackText.textContent = posterSrc ? "" : (t("videoUnavailable") || "Video unavailable");
+    elStoryVideoFallbackText.classList.toggle("hidden", !!posterSrc);
+  }
+
+  setStoryVideoSkipHint(skipText, true);
+  storyVideoRuntime.fallbackTimer = setTimeout(function () {
+    finishStoryVideo("fallback timeout");
+  }, fallbackDuration * 1000);
+}
+
+function startStoryVideoPlayback(action) {
+  // Playback starts only after metadata/seek are ready, otherwise start fragments would be unreliable.
+  if (!elStoryVideo || storyVideoRuntime.done) return;
+
+  var volume = clamp(typeof action.volume === "number" ? action.volume : 0, 0, 1);
+  var stopAt = typeof action.stop === "number" ? action.stop : null;
+
+  storyVideoRuntime.fallback = false;
+  audio.currentStoryVideoVolume = volume;
+  applyAudioSettings();
+  if (volume > 0) setBgmDuckingForActiveVideos("story video shown");
+
+  if (elStoryVideoPoster) elStoryVideoPoster.classList.add("hidden");
+  if (elStoryVideoFallbackText) elStoryVideoFallbackText.classList.add("hidden");
+  elStoryVideo.classList.remove("hidden");
+
+  if (stopAt !== null) {
+    var msLeft = Math.max(0, (stopAt - elStoryVideo.currentTime) * 1000);
+    storyVideoRuntime.stopTimer = setTimeout(function () {
+      finishStoryVideo("stop reached");
+    }, msLeft + 80);
+  }
+
+  elStoryVideo.ontimeupdate = function () {
+    if (stopAt !== null && elStoryVideo.currentTime >= stopAt) {
+      finishStoryVideo("stop reached");
+    }
+  };
+
+  var playPromise = elStoryVideo.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(function (err) {
+      console.warn("[VIDEO] story video play failed:", err);
+      showStoryVideoFallback(action, "play failed");
+    });
+  }
+}
+
+function prepareStoryVideoSeek(action) {
+  // Browsers allow seeking only after metadata; timeout converts stuck seek into poster fallback.
+  if (!elStoryVideo || storyVideoRuntime.done) return;
+
+  var startAt = typeof action.start === "number" ? action.start : 0;
+  var duration = elStoryVideo.duration;
+
+  if (startAt > 0 && isFinite(duration) && startAt >= duration) {
+    showStoryVideoFallback(action, "start beyond duration");
+    return;
+  }
+
+  if (startAt <= 0) {
+    startStoryVideoPlayback(action);
+    return;
+  }
+
+  storyVideoRuntime.seekTimer = setTimeout(function () {
+    showStoryVideoFallback(action, "seek timeout");
+  }, STORY_VIDEO_SEEK_TIMEOUT_MS);
+
+  elStoryVideo.onseeked = function () {
+    if (storyVideoRuntime.seekTimer) {
+      clearTimeout(storyVideoRuntime.seekTimer);
+      storyVideoRuntime.seekTimer = null;
+    }
+    startStoryVideoPlayback(action);
+  };
+
+  try {
+    elStoryVideo.currentTime = startAt;
+  } catch (e) {
+    console.warn("[VIDEO] story video seek failed:", e);
+    showStoryVideoFallback(action, "seek failed");
+  }
+}
+
+function startStoryVideo(action) {
+  // The video command is a full-screen, blocking scene action with automatic continuation.
+  if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
+    console.warn("[VIDEO] story video skipped: missing DOM or src", action);
+    setTimeout(function () {
+      state.inVideo = false;
+      state.nextLocked = false;
+      runCurrent();
+    }, 0);
+    return;
+  }
+
+  cleanupStoryVideoVisualOnly();
+  state.inVideo = true;
+  storyVideoRuntime.action = action;
+  storyVideoRuntime.done = false;
+  storyVideoRuntime.fallback = false;
+  storyVideoRuntime.skipAllowed = action.skippable !== false;
+
+  var src = normalizeAssetUrl(action.src);
+  var posterSrc = normalizeAssetUrl(action.poster || "");
+  var fit = normalizeStoryVideoFit(action.fit);
+  var skipText = action.skipText || t("videoSkipHint") || "Click to skip";
+
+  applyStoryVideoFit(fit);
+  elStoryVideoOverlay.classList.remove("hidden");
+  showStoryVideoPoster(posterSrc, fit);
+  setStoryVideoSkipHint(skipText, storyVideoRuntime.skipAllowed);
+
+  resetStoryVideoMediaHandlers();
+  elStoryVideo.loop = false;
+  elStoryVideo.playsInline = true;
+  elStoryVideo.preload = "auto";
+  elStoryVideo.classList.add("hidden");
+
+  elStoryVideo.onerror = function () {
+    console.warn("[VIDEO] story video load error:", src);
+    showStoryVideoFallback(action, "load error");
+  };
+  elStoryVideo.onended = function () {
+    finishStoryVideo("ended");
+  };
+  elStoryVideo.onloadeddata = function () {
+    if (typeof updateBlurBackgroundFromVideoFrame === "function") {
+      updateBlurBackgroundFromVideoFrame(elStoryVideo, posterSrc);
+    }
+  };
+  elStoryVideo.onloadedmetadata = function () {
+    prepareStoryVideoSeek(action);
+  };
+
+  audio.currentStoryVideoVolume = 0;
+  applyAudioSettings();
+  elStoryVideo.src = src;
+  elStoryVideo.load();
+}
+
+function handleStoryVideoSkip(e) {
+  if (!state.inVideo) return;
+  if (!storyVideoRuntime.skipAllowed && !storyVideoRuntime.fallback) return;
+  swallowEvent(e);
+  finishStoryVideo("skip");
+}
+
+if (elStoryVideoOverlay) {
+  ["pointerup", "click", "touchend"].forEach(function (type) {
+    elStoryVideoOverlay.addEventListener(type, handleStoryVideoSkip, true);
+  });
+}
+
+document.addEventListener("keydown", function (e) {
+  if (!state.inVideo) return;
+  var key = e.key || "";
+  if (key === "Escape" || key === "Enter" || key === " ") {
+    handleStoryVideoSkip(e);
+  }
+}, true);
+
+// =========================================================
 //                   МИНИ-ИГРЫ
 // =========================================================
 
@@ -3032,6 +3367,14 @@ function applyAudioSettings() {
     elBgVideo.volume = effectiveVideoVolume;
   }
 
+  if (elStoryVideo) {
+    // Story videos use their own per-action volume but still obey master/mute.
+    var storyVideoMultiplier = clamp((audio.currentStoryVideoVolume != null ? audio.currentStoryVideoVolume : 0), 0, 1);
+    var effectiveStoryVideoVolume = clamp(v * storyVideoMultiplier, 0, 1);
+    elStoryVideo.muted = audio.muted || effectiveStoryVideoVolume <= 0;
+    elStoryVideo.volume = effectiveStoryVideoVolume;
+  }
+
   logAudioState('applyAudioSettings');
 }
 
@@ -3075,7 +3418,29 @@ function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
   }, stepTime);
 }
 
-// Возобновляет фоновое видео после пользовательского жеста, если звук в интерфейсе уже включен.
+// ---------- Active video ducking helpers ----------
+function isAudibleBackgroundVideoActive() {
+  // Background-video ducking remains active while an audible video background is visible.
+  return !!(
+    elBgVideo &&
+    !elBgVideo.classList.contains("hidden") &&
+    (audio.currentBgVideoVolume || 0) > 0 &&
+    (elBgVideo.currentSrc || elBgVideo.src)
+  );
+}
+
+function setBgmDuckingForActiveVideos(reason) {
+  // Story videos share the ducking channel with video backgrounds, so release only if no audible video remains.
+  var hasAudibleStoryVideo = !!(state.inVideo && (audio.currentStoryVideoVolume || 0) > 0);
+  var shouldDuck = hasAudibleStoryVideo || isAudibleBackgroundVideoActive();
+  setBgmDuckingTarget(
+    shouldDuck ? DEFAULT_BGM_DUCKING_MULTIPLIER : 1,
+    shouldDuck ? DEFAULT_BGM_DUCKING_ATTACK_MS : DEFAULT_BGM_DUCKING_RELEASE_MS,
+    reason
+  );
+}
+
+// Resumes background video after a user gesture if interface sound is already enabled.
 function resumeBackgroundVideoIfNeeded(reason) {
   if (!elBgVideo) return;
   if (!elBgVideo.src) return;
@@ -3999,10 +4364,14 @@ function renderStats() {
       var gameCount = (STORY.assets && STORY.assets.games)
         ? Object.keys(STORY.assets.games).length
         : 0;
+      var videoCount = (STORY.assets && STORY.assets.videos)
+        ? Object.keys(STORY.assets.videos).length
+        : 0;
       
       text += "Images: " + imageCount + "\n";
       text += "Audio: " + audioCount + "\n";
-      text += "Games: " + gameCount + "\n\n";
+      text += "Games: " + gameCount + "\n";
+      text += "Videos: " + videoCount + "\n\n";
       
 
 
@@ -4161,6 +4530,7 @@ function renderStats() {
         text += "  Characters: " + window.LOADER_STATS.charactersCount + "\n";
         text += "  Audio: " + window.LOADER_STATS.audioCount + "\n";
         text += "  Games: " + (window.LOADER_STATS.gamesCount || 0) + "\n";
+        text += "  Videos: " + (window.LOADER_STATS.videosCount || 0) + "\n";
         text += "  Time per scene: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.scenesCount)).toFixed(2) + "ms\n";
         text += "  Time per action: " + (totalLoaderTime / Math.max(1, window.LOADER_STATS.actionsCount)).toFixed(2) + "ms\n\n";
 
@@ -4557,6 +4927,46 @@ function checkAssetsFiles() {
           category: 'game',
           ref: id
         });
+      });
+    }
+
+    if (STORY.assets.videos) {
+      Object.entries(STORY.assets.videos).forEach(([id, video]) => {
+        var videoPath = "";
+        var posterPath = "";
+
+        if (video && typeof video === "object") {
+          videoPath = typeof video.file === "string" ? video.file.trim() : "";
+          posterPath = typeof video.poster === "string" ? video.poster.trim() : "";
+        } else if (typeof video === "string") {
+          videoPath = video.trim();
+        }
+
+        if (!videoPath) {
+          result.missing.push({
+            path: `[invalid path: ${String(video)}]`,
+            refs: [`video: ${id}`]
+          });
+          return;
+        }
+
+        allFiles.push({
+          id: id,
+          path: videoPath,
+          type: 'video',
+          category: 'video',
+          ref: id
+        });
+
+        if (posterPath) {
+          allFiles.push({
+            id: id + '_poster',
+            path: posterPath,
+            type: 'video-poster',
+            category: 'video-poster',
+            ref: id
+          });
+        }
       });
     }
 
@@ -5866,6 +6276,7 @@ function computeStoryStats(story) {
   var choiceCount = 0;
   var bgmActions = 0;
   var sfxActions = 0;
+  var videoActions = 0;
   var audioCounts = {};
 
   for (var s = 0; s < scenes.length; s++) {
@@ -5914,6 +6325,7 @@ function computeStoryStats(story) {
         }
       }
       if (act.type === "sfx") sfxActions++;
+      if (act.type === "video") videoActions++;
     }
   }
 
@@ -6006,6 +6418,7 @@ function computeStoryStats(story) {
     choiceCount: choiceCount,
     bgmActions: bgmActions,
     sfxActions: sfxActions,
+    videoActions: videoActions,
     audioCounts: audioCounts
   };
 } // function
