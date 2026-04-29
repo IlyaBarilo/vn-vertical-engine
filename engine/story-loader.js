@@ -749,7 +749,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
 }
 
 function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
-  // Story videos are blocking actions: the engine continues after ended/stop/skip.
+  // Сюжетное видео блокирует поток команд, пока не завершится, не дойдет до stop или не будет пропущено.
   var tokens = splitQuotedTokens(cleanLine);
   if (tokens.length < 2) {
     addParseError(lineNumber, line, 'The video command must contain the video ID', true);

@@ -1279,7 +1279,7 @@ var state = {
   // Флаг: открыта ли мини-игра
   inGame: false,
   currentGame: null,
-  // Story video blocks scene execution until ended, skipped, or fallback timeout.
+  // Сюжетное видео блокирует выполнение сцены до завершения, пропуска или таймаута fallback.
   inVideo: false,
   lastNextAt: 0,
   nextLocked: false
@@ -1297,7 +1297,7 @@ var audio = {
   masterVolume: 0.2,
   // Громкость фонового видео как доля от master (0..1). По умолчанию 0 = без звука.
   currentBgVideoVolume: 0,
-  // Story-video volume is separate from background-video volume and resets after each insert.
+  // Громкость сюжетного видео отделена от фонового видео и сбрасывается после каждой вставки.
   currentStoryVideoVolume: 0,
   // Множитель приглушения BGM (ducking): 1 = без приглушения.
   bgmDuckingMultiplier: 1,
@@ -1575,7 +1575,7 @@ function restart() {
   applyLicenseStateToStoryVars();
   state.inGame = false;
   hideChoices();
-  // Restart must stop a pending story video without continuing the old scene.
+  // Рестарт останавливает текущее сюжетное видео без продолжения старой сцены.
   cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
   hideOverlay();
@@ -1669,7 +1669,7 @@ if (state.sceneId === 'scene_02') {
 
   // обработка списка actions
   while (true) {
-    // Game/video actions own the flow until their close/finish callback resumes it.
+    // Игра и сюжетное видео управляют потоком сами, пока их callback не возобновит сцену.
     if (state.inGame || state.inVideo) return;
 
     var scene = state.sceneMap[state.sceneId];
@@ -2885,7 +2885,7 @@ var storyVideoRuntime = {
 };
 
 function clearStoryVideoTimers() {
-  // All video exits use the same timer cleanup so old events cannot advance a later video.
+  // Все варианты выхода чистят таймеры одинаково, чтобы старые события не продвинули новое видео.
   if (storyVideoRuntime.seekTimer) {
     clearTimeout(storyVideoRuntime.seekTimer);
     storyVideoRuntime.seekTimer = null;
@@ -2901,7 +2901,7 @@ function clearStoryVideoTimers() {
 }
 
 function resetStoryVideoMediaHandlers() {
-  // Handlers are cleared before reusing the same video element for another story insert.
+  // Обработчики очищаются перед повторным использованием одного video-элемента.
   if (!elStoryVideo) return;
   elStoryVideo.onloadedmetadata = null;
   elStoryVideo.onloadeddata = null;
@@ -2917,7 +2917,7 @@ function normalizeStoryVideoFit(fit) {
 }
 
 function applyStoryVideoFit(fit) {
-  // The same fit applies to the video and poster so fallback does not jump visually.
+  // Один и тот же fit применяется к видео и постеру, чтобы fallback не менял композицию.
   var objectFit = normalizeStoryVideoFit(fit);
   if (elStoryVideo) elStoryVideo.style.objectFit = objectFit;
   if (elStoryVideoPoster) elStoryVideoPoster.style.objectFit = objectFit;
@@ -2930,7 +2930,7 @@ function setStoryVideoSkipHint(text, visible) {
 }
 
 function showStoryVideoPoster(posterSrc, fit) {
-  // Poster is used both while the movie prepares and as the fallback image.
+  // Постер используется и во время подготовки ролика, и как fallback-картинка.
   if (!elStoryVideoPoster) return;
   applyStoryVideoFit(fit);
   if (posterSrc) {
@@ -2944,7 +2944,7 @@ function showStoryVideoPoster(posterSrc, fit) {
 }
 
 function cleanupStoryVideoVisualOnly() {
-  // Visual cleanup is separate from finishStoryVideo() so restart can stop video without continuing the scene.
+  // Визуальная очистка отделена от finishStoryVideo(), чтобы рестарт не продолжал сцену.
   clearStoryVideoTimers();
   resetStoryVideoMediaHandlers();
 
@@ -2974,7 +2974,7 @@ function cleanupStoryVideoVisualOnly() {
 }
 
 function finishStoryVideo(reason) {
-  // A story video resumes the action list automatically after ended, stop, skip, or fallback timeout.
+  // Сюжетное видео автоматически продолжает список команд после ended, stop, skip или fallback-таймаута.
   if (storyVideoRuntime.done) return;
   storyVideoRuntime.done = true;
 
@@ -2990,7 +2990,7 @@ function finishStoryVideo(reason) {
 }
 
 function showStoryVideoFallback(action, reason) {
-  // Fallback is always skippable and time-limited, even when the intended video is not skippable.
+  // Аварийный показ всегда ограничен по времени и пропускается, даже если исходное видео нельзя пропустить.
   if (storyVideoRuntime.done) return;
   clearStoryVideoTimers();
   resetStoryVideoMediaHandlers();
@@ -3030,7 +3030,7 @@ function showStoryVideoFallback(action, reason) {
 }
 
 function startStoryVideoPlayback(action) {
-  // Playback starts only after metadata/seek are ready, otherwise start fragments would be unreliable.
+  // Проигрывание начинается только после metadata/seek, иначе фрагменты start были бы ненадежны.
   if (!elStoryVideo || storyVideoRuntime.done) return;
 
   var volume = clamp(typeof action.volume === "number" ? action.volume : 0, 0, 1);
@@ -3068,7 +3068,7 @@ function startStoryVideoPlayback(action) {
 }
 
 function prepareStoryVideoSeek(action) {
-  // Browsers allow seeking only after metadata; timeout converts stuck seek into poster fallback.
+  // Браузеры разрешают seek только после metadata; таймаут переводит зависший seek в poster-fallback.
   if (!elStoryVideo || storyVideoRuntime.done) return;
 
   var startAt = typeof action.start === "number" ? action.start : 0;
@@ -3105,7 +3105,7 @@ function prepareStoryVideoSeek(action) {
 }
 
 function startStoryVideo(action) {
-  // The video command is a full-screen, blocking scene action with automatic continuation.
+  // Команда video показывает полноэкранную блокирующую вставку с автоматическим продолжением.
   if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
     console.warn("[VIDEO] story video skipped: missing DOM or src", action);
     setTimeout(function () {
@@ -3368,7 +3368,7 @@ function applyAudioSettings() {
   }
 
   if (elStoryVideo) {
-    // Story videos use their own per-action volume but still obey master/mute.
+    // Сюжетное видео имеет громкость команды, но все равно подчиняется master/mute.
     var storyVideoMultiplier = clamp((audio.currentStoryVideoVolume != null ? audio.currentStoryVideoVolume : 0), 0, 1);
     var effectiveStoryVideoVolume = clamp(v * storyVideoMultiplier, 0, 1);
     elStoryVideo.muted = audio.muted || effectiveStoryVideoVolume <= 0;
@@ -3418,9 +3418,9 @@ function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
   }, stepTime);
 }
 
-// ---------- Active video ducking helpers ----------
+// ---------- Помощники ducking для активных видео ----------
 function isAudibleBackgroundVideoActive() {
-  // Background-video ducking remains active while an audible video background is visible.
+  // Ducking фонового видео активен, пока видимый видео-фон имеет ненулевую громкость.
   return !!(
     elBgVideo &&
     !elBgVideo.classList.contains("hidden") &&
@@ -3430,7 +3430,7 @@ function isAudibleBackgroundVideoActive() {
 }
 
 function setBgmDuckingForActiveVideos(reason) {
-  // Story videos share the ducking channel with video backgrounds, so release only if no audible video remains.
+  // Сюжетные и фоновые видео делят ducking-канал, поэтому отпускаем BGM только когда нет звучащих видео.
   var hasAudibleStoryVideo = !!(state.inVideo && (audio.currentStoryVideoVolume || 0) > 0);
   var shouldDuck = hasAudibleStoryVideo || isAudibleBackgroundVideoActive();
   setBgmDuckingTarget(
@@ -3440,7 +3440,7 @@ function setBgmDuckingForActiveVideos(reason) {
   );
 }
 
-// Resumes background video after a user gesture if interface sound is already enabled.
+// Возобновляет фоновое видео после жеста пользователя, если звук интерфейса уже включен.
 function resumeBackgroundVideoIfNeeded(reason) {
   if (!elBgVideo) return;
   if (!elBgVideo.src) return;

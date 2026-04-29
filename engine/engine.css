@@ -292,7 +292,7 @@ body {
   z-index: 4;
 }
 
-/* Story video sits above the scene UI and uses the blur background layer for outer fields. */
+/* Сюжетное видео находится поверх интерфейса сцены и использует blur-фон для полей. */
 .story-video-overlay {
   position: absolute;
   inset: 0;
