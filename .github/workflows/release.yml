@@ -97,6 +97,7 @@ jobs:
           [ -f docs/specs/SPEC-GAME.md ] && cp docs/specs/SPEC-GAME.md "build/$APP_NAME/docs/specs/"
 
           [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
+          [ -f lib/jsrsasign-all-min.js ] && cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
           # Копируем assets по типам файлов (для полной сборки).
