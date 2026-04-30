@@ -742,6 +742,7 @@ var elDialog = document.getElementById("dialog");
 var elName = document.getElementById("nameBox");
 var elText = document.getElementById("textBox");
 var elChoices = document.getElementById("choices");
+var activeFitChoiceLayout = null;
 
 var btnMute = document.getElementById("btnMute");
 var sliderVolume = document.getElementById("volume");
@@ -2863,15 +2864,170 @@ function hideOverlay() {
 //                   ВЫБОР
 // =========================================================
 
+// Снимает активный обработчик перерасчёта fit-меню, чтобы закрытое меню не реагировало на resize.
+function clearFitChoiceLayout() {
+  if (!activeFitChoiceLayout) return;
+  window.removeEventListener("resize", activeFitChoiceLayout);
+  activeFitChoiceLayout = null;
+}
+
+// Планирует первичную и повторную раскладку fit-меню после того, как браузер измерит DOM.
+function scheduleFitChoiceLayout(list) {
+  clearFitChoiceLayout();
+
+  activeFitChoiceLayout = function () {
+    var runLayout = function (fn) {
+      if (window.requestAnimationFrame) return window.requestAnimationFrame(fn);
+      return window.setTimeout(fn, 0);
+    };
+
+    runLayout(function () {
+      applyFitChoiceLayout(list);
+    });
+  };
+
+  activeFitChoiceLayout();
+  window.addEventListener("resize", activeFitChoiceLayout);
+}
+
+// Возвращает числовой gap списка выбора, чтобы расчёты строк совпадали с CSS-отступами.
+function getChoiceGapPx(list) {
+  var styles = window.getComputedStyle ? window.getComputedStyle(list) : null;
+  if (!styles) return 0;
+
+  var gap = parseFloat(styles.columnGap);
+  if (isNaN(gap)) gap = parseFloat(styles.gap);
+  if (isNaN(gap)) gap = parseFloat(styles.rowGap);
+  return isNaN(gap) ? 0 : gap;
+}
+
+// Подбирает переносы для fit-режима: порядок кнопок сохраняется, а строки становятся ближе по заполнению.
+function getFitChoiceRows(widths, containerWidth, gap) {
+  var count = widths.length;
+  var dp = new Array(count + 1);
+  var nextBreak = new Array(count + 1);
+  dp[count] = 0;
+
+  for (var i = count - 1; i >= 0; i--) {
+    dp[i] = Infinity;
+    var naturalWidth = 0;
+
+    for (var j = i; j < count; j++) {
+      naturalWidth += widths[j];
+      var itemCount = j - i + 1;
+      var rowWidth = naturalWidth + gap * (itemCount - 1);
+
+      if (rowWidth > containerWidth && itemCount > 1) break;
+
+      var effectiveWidth = Math.min(rowWidth, containerWidth);
+      var slack = Math.max(0, containerWidth - effectiveWidth);
+      // Штраф за пустое место заставляет переносы выравнивать строки, а не оставлять короткий хвост.
+      var cost = slack * slack + dp[j + 1];
+      if (cost < dp[i]) {
+        dp[i] = cost;
+        nextBreak[i] = j + 1;
+      }
+    }
+  }
+
+  var rows = [];
+  var cursor = 0;
+  while (cursor < count) {
+    var next = nextBreak[cursor] || (cursor + 1);
+    rows.push({
+      start: cursor,
+      end: next
+    });
+    cursor = next;
+  }
+  return rows;
+}
+
+// Измеряет кнопки fit-меню, разбивает их на строки и растягивает каждую строку на всю ширину списка.
+function applyFitChoiceLayout(list) {
+  if (!list || !list.parentNode || elChoices.classList.contains("hidden")) return;
+
+  var buttons = Array.prototype.slice.call(list.querySelectorAll(".choiceBtn"));
+  if (!buttons.length) return;
+
+  // Перед повторной раскладкой возвращаем кнопки в исходный порядок и убираем старые строки.
+  while (list.firstChild) {
+    list.removeChild(list.firstChild);
+  }
+
+  buttons.forEach(function (btn) {
+    btn.style.width = "";
+    btn.style.flex = "";
+    btn.style.maxWidth = "";
+    list.appendChild(btn);
+  });
+
+  var containerWidth = Math.floor(list.clientWidth);
+  if (containerWidth <= 0) return;
+
+  var savedDisplay = list.style.display;
+  list.style.display = "block";
+
+  var widths = buttons.map(function (btn) {
+    btn.style.width = "max-content";
+    btn.style.flex = "0 0 auto";
+    btn.style.maxWidth = "none";
+    return Math.min(Math.ceil(btn.getBoundingClientRect().width), containerWidth);
+  });
+
+  list.style.display = savedDisplay;
+
+  buttons.forEach(function (btn) {
+    btn.style.width = "";
+    btn.style.flex = "";
+    btn.style.maxWidth = "";
+  });
+
+  var gap = getChoiceGapPx(list);
+  var rows = getFitChoiceRows(widths, containerWidth, gap);
+
+  rows.forEach(function (rowInfo) {
+    var row = document.createElement("div");
+    row.className = "choiceFitRow";
+
+    var rowButtons = buttons.slice(rowInfo.start, rowInfo.end);
+    var rowWidths = widths.slice(rowInfo.start, rowInfo.end);
+    var totalNatural = rowWidths.reduce(function (sum, width) {
+      return sum + width;
+    }, 0);
+    var availableWidth = Math.max(0, containerWidth - gap * Math.max(0, rowButtons.length - 1));
+    var usedWidth = 0;
+
+    rowButtons.forEach(function (btn, index) {
+      var targetWidth = rowButtons.length > 0 && index < rowButtons.length - 1
+        ? (availableWidth * rowWidths[index] / Math.max(1, totalNatural))
+        : (availableWidth - usedWidth);
+      var roundedWidth = Math.max(0, Math.floor(targetWidth));
+      usedWidth += roundedWidth;
+
+      btn.style.width = roundedWidth + "px";
+      btn.style.flex = "0 0 " + roundedWidth + "px";
+      btn.style.maxWidth = "100%";
+      row.appendChild(btn);
+    });
+
+    list.appendChild(row);
+  });
+}
+
 function showChoices(choices, choiceAction) {
   // choices: [{ text, goto, set:{...}, sfx:"@audio.xxx" }, ...]
   // choiceAction хранит настройки меню, которые парсер прочитал из строки menu.
   if (!choices || !choices.length) return;
 
-  // Компактный режим делает кнопки шириной по тексту и разрешает перенос по строкам.
-  var isCompactChoices = !!(choiceAction && choiceAction.compact);
-  // Номера включены по умолчанию, но compact всегда скрывает их для плотной раскладки.
-  var showChoiceNumbers = !isCompactChoices && !(choiceAction && choiceAction.showNumbers === false);
+  clearFitChoiceLayout();
+
+  // fit — сбалансированная плотная раскладка; если указан вместе с compact, он сильнее.
+  var isFitChoices = !!(choiceAction && choiceAction.fit);
+  // compact делает кнопки шириной по тексту и разрешает обычный перенос по строкам.
+  var isCompactChoices = !isFitChoices && !!(choiceAction && choiceAction.compact);
+  // Номера включены по умолчанию, но плотные режимы всегда скрывают их.
+  var showChoiceNumbers = !isCompactChoices && !isFitChoices && !(choiceAction && choiceAction.showNumbers === false);
   // title="" намеренно скрывает заголовок, поэтому отличаем заданный title от значения по умолчанию.
   var choiceTitle = "Выберите действие";
   if (choiceAction && Object.prototype.hasOwnProperty.call(choiceAction, "title")) {
@@ -2892,6 +3048,8 @@ function showChoices(choices, choiceAction) {
   panel.className = "choicePanel";
   if (isCompactChoices) {
     panel.classList.add("is-compact");
+  } else if (isFitChoices) {
+    panel.classList.add("is-fit");
   }
 
   if (choiceTitle !== "") {
@@ -2960,9 +3118,13 @@ function showChoices(choices, choiceAction) {
 
   panel.appendChild(list);
   elChoices.appendChild(panel);
+  if (isFitChoices) {
+    scheduleFitChoiceLayout(list);
+  }
 }
 
 function hideChoices() {
+  clearFitChoiceLayout();
   elDialog.classList.remove("hiddenByChoices");
   elChoices.classList.add("hidden");
   elChoices.innerHTML = "";

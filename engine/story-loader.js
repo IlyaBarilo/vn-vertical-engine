@@ -1289,11 +1289,12 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   }
 
   // Разбирает флаги после команды menu и возвращает настройки конкретного меню.
-  // По умолчанию меню нумеруется; unnumbered/plain отключает номера, а compact всегда скрывает их.
+  // По умолчанию меню нумеруется; compact/fit используют плотные режимы и всегда скрывают номера.
   function parseMenuOptions(optionText, lineNumber, line) {
     var options = {
       showNumbers: true,
       compact: false,
+      fit: false,
       title: '',
       titleSet: false
     };
@@ -1381,17 +1382,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         continue;
       }
 
+      if (option === 'fit') {
+        options.fit = true;
+        continue;
+      }
+
       addParseError(
         lineNumber,
         line,
-        'Unknown menu option "' + option + '". Available options: numbered, unnumbered, plain, compact.',
+        'Unknown menu option "' + option + '". Available options: numbered, unnumbered, plain, compact, fit, title="...".',
         true
       );
       return null;
     }
 
-    if (options.compact) {
-      // Компактная раскладка всегда скрывает номера, даже если вместе с ней указан numbered.
+    if (options.compact || options.fit) {
+      // Плотные раскладки всегда скрывают номера, даже если вместе с ними указан numbered.
       options.showNumbers = false;
     }
 
@@ -1549,7 +1555,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         choices: [],
         hasChoiceKw: false,
         showNumbers: menuOptions.showNumbers,
-        compact: menuOptions.compact
+        compact: menuOptions.compact,
+        fit: menuOptions.fit
       };
       if (menuOptions.titleSet) {
         menuAction.title = menuOptions.title;
