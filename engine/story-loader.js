@@ -1289,10 +1289,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   }
 
   // Разбирает флаги после команды menu и возвращает настройки конкретного меню.
-  // Сейчас поддерживается только включение нумерации через numbered/numbers/number.
+  // Флаги можно комбинировать: numbered/numbers/number включает номера, compact/fit включает плотную раскладку.
   function parseMenuOptions(optionText, lineNumber, line) {
     var options = {
-      showNumbers: false
+      showNumbers: false,
+      compact: false
     };
 
     if (!optionText) return options;
@@ -1305,10 +1306,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         continue;
       }
 
+      if (option === 'compact' || option === 'fit') {
+        options.compact = true;
+        continue;
+      }
+
       addParseError(
         lineNumber,
         line,
-        'Unknown menu option "' + option + '". Available options: numbered, numbers, number.',
+        'Unknown menu option "' + option + '". Available options: numbered, numbers, number, compact, fit.',
         true
       );
       return null;
@@ -1467,7 +1473,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         type: 'choice',
         choices: [],
         hasChoiceKw: false,
-        showNumbers: menuOptions.showNumbers
+        showNumbers: menuOptions.showNumbers,
+        compact: menuOptions.compact
       };
 
       var enclosingActions = getSceneTargetActions(currentScene, parseState);

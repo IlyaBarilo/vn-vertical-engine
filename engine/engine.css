@@ -554,6 +554,13 @@ body {
   gap: var(--choices-gap);
 }
 
+.choicePanel.is-compact .choiceList {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+}
+
 .choiceBtn {
   display: flex;
   align-items: center;
@@ -576,6 +583,14 @@ body {
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
+.choicePanel.is-compact .choiceBtn {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
 .choiceBtn:hover,
 .choiceBtn:focus-visible {
   background: rgba(0,0,0,0.40);
@@ -591,9 +606,18 @@ body {
   opacity: 0.95;
 }
 
+.choicePanel.is-compact .choiceNum {
+  min-width: auto;
+}
+
 .choiceLabel {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.choicePanel.is-compact .choiceLabel {
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
 }
 
 

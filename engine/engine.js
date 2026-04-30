@@ -2870,6 +2870,8 @@ function showChoices(choices, choiceAction) {
 
   // Номера вариантов по умолчанию скрыты; menu numbered/numbers/number включает их для конкретного меню.
   var showChoiceNumbers = !!(choiceAction && choiceAction.showNumbers);
+  // Компактный режим делает кнопки шириной по тексту и разрешает перенос по строкам.
+  var isCompactChoices = !!(choiceAction && choiceAction.compact);
 
   // НЕ очищаем диалог полностью, а только текст
   elText.textContent = ""; // Очищаем только текст, имя оставляем
@@ -2883,6 +2885,9 @@ function showChoices(choices, choiceAction) {
 
   var panel = document.createElement("div");
   panel.className = "choicePanel";
+  if (isCompactChoices) {
+    panel.classList.add("is-compact");
+  }
 
   var title = document.createElement("div");
   title.className = "choiceTitle";
