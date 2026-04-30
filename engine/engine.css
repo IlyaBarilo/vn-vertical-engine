@@ -39,6 +39,9 @@ body {
   --blurStrength: 30px;
   --blurBrightness: 0.9;
   --blurOpacity: 0.95;
+  /* Базовые значения blur для UI задаются в эталонных px и масштабируются через --viewportScale. */
+  --dialogBackdropBlur: 5px;
+  --menuBackdropBlur: 5px;
 
 
   /* Технические переменные сцены: задаются JS и/или сценарием */
@@ -454,7 +457,8 @@ body {
   border-radius: var(--dialog-radius);
   background: rgba(0,0,0,0.60);
   border: var(--ui-border-width) solid rgba(255,255,255,0.14);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(calc(var(--dialogBackdropBlur) * var(--viewportScale)));
+  -webkit-backdrop-filter: blur(calc(var(--dialogBackdropBlur) * var(--viewportScale)));
   outline: none;
   font-size: var(--dialog-font-size);
   z-index: 10;
@@ -534,8 +538,9 @@ body {
   background: rgba(0,0,0,0.40);
   border: 1px solid rgba(255,255,255,0.12);
   box-shadow: 0 10px 30px rgba(0,0,0,0.28);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* Сила blur задаётся в эталонных px и масштабируется как размытие фона сцены. */
+  backdrop-filter: blur(calc(var(--menuBackdropBlur) * var(--viewportScale)));
+  -webkit-backdrop-filter: blur(calc(var(--menuBackdropBlur) * var(--viewportScale)));
 }
 
 .choiceTitle {
