@@ -576,6 +576,44 @@ function parseActionParams(paramTokens) {
   return params;
 }
 
+// Разбирает настройку горизонтального скролла фона из [bg] и команды bg.
+function parseBackgroundScrollOption(rawValue, lineNumber, line) {
+  var value = String(rawValue === undefined ? "true" : rawValue).trim().toLowerCase();
+
+  if (value === "true" || value === "1" || value === "yes" || value === "on") {
+    return { enabled: true };
+  }
+
+  if (value === "false" || value === "0" || value === "no" || value === "off") {
+    return { enabled: false };
+  }
+
+  if (value === "left" || value === "start") {
+    return { enabled: true, start: 0 };
+  }
+
+  if (value === "center" || value === "middle") {
+    return { enabled: true, start: 0.5 };
+  }
+
+  if (value === "right" || value === "end") {
+    return { enabled: true, start: 1 };
+  }
+
+  if (value !== "" && !isNaN(Number(value))) {
+    var numeric = Number(value);
+    if (numeric >= 0 && numeric <= 1) {
+      return { enabled: true, start: numeric };
+    }
+    if (numeric >= 0 && numeric <= 100) {
+      return { enabled: true, start: numeric / 100 };
+    }
+  }
+
+  addParseError(lineNumber, line, `Invalid background scroll value "${rawValue}". Use true/false, left/center/right or 0..1.`, true);
+  return null;
+}
+
 function stripInlineComment(line) {
   var text = String(line || '');
   var quote = null;
@@ -970,7 +1008,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
       if (category === 'backgrounds') {
         // Для фонов поддерживаем расширенный объект:
-        // file=..., fallback=..., volume=...
+        // file=..., fallback=..., volume=..., scroll=...
         // volume — доля от master (0..1), по умолчанию в движке для видео = 0.
         var bgEntry = {
           file: args.file
@@ -993,9 +1031,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           bgEntry.volume = parsedVolume;
         }
 
+        if (args.scroll !== undefined) {
+          var parsedScroll = parseBackgroundScrollOption(args.scroll, lineNumber, line);
+          if (parsedScroll === null) return true;
+          bgEntry.scroll = parsedScroll.enabled ? parsedScroll : false;
+        }
+
         // Для простых строк без fallback/volume сохраняем старый формат (string),
         // чтобы не ломать обратную совместимость.
-        if (bgEntry.fallback === undefined && bgEntry.volume === undefined) {
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined) {
           story.assets.backgrounds[assetId] = args.file;
         } else {
           story.assets.backgrounds[assetId] = bgEntry;
@@ -1720,14 +1764,24 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     
     // bg [имя]
     if (cleanLine.startsWith('bg ')) {
-      const bgName = cleanLine.substring(3).trim();
+      const bgTokens = cleanLine.substring(3).trim().split(/\s+/);
+      const bgName = bgTokens[0] || "";
       if (!bgName) {
         addParseError(lineNumber, line, "No background name specified after ‘bg’", true);
       }
-      actions.push({
+      const bgAction = {
         type: 'bg',
         src: `@bg.${bgName || "unknown"}`
-      });
+      };
+
+      const bgParams = parseActionParams(bgTokens.slice(1));
+      if (bgParams.scroll !== undefined) {
+        const parsedScroll = parseBackgroundScrollOption(bgParams.scroll, lineNumber, line);
+        if (parsedScroll === null) return;
+        bgAction.scroll = parsedScroll.enabled ? parsedScroll : false;
+      }
+
+      actions.push(bgAction);
       return;
     }
     

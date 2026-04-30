@@ -145,7 +145,8 @@ const UI_I18N = {
     gamesLaunchFailed: "Unable to launch the game",
     gamesNoGames: "No games found",
     videoSkipHint: "Click to skip",
-    videoUnavailable: "Video unavailable"
+    videoUnavailable: "Video unavailable",
+    bgScrollHint: "Move background sideways"
   },
   ru: {
     mute: "Звук",
@@ -187,7 +188,8 @@ const UI_I18N = {
     gamesLaunchFailed: "Не удалось запустить игру",
     gamesNoGames: "Игры не найдены",
     videoSkipHint: "Нажмите, чтобы пропустить",
-    videoUnavailable: "Видео недоступно"
+    videoUnavailable: "Видео недоступно",
+    bgScrollHint: "Перемещайте фон"
   }
 };
 
@@ -239,6 +241,9 @@ function applyUiLanguage() {
 
   var hint = document.querySelector(".hint");
   if (hint) hint.textContent = t("hintContinue");
+
+  var bgScrollHint = document.getElementById("bgScrollHint");
+  if (bgScrollHint) bgScrollHint.textContent = t("bgScrollHint");
 
   var statsTitle = document.querySelector(".statsTitle");
   if (statsTitle) statsTitle.textContent = t("statsTitle");
@@ -721,6 +726,7 @@ var elTitle = document.getElementById("title");
 var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
+var elBgScrollHint = document.getElementById("bgScrollHint");
 var elChar = document.getElementById("charLayer");
 var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
 var elStoryVideo = document.getElementById("storyVideoLayer");
@@ -887,10 +893,24 @@ elStage.addEventListener("click", function (e) {
     handleStoryVideoSkip(e);
     return;
   }
+
+  if (backgroundScroll && backgroundScroll.suppressClick) {
+    backgroundScroll.suppressClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   
   if (isUiClick(e.target)) return;
   onNext();
 });
+
+if (elNovelWindow) {
+  elNovelWindow.addEventListener("pointerdown", handleBackgroundScrollPointerDown);
+  elNovelWindow.addEventListener("pointermove", handleBackgroundScrollPointerMove);
+  elNovelWindow.addEventListener("pointerup", handleBackgroundScrollPointerUp);
+  elNovelWindow.addEventListener("pointercancel", handleBackgroundScrollPointerCancel);
+}
 
 
 
@@ -1299,6 +1319,201 @@ var state = {
   nextLocked: false
 };
 
+var backgroundScroll = {
+  enabled: false,
+  available: false,
+  position: 0.5,
+  start: 0.5,
+  maxOffset: 0,
+  dragging: false,
+  pointerId: null,
+  dragStartX: 0,
+  dragStartPosition: 0.5,
+  moved: false,
+  suppressClick: false,
+  suppressTimer: null,
+  hintTimer: null
+};
+
+// Устанавливает настройки скролла для текущего фонового изображения и сбрасывает позицию.
+function setBackgroundScrollOptions(options) {
+  var normalized = normalizeBackgroundScrollOptions(options);
+  backgroundScroll.enabled = !!normalized.enabled;
+  backgroundScroll.start = normalizeBackgroundScrollStart(normalized.start, 0.5);
+  backgroundScroll.position = backgroundScroll.start;
+  backgroundScroll.dragging = false;
+  backgroundScroll.moved = false;
+  applyBackgroundScrollPosition();
+  if (!backgroundScroll.enabled) {
+    backgroundScroll.available = false;
+    if (elNovelWindow) {
+      elNovelWindow.classList.remove("bg-scrollable");
+      elNovelWindow.classList.remove("bg-scroll-dragging");
+    }
+    hideBackgroundScrollHint();
+  }
+}
+
+// Полностью выключает интерактивный скролл и возвращает фон к обычному центрированию.
+function disableBackgroundScroll() {
+  backgroundScroll.enabled = false;
+  backgroundScroll.available = false;
+  backgroundScroll.dragging = false;
+  backgroundScroll.pointerId = null;
+  backgroundScroll.maxOffset = 0;
+  backgroundScroll.position = 0.5;
+  if (elBg) elBg.style.objectPosition = "center";
+  if (elNovelWindow) {
+    elNovelWindow.classList.remove("bg-scrollable");
+    elNovelWindow.classList.remove("bg-scroll-dragging");
+  }
+  hideBackgroundScrollHint();
+}
+
+// Пересчитывает, есть ли у текущего изображения скрытая ширина для горизонтального перетаскивания.
+function updateBackgroundScrollAvailability() {
+  if (!backgroundScroll.enabled || !elBg || !elNovelWindow || elBg.classList.contains("hidden")) {
+    backgroundScroll.available = false;
+    if (elNovelWindow) elNovelWindow.classList.remove("bg-scrollable");
+    hideBackgroundScrollHint();
+    return;
+  }
+
+  if (!elBg.naturalWidth || !elBg.naturalHeight) {
+    backgroundScroll.available = false;
+    if (elNovelWindow) elNovelWindow.classList.remove("bg-scrollable");
+    hideBackgroundScrollHint();
+    return;
+  }
+
+  var rect = elNovelWindow.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  var scale = Math.max(rect.width / elBg.naturalWidth, rect.height / elBg.naturalHeight);
+  var renderedWidth = elBg.naturalWidth * scale;
+  backgroundScroll.maxOffset = Math.max(0, renderedWidth - rect.width);
+  backgroundScroll.available = backgroundScroll.maxOffset > 1;
+
+  elNovelWindow.classList.toggle("bg-scrollable", backgroundScroll.available);
+
+  if (backgroundScroll.available) {
+    applyBackgroundScrollPosition();
+    showBackgroundScrollHint();
+  } else {
+    hideBackgroundScrollHint();
+  }
+}
+
+// Применяет позицию object-position: 0 — левый край, 1 — правый край.
+function applyBackgroundScrollPosition() {
+  if (!elBg) return;
+  var x = clamp(backgroundScroll.position, 0, 1) * 100;
+  elBg.style.objectPosition = x.toFixed(3) + "% center";
+}
+
+// Показывает короткую подсказку, чтобы игрок заметил возможность сдвинуть широкий фон.
+function showBackgroundScrollHint() {
+  if (!elBgScrollHint || !backgroundScroll.available) return;
+
+  clearTimeout(backgroundScroll.hintTimer);
+  elBgScrollHint.textContent = t("bgScrollHint");
+  elBgScrollHint.classList.remove("hidden");
+  requestAnimationFrame(function () {
+    if (elBgScrollHint) elBgScrollHint.classList.add("is-visible");
+  });
+}
+
+// Скрывает подсказку без удаления элемента, чтобы ее можно было снова показать при следующем фоне.
+function hideBackgroundScrollHint() {
+  if (!elBgScrollHint) return;
+  clearTimeout(backgroundScroll.hintTimer);
+  backgroundScroll.hintTimer = null;
+  elBgScrollHint.classList.remove("is-visible");
+  elBgScrollHint.classList.add("hidden");
+}
+
+// Начинает drag только по сцене: UI, меню и видео не должны перехватываться как скролл фона.
+function handleBackgroundScrollPointerDown(e) {
+  if (!backgroundScroll.available || backgroundScroll.dragging) return;
+  if (state.inGame || state.inVideo) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  if (isUiClick(e.target)) return;
+
+  backgroundScroll.dragging = true;
+  backgroundScroll.pointerId = e.pointerId;
+  backgroundScroll.dragStartX = e.clientX;
+  backgroundScroll.dragStartPosition = backgroundScroll.position;
+  backgroundScroll.moved = false;
+
+  if (elNovelWindow) {
+    elNovelWindow.classList.add("bg-scroll-dragging");
+    if (typeof elNovelWindow.setPointerCapture === "function") {
+      try {
+        elNovelWindow.setPointerCapture(e.pointerId);
+      } catch (captureError) {}
+    }
+  }
+}
+
+// Во время drag меняем только горизонтальную позицию, вертикальное движение игнорируем.
+function handleBackgroundScrollPointerMove(e) {
+  if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
+  if (!backgroundScroll.maxOffset) return;
+
+  var dx = e.clientX - backgroundScroll.dragStartX;
+  if (Math.abs(dx) > 3) {
+    backgroundScroll.moved = true;
+  }
+
+  backgroundScroll.position = clamp(
+    backgroundScroll.dragStartPosition - (dx / backgroundScroll.maxOffset),
+    0,
+    1
+  );
+  applyBackgroundScrollPosition();
+
+  if (backgroundScroll.moved) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+// Завершает drag и подавляет следующий click, если пользователь действительно двигал фон.
+function handleBackgroundScrollPointerUp(e) {
+  if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
+
+  var wasMoved = backgroundScroll.moved;
+  backgroundScroll.dragging = false;
+  backgroundScroll.pointerId = null;
+
+  if (elNovelWindow) {
+    elNovelWindow.classList.remove("bg-scroll-dragging");
+    if (typeof elNovelWindow.releasePointerCapture === "function") {
+      try {
+        elNovelWindow.releasePointerCapture(e.pointerId);
+      } catch (captureError) {}
+    }
+  }
+
+  if (wasMoved) {
+    backgroundScroll.suppressClick = true;
+    clearTimeout(backgroundScroll.suppressTimer);
+    backgroundScroll.suppressTimer = setTimeout(function () {
+      backgroundScroll.suppressClick = false;
+    }, 250);
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+// Сбрасывает незавершенный drag, если браузер отменил pointer-событие.
+function handleBackgroundScrollPointerCancel(e) {
+  if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
+  backgroundScroll.dragging = false;
+  backgroundScroll.pointerId = null;
+  if (elNovelWindow) elNovelWindow.classList.remove("bg-scroll-dragging");
+}
+
 // Флаг для отслеживания первого диалога
 var isFirstDialog = true;
 
@@ -1362,6 +1577,53 @@ function getBackgroundAssetVolume(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object") return null;
   if (typeof assetEntry.volume !== "number") return null;
   return clamp(assetEntry.volume, 0, 1);
+}
+
+// Приводит разные формы scroll из сценария к единому объекту для рендера.
+function normalizeBackgroundScrollOptions(value) {
+  if (value === true) {
+    return { enabled: true, start: 0.5 };
+  }
+
+  if (!value) {
+    return { enabled: false, start: 0.5 };
+  }
+
+  if (typeof value === "object") {
+    var enabled = value.enabled !== false;
+    var start = normalizeBackgroundScrollStart(value.start, 0.5);
+    return { enabled: enabled, start: start };
+  }
+
+  if (typeof value === "string") {
+    var raw = value.toLowerCase();
+    if (raw === "left" || raw === "start") return { enabled: true, start: 0 };
+    if (raw === "right" || raw === "end") return { enabled: true, start: 1 };
+    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5 };
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5 };
+  }
+
+  return { enabled: false, start: 0.5 };
+}
+
+// Переводит стартовую позицию скролла в долю от 0 до 1.
+function normalizeBackgroundScrollStart(value, fallback) {
+  if (value === "left" || value === "start") return 0;
+  if (value === "right" || value === "end") return 1;
+  if (value === "center" || value === "middle") return 0.5;
+
+  var numeric = Number(value);
+  if (!isFinite(numeric)) return fallback;
+  if (numeric > 1 && numeric <= 100) numeric = numeric / 100;
+  return clamp(numeric, 0, 1);
+}
+
+// Возвращает настройки скролла, заданные у фонового ассета.
+function getBackgroundAssetScrollOptions(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object" || assetEntry.scroll === undefined) {
+    return { enabled: false, start: 0.5 };
+  }
+  return normalizeBackgroundScrollOptions(assetEntry.scroll);
 }
 
 var VISUAL_TRACE_ENABLED = true;
@@ -1459,6 +1721,7 @@ profiler.mark('Audio is set up');
 
 applyUiScale();
 window.addEventListener("resize", applyUiScale);
+window.addEventListener("resize", updateBackgroundScrollAvailability);
 
 // ---------- Подготовка сцен ----------
 buildSceneMap();
@@ -1914,7 +2177,7 @@ function executeAction(action) {
   switch (action.type) {
     case "bg":
       var bgAssetInfo = resolveBackgroundAsset(action.src);
-      setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume);
+      setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, action.scroll !== undefined ? action.scroll : bgAssetInfo.scroll);
       return false;
 
     case "char":
@@ -2317,9 +2580,11 @@ function gotoScene(sceneId) {
 //                   ВИЗУАЛ
 // =========================================================
 
-function setBackground(src, fallbackSrc, videoVolume) {
+// Переключает фоновое медиа и при необходимости включает горизонтальный скролл wide-изображения.
+function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   if (!src) {
     visualTrace("setBackground:empty-src", { fallbackSrc: fallbackSrc || "" });
+    disableBackgroundScroll();
     // Если фоновое видео больше не задано, возвращаем BGM к обычной громкости.
     setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'setBackground empty src');
     // Без фонового видео громкость его канала всегда 0.
@@ -2345,6 +2610,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
       console.warn('[IMG] skip failed background src:', normalizedSrc);
       failedAssets.images[normalizedSrc + "_logged"] = true;
     }
+    disableBackgroundScroll();
     if (isVideo && normalizedFallbackSrc) {
       console.warn('[VIDEO] primary marked as failed, using fallback:', normalizedFallbackSrc);
       visualTrace("bgVideo:already-failed:fallback", {
@@ -2358,6 +2624,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
   }
 
   if (isVideo) {
+    disableBackgroundScroll();
     if (elBgVideo) {
       elBgVideo.onerror = null;
       elBgVideo.onloadeddata = null;
@@ -2461,6 +2728,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
     elBg.classList.remove("hidden");
     elBg.onerror = null;
     elBg.onload = null;
+    setBackgroundScrollOptions(scrollOptions);
 
     elBg.onerror = function() {
       var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
@@ -2472,6 +2740,7 @@ function setBackground(src, fallbackSrc, videoVolume) {
       if (badSrc) {
         failedAssets.images[badSrc] = true;
       }
+      disableBackgroundScroll();
 
       elBg.onerror = null;
       elBg.removeAttribute('src');
@@ -2481,10 +2750,12 @@ function setBackground(src, fallbackSrc, videoVolume) {
       visualTrace("bgImage:load", {
         src: normalizeAssetUrl(elBg.currentSrc || elBg.src || normalizedSrc)
       });
+      updateBackgroundScrollAvailability();
     };
 
     visualTrace("bgImage:set", { src: normalizedSrc });
     elBg.src = normalizedSrc;
+    updateBackgroundScrollAvailability();
     visualTrace("bgImage:src-set", { src: normalizedSrc });
   }
 
@@ -4189,22 +4460,26 @@ function resolveAsset(ref, charId, emotion) {
   return "";
 }
 
+// Собирает все настройки фонового ассета, чтобы команда bg не знала детали [bg].
 function resolveBackgroundAsset(ref) {
   var file = resolveAsset(ref);
   var fallback = "";
   var volume = null;
+  var scroll = { enabled: false, start: 0.5 };
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
     var bgEntry = STORY.assets.backgrounds[bgId];
     fallback = getBackgroundAssetFallbackPath(bgEntry);
     volume = getBackgroundAssetVolume(bgEntry);
+    scroll = getBackgroundAssetScrollOptions(bgEntry);
   }
 
   return {
     file: file,
     fallback: fallback,
-    volume: volume
+    volume: volume,
+    scroll: scroll
   };
 }
 

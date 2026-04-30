@@ -284,6 +284,60 @@ body {
   z-index: 2;
 }
 
+/* Подсказка появляется только у фонов, где сценарий разрешил горизонтальный скролл. */
+.bg-scroll-hint {
+  position: absolute;
+  left: 50%;
+  top: max(4.25rem, calc(env(safe-area-inset-top, 0px) + 4.25rem));
+  transform: translateX(-50%);
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  max-width: min(80%, 22rem);
+  padding: 0.42em 0.76em 0.42em 0.46em;
+  border: var(--ui-border-width) solid rgba(255,255,255,0.34);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.58);
+  color: rgba(255,255,255,0.92);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(calc(0.25rem * var(--visualScale)));
+  box-shadow: 0 0.45rem 1.25rem rgba(0,0,0,0.35);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.bg-scroll-hint::before {
+  content: "⇆";
+  display: grid;
+  place-items: center;
+  width: 1.7em;
+  height: 1.7em;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.20);
+  border: var(--ui-border-width) solid rgba(255,255,255,0.30);
+  color: #ffffff;
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+.bg-scroll-hint.is-visible {
+  opacity: 1;
+}
+
+.novel-window.bg-scrollable {
+  cursor: grab;
+}
+
+.novel-window.bg-scroll-dragging {
+  cursor: grabbing;
+}
+
 /* Персонаж */
 .char {
   position: absolute;
