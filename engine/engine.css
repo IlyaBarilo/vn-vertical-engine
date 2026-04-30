@@ -18,10 +18,10 @@ body {
   --baseFontPx: 16px;
   --baseFontSize: calc(var(--baseFontPx) * var(--uiScale));
 
-  /* Масштаб относительно эталонного разрешения экрана.
-     Пересчитывается JS (см. applyUiScale) и не зависит от UI_FONT_SCALE.
-     Используется для адаптации эффектов к размеру экрана (blur и т.п.). */
+  /* Масштаб визуальных эффектов относительно эталонного разрешения.
+     Пересчитывается JS (см. applyUiScale) и не зависит от UI_FONT_SCALE. */
   --viewportScale: 1;
+  --visualScale: 1;
 
   /*
      БЫСТРАЯ РУЧНАЯ НАСТРОЙКА ПОД ЭКРАН:
@@ -55,7 +55,8 @@ body {
   --ui-font-base: 1rem;
   --ui-space: 1rem;
   --ui-radius: 1rem;
-  --ui-border-width: 1px;
+  --ui-border-width-base: 1px;
+  --ui-border-width: calc(var(--ui-border-width-base) * var(--visualScale));
   --ui-control-min-height: 2.5rem;
   --ui-touch-min-height: 3rem;
 
@@ -84,7 +85,8 @@ body {
   --control-padding-y: 0.72em;
   --control-padding-x: 1.12em;
   --control-radius: 0.78em;
-  --control-border-width: 1px;
+  --control-border-width-base: 1px;
+  --control-border-width: calc(var(--control-border-width-base) * var(--visualScale));
   --control-min-height: 2.85em;
 
   /* =========================================================
@@ -116,6 +118,8 @@ body {
   --name-radius: 0.68em;
   --name-margin-bottom: 0.55em;
   --name-min-height: 1.9em;
+  --name-border-width-base: 1px;
+  --name-border-width: calc(var(--name-border-width-base) * var(--visualScale));
 
   /* =========================================================
      ВАРИАНТЫ ВЫБОРА
@@ -130,6 +134,14 @@ body {
   --choice-padding-x: 1.15em;
   --choice-radius: 0.95em;
   --choice-min-height: 3.6em;
+  --choice-border-width-base: 1px;
+  --choice-border-width: calc(var(--choice-border-width-base) * var(--visualScale));
+  --choice-panel-border-width-base: 1px;
+  --choice-panel-border-width: calc(var(--choice-panel-border-width-base) * var(--visualScale));
+  --choice-panel-shadow-y-base: 10px;
+  --choice-panel-shadow-blur-base: 30px;
+  --choice-panel-shadow-y: calc(var(--choice-panel-shadow-y-base) * var(--visualScale));
+  --choice-panel-shadow-blur: calc(var(--choice-panel-shadow-blur-base) * var(--visualScale));
 
   /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА
@@ -430,7 +442,7 @@ body {
   height: var(--topbar-slider-thumb-size);
   border-radius: 50%;
   background: #fff;
-  border: 1px solid rgba(0,0,0,0.25);
+  border: var(--ui-border-width) solid rgba(0,0,0,0.25);
   margin-top: calc((var(--topbar-slider-track-height) - var(--topbar-slider-thumb-size)) / 2);
 }
 
@@ -439,7 +451,7 @@ body {
   height: var(--topbar-slider-thumb-size);
   border-radius: 50%;
   background: #fff;
-  border: 1px solid rgba(0,0,0,0.25);
+  border: var(--ui-border-width) solid rgba(0,0,0,0.25);
 }
 
 
@@ -487,7 +499,7 @@ body {
   padding: var(--name-padding-y) var(--name-padding-x);
   border-radius: var(--name-radius);
   background: rgba(255,255,255,0.10);
-  border: var(--ui-border-width) solid rgba(255,255,255,0.12);
+  border: var(--name-border-width) solid rgba(255,255,255,0.12);
   margin-bottom: var(--name-margin-bottom);
   font-weight: 700;
   font-size: var(--name-font-size);
@@ -536,8 +548,8 @@ body {
   padding: 0.95em;
   border-radius: calc(var(--choice-radius) + 0.2em);
   background: rgba(0,0,0,0.40);
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  border: var(--choice-panel-border-width) solid rgba(255,255,255,0.12);
+  box-shadow: 0 var(--choice-panel-shadow-y) var(--choice-panel-shadow-blur) rgba(0,0,0,0.28);
   /* Сила blur задаётся в эталонных px и масштабируется как размытие фона сцены. */
   backdrop-filter: blur(calc(var(--menuBackdropBlur) * var(--viewportScale)));
   -webkit-backdrop-filter: blur(calc(var(--menuBackdropBlur) * var(--viewportScale)));
@@ -593,7 +605,7 @@ body {
   color: #fff;
 
   background: rgba(0,0,0,0.40);
-  border: 1px solid rgba(255,255,255,0.18);
+  border: var(--choice-border-width) solid rgba(255,255,255,0.18);
   border-radius: var(--choice-radius);
 
   cursor: pointer;

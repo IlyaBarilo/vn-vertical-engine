@@ -1271,6 +1271,13 @@ console.log('[SCALE] UI_FONT_SCALE initialized:', UI_FONT_SCALE);
 var UI_REFERENCE_HEIGHT = 1440;
 console.log('[SCALE] UI_REFERENCE_HEIGHT initialized:', UI_REFERENCE_HEIGHT);
 
+// Высота, от которой считаются визуальные эффекты: blur, тонкие бордеры и тени.
+// Минимум не даёт эффектам стать слишком тонкими на очень низком окне.
+var UI_VISUAL_REFERENCE_HEIGHT = UI_REFERENCE_HEIGHT;
+var UI_VISUAL_MIN_HEIGHT = 400;
+console.log('[SCALE] UI_VISUAL_REFERENCE_HEIGHT initialized:', UI_VISUAL_REFERENCE_HEIGHT);
+console.log('[SCALE] UI_VISUAL_MIN_HEIGHT initialized:', UI_VISUAL_MIN_HEIGHT);
+
 // ---------- Состояние движка ----------
 var state = {
   // Текущая сцена
@@ -4217,10 +4224,14 @@ function applyUiScale() {
 
   document.documentElement.style.setProperty("--uiScale", finalScale);
 
-  // Масштаб относительно эталонного разрешения (без UI_FONT_SCALE).
-  // Используется для эффектов, которые должны зависеть только от размера
-  // экрана, а не от настройки UI (например, blur фона).
-  document.documentElement.style.setProperty("--viewportScale", autoScale);
+  // Визуальные эффекты считаются отдельно от UI_FONT_SCALE, чтобы blur,
+  // бордеры и тени сохраняли привычную силу при ручном масштабе интерфейса.
+  var visualReferenceHeight = Math.max(1, UI_VISUAL_REFERENCE_HEIGHT || UI_REFERENCE_HEIGHT);
+  var visualMinHeight = Math.max(1, UI_VISUAL_MIN_HEIGHT || 1);
+  var visualHeight = Math.max(window.innerHeight, visualMinHeight);
+  var visualScale = clamp(visualHeight / visualReferenceHeight, 0.05, 10);
+  document.documentElement.style.setProperty("--viewportScale", visualScale);
+  document.documentElement.style.setProperty("--visualScale", visualScale);
 
   // Должно совпадать с --baseFontPx в CSS.
   var baseFontPx = 16;
@@ -4232,6 +4243,9 @@ function applyUiScale() {
     innerHeight: window.innerHeight,
     referenceHeight: UI_REFERENCE_HEIGHT,
     autoScale: autoScale,
+    visualReferenceHeight: visualReferenceHeight,
+    visualMinHeight: visualMinHeight,
+    visualScale: visualScale,
     uiFontScale: UI_FONT_SCALE,
     finalScale: finalScale,
     baseFontPx: baseFontPx,
@@ -5150,6 +5164,7 @@ function collectEnvironmentInfo() {
   // CSS переменные
   var rootStyle = getComputedStyle(document.documentElement);
   var uiScale = rootStyle.getPropertyValue('--uiScale').trim();
+  var visualScale = rootStyle.getPropertyValue('--visualScale').trim();
   var baseFontPx = rootStyle.getPropertyValue('--baseFontPx').trim();
   var baseFontSize = rootStyle.getPropertyValue('--baseFontSize').trim();
   var uiBottomOffset = rootStyle.getPropertyValue('--uiBottomOffset').trim();
@@ -5158,6 +5173,7 @@ function collectEnvironmentInfo() {
   
   info += "CSS variables:\n";
   info += "  --uiScale: " + uiScale + "\n";
+  info += "  --visualScale: " + visualScale + "\n";
   info += "  --baseFontPx: " + baseFontPx + "\n";
   info += "  --baseFontSize: " + baseFontSize + "\n";
   info += "  --uiBottomOffset: " + uiBottomOffset + "\n";
@@ -5167,7 +5183,9 @@ function collectEnvironmentInfo() {
   // JS переменные масштабирования
   info += "JS scaling settings:\n";
   info += "  UI_FONT_SCALE: " + UI_FONT_SCALE + "\n";
-  info += "  UI_REFERENCE_HEIGHT: " + UI_REFERENCE_HEIGHT + "\n\n";
+  info += "  UI_REFERENCE_HEIGHT: " + UI_REFERENCE_HEIGHT + "\n";
+  info += "  UI_VISUAL_REFERENCE_HEIGHT: " + UI_VISUAL_REFERENCE_HEIGHT + "\n";
+  info += "  UI_VISUAL_MIN_HEIGHT: " + UI_VISUAL_MIN_HEIGHT + "\n\n";
   
   // Размеры элементов интерфейса
   var dialog = document.getElementById('dialog');
