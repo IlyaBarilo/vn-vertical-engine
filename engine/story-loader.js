@@ -1293,14 +1293,79 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   function parseMenuOptions(optionText, lineNumber, line) {
     var options = {
       showNumbers: true,
-      compact: false
+      compact: false,
+      title: '',
+      titleSet: false
     };
 
     if (!optionText) return options;
 
-    var tokens = optionText.split(/\s+/);
-    for (var i = 0; i < tokens.length; i++) {
-      var option = tokens[i];
+    var cursor = 0;
+    while (cursor < optionText.length) {
+      while (cursor < optionText.length && /\s/.test(optionText.charAt(cursor))) {
+        cursor++;
+      }
+      if (cursor >= optionText.length) break;
+
+      if (optionText.substring(cursor, cursor + 6) === 'title=') {
+        if (options.titleSet) {
+          addParseError(lineNumber, line, 'Duplicate menu option "title".', true);
+          return null;
+        }
+
+        cursor += 6;
+        if (optionText.charAt(cursor) !== '"') {
+          addParseError(lineNumber, line, 'Invalid menu title syntax. Use: title="text".', true);
+          return null;
+        }
+
+        cursor++;
+        var titleValue = '';
+        var escapedTitleChar = false;
+        var titleClosed = false;
+        while (cursor < optionText.length) {
+          var titleChar = optionText.charAt(cursor);
+          if (escapedTitleChar) {
+            titleValue += titleChar;
+            escapedTitleChar = false;
+            cursor++;
+            continue;
+          }
+          if (titleChar === '\\') {
+            escapedTitleChar = true;
+            cursor++;
+            continue;
+          }
+          if (titleChar === '"') {
+            titleClosed = true;
+            cursor++;
+            break;
+          }
+          titleValue += titleChar;
+          cursor++;
+        }
+
+        if (!titleClosed || escapedTitleChar) {
+          addParseError(lineNumber, line, 'Unclosed menu title. Use: title="text".', true);
+          return null;
+        }
+
+        if (cursor < optionText.length && !/\s/.test(optionText.charAt(cursor))) {
+          addParseError(lineNumber, line, 'Invalid menu title syntax. Add a space after title="...".', true);
+          return null;
+        }
+
+        options.title = titleValue;
+        options.titleSet = true;
+        continue;
+      }
+
+      var optionStart = cursor;
+      while (cursor < optionText.length && !/\s/.test(optionText.charAt(cursor))) {
+        cursor++;
+      }
+
+      var option = optionText.substring(optionStart, cursor);
       if (option === 'numbered') {
         options.showNumbers = true;
         continue;
@@ -1486,6 +1551,9 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         showNumbers: menuOptions.showNumbers,
         compact: menuOptions.compact
       };
+      if (menuOptions.titleSet) {
+        menuAction.title = menuOptions.title;
+      }
 
       var enclosingActions = getSceneTargetActions(currentScene, parseState);
       if (enclosingActions === null) {

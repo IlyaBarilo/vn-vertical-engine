@@ -2872,6 +2872,11 @@ function showChoices(choices, choiceAction) {
   var isCompactChoices = !!(choiceAction && choiceAction.compact);
   // Номера включены по умолчанию, но compact всегда скрывает их для плотной раскладки.
   var showChoiceNumbers = !isCompactChoices && !(choiceAction && choiceAction.showNumbers === false);
+  // title="" намеренно скрывает заголовок, поэтому отличаем заданный title от значения по умолчанию.
+  var choiceTitle = "Выберите действие";
+  if (choiceAction && Object.prototype.hasOwnProperty.call(choiceAction, "title")) {
+    choiceTitle = String(choiceAction.title || "");
+  }
 
   // НЕ очищаем диалог полностью, а только текст
   elText.textContent = ""; // Очищаем только текст, имя оставляем
@@ -2889,10 +2894,12 @@ function showChoices(choices, choiceAction) {
     panel.classList.add("is-compact");
   }
 
-  var title = document.createElement("div");
-  title.className = "choiceTitle";
-  title.textContent = "Выберите действие";
-  panel.appendChild(title);
+  if (choiceTitle !== "") {
+    var title = document.createElement("div");
+    title.className = "choiceTitle";
+    title.textContent = choiceTitle;
+    panel.appendChild(title);
+  }
 
   var list = document.createElement("div");
   list.className = "choiceList";
