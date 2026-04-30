@@ -2868,10 +2868,10 @@ function showChoices(choices, choiceAction) {
   // choiceAction хранит настройки меню, которые парсер прочитал из строки menu.
   if (!choices || !choices.length) return;
 
-  // Номера вариантов по умолчанию скрыты; menu numbered/numbers/number включает их для конкретного меню.
-  var showChoiceNumbers = !!(choiceAction && choiceAction.showNumbers);
   // Компактный режим делает кнопки шириной по тексту и разрешает перенос по строкам.
   var isCompactChoices = !!(choiceAction && choiceAction.compact);
+  // Номера включены по умолчанию, но compact всегда скрывает их для плотной раскладки.
+  var showChoiceNumbers = !isCompactChoices && !(choiceAction && choiceAction.showNumbers === false);
 
   // НЕ очищаем диалог полностью, а только текст
   elText.textContent = ""; // Очищаем только текст, имя оставляем

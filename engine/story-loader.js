@@ -1289,10 +1289,10 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   }
 
   // Разбирает флаги после команды menu и возвращает настройки конкретного меню.
-  // Флаги можно комбинировать: numbered/numbers/number включает номера, compact/fit включает плотную раскладку.
+  // По умолчанию меню нумеруется; unnumbered/plain отключает номера, а compact всегда скрывает их.
   function parseMenuOptions(optionText, lineNumber, line) {
     var options = {
-      showNumbers: false,
+      showNumbers: true,
       compact: false
     };
 
@@ -1301,12 +1301,17 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     var tokens = optionText.split(/\s+/);
     for (var i = 0; i < tokens.length; i++) {
       var option = tokens[i];
-      if (option === 'numbered' || option === 'numbers' || option === 'number') {
+      if (option === 'numbered') {
         options.showNumbers = true;
         continue;
       }
 
-      if (option === 'compact' || option === 'fit') {
+      if (option === 'unnumbered' || option === 'plain') {
+        options.showNumbers = false;
+        continue;
+      }
+
+      if (option === 'compact') {
         options.compact = true;
         continue;
       }
@@ -1314,10 +1319,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       addParseError(
         lineNumber,
         line,
-        'Unknown menu option "' + option + '". Available options: numbered, numbers, number, compact, fit.',
+        'Unknown menu option "' + option + '". Available options: numbered, unnumbered, plain, compact.',
         true
       );
       return null;
+    }
+
+    if (options.compact) {
+      // Компактная раскладка всегда скрывает номера, даже если вместе с ней указан numbered.
+      options.showNumbers = false;
     }
 
     return options;
