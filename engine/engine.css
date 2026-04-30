@@ -41,7 +41,7 @@ body {
   --blurOpacity: 0.95;
   /* Базовые значения blur для UI задаются в эталонных px и масштабируются через --viewportScale. */
   --dialogBackdropBlur: 5px;
-  --menuBackdropBlur: 5px;
+  --menuBackdropBlur: 2px;
 
 
   /* Технические переменные сцены: задаются JS и/или сценарием */
