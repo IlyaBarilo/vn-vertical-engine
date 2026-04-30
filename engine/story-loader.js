@@ -1288,6 +1288,35 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     }
   }
 
+  // Разбирает флаги после команды menu и возвращает настройки конкретного меню.
+  // Сейчас поддерживается только включение нумерации через numbered/numbers/number.
+  function parseMenuOptions(optionText, lineNumber, line) {
+    var options = {
+      showNumbers: false
+    };
+
+    if (!optionText) return options;
+
+    var tokens = optionText.split(/\s+/);
+    for (var i = 0; i < tokens.length; i++) {
+      var option = tokens[i];
+      if (option === 'numbered' || option === 'numbers' || option === 'number') {
+        options.showNumbers = true;
+        continue;
+      }
+
+      addParseError(
+        lineNumber,
+        line,
+        'Unknown menu option "' + option + '". Available options: numbered, numbers, number.',
+        true
+      );
+      return null;
+    }
+
+    return options;
+  }
+
   // Парсинг сцен
   function parseSceneLine(line, story, currentScene, setCurrentScene, lineNumber, parseState) {
     // Удаляем комментарии, но сохраняем оригинал для вывода ошибок
@@ -1425,15 +1454,20 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    // menu [имя]: открывает блок меню
-    if (cleanLine === 'menu') {
+    // menu [опции]: открывает блок меню и применяет известные флаги оформления.
+    var menuMatch = cleanLine.match(/^menu(?:\s+(.+))?$/);
+    if (menuMatch) {
+      var menuOptions = parseMenuOptions(menuMatch[1] ? menuMatch[1].trim() : '', lineNumber, line);
+      if (!menuOptions) return;
+
       // Если на вершине старое меню (без "choice") — автозакрываем
       autoCloseOldStyleMenu(parseState);
 
       var menuAction = {
         type: 'choice',
         choices: [],
-        hasChoiceKw: false
+        hasChoiceKw: false,
+        showNumbers: menuOptions.showNumbers
       };
 
       var enclosingActions = getSceneTargetActions(currentScene, parseState);

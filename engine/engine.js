@@ -2086,7 +2086,7 @@ function executeAction(action) {
       return true;
 
     case "choice":
-      showChoices(action.choices || []);
+      showChoices(action.choices || [], action);
       return true;
 
     case "goto":
@@ -2863,13 +2863,13 @@ function hideOverlay() {
 //                   ВЫБОР
 // =========================================================
 
-function showChoices(choices) {
+function showChoices(choices, choiceAction) {
   // choices: [{ text, goto, set:{...}, sfx:"@audio.xxx" }, ...]
+  // choiceAction хранит настройки меню, которые парсер прочитал из строки menu.
   if (!choices || !choices.length) return;
 
-  // Настройка: показывать номера вариантов или нет.
-  // Чтобы отключить номера, замените true на false.
-  var SHOW_CHOICE_NUMBERS = true;
+  // Номера вариантов по умолчанию скрыты; menu numbered/numbers/number включает их для конкретного меню.
+  var showChoiceNumbers = !!(choiceAction && choiceAction.showNumbers);
 
   // НЕ очищаем диалог полностью, а только текст
   elText.textContent = ""; // Очищаем только текст, имя оставляем
@@ -2898,7 +2898,7 @@ function showChoices(choices) {
       btn.type = "button";
       btn.className = "choiceBtn";
 
-      if (SHOW_CHOICE_NUMBERS) {
+      if (showChoiceNumbers) {
         var num = document.createElement("span");
         num.className = "choiceNum";
         num.textContent = (index + 1) + ".";
