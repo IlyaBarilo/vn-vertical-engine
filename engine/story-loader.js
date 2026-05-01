@@ -614,6 +614,12 @@ function parseBackgroundScrollOption(rawValue, lineNumber, line) {
   return null;
 }
 
+// Проверяет bare-флаг вида "scroll" без значения, не путая его с "scroll=false".
+function hasBareToken(text, tokenName) {
+  var re = new RegExp("(^|\\s)" + tokenName + "(?=\\s|$)", "i");
+  return re.test(String(text || ""));
+}
+
 function stripInlineComment(line) {
   var text = String(line || '');
   var quote = null;
@@ -994,6 +1000,10 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (key === 'fallbackimage') key = 'fallback';
 
       args[key] = value;
+    }
+
+    if (category === 'backgrounds' && args.scroll === undefined && hasBareToken(rest, 'scroll')) {
+      args.scroll = 'true';
     }
 
     if (Object.keys(args).length === 0) return false;
@@ -1775,6 +1785,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       };
 
       const bgParams = parseActionParams(bgTokens.slice(1));
+      if (bgParams.scroll === undefined && bgTokens.slice(1).some(function(token) {
+        return String(token || "").toLowerCase() === "scroll";
+      })) {
+        bgParams.scroll = true;
+      }
       if (bgParams.scroll !== undefined) {
         const parsedScroll = parseBackgroundScrollOption(bgParams.scroll, lineNumber, line);
         if (parsedScroll === null) return;
