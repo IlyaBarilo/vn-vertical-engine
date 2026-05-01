@@ -1396,8 +1396,10 @@ var backgroundScroll = {
   owner: "background",
   target: null,
   container: null,
+  interactive: false,
   position: 0.5,
   start: 0.5,
+  focus: null,
   maxOffset: 0,
   dragging: false,
   pointerId: null,
@@ -1407,7 +1409,7 @@ var backgroundScroll = {
   suppressClick: false,
   suppressTimer: null,
   hintTimer: null,
-  backgroundOptions: { enabled: false, start: 0.5 },
+  backgroundOptions: { enabled: false, start: 0.5, focus: null },
   backgroundTarget: null,
   backgroundContainer: null,
   backgroundPosition: 0.5
@@ -1447,8 +1449,10 @@ function activateMediaScroll(options, targetEl, containerEl, owner, positionOver
   backgroundScroll.owner = owner || "background";
   backgroundScroll.target = nextTarget;
   backgroundScroll.container = nextContainer;
-  backgroundScroll.enabled = !!normalized.enabled;
+  backgroundScroll.interactive = !!normalized.enabled;
+  backgroundScroll.enabled = backgroundScroll.interactive || typeof normalized.focus === "number";
   backgroundScroll.start = normalizeBackgroundScrollStart(normalized.start, 0.5);
+  backgroundScroll.focus = typeof normalized.focus === "number" ? normalized.focus : null;
   backgroundScroll.position = typeof positionOverride === "number"
     ? clamp(positionOverride, 0, 1)
     : backgroundScroll.start;
@@ -1459,6 +1463,8 @@ function activateMediaScroll(options, targetEl, containerEl, owner, positionOver
   if (!backgroundScroll.enabled) {
     backgroundScroll.available = false;
     backgroundScroll.maxOffset = 0;
+    backgroundScroll.interactive = false;
+    backgroundScroll.focus = null;
     resetScrollableMediaPosition(backgroundScroll.target);
     if (elNovelWindow) {
       elNovelWindow.classList.remove("bg-scrollable");
@@ -1477,14 +1483,16 @@ function setBackgroundScrollOptions(options, targetEl, containerEl) {
   backgroundScroll.backgroundOptions = normalized;
   backgroundScroll.backgroundTarget = targetEl || elBg;
   backgroundScroll.backgroundContainer = containerEl || elNovelWindow;
-  backgroundScroll.backgroundPosition = normalizeBackgroundScrollStart(normalized.start, 0.5);
+  backgroundScroll.backgroundPosition = typeof normalized.focus === "number"
+    ? 0.5
+    : normalizeBackgroundScrollStart(normalized.start, 0.5);
   activateMediaScroll(normalized, backgroundScroll.backgroundTarget, backgroundScroll.backgroundContainer, "background");
 }
 
 // Включает временный скролл поверх сюжетного video/poster и не затирает настройки фонового слоя.
 function setStoryVideoScrollOptions(options, targetEl) {
   var normalized = normalizeBackgroundScrollOptions(options);
-  if (!normalized.enabled) return;
+  if (!normalized.enabled && typeof normalized.focus !== "number") return;
   activateMediaScroll(normalized, targetEl || elStoryVideo, elStoryVideoOverlay || elNovelWindow, "storyVideo");
 }
 
@@ -1492,7 +1500,7 @@ function setStoryVideoScrollOptions(options, targetEl) {
 function switchStoryVideoScrollTarget(targetEl) {
   if (backgroundScroll.owner !== "storyVideo" || !backgroundScroll.enabled || !targetEl) return;
   activateMediaScroll(
-    { enabled: true, start: backgroundScroll.start },
+    { enabled: backgroundScroll.interactive, start: backgroundScroll.start, focus: backgroundScroll.focus },
     targetEl,
     elStoryVideoOverlay || elNovelWindow,
     "storyVideo",
@@ -1523,8 +1531,10 @@ function disableBackgroundScroll() {
   backgroundScroll.owner = "background";
   backgroundScroll.target = null;
   backgroundScroll.container = null;
+  backgroundScroll.interactive = false;
   backgroundScroll.position = 0.5;
-  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5 };
+  backgroundScroll.focus = null;
+  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5, focus: null };
   backgroundScroll.backgroundTarget = null;
   backgroundScroll.backgroundContainer = null;
   backgroundScroll.backgroundPosition = 0.5;
@@ -1567,23 +1577,54 @@ function updateBackgroundScrollAvailability() {
     : Math.max(rect.width / mediaSize.width, rect.height / mediaSize.height);
   var renderedWidth = mediaSize.width * scale;
   backgroundScroll.maxOffset = Math.max(0, renderedWidth - rect.width);
-  backgroundScroll.available = backgroundScroll.maxOffset > 1;
+  backgroundScroll.available = backgroundScroll.interactive && backgroundScroll.maxOffset > 1;
 
   elNovelWindow.classList.toggle("bg-scrollable", backgroundScroll.available);
 
-  if (backgroundScroll.available) {
+  if (typeof backgroundScroll.focus === "number" || backgroundScroll.maxOffset > 1) {
     applyBackgroundScrollPosition();
+  }
+
+  if (backgroundScroll.available) {
     showBackgroundScrollHint();
   } else {
     hideBackgroundScrollHint();
   }
 }
 
-// Применяет позицию object-position: 0 — левый край, 1 — правый край.
+// Переводит focus-точку media в object-position: точка композиции стремится к центру контейнера, но без пустых полей.
+function computeFocusedMediaPosition(targetEl, containerEl, focus) {
+  var mediaSize = getScrollableMediaSize(targetEl);
+  if (!mediaSize || !containerEl) return 0.5;
+
+  var rect = containerEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0.5;
+
+  var objectFit = "cover";
+  if (window.getComputedStyle) {
+    objectFit = window.getComputedStyle(targetEl).objectFit || objectFit;
+  }
+
+  var scale = objectFit === "contain"
+    ? Math.min(rect.width / mediaSize.width, rect.height / mediaSize.height)
+    : Math.max(rect.width / mediaSize.width, rect.height / mediaSize.height);
+  var renderedWidth = mediaSize.width * scale;
+  var hiddenWidth = Math.max(0, renderedWidth - rect.width);
+
+  if (hiddenWidth <= 1) return 0.5;
+
+  var desiredHiddenLeft = clamp(focus, 0, 1) * renderedWidth - rect.width / 2;
+  return clamp(desiredHiddenLeft / hiddenWidth, 0, 1);
+}
+
+// Применяет позицию object-position: scroll задаёт прямую позицию, focus рассчитывается по размерам media.
 function applyBackgroundScrollPosition() {
   var targetEl = backgroundScroll.target || elBg;
   if (!targetEl) return;
-  var x = clamp(backgroundScroll.position, 0, 1) * 100;
+  var position = typeof backgroundScroll.focus === "number"
+    ? computeFocusedMediaPosition(targetEl, backgroundScroll.container || elNovelWindow, backgroundScroll.focus)
+    : backgroundScroll.position;
+  var x = clamp(position, 0, 1) * 100;
   targetEl.style.objectPosition = x.toFixed(3) + "% center";
 }
 
@@ -1614,12 +1655,20 @@ function hideBackgroundScrollHint() {
 function handleBackgroundScrollPointerDown(e) {
   // Пока сценарий не загружен, возможен ранний return движка — backgroundScroll ещё не создан.
   if (!backgroundScroll) return;
-  if (!backgroundScroll.available || backgroundScroll.dragging) return;
+  if (!backgroundScroll.interactive || !backgroundScroll.available || backgroundScroll.dragging) return;
   if (state.inGame) return;
   if (state.inVideo && backgroundScroll.owner !== "storyVideo") return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
   if (isUiClick(e.target) && backgroundScroll.owner !== "storyVideo") return;
 
+  if (typeof backgroundScroll.focus === "number") {
+    backgroundScroll.position = computeFocusedMediaPosition(
+      backgroundScroll.target || elBg,
+      backgroundScroll.container || elNovelWindow,
+      backgroundScroll.focus
+    );
+    backgroundScroll.focus = null;
+  }
   backgroundScroll.dragging = true;
   backgroundScroll.pointerId = e.pointerId;
   backgroundScroll.dragStartX = e.clientX;
@@ -1766,32 +1815,53 @@ function getBackgroundAssetVolume(assetEntry) {
   return clamp(assetEntry.volume, 0, 1);
 }
 
-// Приводит разные формы scroll из сценария к единому объекту для рендера.
+function getBackgroundAssetFocus(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  if (typeof assetEntry.focus !== "number") return null;
+  return clamp(assetEntry.focus, 0, 1);
+}
+
+// Переводит focus в долю 0..1; null означает, что композиционный фокус не задан.
+function normalizeMediaFocus(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var textValue = typeof value === "string" ? value.trim().toLowerCase() : value;
+  if (textValue === "left" || textValue === "start") return 0;
+  if (textValue === "right" || textValue === "end") return 1;
+  if (textValue === "center" || textValue === "middle") return 0.5;
+
+  var numeric = Number(textValue);
+  if (!isFinite(numeric)) return fallback;
+  if (numeric > 1 && numeric <= 100) numeric = numeric / 100;
+  return clamp(numeric, 0, 1);
+}
+
+// Приводит разные формы scroll/focus из сценария к единому объекту для рендера.
 function normalizeBackgroundScrollOptions(value) {
   if (value === true) {
-    return { enabled: true, start: 0.5 };
+    return { enabled: true, start: 0.5, focus: null };
   }
 
   if (!value) {
-    return { enabled: false, start: 0.5 };
+    return { enabled: false, start: 0.5, focus: null };
   }
 
   if (typeof value === "object") {
     var enabled = value.enabled !== false;
     var start = normalizeBackgroundScrollStart(value.start, 0.5);
-    return { enabled: enabled, start: start };
+    var focus = normalizeMediaFocus(value.focus, null);
+    return { enabled: enabled, start: start, focus: focus };
   }
 
   if (typeof value === "string") {
     var raw = value.toLowerCase();
-    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5 };
-    if (raw === "left" || raw === "start") return { enabled: true, start: 0 };
-    if (raw === "right" || raw === "end") return { enabled: true, start: 1 };
-    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5 };
-    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5 };
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5, focus: null };
+    if (raw === "left" || raw === "start") return { enabled: true, start: 0, focus: null };
+    if (raw === "right" || raw === "end") return { enabled: true, start: 1, focus: null };
+    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5, focus: null };
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5, focus: null };
   }
 
-  return { enabled: false, start: 0.5 };
+  return { enabled: false, start: 0.5, focus: null };
 }
 
 // Переводит стартовую позицию скролла в долю от 0 до 1.
@@ -1806,10 +1876,22 @@ function normalizeBackgroundScrollStart(value, fallback) {
   return clamp(numeric, 0, 1);
 }
 
+// Добавляет focus к настройкам media, не включая drag-скролл, если он не был задан отдельно.
+function mergeMediaFocusOptions(scrollOptions, focus) {
+  if (focus === null || focus === undefined) return scrollOptions;
+
+  var normalizedFocus = normalizeMediaFocus(focus, null);
+  if (normalizedFocus === null) return scrollOptions;
+
+  var normalized = normalizeBackgroundScrollOptions(scrollOptions);
+  normalized.focus = normalizedFocus;
+  return normalized;
+}
+
 // Возвращает настройки скролла, заданные у фонового ассета.
 function getBackgroundAssetScrollOptions(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object" || assetEntry.scroll === undefined) {
-    return { enabled: false, start: 0.5 };
+    return { enabled: false, start: 0.5, focus: null };
   }
   return normalizeBackgroundScrollOptions(assetEntry.scroll);
 }
@@ -2693,7 +2775,12 @@ function executeAction(action) {
   switch (action.type) {
     case "bg":
       var bgAssetInfo = resolveBackgroundAsset(action.src);
-      setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, action.scroll !== undefined ? action.scroll : bgAssetInfo.scroll);
+      var bgMediaOptions = action.scroll !== undefined ? action.scroll : bgAssetInfo.scroll;
+      bgMediaOptions = mergeMediaFocusOptions(
+        bgMediaOptions,
+        action.focus !== undefined ? action.focus : bgAssetInfo.focus
+      );
+      setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
       return false;
 
     case "char":
@@ -4318,7 +4405,10 @@ function startStoryVideo(action) {
 
   applyStoryVideoFit(fit);
   elStoryVideoOverlay.classList.remove("hidden");
-  setStoryVideoScrollOptions(action.scroll, posterSrc ? elStoryVideoPoster : elStoryVideo);
+  setStoryVideoScrollOptions(
+    mergeMediaFocusOptions(action.scroll, action.focus),
+    posterSrc ? elStoryVideoPoster : elStoryVideo
+  );
   showStoryVideoPoster(posterSrc, fit);
   setStoryVideoSkipHint(skipText, storyVideoRuntime.skipAllowed);
 
@@ -5011,7 +5101,8 @@ function resolveBackgroundAsset(ref) {
   var file = resolveAsset(ref);
   var fallback = "";
   var volume = null;
-  var scroll = { enabled: false, start: 0.5 };
+  var scroll = { enabled: false, start: 0.5, focus: null };
+  var focus = null;
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
@@ -5019,13 +5110,15 @@ function resolveBackgroundAsset(ref) {
     fallback = getBackgroundAssetFallbackPath(bgEntry);
     volume = getBackgroundAssetVolume(bgEntry);
     scroll = getBackgroundAssetScrollOptions(bgEntry);
+    focus = getBackgroundAssetFocus(bgEntry);
   }
 
   return {
     file: file,
     fallback: fallback,
     volume: volume,
-    scroll: scroll
+    scroll: scroll,
+    focus: focus
   };
 }
 

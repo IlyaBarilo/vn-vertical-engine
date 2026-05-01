@@ -17,14 +17,14 @@ startScene=scIntro01
 # имя-фона = путь_и_название_файла
 bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg
 bgLibraryEvening file=assets/backgrounds/bg-library-evening.jpg
-bgLibraryEveningWide file=assets/backgrounds/bg-library-evening-wide.jpg
+bgLibraryEveningWide file=assets/backgrounds/bg-library-evening-wide.jpg scroll
 bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
-bgBranchCafeWide file=assets/backgrounds/bg-campus-cafe-wide.jpg
-bgBranchCafeVideoWide file=assets/backgrounds/bg-campus-cafe-wide.mp4 volume=0.0 scroll
+bgBranchCafeWide file=assets/backgrounds/bg-campus-cafe-wide.jpg scroll
+bgBranchCafeVideoWide file=assets/backgrounds/bg-campus-cafe-wide.mp4 volume=0.0 scroll focus=0.47
 bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
-bgBranchCafe2Wide file=assets/backgrounds/bg-campus-cafe2-wide.jpg scroll
+bgBranchCafe2Wide file=assets/backgrounds/bg-campus-cafe2-wide.jpg scroll focus=0.46
 bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
-bgBranchCafe3Wide file=assets/backgrounds/bg-campus-cafe3-wide.jpg scroll
+bgBranchCafe3Wide file=assets/backgrounds/bg-campus-cafe3-wide.jpg scroll focus=0.475
 bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
 bgBranchLabWide file=assets/backgrounds/bg-it-lab.jpg scroll
 bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg volume=0.0
