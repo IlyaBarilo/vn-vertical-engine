@@ -6507,12 +6507,15 @@ function buildMermaidGraph(story, unreachableList, options) {
           var imgSrc = getGraphImageSrc(bg.src);
           var safeBgId = escapeHtml(bg.id || "");
 
-          label += "<img src='" + imgSrc + "' " +
+          // Рамка вынесена в отдельную обёртку, чтобы изображение не перекрывало скруглённый контур.
+          label += "<span class='scene-bg-frame " + sceneBgCountClass + "'>" +
+                  "<img src='" + imgSrc + "' " +
                   "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
                   "data-id='" + safeBgId + "' " +
                   "data-index='" + b + "' " +
                   "title='" + safeBgId + "' " +
-                  "alt='' /> ";
+                  "alt='' />" +
+                  "</span> ";
         }
 
         label += "</div>";
