@@ -122,7 +122,7 @@ This engine is suitable for:
     project/
     │
     ├── index.html
-    ├── story.js
+    ├── story-example.js
     ├── README.md
     ├── LICENSE
     ├── COMMERCIAL-USE.md
@@ -147,8 +147,8 @@ This engine is suitable for:
              ├── audio/
              └── games/
 
-In update release archives, the `assets/` folder is not included,
-so copying an update over an existing novel does not touch its media files.
+In update release archives, the `assets/` folder and `story.js` are not included,
+so copying an update over an existing novel does not touch its media files or story.
 
 ---
 
@@ -161,14 +161,17 @@ so copying an update over an existing novel does not touch its media files.
 Release assets include two ZIP variants:
 
 - `vn-vertical-engine-VERSION.zip` — full package with demo images and audio.
-- `vn-vertical-engine-VERSION-update.zip` — update package without the `assets/` folder.
+- `vn-vertical-engine-VERSION-update.zip` — update package without `assets/` and `story.js`.
 
 Use the full archive to run the included demo as-is. Use the update archive when
-copying a new engine version over an existing novel without touching its media files.
+copying a new engine version over an existing novel without touching its media files or story.
 
 2.  Extract the archive.
 
 3.  Open **index.html** in your browser.
+
+If `story.js` is absent, the engine automatically loads `story-example.js`.
+To start your own novel, copy `story-example.js` to `story.js` and edit `story.js`.
 
 The engine runs completely **offline**.
 
@@ -218,7 +221,8 @@ Replace `500` and `800` with your desired values (in pixels).
 
 ## 📝 Script Format
 
-The script is stored in `story.js` as a text block.
+Your working script is stored in `story.js` as a text block.
+The included demo script is stored in `story-example.js` and is used only when `story.js` is absent.
 
 Example:
 
@@ -400,7 +404,7 @@ This license change applies to version 0.5 and later.
 
 ## 📦 Content (Demo Assets)
 
-All files in the `assets/` folder and the demo story content in `story.js` are **not covered by the public license for the engine source code**.
+All files in the `assets/` folder and the demo story content in `story-example.js` are **not covered by the public license for the engine source code**.
 
 They are provided for demonstration purposes only and may not be reused in commercial or noncommercial projects without separate permission from the copyright holder.
 

@@ -15,7 +15,7 @@ The main idea is simple:
 
 When downloading a release, use the full ZIP archive if you want to run the
 included demo as-is. Use the `-update` ZIP archive when copying a new engine
-version over an existing novel; it does not include the `assets/` folder.
+version over an existing novel; it does not include `assets/` or `story.js`.
 
 ---
 
@@ -51,7 +51,9 @@ At this stage, you do not need to think about code, and you do not need to creat
 
 ## Step 2. Make a draft script
 
-In this project, the script is stored in `story.js` as a text block called `window.STORY_TEXT`.
+In this project, your script is stored in `story.js` as a text block called `window.STORY_TEXT`.
+If `story.js` does not exist yet, the engine loads `story-example.js` so the demo can start.
+Start your own novel by copying `story-example.js` to `story.js`, then edit `story.js`.
 
 The minimum structure looks like this:
 

@@ -104,11 +104,12 @@
 
 
 
-  // Проверяем наличие текста
+  // Проверяем наличие текста и называем файл, который реально подключил загрузчик.
+  var storyScriptSource = window.STORY_SCRIPT_SOURCE || 'story.js';
   if (!window.STORY_TEXT) {
-    console.error('[Loader] window.STORY_TEXT не найден!');
+    console.error('[Loader] window.STORY_TEXT не найден в ' + storyScriptSource + '!');
     loaderMark('Error: STORY_TEXT is missing');
-    createFallbackStory('Не найден story.js');
+    createFallbackStory('Не найден ' + storyScriptSource);
     return;
   }
 

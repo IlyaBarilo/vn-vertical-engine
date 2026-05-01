@@ -81,7 +81,7 @@ jobs:
 
           # Копируем основные файлы проекта
           [ -f index.html ] && cp index.html "build/$APP_NAME/"
-          [ -f story.js ] && cp story.js "build/$APP_NAME/"
+          [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/"
           [ -f README.md ] && cp README.md "build/$APP_NAME/"
           [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
           [ -f COMMERCIAL-USE.md ] && cp COMMERCIAL-USE.md "build/$APP_NAME/"
@@ -200,9 +200,10 @@ jobs:
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
-          # Update-архив не содержит каталог assets, чтобы обновление не затрагивало файлы новеллы.
+          # Update-архив не содержит пользовательские assets и story.js, чтобы обновление не затрагивало новеллу.
           cp -r "$APP_NAME" "${APP_NAME}-update"
           rm -rf "${APP_NAME}-update/assets"
+          rm -f "${APP_NAME}-update/story.js"
           zip -r "../${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-update"
           cd ..
 
