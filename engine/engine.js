@@ -6748,7 +6748,7 @@ function buildCharactersGraph(story, options) {
 }
 
 // Функция для создания блока фонов: родитель background → bg_images (только картинки) и
-// bg_video (список id как у games), затем связь background → стартовая сцена.
+// bg_video (список id как у games со счётчиком вызовы/сцены), затем связь background → стартовая сцена.
 function buildBackgroundsGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -6760,30 +6760,77 @@ function buildBackgroundsGraph(story, options) {
   var scenes = story.scenes || [];
 
   var allUniqueBgs = {};
+  var backgroundUseCountsForList = {};
+  var backgroundSceneUseMap = {};
+  var hasOnlyBgFilter = !!(options.onlyBgIds && options.onlyBgIds.length);
 
-  if (options.onlyBgIds && options.onlyBgIds.length) {
+  function markBackgroundUsage(bgId, sceneId, addToUniqueList) {
+    // Для списка ресурсов вызовы считаются все, а сцена добавляется только один раз на фон.
+    if (!bgId || !backgrounds[bgId]) return;
+
+    backgroundUseCountsForList[bgId] = (backgroundUseCountsForList[bgId] || 0) + 1;
+    if (!backgroundSceneUseMap[bgId]) {
+      backgroundSceneUseMap[bgId] = {};
+    }
+    backgroundSceneUseMap[bgId][sceneId] = true;
+
+    if (addToUniqueList) {
+      allUniqueBgs[bgId] = getBackgroundAssetPrimaryPath(backgrounds[bgId]);
+    }
+  }
+
+  function collectBackgroundUsageFromActions(actions, sceneId, addToUniqueList) {
+    // Вложенные ветки считаются как дополнительные вызовы, но сцена добавляется только один раз.
+    if (!Array.isArray(actions)) return;
+
+    for (var actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      var action = actions[actionIndex];
+      if (!action || !action.type) continue;
+
+      if (action.type === "bg" && action.src) {
+        var bgId = extractAliasId(action.src, "bg");
+        markBackgroundUsage(bgId, sceneId, addToUniqueList);
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var choiceIndex = 0; choiceIndex < action.choices.length; choiceIndex++) {
+          var choice = action.choices[choiceIndex];
+          if (choice && Array.isArray(choice.actions)) {
+            collectBackgroundUsageFromActions(choice.actions, sceneId, addToUniqueList);
+          }
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var branchIndex = 0; branchIndex < action.branches.length; branchIndex++) {
+            var branch = action.branches[branchIndex];
+            if (branch && Array.isArray(branch.actions)) {
+              collectBackgroundUsageFromActions(branch.actions, sceneId, addToUniqueList);
+            }
+          }
+        }
+
+        if (Array.isArray(action.elseActions)) {
+          collectBackgroundUsageFromActions(action.elseActions, sceneId, addToUniqueList);
+        }
+      }
+    }
+  }
+
+  if (hasOnlyBgFilter) {
     for (var ob = 0; ob < options.onlyBgIds.length; ob++) {
       var onlyBgId = options.onlyBgIds[ob];
       if (onlyBgId && backgrounds[onlyBgId]) {
         allUniqueBgs[onlyBgId] = getBackgroundAssetPrimaryPath(backgrounds[onlyBgId]);
       }
     }
-  } else {
-    for (var s = 0; s < scenes.length; s++) {
-      var scene = scenes[s];
-      if (!scene || !scene.actions) continue;
+  }
 
-      var actions = scene.actions;
-      for (var a = 0; a < actions.length; a++) {
-        var act = actions[a];
-        if (act.type === "bg" && act.src) {
-          var bgId = extractAliasId(act.src, "bg");
-          if (bgId && backgrounds[bgId]) {
-            allUniqueBgs[bgId] = getBackgroundAssetPrimaryPath(backgrounds[bgId]);
-          }
-        }
-      }
-    }
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id || !scene.actions) continue;
+    collectBackgroundUsageFromActions(scene.actions, scene.id, !hasOnlyBgFilter);
   }
 
   var bgIds = Object.keys(allUniqueBgs).sort();
@@ -6833,7 +6880,13 @@ function buildBackgroundsGraph(story, options) {
   if (vidCount > 0) {
     for (var v = 0; v < videoBgIds.length; v++) {
       var vidId = videoBgIds[v];
-      videoListHtml += "<span class='game-list-row'>" + escapeHtml(vidId) + "</span>";
+      var videoBgUseCount = backgroundUseCountsForList[vidId] || 0;
+      var videoBgSceneCount = backgroundSceneUseMap[vidId] ? Object.keys(backgroundSceneUseMap[vidId]).length : 0;
+      var countClass = videoBgUseCount === 0 ? " game-list-count-zero" : "";
+      videoListHtml += "<span class='game-list-row game-list-row-with-count'>" +
+        "<span class='game-list-id'>" + escapeHtml(vidId) + "</span>" +
+        "<b class='game-list-count" + countClass + "'>" + videoBgUseCount + "/" + videoBgSceneCount + "</b>" +
+        "</span>";
     }
   } else {
     videoListHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
@@ -6868,7 +6921,7 @@ function buildBackgroundsGraph(story, options) {
   return mermaid;
 }
 
-// Узел Audio: один сводный блок со списком id из [audio] / story.assets.audio (без отдельных узлов по трекам).
+// Узел Audio: сводный список id из [audio] со счётчиком вызовы/сцены для bgm/sfx.
 function buildAudioGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -6876,16 +6929,111 @@ function buildAudioGraph(story, options) {
   var mermaid = "";
   var audioAssets = (story.assets && story.assets.audio) ? story.assets.audio : {};
   var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
+  var scenes = story.scenes || [];
+  var audioUseCounts = {};
+  var audioSceneUseMap = {};
 
   var audioIds = Object.keys(audioAssets).sort();
   var audioCount = audioIds.length;
+
+  function getAudioAssetPath(audioId) {
+    // В [audio] обычно строка, но объект с file тоже поддерживаем для устойчивого сопоставления.
+    var audioAsset = audioAssets[audioId];
+    if (audioAsset && typeof audioAsset === "object") {
+      return typeof audioAsset.file === "string" ? audioAsset.file : "";
+    }
+    return typeof audioAsset === "string" ? audioAsset : "";
+  }
+
+  function getAudioIdFromRef(ref, explicitId) {
+    // Парсер может сохранить id, alias @audio.id или уже подставить прямой путь к файлу.
+    if (explicitId && audioAssets[explicitId]) return explicitId;
+
+    var aliasId = extractAliasId(ref, "audio");
+    if (aliasId && audioAssets[aliasId]) return aliasId;
+
+    if (ref) {
+      for (var ai = 0; ai < audioIds.length; ai++) {
+        var candidateId = audioIds[ai];
+        if (getAudioAssetPath(candidateId) === ref) {
+          return candidateId;
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function markAudioUsage(audioId, sceneId) {
+    if (!audioId) return;
+    audioUseCounts[audioId] = (audioUseCounts[audioId] || 0) + 1;
+    if (!audioSceneUseMap[audioId]) {
+      audioSceneUseMap[audioId] = {};
+    }
+    audioSceneUseMap[audioId][sceneId] = true;
+  }
+
+  function collectAudioUsageFromActions(actions, sceneId) {
+    // Вложенные ветки считаются как дополнительные вызовы, но сцена добавляется только один раз.
+    if (!Array.isArray(actions)) return;
+
+    for (var actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      var action = actions[actionIndex];
+      if (!action || !action.type) continue;
+
+      if (action.type === "bgm" || action.type === "sfx") {
+        markAudioUsage(getAudioIdFromRef(action.src, action.audioId), sceneId);
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var choiceIndex = 0; choiceIndex < action.choices.length; choiceIndex++) {
+          var choice = action.choices[choiceIndex];
+          if (!choice) continue;
+
+          markAudioUsage(getAudioIdFromRef(choice.sfx, choice.audioId), sceneId);
+
+          if (Array.isArray(choice.actions)) {
+            collectAudioUsageFromActions(choice.actions, sceneId);
+          }
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var branchIndex = 0; branchIndex < action.branches.length; branchIndex++) {
+            var branch = action.branches[branchIndex];
+            if (branch && Array.isArray(branch.actions)) {
+              collectAudioUsageFromActions(branch.actions, sceneId);
+            }
+          }
+        }
+
+        if (Array.isArray(action.elseActions)) {
+          collectAudioUsageFromActions(action.elseActions, sceneId);
+        }
+      }
+    }
+  }
+
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id || !scene.actions) continue;
+    collectAudioUsageFromActions(scene.actions, scene.id);
+  }
 
   var listCountClass = getImgCountClass(audioCount || 1);
   var listHtml = "<div class='games-list-box " + listCountClass + "'>";
 
   if (audioCount > 0) {
     for (var i = 0; i < audioIds.length; i++) {
-      listHtml += "<span class='game-list-row'>" + escapeHtml(audioIds[i]) + "</span>";
+      var audioId = audioIds[i];
+      var audioUseCount = audioUseCounts[audioId] || 0;
+      var audioSceneCount = audioSceneUseMap[audioId] ? Object.keys(audioSceneUseMap[audioId]).length : 0;
+      var countClass = audioUseCount === 0 ? " game-list-count-zero" : "";
+      listHtml += "<span class='game-list-row game-list-row-with-count'>" +
+        "<span class='game-list-id'>" + escapeHtml(audioId) + "</span>" +
+        "<b class='game-list-count" + countClass + "'>" + audioUseCount + "/" + audioSceneCount + "</b>" +
+        "</span>";
     }
   } else {
     listHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
@@ -6907,7 +7055,7 @@ function buildAudioGraph(story, options) {
   return mermaid;
 }
 
-// Узел Video: сводный список всех id из [video] / story.assets.videos, оформленный так же, как Audio.
+// Узел Video: сводный список id из [video] с тем же счётчиком вызовы/сцены, что и у Games.
 function buildVideoGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -6915,16 +7063,106 @@ function buildVideoGraph(story, options) {
   var mermaid = "";
   var videoAssets = (story.assets && story.assets.videos) ? story.assets.videos : {};
   var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
+  var scenes = story.scenes || [];
+  var videoUseCounts = {};
+  var videoSceneUseMap = {};
 
   var videoIds = Object.keys(videoAssets).sort();
   var videoCount = videoIds.length;
+
+  function getVideoAssetPath(videoId) {
+    // В [video] значение может быть строкой или объектом с file; для сверки нужен основной путь.
+    var videoAsset = videoAssets[videoId];
+    if (videoAsset && typeof videoAsset === "object") {
+      return typeof videoAsset.file === "string" ? videoAsset.file : "";
+    }
+    return typeof videoAsset === "string" ? videoAsset : "";
+  }
+
+  function getVideoIdFromAction(action) {
+    // Парсер может оставить id отдельно, alias @video.id или уже подставить прямой путь к файлу.
+    if (!action) return "";
+    if (action.videoId && videoAssets[action.videoId]) return action.videoId;
+
+    var aliasId = extractAliasId(action.src, "video");
+    if (aliasId && videoAssets[aliasId]) return aliasId;
+
+    if (action.src) {
+      for (var vi = 0; vi < videoIds.length; vi++) {
+        var candidateId = videoIds[vi];
+        if (getVideoAssetPath(candidateId) === action.src) {
+          return candidateId;
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function collectVideoUsageFromActions(actions, sceneId) {
+    // Вложенные ветки считаются как дополнительные вызовы, но сцена добавляется только один раз.
+    if (!Array.isArray(actions)) return;
+
+    for (var actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      var action = actions[actionIndex];
+      if (!action || !action.type) continue;
+
+      if (action.type === "video") {
+        var usedVideoId = getVideoIdFromAction(action);
+        if (usedVideoId) {
+          videoUseCounts[usedVideoId] = (videoUseCounts[usedVideoId] || 0) + 1;
+          if (!videoSceneUseMap[usedVideoId]) {
+            videoSceneUseMap[usedVideoId] = {};
+          }
+          videoSceneUseMap[usedVideoId][sceneId] = true;
+        }
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var choiceIndex = 0; choiceIndex < action.choices.length; choiceIndex++) {
+          var choice = action.choices[choiceIndex];
+          if (choice && Array.isArray(choice.actions)) {
+            collectVideoUsageFromActions(choice.actions, sceneId);
+          }
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var branchIndex = 0; branchIndex < action.branches.length; branchIndex++) {
+            var branch = action.branches[branchIndex];
+            if (branch && Array.isArray(branch.actions)) {
+              collectVideoUsageFromActions(branch.actions, sceneId);
+            }
+          }
+        }
+
+        if (Array.isArray(action.elseActions)) {
+          collectVideoUsageFromActions(action.elseActions, sceneId);
+        }
+      }
+    }
+  }
+
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id || !scene.actions) continue;
+    collectVideoUsageFromActions(scene.actions, scene.id);
+  }
 
   var listCountClass = getImgCountClass(videoCount || 1);
   var listHtml = "<div class='games-list-box " + listCountClass + "'>";
 
   if (videoCount > 0) {
     for (var i = 0; i < videoIds.length; i++) {
-      listHtml += "<span class='game-list-row'>" + escapeHtml(videoIds[i]) + "</span>";
+      var videoId = videoIds[i];
+      var videoUseCount = videoUseCounts[videoId] || 0;
+      var videoSceneCount = videoSceneUseMap[videoId] ? Object.keys(videoSceneUseMap[videoId]).length : 0;
+      var countClass = videoUseCount === 0 ? " game-list-count-zero" : "";
+      listHtml += "<span class='game-list-row game-list-row-with-count'>" +
+        "<span class='game-list-id'>" + escapeHtml(videoId) + "</span>" +
+        "<b class='game-list-count" + countClass + "'>" + videoUseCount + "/" + videoSceneCount + "</b>" +
+        "</span>";
     }
   } else {
     listHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
@@ -6946,6 +7184,7 @@ function buildVideoGraph(story, options) {
   return mermaid;
 }
 
+// Строит блок Games и показывает вызовы/сцены: все команды game и число уникальных сцен с ними.
 function buildGamesGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -6954,19 +7193,55 @@ function buildGamesGraph(story, options) {
   var games = (story.assets && story.assets.games) ? story.assets.games : {};
   var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
   var scenes = story.scenes || [];
-  var usedGames = {};
+  var gameUseCounts = {};
+  var gameSceneUseMap = {};
+
+  function collectGameUsageFromActions(actions, sceneId) {
+    // Идём рекурсивно по вложенным веткам, но сцену учитываем один раз для каждой игры.
+    if (!Array.isArray(actions)) return;
+
+    for (var actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      var action = actions[actionIndex];
+      if (!action || !action.type) continue;
+
+      if (action.type === "game" && action.gameId && games[action.gameId]) {
+        gameUseCounts[action.gameId] = (gameUseCounts[action.gameId] || 0) + 1;
+        if (!gameSceneUseMap[action.gameId]) {
+          gameSceneUseMap[action.gameId] = {};
+        }
+        gameSceneUseMap[action.gameId][sceneId] = true;
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var choiceIndex = 0; choiceIndex < action.choices.length; choiceIndex++) {
+          var choice = action.choices[choiceIndex];
+          if (choice && Array.isArray(choice.actions)) {
+            collectGameUsageFromActions(choice.actions, sceneId);
+          }
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var branchIndex = 0; branchIndex < action.branches.length; branchIndex++) {
+            var branch = action.branches[branchIndex];
+            if (branch && Array.isArray(branch.actions)) {
+              collectGameUsageFromActions(branch.actions, sceneId);
+            }
+          }
+        }
+
+        if (Array.isArray(action.elseActions)) {
+          collectGameUsageFromActions(action.elseActions, sceneId);
+        }
+      }
+    }
+  }
 
   for (var s = 0; s < scenes.length; s++) {
     var scene = scenes[s];
-    if (!scene || !scene.actions) continue;
-
-    var actions = scene.actions;
-    for (var a = 0; a < actions.length; a++) {
-      var act = actions[a];
-      if (act && act.type === "game" && act.gameId && games[act.gameId]) {
-        usedGames[act.gameId] = true;
-      }
-    }
+    if (!scene || !scene.id || !scene.actions) continue;
+    collectGameUsageFromActions(scene.actions, scene.id);
   }
 
   var gameIds = (options.onlyGameIds && options.onlyGameIds.length)
@@ -6984,8 +7259,14 @@ function buildGamesGraph(story, options) {
     for (var i = 0; i < gameIds.length; i++) {
       var gameId = gameIds[i];
 
+      var gameUseCount = gameUseCounts[gameId] || 0;
+      var gameSceneCount = gameSceneUseMap[gameId] ? Object.keys(gameSceneUseMap[gameId]).length : 0;
+      var countClass = gameUseCount === 0 ? " game-list-count-zero" : "";
       var safeGameId = escapeHtml(gameId);
-      gamesListHtml += "<span class='game-list-row'>" + safeGameId + "</span>";
+      gamesListHtml += "<span class='game-list-row game-list-row-with-count'>" +
+        "<span class='game-list-id'>" + safeGameId + "</span>" +
+        "<b class='game-list-count" + countClass + "'>" + gameUseCount + "/" + gameSceneCount + "</b>" +
+        "</span>";
     }
   } else {
     gamesListHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
@@ -7005,7 +7286,7 @@ function buildGamesGraph(story, options) {
   for (var i = 0; i < gameIds.length; i++) {
     var gameId = gameIds[i];
     var game = games[gameId] || {};
-    var isUsed = !!usedGames[gameId];
+    var isUsed = (gameUseCounts[gameId] || 0) > 0;
     console.log('[GRAPH GAME]', gameId, game, 'used=', isUsed);
 
     var safeGameId = escapeHtml(gameId);

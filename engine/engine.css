@@ -1560,6 +1560,30 @@ body {
   text-align: center !important;
 }
 
+.game-list-row.game-list-row-with-count {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.game-list-id {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.game-list-count {
+  margin-left: auto !important;
+  min-width: 24px !important;
+  font-weight: 700 !important;
+  text-align: right !important;
+}
+
+.game-list-count-zero {
+  color: #d32f2f !important;
+}
+
 .char-emotions-container {
   display: flex !important;
   flex-wrap: wrap !important;
@@ -1830,6 +1854,11 @@ body {
 .games-group .label b {
   color: #222222 !important;
   font-weight: 700 !important;
+}
+
+.games-group .label b.game-list-count-zero,
+.graphContainer .mermaid .node .game-list-count-zero {
+  color: #d32f2f !important;
 }
 
 .characters-group .label i,
