@@ -19,8 +19,12 @@ bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg
 bgLibraryEvening file=assets/backgrounds/bg-library-evening.jpg
 bgLibraryEveningWide file=assets/backgrounds/bg-library-evening-wide.jpg
 bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
+bgBranchCafeWide file=assets/backgrounds/bg-campus-cafe-wide.jpg
+bgBranchCafeVideoWide file=assets/backgrounds/bg-campus-cafe-wide.mp4 volume=0.0 scroll
 bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
+bgBranchCafe2Wide file=assets/backgrounds/bg-campus-cafe2-wide.jpg scroll
 bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
+bgBranchCafe3Wide file=assets/backgrounds/bg-campus-cafe3-wide.jpg scroll
 bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
 bgBranchLabWide file=assets/backgrounds/bg-it-lab.jpg scroll
 bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg volume=0.0
@@ -167,22 +171,21 @@ menu
 
 scene scBranchCafe01
 
-bg bgBranchCafe
+bg bgBranchCafeVideoWide
 hide all
 
 "Кафе шумит: кружки звенят, кто-то обсуждает проекты и дедлайны, кто-то — мемы недели."
 "В воздухе пахнет кофе и свежими идеями. Кажется, отсюда начинаются лучшие командные истории."
 
-bg bgBranchCafe2
+bg bgBranchCafe2Wide
 
 # Диалоги персонажей без показа на экране
 anna: "Кофе здесь просто восхитительный! Особенно тот латте с карамелью."
 igor: "Зато какие мемы рождаются после трёх чашек! Помнишь тот с котом-программистом?"
 
-show anna laugh
-anna: "Ой, не напоминай! Мы потом неделю смеялись."
+bg bgBranchCafe3Wide
 
-show anna explain
+anna: "Ой, не напоминай! Мы потом неделю смеялись."
 anna: "Кажется, бариста не справляется с наплывом. Хочешь помочь?"
 
 game gmCoffeeRush difficulty=3 result=coffeeResult
