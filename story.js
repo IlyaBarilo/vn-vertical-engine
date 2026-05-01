@@ -20,11 +20,13 @@ startScene=scIntro01
 # имя-фона = путь_и_название_файла
 bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg
 bgLibraryEvening file=assets/backgrounds/bg-library-evening.jpg
+bgLibraryEveningWide file=assets/backgrounds/bg-library-evening-wide.jpg
 bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
 bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
 bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
 bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
-bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg
+bgBranchLabWide file=assets/backgrounds/bg-it-lab.jpg scroll
+bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg volume=0.0
 bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
@@ -57,7 +59,7 @@ igor emotion=smile file=assets/characters/ch-igor-smile.png
 ivan emotion=neutral file=assets/characters/ch-ivan-smile-test.png name="Иван" color=#060
 
 [video]
-videoLab file=assets/backgrounds/bg-it-lab.mp4 poster=assets/backgrounds/bg-it-lab.jpg volume=0.8
+videoLab file=assets/backgrounds/bg-it-lab.mp4 poster=assets/backgrounds/bg-it-lab.jpg volume=0.0
 
 [audio] 
 # Формат описания для музыки:
@@ -99,15 +101,17 @@ scene scIntro01
 bg bgCampusHall
 
 # Проигрывание музыки:
-# bgm название_музыки
-# bgm название_музыки loop
-# Примечание: loop для постоянного проигрывания с повтором
+# music название_музыки
+# music название_музыки loop
+# music название_музыки loop=true
+# music название_музыки loop=false
+# Примечание: loop без значения работает как loop=true и включает постоянный повтор.
 # Примеры:
-# bgm bgmDay - музыка без повтора
-# bgm bgmDay loop - музыка с повтором
-# bgm stop - остановить музыку
+# music bgmDay - музыка без повтора
+# music bgmDay loop - музыка с повтором
+# music stop - остановить музыку
 
-bgm bgmDay loop
+music bgmDay loop
 
 
 # Проверка работы игры
@@ -139,20 +143,24 @@ goto scScene02
 
 scene scScene02
 
-bg bgLibraryEvening
+# Параметр scroll можно применять при объявлении фона либо при отображении
+bg bgLibraryEveningWide scroll
 
 show igor smile
 
 hide all
 
-"Позже, в библиотеке. Экран светится мягко, словно зовёт к новой истории..."
+"Позже, в библиотеке. Экран светится мягко, словно зовёт к новой истории... Можно осмотреться по сторонам перемещая фон."
 
 "Страницы шуршат, где-то вдалеке щёлкает клавиатура. Идея почти готова."
+
+# Параметр scroll можно переопределять если настроили его при объявлении фона
+bg bgLibraryEveningWide scroll=false
 
 show anna thinking
 anna: "Есть вопрос: куда ведём посетителя дальше, чтобы он почувствовал атмосферу вуза?"
 
-# bgm bgmMystery
+# music bgmMystery
 
 
 menu
@@ -200,21 +208,21 @@ end
 
 scene scBranchLab01
 
-video videoLab skippable=true 
-# fit=contain fit=cover skipText="Далее" 
+video videoLab skip
+# video videoLab skip=false fit=contain skipText="Далее"
 
 hide all
 
 # Применение фона с видео
 bg bgBranchLabVideo
 
-"Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез."
+"Лаборатория светится мониторами. На экране — прототип, рядом — схема, а в голове — тысяча гипотез. "
 "Здесь можно не только запускать расчёты, но и проверять, как система ведёт себя в интерактивных сценариях."
 
 
 
 # Применение фона с изображением, чтобы не отвлекало от персонажа
-# bg bgBranchLab
+bg bgBranchLab
 
 show anna neutral
 anna: "Похоже, лаборатория сегодня свободна. Чем займёмся?"
@@ -448,7 +456,12 @@ bg bgLibraryEvening
 hide all
 
 "Демо завершено. Это пример ветвления: три пути сошлись в одну финальную сцену."
-"Нажмите в меню «Повтор», чтобы начать заново и выбрать другой путь."
+
+# Вариант меню: без нумерации, компактный
+menu numbered=false compact
+choice "Вернуться к началу истории" -> scIntro01
+end
+
 
 
 
