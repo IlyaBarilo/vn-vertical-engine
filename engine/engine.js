@@ -2796,8 +2796,9 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         hideKeptStoryVideoAfterBgReady("bg video loaded");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
         updateBackgroundScrollAvailability();
-        // Когда видео реально показано в фоне, мягко приглушаем BGM.
-        setBgmDuckingTarget(DEFAULT_BGM_DUCKING_MULTIPLIER, DEFAULT_BGM_DUCKING_ATTACK_MS, 'bg video shown');
+        // Когда видео реально показано в фоне, пересчитываем ducking с учетом его громкости.
+        // Немое фоновое видео не должно приглушать музыку.
+        setBgmDuckingForActiveVideos('bg video shown');
       };
       elBgVideo.src = normalizedSrc;
       visualTrace("bgVideo:src-set", { src: normalizedSrc });
