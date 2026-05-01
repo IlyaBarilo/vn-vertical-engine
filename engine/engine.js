@@ -6241,8 +6241,9 @@ function findCyclesSCC(story) {
 //
 // scope "resources" — компактный граф для обзора ресурсов (в коде и UI раньше назывался «intro»;
 // это НЕ «вступительная глава» сюжета). На диаграмме только стартовая сцена и минимум рёбер (Mermaid
-// не раздувается). Блоки characters / background / games / audio — те же полные списки, что и при scope
+// не раздувается). Блоки characters / background / games / audio / video — те же полные списки, что и при scope
 // "full" (only*Ids не задаются): пунктир к attachSceneId = meta.start лишь якорит узлы на старте.
+// Блоки audio/video берут все объявленные ассеты, как обзор ресурсов, а не только использованные команды.
 function buildMermaidGraph(story, unreachableList, options) {
   options = options || {};
 
@@ -6457,6 +6458,9 @@ function buildMermaidGraph(story, unreachableList, options) {
   mermaid += "\n";
 
   mermaid += buildAudioGraph(story, sharedGraphOptions);
+  mermaid += "\n";
+
+  mermaid += buildVideoGraph(story, sharedGraphOptions);
   mermaid += "\n";
 
   // Создаем узлы с многострочными метками
@@ -6896,6 +6900,45 @@ function buildAudioGraph(story, options) {
 
   // id не "audio": возможна сцена с тем же id; подпись узла остаётся «Audio».
   var parentNodeId = "story_audio";
+  mermaid += '    ' + parentNodeId + '["' + parentLabel + '"]\n';
+  mermaid += '    ' + parentNodeId + ':::games-group\n';
+  mermaid += '    ' + parentNodeId + ' -.-> ' + attachTo + "\n";
+
+  return mermaid;
+}
+
+// Узел Video: сводный список всех id из [video] / story.assets.videos, оформленный так же, как Audio.
+function buildVideoGraph(story, options) {
+  options = options || {};
+  var compact = !!options.compact;
+
+  var mermaid = "";
+  var videoAssets = (story.assets && story.assets.videos) ? story.assets.videos : {};
+  var attachTo = options.attachTo || ((story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START"));
+
+  var videoIds = Object.keys(videoAssets).sort();
+  var videoCount = videoIds.length;
+
+  var listCountClass = getImgCountClass(videoCount || 1);
+  var listHtml = "<div class='games-list-box " + listCountClass + "'>";
+
+  if (videoCount > 0) {
+    for (var i = 0; i < videoIds.length; i++) {
+      listHtml += "<span class='game-list-row'>" + escapeHtml(videoIds[i]) + "</span>";
+    }
+  } else {
+    listHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
+  }
+
+  listHtml += "</div>";
+
+  var parentLabel = '<b>🎬 Video (' + videoCount + ')</b>';
+  if (!compact) {
+    parentLabel += "<br/>" + listHtml;
+  }
+
+  // id не "video": возможна сцена с тем же id; подпись узла остаётся «Video».
+  var parentNodeId = "story_video";
   mermaid += '    ' + parentNodeId + '["' + parentLabel + '"]\n';
   mermaid += '    ' + parentNodeId + ':::games-group\n';
   mermaid += '    ' + parentNodeId + ' -.-> ' + attachTo + "\n";
