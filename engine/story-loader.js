@@ -1440,12 +1440,24 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
 
       var option = optionText.substring(optionStart, cursor);
-      if (option === 'numbered') {
-        options.showNumbers = true;
-        continue;
+      if (option === 'numbered' || option.indexOf('numbered=') === 0) {
+        // numbered без значения считается включением; numbered=false явно скрывает номера.
+        var numberedValue = option === 'numbered'
+          ? 'true'
+          : option.substring('numbered='.length).toLowerCase();
+        if (numberedValue === 'true') {
+          options.showNumbers = true;
+          continue;
+        }
+        if (numberedValue === 'false') {
+          options.showNumbers = false;
+          continue;
+        }
+        addParseError(lineNumber, line, 'Invalid menu numbered value "' + numberedValue + '". Use numbered, numbered=true or numbered=false.', true);
+        return null;
       }
 
-      if (option === 'unnumbered' || option === 'plain') {
+      if (option === 'plain') {
         options.showNumbers = false;
         continue;
       }
@@ -1463,7 +1475,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       addParseError(
         lineNumber,
         line,
-        'Unknown menu option "' + option + '". Available options: numbered, unnumbered, plain, compact, fit, title="...".',
+        'Unknown menu option "' + option + '". Available options: numbered, numbered=true, numbered=false, plain, compact, fit, title="...".',
         true
       );
       return null;
@@ -1819,10 +1831,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     
-    // bgm [имя] [loop]
+    // bgm [имя] [loop|loop=true|loop=false]
     // Примеры:
     //   bgm bgmDay
     //   bgm bgmDay loop
+    //   bgm bgmDay loop=false
     //   bgm stop
     if (cleanLine.startsWith('bgm ')) {
       const bgmArgs = cleanLine.substring(4).trim().split(/\s+/);
@@ -1841,7 +1854,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         return;
       }
 
-      const hasLoop = bgmArgs.includes('loop');
+      const bgmParams = parseActionParams(bgmArgs.slice(1));
+      if (bgmParams.loop === undefined && bgmArgs.slice(1).some(function(token) {
+        return String(token || "").toLowerCase() === "loop";
+      })) {
+        bgmParams.loop = true;
+      }
+
+      // loop без значения считается включением, а loop=false явно отключает повтор музыки.
+      let hasLoop = false;
+      if (bgmParams.loop !== undefined) {
+        if (typeof bgmParams.loop !== 'boolean') {
+          addParseError(lineNumber, line, 'Invalid bgm loop value "' + bgmParams.loop + '". Use loop, loop=true or loop=false.', true);
+          return;
+        }
+        hasLoop = bgmParams.loop;
+      }
 
       actions.push({
         type: 'bgm',
