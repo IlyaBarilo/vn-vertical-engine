@@ -1592,29 +1592,142 @@ function updateBackgroundScrollAvailability() {
   }
 }
 
-// Переводит focus-точку media в object-position: точка композиции стремится к центру контейнера, но без пустых полей.
-function computeFocusedMediaPosition(targetEl, containerEl, focus) {
+// Собирает размеры media и контейнера для cover/contain — общая основа для focus и обратного пересчёта.
+function getMediaCoverLayoutMetrics(targetEl, containerEl) {
+  if (!targetEl || !containerEl) return null;
   var mediaSize = getScrollableMediaSize(targetEl);
-  if (!mediaSize || !containerEl) return 0.5;
-
+  if (!mediaSize) return null;
   var rect = containerEl.getBoundingClientRect();
-  if (!rect.width || !rect.height) return 0.5;
-
+  if (!rect.width || !rect.height) return null;
   var objectFit = "cover";
   if (window.getComputedStyle) {
     objectFit = window.getComputedStyle(targetEl).objectFit || objectFit;
   }
-
   var scale = objectFit === "contain"
     ? Math.min(rect.width / mediaSize.width, rect.height / mediaSize.height)
     : Math.max(rect.width / mediaSize.width, rect.height / mediaSize.height);
   var renderedWidth = mediaSize.width * scale;
   var hiddenWidth = Math.max(0, renderedWidth - rect.width);
+  return {
+    renderedWidth: renderedWidth,
+    hiddenWidth: hiddenWidth,
+    rectWidth: rect.width,
+    objectFit: objectFit
+  };
+}
 
-  if (hiddenWidth <= 1) return 0.5;
+// Переводит focus-точку media в object-position: точка композиции стремится к центру контейнера, но без пустых полей.
+function computeFocusedMediaPosition(targetEl, containerEl, focus) {
+  var metrics = getMediaCoverLayoutMetrics(targetEl, containerEl);
+  if (!metrics) return 0.5;
+  if (metrics.hiddenWidth <= 1) return 0.5;
 
-  var desiredHiddenLeft = clamp(focus, 0, 1) * renderedWidth - rect.width / 2;
-  return clamp(desiredHiddenLeft / hiddenWidth, 0, 1);
+  var desiredHiddenLeft = clamp(focus, 0, 1) * metrics.renderedWidth - metrics.rectWidth / 2;
+  return clamp(desiredHiddenLeft / metrics.hiddenWidth, 0, 1);
+}
+
+// Обратная к computeFocusedMediaPosition: по доле горизонтального pan (как в backgroundScroll.position) даёт compositional focus 0..1.
+function computeSemanticFocusFromScrollPosition(targetEl, containerEl, position) {
+  var metrics = getMediaCoverLayoutMetrics(targetEl, containerEl);
+  if (!metrics) return null;
+  if (metrics.hiddenWidth <= 1) return null;
+  var P = clamp(position, 0, 1);
+  var focus = (P * metrics.hiddenWidth + metrics.rectWidth / 2) / metrics.renderedWidth;
+  return clamp(focus, 0, 1);
+}
+
+// Читает горизонтальную долю из object-position (inline или computed), 0 = слева, 0.5 = center, 1 = справа.
+function readHorizontalObjectPositionFraction(mediaEl) {
+  if (!mediaEl) return 0.5;
+  var raw = (mediaEl.style && mediaEl.style.objectPosition) ? String(mediaEl.style.objectPosition).trim() : "";
+  if (!raw && window.getComputedStyle) {
+    raw = String(window.getComputedStyle(mediaEl).objectPosition || "").trim();
+  }
+  if (!raw) return 0.5;
+  var first = raw.split(/\s+/)[0].toLowerCase();
+  if (first === "left") return 0;
+  if (first === "right") return 1;
+  if (first === "center") return 0.5;
+  var m = first.match(/^([\d.]+)%$/);
+  if (m) return clamp(Number(m[1]) / 100, 0, 1);
+  return 0.5;
+}
+
+// Формирует блок статистики: видимые фон/сюжетное видео и значение focus для копирования в story.js.
+function formatCurrentViewportMediaFocusForStats() {
+  var lines = [];
+  lines.push("=== ТЕКУЩИЙ КАДР — focus (для правки сценария) ===");
+  lines.push("");
+
+  function appendLayer(title, mediaEl, containerEl) {
+    if (!mediaEl || mediaEl.classList.contains("hidden")) return;
+    var src = normalizeAssetUrl(mediaEl.currentSrc || mediaEl.src || "");
+    if (!src) return;
+    var container = containerEl || elNovelWindow;
+    var shortName = src.split(/[\\/]/).pop() || src;
+
+    var metrics = getMediaCoverLayoutMetrics(mediaEl, container);
+    var hasScriptFocus = !!(backgroundScroll && backgroundScroll.enabled && backgroundScroll.target === mediaEl && typeof backgroundScroll.focus === "number");
+    var semantic = null;
+    var note = "";
+
+    if (!metrics && !hasScriptFocus) {
+      lines.push(title + ": " + shortName);
+      lines.push("  focus: размеры кадра ещё не известны (загрузка media) — закройте и снова откройте статистику через секунду");
+      lines.push("");
+      return;
+    }
+
+    if (hasScriptFocus) {
+      semantic = clamp(backgroundScroll.focus, 0, 1);
+      if (metrics && metrics.hiddenWidth <= 1) {
+        note = " (на текущем размере окна горизонтального кропа нет — при другом aspect значение всё равно задаёт центр композиции)";
+      }
+    } else {
+      var pan = 0.5;
+      if (backgroundScroll && backgroundScroll.enabled && backgroundScroll.target === mediaEl) {
+        pan = typeof backgroundScroll.position === "number" ? backgroundScroll.position : 0.5;
+      } else {
+        pan = readHorizontalObjectPositionFraction(mediaEl);
+      }
+      semantic = computeSemanticFocusFromScrollPosition(mediaEl, container, pan);
+      if (semantic === null) {
+        note = " — на этом размере окна горизонтальный кроп отсутствует, focus в сценарии не сдвинет кадр";
+        semantic = 0.5;
+      }
+    }
+
+    lines.push(title + ": " + shortName);
+    lines.push("  focus=" + semantic.toFixed(4) + note);
+    lines.push("  (в [bg]/[video] или в команде bg / video добавьте: focus=" + semantic.toFixed(4) + ")");
+    lines.push("");
+  }
+
+  var any = false;
+  if (elBgVideo && !elBgVideo.classList.contains("hidden") && (elBgVideo.currentSrc || elBgVideo.src)) {
+    appendLayer("Фон (видео)", elBgVideo, elNovelWindow);
+    any = true;
+  } else if (elBg && !elBg.classList.contains("hidden") && (elBg.currentSrc || elBg.src)) {
+    appendLayer("Фон (изображение)", elBg, elNovelWindow);
+    any = true;
+  }
+
+  if (elStoryVideoOverlay && !elStoryVideoOverlay.classList.contains("hidden")) {
+    if (elStoryVideo && !elStoryVideo.classList.contains("hidden") && (elStoryVideo.currentSrc || elStoryVideo.src)) {
+      appendLayer("Сюжетное видео (ролик)", elStoryVideo, elStoryVideoOverlay || elNovelWindow);
+      any = true;
+    } else if (elStoryVideoPoster && !elStoryVideoPoster.classList.contains("hidden") && (elStoryVideoPoster.currentSrc || elStoryVideoPoster.src)) {
+      appendLayer("Сюжетное видео (постер)", elStoryVideoPoster, elStoryVideoOverlay || elNovelWindow);
+      any = true;
+    }
+  }
+
+  if (!any) {
+    lines.push("(нет видимого фонового слоя изображения/видео и слоя сюжетного ролика с источником)");
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 // Применяет позицию object-position: scroll задаёт прямую позицию, focus рассчитывается по размерам media.
@@ -5618,6 +5731,9 @@ function renderStats() {
       text += `Software version: ${window.APP_VERSION}\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
       text += formatLicenseStatsText() + "\n";
 
+      text += formatCurrentViewportMediaFocusForStats();
+      
+      text += "\n";
       text += "=== SCRIPT STATISTICS ===\n\n";
       text += "Title: " + (STORY.meta && STORY.meta.title ? STORY.meta.title : "(без названия)") + "\n";
       text += "Scenes: " + stats.sceneCount + "\n";
