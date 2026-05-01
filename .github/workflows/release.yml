@@ -77,6 +77,7 @@ jobs:
           mkdir -p "build/$APP_NAME/lib"
           mkdir -p "build/$APP_NAME/engine"
           mkdir -p "build/$APP_NAME/tools"
+          mkdir -p "build/$APP_NAME/docs/examples"
           mkdir -p "build/$APP_NAME/docs/specs"
 
           # Копируем основные файлы проекта
@@ -94,6 +95,7 @@ jobs:
           [ -f engine/engine.js ] && cp engine/engine.js "build/$APP_NAME/engine/"
           [ -f engine/story-loader.js ] && cp engine/story-loader.js "build/$APP_NAME/engine/"
 
+          [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/docs/examples/"
           [ -f docs/specs/SPEC-STORY.md ] && cp docs/specs/SPEC-STORY.md "build/$APP_NAME/docs/specs/"
           [ -f docs/specs/SPEC-GAME.md ] && cp docs/specs/SPEC-GAME.md "build/$APP_NAME/docs/specs/"
 
@@ -200,10 +202,12 @@ jobs:
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
-          # Update-архив не содержит пользовательские assets и story.js, чтобы обновление не затрагивало новеллу.
+          # Update-архив не содержит пользовательские assets и корневые файлы истории.
+          # Справочный пример остаётся только в docs/examples, чтобы не перезаписать рабочий файл пользователя.
           cp -r "$APP_NAME" "${APP_NAME}-update"
           rm -rf "${APP_NAME}-update/assets"
           rm -f "${APP_NAME}-update/story.js"
+          rm -f "${APP_NAME}-update/story-example.js"
           zip -r "../${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-update"
           cd ..
 

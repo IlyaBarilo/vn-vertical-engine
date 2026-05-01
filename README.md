@@ -136,6 +136,8 @@ This engine is suitable for:
     │    └── story-loader.js
     │
     ├── docs/
+    │    ├── examples/
+    │    │    └── story-example.js  ← reference copy in update archives
     │    └── specs/
     │         ├── SPEC-STORY.md      ← scripting specification
     │         └── SPEC-GAME.md       ← mini-game specification
@@ -147,8 +149,10 @@ This engine is suitable for:
              ├── audio/
              └── games/
 
-In update release archives, the `assets/` folder and `story.js` are not included,
-so copying an update over an existing novel does not touch its media files or story.
+In update release archives, `assets/`, `story.js`, and the root `story-example.js`
+are not included, so copying an update over an existing novel does not touch
+its media files or story. A fresh reference example is included as
+`docs/examples/story-example.js`.
 
 ---
 
@@ -161,10 +165,11 @@ so copying an update over an existing novel does not touch its media files or st
 Release assets include two ZIP variants:
 
 - `vn-vertical-engine-VERSION.zip` — full package with demo images and audio.
-- `vn-vertical-engine-VERSION-update.zip` — update package without `assets/` and `story.js`.
+- `vn-vertical-engine-VERSION-update.zip` — update package without `assets/`, `story.js`, and root `story-example.js`.
 
 Use the full archive to run the included demo as-is. Use the update archive when
 copying a new engine version over an existing novel without touching its media files or story.
+The update archive keeps the current example in `docs/examples/story-example.js`.
 
 2.  Extract the archive.
 
@@ -222,7 +227,9 @@ Replace `500` and `800` with your desired values (in pixels).
 ## 📝 Script Format
 
 Your working script is stored in `story.js` as a text block.
-The included demo script is stored in `story-example.js` and is used only when `story.js` is absent.
+The included demo script is stored in root `story-example.js` and is used only
+when `story.js` is absent. Update archives keep their reference copy in
+`docs/examples/story-example.js`.
 
 Example:
 
