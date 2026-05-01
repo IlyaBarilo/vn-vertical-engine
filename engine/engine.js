@@ -882,6 +882,9 @@ function isUiClick(target) {
 }
 
 elStage.addEventListener("click", function (e) {
+  // При ожидании window.STORY движок делает return до инициализации state — не обращаемся к полям.
+  if (!state) return;
+
   console.log("[LOG] stage click", {
     targetId: e.target && e.target.id,
     modalHidden: elGameModal.classList.contains("hidden"),
@@ -1541,6 +1544,8 @@ function hideBackgroundScrollHint() {
 
 // Начинает drag только по сцене: UI, меню и видео не должны перехватываться как скролл фона.
 function handleBackgroundScrollPointerDown(e) {
+  // Пока сценарий не загружен, возможен ранний return движка — backgroundScroll ещё не создан.
+  if (!backgroundScroll) return;
   if (!backgroundScroll.available || backgroundScroll.dragging) return;
   if (state.inGame) return;
   if (state.inVideo && backgroundScroll.owner !== "storyVideo") return;
@@ -1565,6 +1570,7 @@ function handleBackgroundScrollPointerDown(e) {
 
 // Во время drag меняем только горизонтальную позицию, вертикальное движение игнорируем.
 function handleBackgroundScrollPointerMove(e) {
+  if (!backgroundScroll) return;
   if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
   if (!backgroundScroll.maxOffset) return;
 
@@ -1591,6 +1597,7 @@ function handleBackgroundScrollPointerMove(e) {
 
 // Завершает drag и подавляет следующий click, если пользователь действительно двигал фон.
 function handleBackgroundScrollPointerUp(e) {
+  if (!backgroundScroll) return;
   if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
 
   var wasMoved = backgroundScroll.moved;
@@ -1619,6 +1626,7 @@ function handleBackgroundScrollPointerUp(e) {
 
 // Сбрасывает незавершенный drag, если браузер отменил pointer-событие.
 function handleBackgroundScrollPointerCancel(e) {
+  if (!backgroundScroll) return;
   if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
   backgroundScroll.dragging = false;
   backgroundScroll.pointerId = null;
@@ -2272,6 +2280,334 @@ function renderTextVars(text) {
   });
 }
 
+// Безопасно вычисляет выражение для set/if без исполнения произвольного JS-кода.
+function evaluateSafeExpression(expression, vars) {
+  if (typeof expression !== "string") {
+    throw new Error("Expression must be a string");
+  }
+
+  var tokens = tokenizeSafeExpression(expression);
+  var cursor = 0;
+
+  function current() {
+    return tokens[cursor];
+  }
+
+  function consume(type, value) {
+    var token = current();
+    if (!token || token.type !== type || (value !== undefined && token.value !== value)) {
+      var actual = token ? (token.type + ":" + token.value) : "EOF";
+      throw new Error("Unexpected token: " + actual);
+    }
+    cursor += 1;
+    return token;
+  }
+
+  function match(type, value) {
+    var token = current();
+    if (!token || token.type !== type) return false;
+    if (value !== undefined && token.value !== value) return false;
+    cursor += 1;
+    return true;
+  }
+
+  function parseExpression() {
+    return parseLogicalOr();
+  }
+
+  function parseLogicalOr() {
+    var left = parseLogicalAnd();
+    while (match("operator", "||")) {
+      var right = parseLogicalAnd();
+      left = isTruthyValue(left) ? left : right;
+    }
+    return left;
+  }
+
+  function parseLogicalAnd() {
+    var left = parseEquality();
+    while (match("operator", "&&")) {
+      var right = parseEquality();
+      left = isTruthyValue(left) ? right : left;
+    }
+    return left;
+  }
+
+  function parseEquality() {
+    var left = parseComparison();
+    while (true) {
+      if (match("operator", "==")) {
+        var rightEq = parseComparison();
+        left = left == rightEq; // eslint-disable-line eqeqeq
+      } else if (match("operator", "!=")) {
+        var rightNeq = parseComparison();
+        left = left != rightNeq; // eslint-disable-line eqeqeq
+      } else if (match("operator", "===")) {
+        var rightSeq = parseComparison();
+        left = left === rightSeq;
+      } else if (match("operator", "!==")) {
+        var rightSneq = parseComparison();
+        left = left !== rightSneq;
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseComparison() {
+    var left = parseTerm();
+    while (true) {
+      if (match("operator", ">")) {
+        left = left > parseTerm();
+      } else if (match("operator", ">=")) {
+        left = left >= parseTerm();
+      } else if (match("operator", "<")) {
+        left = left < parseTerm();
+      } else if (match("operator", "<=")) {
+        left = left <= parseTerm();
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseTerm() {
+    var left = parseFactor();
+    while (true) {
+      if (match("operator", "+")) {
+        var rightAdd = parseFactor();
+        if (typeof left === "string" || typeof rightAdd === "string") {
+          left = String(left) + String(rightAdd);
+        } else {
+          left = toFiniteNumber(left, "Left side of +") + toFiniteNumber(rightAdd, "Right side of +");
+        }
+      } else if (match("operator", "-")) {
+        left = toFiniteNumber(left, "Left side of -") - toFiniteNumber(parseFactor(), "Right side of -");
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseFactor() {
+    var left = parseUnary();
+    while (true) {
+      if (match("operator", "*")) {
+        left = toFiniteNumber(left, "Left side of *") * toFiniteNumber(parseUnary(), "Right side of *");
+      } else if (match("operator", "/")) {
+        var divisor = toFiniteNumber(parseUnary(), "Right side of /");
+        if (divisor === 0) throw new Error("Division by zero is not allowed");
+        left = toFiniteNumber(left, "Left side of /") / divisor;
+      } else if (match("operator", "%")) {
+        var mod = toFiniteNumber(parseUnary(), "Right side of %");
+        if (mod === 0) throw new Error("Modulo by zero is not allowed");
+        left = toFiniteNumber(left, "Left side of %") % mod;
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseUnary() {
+    if (match("operator", "!")) {
+      return !isTruthyValue(parseUnary());
+    }
+    if (match("operator", "-")) {
+      return -toFiniteNumber(parseUnary(), "Unary - operand");
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary() {
+    var token = current();
+    if (!token) throw new Error("Unexpected end of expression");
+
+    if (match("paren", "(")) {
+      var inner = parseExpression();
+      consume("paren", ")");
+      return inner;
+    }
+
+    if (token.type === "number") {
+      cursor += 1;
+      return token.value;
+    }
+
+    if (token.type === "string") {
+      cursor += 1;
+      return token.value;
+    }
+
+    if (token.type === "identifier") {
+      cursor += 1;
+      return resolveSafeIdentifier(token.value, vars);
+    }
+
+    throw new Error("Unexpected token: " + token.type + ":" + token.value);
+  }
+
+  var result = parseExpression();
+  consume("eof");
+  return result;
+}
+
+// Разбирает строку выражения в безопасные токены и отсекает любые неподдерживаемые символы.
+function tokenizeSafeExpression(expression) {
+  var tokens = [];
+  var i = 0;
+  var source = String(expression || "");
+  var operators3 = { "===": true, "!==": true };
+  var operators2 = { "&&": true, "||": true, "==": true, "!=": true, ">=": true, "<=": true };
+  var operators1 = { "+": true, "-": true, "*": true, "/": true, "%": true, ">": true, "<": true, "!": true };
+
+  while (i < source.length) {
+    var ch = source.charAt(i);
+
+    if (/\s/.test(ch)) {
+      i += 1;
+      continue;
+    }
+
+    var op3 = source.substring(i, i + 3);
+    if (operators3[op3]) {
+      tokens.push({ type: "operator", value: op3 });
+      i += 3;
+      continue;
+    }
+
+    var op2 = source.substring(i, i + 2);
+    if (operators2[op2]) {
+      tokens.push({ type: "operator", value: op2 });
+      i += 2;
+      continue;
+    }
+
+    if (operators1[ch]) {
+      tokens.push({ type: "operator", value: ch });
+      i += 1;
+      continue;
+    }
+
+    if (ch === "(" || ch === ")") {
+      tokens.push({ type: "paren", value: ch });
+      i += 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      var quote = ch;
+      var value = "";
+      var escaped = false;
+      i += 1;
+      while (i < source.length) {
+        var c = source.charAt(i);
+        if (escaped) {
+          if (c === "n") value += "\n";
+          else if (c === "t") value += "\t";
+          else if (c === "r") value += "\r";
+          else value += c;
+          escaped = false;
+          i += 1;
+          continue;
+        }
+        if (c === "\\") {
+          escaped = true;
+          i += 1;
+          continue;
+        }
+        if (c === quote) {
+          i += 1;
+          break;
+        }
+        value += c;
+        i += 1;
+      }
+      if (i > source.length || source.charAt(i - 1) !== quote) {
+        throw new Error("Unclosed string literal");
+      }
+      tokens.push({ type: "string", value: value });
+      continue;
+    }
+
+    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(source.charAt(i + 1)))) {
+      var numberStart = i;
+      var hasDot = (ch === ".");
+      i += 1;
+      while (i < source.length) {
+        var nc = source.charAt(i);
+        if (/[0-9]/.test(nc)) {
+          i += 1;
+          continue;
+        }
+        if (nc === "." && !hasDot) {
+          hasDot = true;
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      var numberRaw = source.substring(numberStart, i);
+      var parsed = Number(numberRaw);
+      if (!isFinite(parsed)) throw new Error("Invalid number literal: " + numberRaw);
+      tokens.push({ type: "number", value: parsed });
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(ch)) {
+      var idStart = i;
+      i += 1;
+      while (i < source.length && /[A-Za-z0-9_]/.test(source.charAt(i))) {
+        i += 1;
+      }
+      tokens.push({ type: "identifier", value: source.substring(idStart, i) });
+      continue;
+    }
+
+    throw new Error("Unsupported symbol: " + ch);
+  }
+
+  tokens.push({ type: "eof", value: "" });
+  return tokens;
+}
+
+// Разрешает доступ только к безопасным литералам и переменным из vars.
+function resolveSafeIdentifier(name, vars) {
+  if (name === "true") return true;
+  if (name === "false") return false;
+  if (name === "null") return null;
+  if (name === "undefined") return undefined;
+
+  if (name === "window" || name === "document" || name === "globalThis" || name === "this") {
+    throw new Error("Global access is not allowed: " + name);
+  }
+  if (name === "__proto__" || name === "prototype" || name === "constructor") {
+    throw new Error("Unsafe identifier is not allowed: " + name);
+  }
+
+  if (!vars || !Object.prototype.hasOwnProperty.call(vars, name)) {
+    throw new Error("Unknown identifier: " + name);
+  }
+  return vars[name];
+}
+
+// Приводит значение к конечному числу и даёт понятную ошибку для неподходящих типов.
+function toFiniteNumber(value, context) {
+  var n = Number(value);
+  if (!isFinite(n)) {
+    throw new Error((context || "Value") + " must be a finite number");
+  }
+  return n;
+}
+
+// Отдельная функция упрощает единые правила truthy/falsy для логических операторов.
+function isTruthyValue(value) {
+  return !!value;
+}
+
 // =========================================================
 //                   ACTION EXECUTION
 // =========================================================
@@ -2508,8 +2844,8 @@ function executeAction(action) {
       }
 
       try {
-        var fn = new Function("vars", "with(vars){ return (" + expr + "); }");
-        state.vars[varName] = fn(state.vars);
+        // set вычисляет только безопасное выражение без запуска JavaScript-кода из сценария.
+        state.vars[varName] = evaluateSafeExpression(expr, state.vars);
         console.log("[VN] set result:", varName, "=", state.vars[varName], "vars:", state.vars);
       } catch (e) {
         console.error("[VN] set error:", action.expression, e);
@@ -2519,8 +2855,8 @@ function executeAction(action) {
     }
    case "if_expr": {
       try {
-        var fn = new Function("vars", "with(vars){ return (" + action.condition + "); }");
-        var ok = !!fn(state.vars);
+        // Условие if_expr ограничено безопасным языком выражений.
+        var ok = !!evaluateSafeExpression(action.condition, state.vars);
 
         if (ok) {
           gotoScene(action.target);
@@ -2574,6 +2910,7 @@ function executeIfSafe(action) {
 }
 
 function executeIfBlock(action) {
+  // if_block использует тот же безопасный evaluator, чтобы ветки не могли исполнять JS-код.
   if (!action || !Array.isArray(action.branches)) return false;
 
   var selectedActions = null;
@@ -2583,8 +2920,7 @@ function executeIfBlock(action) {
     if (!branch || !branch.condition) continue;
 
     try {
-      var fn = new Function("vars", "with(vars){ return (" + branch.condition + "); }");
-      var ok = !!fn(state.vars);
+      var ok = !!evaluateSafeExpression(branch.condition, state.vars);
       if (ok) {
         selectedActions = Array.isArray(branch.actions) ? branch.actions : [];
         break;

@@ -113,8 +113,8 @@
     return;
   }
 
-  // Парсим текст
-  parseStory(window.STORY_TEXT);
+  // Парсинг вызывается в конце файла, после объявления всех вспомогательных функций и констант
+  // (иначе var SAFE_VAR_NAME_RE ещё не инициализирован — будет ошибка .test у undefined).
 
   // ========================================
   // ПАРСЕР
@@ -485,6 +485,271 @@
     return value;
   }
 
+  // Регулярное выражение для допустимых имён сценарных переменных.
+  var SAFE_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+  // Проверяет, что имя переменной безопасно и не совпадает с потенциально опасными служебными ключами.
+  function validateSafeVariableName(name, lineNumber, line, contextLabel) {
+    var key = String(name || '').trim();
+    var context = contextLabel || 'variable';
+    if (!key) {
+      addParseError(lineNumber, line, 'The ' + context + ' name cannot be empty', true);
+      return false;
+    }
+    if (!SAFE_VAR_NAME_RE.test(key)) {
+      addParseError(
+        lineNumber,
+        line,
+        'Invalid ' + context + ' name "' + key + '". Use only letters, digits and "_" and do not start with a digit.',
+        true
+      );
+      return false;
+    }
+    if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+      addParseError(lineNumber, line, 'Unsafe ' + context + ' name "' + key + '" is not allowed.', true);
+      return false;
+    }
+    return true;
+  }
+
+  // Валидирует синтаксис безопасных выражений на этапе загрузки сценария (без выполнения кода).
+  function validateSafeExpressionSyntax(expression, lineNumber, line, contextLabel) {
+    var expr = String(expression || '').trim();
+    var context = contextLabel || 'expression';
+    if (!expr) {
+      addParseError(lineNumber, line, 'The ' + context + ' cannot be empty', true);
+      return false;
+    }
+
+    try {
+      var tokens = tokenizeSafeExpressionForValidation(expr);
+      var cursor = 0;
+
+      function current() {
+        return tokens[cursor];
+      }
+
+      function consume(type, value) {
+        var token = current();
+        if (!token || token.type !== type || (value !== undefined && token.value !== value)) {
+          var actual = token ? (token.type + ':' + token.value) : 'EOF';
+          throw new Error('Unexpected token ' + actual);
+        }
+        cursor += 1;
+        return token;
+      }
+
+      function match(type, value) {
+        var token = current();
+        if (!token || token.type !== type) return false;
+        if (value !== undefined && token.value !== value) return false;
+        cursor += 1;
+        return true;
+      }
+
+      function parseExpression() { return parseLogicalOr(); }
+      function parseLogicalOr() {
+        parseLogicalAnd();
+        while (match('operator', '||')) parseLogicalAnd();
+      }
+      function parseLogicalAnd() {
+        parseEquality();
+        while (match('operator', '&&')) parseEquality();
+      }
+      function parseEquality() {
+        parseComparison();
+        while (true) {
+          if (match('operator', '==') || match('operator', '!=') || match('operator', '===') || match('operator', '!==')) {
+            parseComparison();
+          } else {
+            break;
+          }
+        }
+      }
+      function parseComparison() {
+        parseTerm();
+        while (true) {
+          if (match('operator', '>') || match('operator', '>=') || match('operator', '<') || match('operator', '<=')) {
+            parseTerm();
+          } else {
+            break;
+          }
+        }
+      }
+      function parseTerm() {
+        parseFactor();
+        while (true) {
+          if (match('operator', '+') || match('operator', '-')) {
+            parseFactor();
+          } else {
+            break;
+          }
+        }
+      }
+      function parseFactor() {
+        parseUnary();
+        while (true) {
+          if (match('operator', '*') || match('operator', '/') || match('operator', '%')) {
+            parseUnary();
+          } else {
+            break;
+          }
+        }
+      }
+      function parseUnary() {
+        if (match('operator', '!') || match('operator', '-')) {
+          parseUnary();
+          return;
+        }
+        parsePrimary();
+      }
+      function parsePrimary() {
+        var token = current();
+        if (!token) throw new Error('Unexpected end of expression');
+        if (match('paren', '(')) {
+          parseExpression();
+          consume('paren', ')');
+          return;
+        }
+        if (token.type === 'number' || token.type === 'string') {
+          cursor += 1;
+          return;
+        }
+        if (token.type === 'identifier') {
+          if (token.value === 'window' || token.value === 'document' || token.value === 'globalThis' || token.value === 'this') {
+            throw new Error('Global object "' + token.value + '" is not allowed');
+          }
+          if (token.value === '__proto__' || token.value === 'prototype' || token.value === 'constructor') {
+            throw new Error('Unsafe identifier "' + token.value + '" is not allowed');
+          }
+          cursor += 1;
+          return;
+        }
+        throw new Error('Unexpected token ' + token.type + ':' + token.value);
+      }
+
+      parseExpression();
+      consume('eof');
+      return true;
+    } catch (e) {
+      addParseError(lineNumber, line, 'Invalid ' + context + ': ' + e.message, true);
+      return false;
+    }
+  }
+
+  // Токенизирует выражение для валидации и отклоняет неподдерживаемые символы до запуска новеллы.
+  function tokenizeSafeExpressionForValidation(expression) {
+    var tokens = [];
+    var i = 0;
+    var source = String(expression || '');
+    var operators3 = { '===': true, '!==': true };
+    var operators2 = { '&&': true, '||': true, '==': true, '!=': true, '>=': true, '<=': true };
+    var operators1 = { '+': true, '-': true, '*': true, '/': true, '%': true, '>': true, '<': true, '!': true };
+
+    while (i < source.length) {
+      var ch = source.charAt(i);
+      if (/\s/.test(ch)) {
+        i += 1;
+        continue;
+      }
+
+      var op3 = source.substring(i, i + 3);
+      if (operators3[op3]) {
+        tokens.push({ type: 'operator', value: op3 });
+        i += 3;
+        continue;
+      }
+
+      var op2 = source.substring(i, i + 2);
+      if (operators2[op2]) {
+        tokens.push({ type: 'operator', value: op2 });
+        i += 2;
+        continue;
+      }
+
+      if (operators1[ch]) {
+        tokens.push({ type: 'operator', value: ch });
+        i += 1;
+        continue;
+      }
+
+      if (ch === '(' || ch === ')') {
+        tokens.push({ type: 'paren', value: ch });
+        i += 1;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        var quote = ch;
+        var escaped = false;
+        i += 1;
+        while (i < source.length) {
+          var c = source.charAt(i);
+          if (escaped) {
+            escaped = false;
+            i += 1;
+            continue;
+          }
+          if (c === '\\') {
+            escaped = true;
+            i += 1;
+            continue;
+          }
+          if (c === quote) {
+            i += 1;
+            break;
+          }
+          i += 1;
+        }
+        if (i > source.length || source.charAt(i - 1) !== quote) {
+          throw new Error('Unclosed string literal');
+        }
+        tokens.push({ type: 'string', value: '' });
+        continue;
+      }
+
+      if (/[0-9]/.test(ch) || (ch === '.' && /[0-9]/.test(source.charAt(i + 1)))) {
+        var numberStart = i;
+        var hasDot = (ch === '.');
+        i += 1;
+        while (i < source.length) {
+          var nc = source.charAt(i);
+          if (/[0-9]/.test(nc)) {
+            i += 1;
+            continue;
+          }
+          if (nc === '.' && !hasDot) {
+            hasDot = true;
+            i += 1;
+            continue;
+          }
+          break;
+        }
+        var numberRaw = source.substring(numberStart, i);
+        if (!isFinite(Number(numberRaw))) {
+          throw new Error('Invalid number literal "' + numberRaw + '"');
+        }
+        tokens.push({ type: 'number', value: numberRaw });
+        continue;
+      }
+
+      if (/[A-Za-z_]/.test(ch)) {
+        var idStart = i;
+        i += 1;
+        while (i < source.length && /[A-Za-z0-9_]/.test(source.charAt(i))) {
+          i += 1;
+        }
+        tokens.push({ type: 'identifier', value: source.substring(idStart, i) });
+        continue;
+      }
+
+      throw new Error('Unsupported symbol "' + ch + '"');
+    }
+
+    tokens.push({ type: 'eof', value: '' });
+    return tokens;
+  }
+
   function parseVarLine(lineNumber, line, story) {
     line = line.split('#')[0].trim();
     if (!line) return;
@@ -499,6 +764,7 @@
       addParseError(lineNumber, line, "The variable name in [var] cannot be empty", true);
       return;
     }
+    if (!validateSafeVariableName(key, lineNumber, line, 'variable in [var]')) return;
 
     if (rawValue === '') {
       addParseError(lineNumber, line, "The value of the variable in [var] cannot be empty", true);
@@ -1608,6 +1874,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(lineNumber, line, 'The condition in "elif" cannot be empty', true);
         return;
       }
+      if (!validateSafeExpressionSyntax(elifCondition, lineNumber, line, 'elif condition')) return;
 
       if (elifCondition.indexOf('->') !== -1) {
         addParseError(lineNumber, line, '"elif" supports block syntax only. Use: elif condition', true);
@@ -1956,6 +2223,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(lineNumber, line, 'Invalid set syntax. Use: set x = 1 + 2', true);
         return;
       }
+      var setEqPos = expression.indexOf('=');
+      var setVarName = expression.substring(0, setEqPos).trim();
+      var setExprBody = expression.substring(setEqPos + 1).trim();
+      if (!validateSafeVariableName(setVarName, lineNumber, line, 'set variable')) return;
+      if (!validateSafeExpressionSyntax(setExprBody, lineNumber, line, 'set expression')) return;
 
       actions.push({
         type: 'set',
@@ -2004,6 +2276,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           addParseError(lineNumber, line, 'The condition in the if statement cannot be empty', true);
           return;
         }
+        if (!validateSafeExpressionSyntax(condition, lineNumber, line, 'if condition')) return;
 
         const ifAction = {
           type: 'if_block',
@@ -2042,6 +2315,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(lineNumber, line, 'The condition in the if statement cannot be empty', true);
         return;
       }
+      if (!validateSafeExpressionSyntax(condition, lineNumber, line, 'if condition')) return;
 
       if (!target) {
         addParseError(lineNumber, line, 'The target scene in the if statement cannot be empty', true);
@@ -2308,5 +2582,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     }
   }
 
+  // Запуск парсинга только после определения validateSafeVariableName / SAFE_VAR_NAME_RE и пр.
+  parseStory(window.STORY_TEXT);
 
 })();
