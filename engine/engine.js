@@ -136,6 +136,7 @@ const UI_I18N = {
     statsRenderError: "Error generating statistics:",
     statsFileError: "File verification error:",
     mermaidRenderError: "Mermaid graph rendering error:",
+    mermaidScriptError: "Could not load Mermaid library:",
     gamesButton: "🎮 Games",
     gamesButtonTitle: "Show/hide games",
     gamesNoCover: "No preview",
@@ -179,6 +180,7 @@ const UI_I18N = {
     statsRenderError: "Ошибка генерации статистики:",
     statsFileError: "Ошибка проверки файлов:",
     mermaidRenderError: "Ошибка рендера графа Mermaid:",
+    mermaidScriptError: "Не удалось загрузить библиотеку Mermaid:",
     gamesButton: "🎮 Игры",
     gamesButtonTitle: "Показать/скрыть игры",
     gamesNoCover: "Нет превью",
@@ -329,28 +331,83 @@ function markFirstScreenReady(reason) {
 
 
 
-// Инициализация Mermaid с правильными настройками для текста над линиями
-// Упрощенная инициализация Mermaid
-if (window.mermaid) {
+// Mermaid подключается лениво (см. ensureMermaidScriptLoaded), чтобы не тянуть ~сотни KB на старте новеллы.
+
+// Относительный URL UMD-сборки; должен совпадать с бывшим тегом <script> в index.html.
+var MERMAID_SCRIPT_SRC = "lib/mermaid.min.js";
+
+// Одно общее Promise на сессию: параллельные вызовы не создают второй <script>.
+var mermaidScriptLoadPromise = null;
+
+/**
+ * Задаёт глобальные параметры Mermaid после загрузки библиотеки.
+ * Вызывается один раз при первом успешном подключении скрипта.
+ */
+function configureMermaidLibrary() {
+  if (!window.mermaid || typeof window.mermaid.initialize !== "function") {
+    return;
+  }
+
   window.mermaid.initialize({
     startOnLoad: false,
-    securityLevel: 'loose',
+    securityLevel: "loose",
     suppressErrorRendering: false,
 
     // главное для больших графов
     maxTextSize: 350000,
     maxEdges: 5000,
 
-    theme: 'default',
+    theme: "default",
     flowchart: {
       useMaxWidth: false,
       htmlLabels: true,
-      curve: 'basis',
+      curve: "basis",
       padding: 4,
       nodeSpacing: 60,
       rankSpacing: 100
     }
   });
+}
+
+/**
+ * Гарантирует наличие window.mermaid: при первом вызове вставляет <script> и ждёт onload.
+ * Повторные вызовы возвращают то же Promise; при ошибке загрузки Promise сбрасывается для повторной попытки.
+ */
+function ensureMermaidScriptLoaded() {
+  if (window.mermaid && typeof window.mermaid.initialize === "function") {
+    return Promise.resolve();
+  }
+
+  if (mermaidScriptLoadPromise) {
+    return mermaidScriptLoadPromise;
+  }
+
+  mermaidScriptLoadPromise = new Promise(function(resolve, reject) {
+    var script = document.createElement("script");
+    script.src = MERMAID_SCRIPT_SRC;
+    script.async = true;
+    script.setAttribute("data-vn-mermaid", "1");
+
+    script.onload = function() {
+      try {
+        configureMermaidLibrary();
+      } catch (err) {
+        mermaidScriptLoadPromise = null;
+        reject(err);
+        return;
+      }
+      resolve();
+    };
+
+    script.onerror = function() {
+      mermaidScriptLoadPromise = null;
+      reject(new Error(MERMAID_SCRIPT_SRC));
+    };
+
+    document.head.appendChild(script);
+  });
+
+  return mermaidScriptLoadPromise;
 }
 
 
@@ -8983,7 +9040,18 @@ function renderMermaidGraph() {
     }, 50);
   }
 
-  tryRenderFromQueue(0);
+  ensureMermaidScriptLoaded()
+    .then(function() {
+      tryRenderFromQueue(0);
+    })
+    .catch(function(err) {
+      console.error("[GRAPH] " + (t("mermaidScriptError") || "Mermaid load failed"), err);
+      clearMermaidContainer();
+      mermaidGraph.textContent =
+        (t("mermaidScriptError") || "Mermaid load failed") +
+        "\n" +
+        (err && err.message ? err.message : String(err));
+    });
 }
 
 
