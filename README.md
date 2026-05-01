@@ -330,7 +330,7 @@ Narrator:
 
     video videoId
     video videoId start=1 stop=10
-    video videoId skippable=false skipText="Skip" fit=contain
+    video videoId skip=false skipText="Skip" fit=contain
 
 ---
 

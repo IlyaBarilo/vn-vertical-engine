@@ -287,11 +287,11 @@ intro file=assets/video/intro.mp4 poster=assets/video/intro.jpg volume=0.8
 ```text
 video intro
 video intro start=1 stop=10
-video intro skippable=false skipText="Пропустить" fit=contain
+video intro skip=false skipText="Пропустить" fit=contain
 ```
 
 - `start` и `stop` задают фрагмент в секундах.
-- `skippable` по умолчанию `true`.
+- `skip` по умолчанию `true`; можно писать `skip`, `skip=true` или `skip=false`. Старый параметр `skippable` работает как алиас для совместимости.
 - `skipText` меняет текст индикатора пропуска.
 - `fit` может быть `cover` или `contain`, по умолчанию `cover`.
 - Если видео не загрузилось или не удалось перейти к `start`, показывается `poster` на 5 секунд; такой fallback всегда можно пропустить.
@@ -674,7 +674,7 @@ music stop
 Формат:
 
 ```text
-video <videoId> start=<seconds> stop=<seconds> skippable=<true|false> skipText="<text>" fit=<cover|contain>
+video <videoId> start=<seconds> stop=<seconds> skip=<true|false> skipText="<text>" fit=<cover|contain>
 ```
 
 Примеры:
@@ -682,7 +682,8 @@ video <videoId> start=<seconds> stop=<seconds> skippable=<true|false> skipText="
 ```text
 video intro
 video intro start=1 stop=10
-video intro skippable=false skipText="Пропустить" fit=contain
+video intro skip
+video intro skip=false skipText="Пропустить" fit=contain
 ```
 
 ---

@@ -807,11 +807,24 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     return;
   }
 
-  var params = parseActionParams(tokens.slice(2));
-  if (params.scroll === undefined && tokens.slice(2).some(function(token) {
+  var videoParamTokens = tokens.slice(2);
+  var params = parseActionParams(videoParamTokens);
+  if (params.scroll === undefined && videoParamTokens.some(function(token) {
     return String(token || "").toLowerCase() === "scroll";
   })) {
     params.scroll = true;
+  }
+
+  // skip является основным именем разрешения пропуска; skippable поддерживается как старый алиас.
+  if (params.skip === undefined && videoParamTokens.some(function(token) {
+    return String(token || "").toLowerCase() === "skip";
+  })) {
+    params.skip = true;
+  }
+  if (params.skippable === undefined && videoParamTokens.some(function(token) {
+    return String(token || "").toLowerCase() === "skippable";
+  })) {
+    params.skippable = true;
   }
 
   var videoAsset = story.assets.videos[videoId];
@@ -854,12 +867,18 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     return;
   }
 
-  if (params.skippable !== undefined) {
-    if (typeof params.skippable !== 'boolean') {
-      addParseError(lineNumber, line, 'The video skippable= value must be true or false', true);
+  if (params.skip !== undefined && params.skippable !== undefined) {
+    addParseError(lineNumber, line, 'Use only one video skip option: skip or skippable.', true);
+    return;
+  }
+
+  var skipValue = params.skip !== undefined ? params.skip : params.skippable;
+  if (skipValue !== undefined) {
+    if (typeof skipValue !== 'boolean') {
+      addParseError(lineNumber, line, 'The video skip= value must be true or false. Old skippable= uses the same values.', true);
       return;
     }
-    action.skippable = params.skippable;
+    action.skippable = skipValue;
   }
 
   if (params.skipText !== undefined) {
