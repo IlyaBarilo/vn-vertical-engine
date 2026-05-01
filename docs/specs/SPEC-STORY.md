@@ -255,11 +255,11 @@ bgmDay file=assets/audio/bgm_campus_day.mp3
 Использование в сцене:
 
 ```text
-bgm bgmDay
-bgm bgmDay loop
-bgm bgmDay loop=true
-bgm bgmDay loop=false
-bgm stop
+music bgmDay
+music bgmDay loop
+music bgmDay loop=true
+music bgmDay loop=false
+music stop
 ```
 
 ---
@@ -651,18 +651,18 @@ end
 
 ---
 
-### `bgm`
+### `music`
 
-Управляет фоновой музыкой.
+Управляет фоновой музыкой. Старая команда `bgm` работает как короткий алиас для совместимости.
 
 Примеры:
 
 ```text
-bgm bgmDay
-bgm bgmDay loop
-bgm bgmDay loop=true
-bgm bgmDay loop=false
-bgm stop
+music bgmDay
+music bgmDay loop
+music bgmDay loop=true
+music bgmDay loop=false
+music stop
 ```
 
 ---
@@ -771,7 +771,7 @@ gameCoffeeRush file=assets/games/coffee_rush.html
 [scene]
 scene intro
 bg hall
-bgm bgmDay loop
+music bgmDay loop
 show anna neutral
 anna: "Welcome to the demo."
 

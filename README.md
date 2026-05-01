@@ -322,9 +322,9 @@ Narrator:
 
 ### Music
 
-    bgm musicId
-    bgm musicId loop
-    bgm stop
+    music musicId
+    music musicId loop
+    music stop
 
 ### Video
 

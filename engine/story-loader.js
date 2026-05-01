@@ -1831,18 +1831,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     
-    // bgm [имя] [loop|loop=true|loop=false]
+    // music — основная команда фоновой музыки; bgm оставлен коротким алиасом для совместимости.
     // Примеры:
-    //   bgm bgmDay
-    //   bgm bgmDay loop
-    //   bgm bgmDay loop=false
-    //   bgm stop
-    if (cleanLine.startsWith('bgm ')) {
-      const bgmArgs = cleanLine.substring(4).trim().split(/\s+/);
-      const bgmName = bgmArgs[0];
+    //   music bgmDay
+    //   music bgmDay loop
+    //   music bgmDay loop=false
+    //   music stop
+    const musicMatch = cleanLine.match(/^(music|bgm)(?:\s+(.+))?$/);
+    if (musicMatch) {
+      const musicCommand = musicMatch[1];
+      const musicArgsText = (musicMatch[2] || '').trim();
+      const musicArgs = musicArgsText ? musicArgsText.split(/\s+/) : [];
+      const bgmName = musicArgs[0];
 
       if (!bgmName) {
-        addParseError(lineNumber, line, "No music name specified after bgm", true);
+        addParseError(lineNumber, line, "No music name specified after " + musicCommand, true);
+        return;
       }
 
       if (bgmName === 'stop') {
@@ -1854,8 +1858,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         return;
       }
 
-      const bgmParams = parseActionParams(bgmArgs.slice(1));
-      if (bgmParams.loop === undefined && bgmArgs.slice(1).some(function(token) {
+      const bgmParams = parseActionParams(musicArgs.slice(1));
+      if (bgmParams.loop === undefined && musicArgs.slice(1).some(function(token) {
         return String(token || "").toLowerCase() === "loop";
       })) {
         bgmParams.loop = true;
@@ -1865,7 +1869,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       let hasLoop = false;
       if (bgmParams.loop !== undefined) {
         if (typeof bgmParams.loop !== 'boolean') {
-          addParseError(lineNumber, line, 'Invalid bgm loop value "' + bgmParams.loop + '". Use loop, loop=true or loop=false.', true);
+          addParseError(lineNumber, line, 'Invalid music loop value "' + bgmParams.loop + '". Use loop, loop=true or loop=false.', true);
           return;
         }
         hasLoop = bgmParams.loop;
