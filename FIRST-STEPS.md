@@ -14,8 +14,8 @@ The main idea is simple:
 5. after that, connect, test, and refine everything together.
 
 When downloading a release, use the full ZIP archive if you want to run the
-included demo as-is. Use the `-lite` ZIP archive if you want a smaller starting
-point without bundled images and audio; you can add your own media files later.
+included demo as-is. Use the `-update` ZIP archive when copying a new engine
+version over an existing novel; it does not include the `assets/` folder.
 
 ---
 

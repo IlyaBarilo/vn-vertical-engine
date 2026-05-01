@@ -200,27 +200,14 @@ jobs:
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
-          # Lite-архив оставляет код, документацию и HTML-игры, но удаляет изображения, видео и аудио.
-          cp -r "$APP_NAME" "${APP_NAME}-lite"
-          find "${APP_NAME}-lite/assets" -type f \( \
-            -iname "*.jpg" -o \
-            -iname "*.jpeg" -o \
-            -iname "*.png" -o \
-            -iname "*.webp" -o \
-            -iname "*.gif" -o \
-            -iname "*.avif" -o \
-            -iname "*.mp4" -o \
-            -iname "*.webm" -o \
-            -iname "*.mov" -o \
-            -iname "*.mp3" -o \
-            -iname "*.wav" -o \
-            -iname "*.ogg" \
-          \) -delete
-          zip -r "../${APP_NAME}-${VERSION}-lite.zip" "${APP_NAME}-lite"
+          # Update-архив не содержит каталог assets, чтобы обновление не затрагивало файлы новеллы.
+          cp -r "$APP_NAME" "${APP_NAME}-update"
+          rm -rf "${APP_NAME}-update/assets"
+          zip -r "../${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-update"
           cd ..
 
           cp "${APP_NAME}-${VERSION}.zip" "${APP_NAME}-latest.zip"
-          cp "${APP_NAME}-${VERSION}-lite.zip" "${APP_NAME}-latest-lite.zip"
+          cp "${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-latest-update.zip"
 
       - name: Upload to release
         if: github.event_name == 'release' || inputs.upload_to_release == true
@@ -230,8 +217,8 @@ jobs:
           files: |
             ${{ github.event.repository.name }}-${{ env.VERSION }}.zip
             ${{ github.event.repository.name }}-latest.zip
-            ${{ github.event.repository.name }}-${{ env.VERSION }}-lite.zip
-            ${{ github.event.repository.name }}-latest-lite.zip
+            ${{ github.event.repository.name }}-${{ env.VERSION }}-update.zip
+            ${{ github.event.repository.name }}-latest-update.zip
 
       - name: Setup Pages
         if: github.event_name == 'release' || inputs.deploy_pages == true

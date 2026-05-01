@@ -147,8 +147,8 @@ This engine is suitable for:
              ├── audio/
              └── games/
 
-In lite release archives, image, video, and audio files are removed from `assets/`,
-but HTML mini-games and engine files remain.
+In update release archives, the `assets/` folder is not included,
+so copying an update over an existing novel does not touch its media files.
 
 ---
 
@@ -161,10 +161,10 @@ but HTML mini-games and engine files remain.
 Release assets include two ZIP variants:
 
 - `vn-vertical-engine-VERSION.zip` — full package with demo images and audio.
-- `vn-vertical-engine-VERSION-lite.zip` — lightweight package without images and audio.
+- `vn-vertical-engine-VERSION-update.zip` — update package without the `assets/` folder.
 
-Use the full archive to run the included demo as-is. Use the lite archive as a
-smaller starting point when you plan to add your own media files.
+Use the full archive to run the included demo as-is. Use the update archive when
+copying a new engine version over an existing novel without touching its media files.
 
 2.  Extract the archive.
 
