@@ -15,6 +15,8 @@ body {
      --uiScale и --baseFontSize рассчитываются в JS.
      ========================================================= */
   --uiScale: 2;
+  /* До загрузки JS: 1. После applyUiScale: 1 (не телефон) или то же число, что UI_PHONE_EXTRA_FONT_SCALE (телефон). Не дублируйте коэффициент здесь — правьте только в engine.js. */
+  --uiPhoneExtraScale: 1;
   --baseFontPx: 16px;
   --baseFontSize: calc(var(--baseFontPx) * var(--uiScale));
 
@@ -25,7 +27,7 @@ body {
 
   /*
      БЫСТРАЯ РУЧНАЯ НАСТРОЙКА ПОД ЭКРАН:
-     1) Если весь интерфейс мелкий/крупный — правьте UI_FONT_SCALE в engine.js.
+     1) Общий масштаб — UI_FONT_SCALE; доп. укрупнение на смартфонах — UI_PHONE_EXTRA_FONT_SCALE (engine.js).
      2) Если тесная верхняя панель — правьте --topbar-* и --control-*.
      3) Если узкое окно диалога — правьте --dialog-* и --name-*.
      4) Если мелкие варианты выбора — правьте --choices-* и --choice-*.

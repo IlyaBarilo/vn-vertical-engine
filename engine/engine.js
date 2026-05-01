@@ -1346,6 +1346,17 @@ profiler.mark('Indentation settings applied');
 var UI_FONT_SCALE = 1.4;
 console.log('[SCALE] UI_FONT_SCALE initialized:', UI_FONT_SCALE);
 
+// Дополнительный множитель масштаба интерфейса только при уверенном определении смартфона.
+// В applyUiScale итог: UI_FONT_SCALE * autoScale * (телефон ? UI_PHONE_EXTRA_FONT_SCALE : 1).
+// Значение 1.0 отключает эффект; >1 укрупняет текст и UI на телефонах поверх обычной формулы.
+var UI_PHONE_EXTRA_FONT_SCALE = 1.45;
+console.log('[SCALE] UI_PHONE_EXTRA_FONT_SCALE initialized:', UI_PHONE_EXTRA_FONT_SCALE);
+
+// Верхняя граница меньшей стороны viewport (CSS px) для «карманного» экрана; выше — не считаем телефоном.
+var UI_PHONE_VIEWPORT_MAX_SHORT_PX = 560;
+// Минимум отношения длинной стороны к короткой (отсекает почти квадратные окна на ПК).
+var UI_PHONE_VIEWPORT_MIN_ASPECT = 1.35;
+
 // Высота экрана, под которую делался дизайн
 // используется для автоадаптации
 var UI_REFERENCE_HEIGHT = 1440;
@@ -5023,16 +5034,63 @@ function resolveBackgroundAsset(ref) {
 // МАСШТАБ ИНТЕРФЕЙСА
 // =========================================================
 
+// Определяет по User-Agent, что клиент — смартфон (не планшет, не ТВ, не десктоп).
+// При малейших сомнениях возвращает false, чтобы не включать UI_PHONE_EXTRA_FONT_SCALE на больших экранах.
+function detectConfidentPhoneUserAgent() {
+  var ua = String(navigator.userAgent || "");
+  if (!ua) return false;
+  // Типичные ТВ и приставки: даже при узком viewport не усиливаем масштаб как на телефоне.
+  if (/SmartTV|SMART-TV|HbbTV|BRAVIA|Philips TV|Tizen|webOS|CrKey|Chromecast|AFTB|AFTM|PlayStation|Xbox/i.test(ua)) {
+    return false;
+  }
+  if (/iPhone/i.test(ua)) {
+    return true;
+  }
+  if (/iPad/i.test(ua)) {
+    return false;
+  }
+  if (/Android/i.test(ua)) {
+    return /Mobile/i.test(ua);
+  }
+  try {
+    var uad = navigator.userAgentData;
+    if (uad && uad.mobile === true && (/Android/i.test(ua) || /iPhone/i.test(ua))) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+// Проверяет, что размер окна похож на удерживаемый в руке экран (узкая короткая сторона, вытянутый формат).
+// Без этого узкое окно браузера на ПК с телефонным UA (редко, но возможно) не должно получать буст.
+function detectConfidentPhoneViewport() {
+  var w = window.innerWidth;
+  var h = window.innerHeight;
+  if (!(w > 0 && h > 0)) return false;
+  var shortSide = Math.min(w, h);
+  var longSide = Math.max(w, h);
+  if (shortSide > UI_PHONE_VIEWPORT_MAX_SHORT_PX) return false;
+  if (longSide / shortSide < UI_PHONE_VIEWPORT_MIN_ASPECT) return false;
+  return true;
+}
+
+// Консервативное объединение: только одновременно «телефонный» UA и «телефонный» viewport.
+function isConfidentPhoneForUiBoost() {
+  return detectConfidentPhoneUserAgent() && detectConfidentPhoneViewport();
+}
+
 function applyUiScale() {
   // JS считает только корневой масштаб,
   // а размеры конкретных компонентов берутся из CSS-токенов.
   var autoScale = window.innerHeight / UI_REFERENCE_HEIGHT;
   autoScale = clamp(autoScale, 0.25, 10);
 
-  var finalScale = UI_FONT_SCALE * autoScale;
+  var phoneExtra = isConfidentPhoneForUiBoost() ? UI_PHONE_EXTRA_FONT_SCALE : 1;
+  var finalScale = UI_FONT_SCALE * autoScale * phoneExtra;
   finalScale = clamp(finalScale, 0.25, 10);
 
   document.documentElement.style.setProperty("--uiScale", finalScale);
+  document.documentElement.style.setProperty("--uiPhoneExtraScale", String(phoneExtra));
 
   // Визуальные эффекты считаются отдельно от UI_FONT_SCALE, чтобы blur,
   // бордеры и тени сохраняли привычную силу при ручном масштабе интерфейса.
@@ -5057,6 +5115,9 @@ function applyUiScale() {
     visualMinHeight: visualMinHeight,
     visualScale: visualScale,
     uiFontScale: UI_FONT_SCALE,
+    uiPhoneExtraFontScale: UI_PHONE_EXTRA_FONT_SCALE,
+    phoneBoostApplied: phoneExtra !== 1,
+    phoneExtra: phoneExtra,
     finalScale: finalScale,
     baseFontPx: baseFontPx,
     baseFontSize: baseFontSize,
@@ -5983,6 +6044,7 @@ function collectEnvironmentInfo() {
   
   info += "CSS variables:\n";
   info += "  --uiScale: " + uiScale + "\n";
+  info += "  --uiPhoneExtraScale: " + rootStyle.getPropertyValue('--uiPhoneExtraScale').trim() + "\n";
   info += "  --visualScale: " + visualScale + "\n";
   info += "  --baseFontPx: " + baseFontPx + "\n";
   info += "  --baseFontSize: " + baseFontSize + "\n";
@@ -5993,6 +6055,10 @@ function collectEnvironmentInfo() {
   // JS переменные масштабирования
   info += "JS scaling settings:\n";
   info += "  UI_FONT_SCALE: " + UI_FONT_SCALE + "\n";
+  info += "  UI_PHONE_EXTRA_FONT_SCALE: " + UI_PHONE_EXTRA_FONT_SCALE + "\n";
+  info += "  UI_PHONE_VIEWPORT_MAX_SHORT_PX: " + UI_PHONE_VIEWPORT_MAX_SHORT_PX + "\n";
+  info += "  UI_PHONE_VIEWPORT_MIN_ASPECT: " + UI_PHONE_VIEWPORT_MIN_ASPECT + "\n";
+  info += "  confidentPhoneUiBoost: " + isConfidentPhoneForUiBoost() + "\n";
   info += "  UI_REFERENCE_HEIGHT: " + UI_REFERENCE_HEIGHT + "\n";
   info += "  UI_VISUAL_REFERENCE_HEIGHT: " + UI_VISUAL_REFERENCE_HEIGHT + "\n";
   info += "  UI_VISUAL_MIN_HEIGHT: " + UI_VISUAL_MIN_HEIGHT + "\n\n";
