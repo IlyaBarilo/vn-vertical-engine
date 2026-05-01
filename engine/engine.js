@@ -6272,6 +6272,10 @@ function buildMermaidGraph(story, unreachableList, options) {
   var edges = [];
   var incomingEdges = {}; // Словарь для подсчета входящих связей
   var outgoingEdges = {}; // Словарь для подсчета исходящих связей
+  // Отдельно считаем исходящие связи в любые сцены, кроме стартовой.
+  // Нужно для определения "финальной" сцены: возврат в стартовую сцену
+  // не должен лишать сцену статуса финала.
+  var outgoingEdgesNonStart = {};
   
   for (var s = 0; s < scenes.length; s++) {
     var scene = scenes[s];
@@ -6369,6 +6373,11 @@ function buildMermaidGraph(story, unreachableList, options) {
         });
 
         outgoingEdges[scene.id] = (outgoingEdges[scene.id] || 0) + 1;
+        // Учитываем только переходы в "не стартовую" сцену:
+        // ссылка обратно в стартовую сцену допускается у финала.
+        if (edge.to !== startId) {
+          outgoingEdgesNonStart[scene.id] = (outgoingEdgesNonStart[scene.id] || 0) + 1;
+        }
 
         if (!incomingEdges[edge.to]) incomingEdges[edge.to] = 0;
         incomingEdges[edge.to]++;
@@ -6560,12 +6569,15 @@ function buildMermaidGraph(story, unreachableList, options) {
       classes.push("unreachable");
     }
     
-    // Проверяем, является ли сцена финальной (есть входящие, нет исходящих)
-    // И при этом не стартовая и не недостижимая
-    if (!unreachableSet[node.id] && 
-      node.id !== startId && 
-      incomingEdges[node.id] > 0 && 
-      (!outgoingEdges[node.id] || outgoingEdges[node.id] === 0)) {
+    // Проверяем, является ли сцена финальной: есть входящие связи и нет
+    // исходящих связей в любые сцены, КРОМЕ стартовой.
+    // Допускается возврат в стартовую сцену (например, "Начать заново"),
+    // он не лишает сцену статуса финала.
+    // Также сцена не должна быть стартовой и не должна быть недостижимой.
+    if (!unreachableSet[node.id] &&
+      node.id !== startId &&
+      incomingEdges[node.id] > 0 &&
+      (!outgoingEdgesNonStart[node.id] || outgoingEdgesNonStart[node.id] === 0)) {
       classes.push("final");
     }
     
