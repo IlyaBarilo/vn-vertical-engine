@@ -6635,6 +6635,7 @@ function getImgCountClass(count) {
 
 // Добавьте после функции buildMermaidGraph или в любое место перед ее вызовом
 
+// Строит блок Characters: общий список персонажей и отдельные узлы с эмоциями.
 function buildCharactersGraph(story, options) {
   options = options || {};
 
@@ -6648,12 +6649,68 @@ function buildCharactersGraph(story, options) {
 
   var mermaid = "";
   var characters = story.assets.characters || {};
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (story.scenes[0] ? story.scenes[0].id : "START");
+  var scenes = story.scenes || [];
+  var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
+  var characterUseCounts = {};
+  var characterSceneUseMap = {};
   
   // Создаем узел "Персонажи"
   var charIds = (options.onlyCharIds && options.onlyCharIds.length)
     ? options.onlyCharIds.slice().sort()
     : Object.keys(characters).sort();
+
+  function markCharacterUsage(charId, sceneId) {
+    if (!charId || !characters[charId]) return;
+    characterUseCounts[charId] = (characterUseCounts[charId] || 0) + 1;
+    if (!characterSceneUseMap[charId]) {
+      characterSceneUseMap[charId] = {};
+    }
+    characterSceneUseMap[charId][sceneId] = true;
+  }
+
+  function collectCharacterUsageFromActions(actions, sceneId) {
+    // Вложенные ветки считаются как дополнительные показы персонажа, а сцена учитывается один раз.
+    if (!Array.isArray(actions)) return;
+
+    for (var actionIndex = 0; actionIndex < actions.length; actionIndex++) {
+      var action = actions[actionIndex];
+      if (!action || !action.type) continue;
+
+      if (action.type === "char" && action.charId) {
+        markCharacterUsage(action.charId, sceneId);
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var choiceIndex = 0; choiceIndex < action.choices.length; choiceIndex++) {
+          var choice = action.choices[choiceIndex];
+          if (choice && Array.isArray(choice.actions)) {
+            collectCharacterUsageFromActions(choice.actions, sceneId);
+          }
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var branchIndex = 0; branchIndex < action.branches.length; branchIndex++) {
+            var branch = action.branches[branchIndex];
+            if (branch && Array.isArray(branch.actions)) {
+              collectCharacterUsageFromActions(branch.actions, sceneId);
+            }
+          }
+        }
+
+        if (Array.isArray(action.elseActions)) {
+          collectCharacterUsageFromActions(action.elseActions, sceneId);
+        }
+      }
+    }
+  }
+
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id || !scene.actions) continue;
+    collectCharacterUsageFromActions(scene.actions, scene.id);
+  }
 
   // Подсчёт общего количества эмоций (изображений) у всех персонажей
   var totalEmotions = 0;
@@ -6666,6 +6723,28 @@ function buildCharactersGraph(story, options) {
   
   // Формируем заголовок с динамическим счётчиком
   var groupLabel = '<b>👥 Characters (' + totalEmotions + '/' + charIds.length + ')</b>';
+  if (!compact) {
+    var charListClass = getImgCountClass(charIds.length || 1);
+    var charactersListHtml = "<div class='games-list-box " + charListClass + "'>";
+
+    if (charIds.length > 0) {
+      for (var cl = 0; cl < charIds.length; cl++) {
+        var listCharId = charIds[cl];
+        var characterUseCount = characterUseCounts[listCharId] || 0;
+        var characterSceneCount = characterSceneUseMap[listCharId] ? Object.keys(characterSceneUseMap[listCharId]).length : 0;
+        var countClass = characterUseCount === 0 ? " game-list-count-zero" : "";
+        charactersListHtml += "<span class='game-list-row game-list-row-with-count'>" +
+          "<span class='game-list-id'>" + escapeHtml(listCharId) + "</span>" +
+          "<b class='game-list-count" + countClass + "'>" + characterUseCount + "/" + characterSceneCount + "</b>" +
+          "</span>";
+      }
+    } else {
+      charactersListHtml += "<span class='game-list-row games-list-empty-cell'>(none)</span>";
+    }
+
+    charactersListHtml += "</div>";
+    groupLabel += "<br/>" + charactersListHtml;
+  }
   mermaid += '    characters["' + groupLabel + '"]\n';
   mermaid += '    characters:::characters-group\n';
   

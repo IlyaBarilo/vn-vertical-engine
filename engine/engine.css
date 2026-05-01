@@ -1384,7 +1384,9 @@ body {
   gap: 4px !important;
   padding: 2px !important;
   min-width: 120px !important;
-  max-width: 180px !important;
+  /* Узел Mermaid расширяется по содержимому, чтобы длинные названия игр не выходили за рамку. */
+  width: max-content !important;
+  max-width: none !important;
   text-align: center !important;
   background: transparent !important;
 }
@@ -1400,7 +1402,7 @@ body {
   font-size: 12px !important;
   font-weight: 700 !important;
   color: #111 !important;
-  word-break: break-word !important;
+  white-space: nowrap !important;
 }
 
 .game-card-image-wrap {
