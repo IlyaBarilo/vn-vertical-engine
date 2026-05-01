@@ -3426,6 +3426,8 @@ function showChoices(choices, choiceAction) {
   if (choiceAction && Object.prototype.hasOwnProperty.call(choiceAction, "title")) {
     choiceTitle = String(choiceAction.title || "");
   }
+  // Заголовок меню поддерживает те же шаблоны переменных, что и обычный диалоговый текст.
+  choiceTitle = renderTextVars(choiceTitle);
 
   // НЕ очищаем диалог полностью, а только текст
   elText.textContent = ""; // Очищаем только текст, имя оставляем
@@ -3470,7 +3472,8 @@ function showChoices(choices, choiceAction) {
 
       var text = document.createElement("span");
       text.className = "choiceLabel";
-      text.textContent = choice.text || ("Выбор " + (index + 1));
+      // Текст пункта выбора может содержать подстановки вида {varName}.
+      text.textContent = renderTextVars(String(choice.text || ("Выбор " + (index + 1))));
       btn.appendChild(text);
 
       btn.addEventListener("click", function () {
@@ -3583,7 +3586,8 @@ function applyStoryVideoFit(fit) {
 
 function setStoryVideoSkipHint(text, visible) {
   if (!elStoryVideoSkipHint) return;
-  elStoryVideoSkipHint.textContent = text || t("videoSkipHint") || "Click to skip";
+  // Подстановка переменных в skipText делает подсказку синхронной с состоянием сценарных vars.
+  elStoryVideoSkipHint.textContent = renderTextVars(String(text || t("videoSkipHint") || "Click to skip"));
   elStoryVideoSkipHint.classList.toggle("hidden", !visible);
 }
 
