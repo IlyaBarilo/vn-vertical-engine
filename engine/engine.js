@@ -1322,6 +1322,9 @@ var state = {
 var backgroundScroll = {
   enabled: false,
   available: false,
+  owner: "background",
+  target: null,
+  container: null,
   position: 0.5,
   start: 0.5,
   maxOffset: 0,
@@ -1332,37 +1335,128 @@ var backgroundScroll = {
   moved: false,
   suppressClick: false,
   suppressTimer: null,
-  hintTimer: null
+  hintTimer: null,
+  backgroundOptions: { enabled: false, start: 0.5 },
+  backgroundTarget: null,
+  backgroundContainer: null,
+  backgroundPosition: 0.5
 };
 
-// Устанавливает настройки скролла для текущего фонового изображения и сбрасывает позицию.
-function setBackgroundScrollOptions(options) {
+// Возвращает реальные размеры img/video-элемента, потому что браузер хранит их в разных полях.
+function getScrollableMediaSize(mediaEl) {
+  if (!mediaEl) return null;
+
+  var tagName = String(mediaEl.tagName || "").toLowerCase();
+  if (tagName === "video") {
+    if (!mediaEl.videoWidth || !mediaEl.videoHeight) return null;
+    return { width: mediaEl.videoWidth, height: mediaEl.videoHeight };
+  }
+
+  if (!mediaEl.naturalWidth || !mediaEl.naturalHeight) return null;
+  return { width: mediaEl.naturalWidth, height: mediaEl.naturalHeight };
+}
+
+// Сбрасывает только тот media-элемент, который раньше двигался, чтобы скрытые слои не наследовали старую позицию.
+function resetScrollableMediaPosition(mediaEl) {
+  if (mediaEl && mediaEl.style) {
+    mediaEl.style.objectPosition = "center";
+  }
+}
+
+// Включает общий горизонтальный скролл для активного img/video-элемента внутри заданного контейнера.
+function activateMediaScroll(options, targetEl, containerEl, owner, positionOverride) {
   var normalized = normalizeBackgroundScrollOptions(options);
+  var nextTarget = targetEl || elBg;
+  var nextContainer = containerEl || elNovelWindow;
+
+  if (backgroundScroll.target && backgroundScroll.target !== nextTarget) {
+    resetScrollableMediaPosition(backgroundScroll.target);
+  }
+
+  backgroundScroll.owner = owner || "background";
+  backgroundScroll.target = nextTarget;
+  backgroundScroll.container = nextContainer;
   backgroundScroll.enabled = !!normalized.enabled;
   backgroundScroll.start = normalizeBackgroundScrollStart(normalized.start, 0.5);
-  backgroundScroll.position = backgroundScroll.start;
+  backgroundScroll.position = typeof positionOverride === "number"
+    ? clamp(positionOverride, 0, 1)
+    : backgroundScroll.start;
   backgroundScroll.dragging = false;
   backgroundScroll.moved = false;
   applyBackgroundScrollPosition();
+
   if (!backgroundScroll.enabled) {
     backgroundScroll.available = false;
+    backgroundScroll.maxOffset = 0;
+    resetScrollableMediaPosition(backgroundScroll.target);
     if (elNovelWindow) {
       elNovelWindow.classList.remove("bg-scrollable");
       elNovelWindow.classList.remove("bg-scroll-dragging");
     }
     hideBackgroundScrollHint();
+    return;
   }
+
+  updateBackgroundScrollAvailability();
+}
+
+// Устанавливает настройки скролла для текущего фонового media-слоя и запоминает их для возврата после видео-вставок.
+function setBackgroundScrollOptions(options, targetEl, containerEl) {
+  var normalized = normalizeBackgroundScrollOptions(options);
+  backgroundScroll.backgroundOptions = normalized;
+  backgroundScroll.backgroundTarget = targetEl || elBg;
+  backgroundScroll.backgroundContainer = containerEl || elNovelWindow;
+  backgroundScroll.backgroundPosition = normalizeBackgroundScrollStart(normalized.start, 0.5);
+  activateMediaScroll(normalized, backgroundScroll.backgroundTarget, backgroundScroll.backgroundContainer, "background");
+}
+
+// Включает временный скролл поверх сюжетного video/poster и не затирает настройки фонового слоя.
+function setStoryVideoScrollOptions(options, targetEl) {
+  var normalized = normalizeBackgroundScrollOptions(options);
+  if (!normalized.enabled) return;
+  activateMediaScroll(normalized, targetEl || elStoryVideo, elStoryVideoOverlay || elNovelWindow, "storyVideo");
+}
+
+// Переключает скролл сюжетного видео с постера на ролик или обратно, сохраняя уже выбранную позицию.
+function switchStoryVideoScrollTarget(targetEl) {
+  if (backgroundScroll.owner !== "storyVideo" || !backgroundScroll.enabled || !targetEl) return;
+  activateMediaScroll(
+    { enabled: true, start: backgroundScroll.start },
+    targetEl,
+    elStoryVideoOverlay || elNovelWindow,
+    "storyVideo",
+    backgroundScroll.position
+  );
+}
+
+// После завершения сюжетного ролика возвращает интерактивность к фону, если она была временно занята видео.
+function restoreBackgroundScrollAfterStoryVideo() {
+  if (backgroundScroll.owner !== "storyVideo") return;
+  activateMediaScroll(
+    backgroundScroll.backgroundOptions,
+    backgroundScroll.backgroundTarget || elBg,
+    backgroundScroll.backgroundContainer || elNovelWindow,
+    "background",
+    backgroundScroll.backgroundPosition
+  );
 }
 
 // Полностью выключает интерактивный скролл и возвращает фон к обычному центрированию.
 function disableBackgroundScroll() {
+  resetScrollableMediaPosition(backgroundScroll.target);
   backgroundScroll.enabled = false;
   backgroundScroll.available = false;
   backgroundScroll.dragging = false;
   backgroundScroll.pointerId = null;
   backgroundScroll.maxOffset = 0;
+  backgroundScroll.owner = "background";
+  backgroundScroll.target = null;
+  backgroundScroll.container = null;
   backgroundScroll.position = 0.5;
-  if (elBg) elBg.style.objectPosition = "center";
+  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5 };
+  backgroundScroll.backgroundTarget = null;
+  backgroundScroll.backgroundContainer = null;
+  backgroundScroll.backgroundPosition = 0.5;
   if (elNovelWindow) {
     elNovelWindow.classList.remove("bg-scrollable");
     elNovelWindow.classList.remove("bg-scroll-dragging");
@@ -1370,27 +1464,37 @@ function disableBackgroundScroll() {
   hideBackgroundScrollHint();
 }
 
-// Пересчитывает, есть ли у текущего изображения скрытая ширина для горизонтального перетаскивания.
+// Пересчитывает, есть ли у текущего img/video скрытая ширина для горизонтального перетаскивания.
 function updateBackgroundScrollAvailability() {
-  if (!backgroundScroll.enabled || !elBg || !elNovelWindow || elBg.classList.contains("hidden")) {
+  var targetEl = backgroundScroll.target || elBg;
+  var containerEl = backgroundScroll.container || elNovelWindow;
+
+  if (!backgroundScroll.enabled || !targetEl || !containerEl || targetEl.classList.contains("hidden")) {
     backgroundScroll.available = false;
     if (elNovelWindow) elNovelWindow.classList.remove("bg-scrollable");
     hideBackgroundScrollHint();
     return;
   }
 
-  if (!elBg.naturalWidth || !elBg.naturalHeight) {
+  var mediaSize = getScrollableMediaSize(targetEl);
+  if (!mediaSize) {
     backgroundScroll.available = false;
     if (elNovelWindow) elNovelWindow.classList.remove("bg-scrollable");
     hideBackgroundScrollHint();
     return;
   }
 
-  var rect = elNovelWindow.getBoundingClientRect();
+  var rect = containerEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
-  var scale = Math.max(rect.width / elBg.naturalWidth, rect.height / elBg.naturalHeight);
-  var renderedWidth = elBg.naturalWidth * scale;
+  var objectFit = "cover";
+  if (window.getComputedStyle) {
+    objectFit = window.getComputedStyle(targetEl).objectFit || objectFit;
+  }
+  var scale = objectFit === "contain"
+    ? Math.min(rect.width / mediaSize.width, rect.height / mediaSize.height)
+    : Math.max(rect.width / mediaSize.width, rect.height / mediaSize.height);
+  var renderedWidth = mediaSize.width * scale;
   backgroundScroll.maxOffset = Math.max(0, renderedWidth - rect.width);
   backgroundScroll.available = backgroundScroll.maxOffset > 1;
 
@@ -1406,9 +1510,10 @@ function updateBackgroundScrollAvailability() {
 
 // Применяет позицию object-position: 0 — левый край, 1 — правый край.
 function applyBackgroundScrollPosition() {
-  if (!elBg) return;
+  var targetEl = backgroundScroll.target || elBg;
+  if (!targetEl) return;
   var x = clamp(backgroundScroll.position, 0, 1) * 100;
-  elBg.style.objectPosition = x.toFixed(3) + "% center";
+  targetEl.style.objectPosition = x.toFixed(3) + "% center";
 }
 
 // Показывает короткую подсказку, чтобы игрок заметил возможность сдвинуть широкий фон.
@@ -1417,6 +1522,7 @@ function showBackgroundScrollHint() {
 
   clearTimeout(backgroundScroll.hintTimer);
   elBgScrollHint.textContent = t("bgScrollHint");
+  elBgScrollHint.classList.toggle("is-story-video", backgroundScroll.owner === "storyVideo");
   elBgScrollHint.classList.remove("hidden");
   requestAnimationFrame(function () {
     if (elBgScrollHint) elBgScrollHint.classList.add("is-visible");
@@ -1429,15 +1535,17 @@ function hideBackgroundScrollHint() {
   clearTimeout(backgroundScroll.hintTimer);
   backgroundScroll.hintTimer = null;
   elBgScrollHint.classList.remove("is-visible");
+  elBgScrollHint.classList.remove("is-story-video");
   elBgScrollHint.classList.add("hidden");
 }
 
 // Начинает drag только по сцене: UI, меню и видео не должны перехватываться как скролл фона.
 function handleBackgroundScrollPointerDown(e) {
   if (!backgroundScroll.available || backgroundScroll.dragging) return;
-  if (state.inGame || state.inVideo) return;
+  if (state.inGame) return;
+  if (state.inVideo && backgroundScroll.owner !== "storyVideo") return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
-  if (isUiClick(e.target)) return;
+  if (isUiClick(e.target) && backgroundScroll.owner !== "storyVideo") return;
 
   backgroundScroll.dragging = true;
   backgroundScroll.pointerId = e.pointerId;
@@ -1470,6 +1578,9 @@ function handleBackgroundScrollPointerMove(e) {
     0,
     1
   );
+  if (backgroundScroll.owner === "background") {
+    backgroundScroll.backgroundPosition = backgroundScroll.position;
+  }
   applyBackgroundScrollPosition();
 
   if (backgroundScroll.moved) {
@@ -1597,6 +1708,7 @@ function normalizeBackgroundScrollOptions(value) {
 
   if (typeof value === "string") {
     var raw = value.toLowerCase();
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5 };
     if (raw === "left" || raw === "start") return { enabled: true, start: 0 };
     if (raw === "right" || raw === "end") return { enabled: true, start: 1 };
     if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5 };
@@ -2580,7 +2692,7 @@ function gotoScene(sceneId) {
 //                   ВИЗУАЛ
 // =========================================================
 
-// Переключает фоновое медиа и при необходимости включает горизонтальный скролл wide-изображения.
+// Переключает фоновое медиа и при необходимости включает горизонтальный скролл wide-изображения или видео.
 function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   if (!src) {
     visualTrace("setBackground:empty-src", { fallbackSrc: fallbackSrc || "" });
@@ -2590,7 +2702,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     // Без фонового видео громкость его канала всегда 0.
     audio.currentBgVideoVolume = 0;
     if (fallbackSrc) {
-      setBackground(fallbackSrc, "", null);
+      setBackground(fallbackSrc, "", null, scrollOptions);
     }
     return;
   }
@@ -2618,13 +2730,13 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         fallbackSrc: normalizedFallbackSrc
       });
       hideKeptStoryVideoAfterBgReady("bg video already failed");
-      setBackground(normalizedFallbackSrc, "");
+      setBackground(normalizedFallbackSrc, "", null, scrollOptions);
     }
     return;
   }
 
   if (isVideo) {
-    disableBackgroundScroll();
+    setBackgroundScrollOptions(scrollOptions, elBgVideo, elNovelWindow);
     if (elBgVideo) {
       elBgVideo.onerror = null;
       elBgVideo.onloadeddata = null;
@@ -2656,7 +2768,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
             fallbackSrc: normalizedFallbackSrc
           });
           hideKeptStoryVideoAfterBgReady("bg video fallback image");
-          setBackground(normalizedFallbackSrc, "");
+          setBackground(normalizedFallbackSrc, "", null, scrollOptions);
           return;
         }
 
@@ -2666,6 +2778,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         elBgVideo.removeAttribute('src');
         elBgVideo.load();
         elBgVideo.classList.add("hidden");
+        disableBackgroundScroll();
         visualTrace("bgVideo:error:hidden", { src: badVideoSrc });
         hideKeptStoryVideoAfterBgReady("bg video load error");
       };
@@ -2682,6 +2795,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         visualTrace("bgVideo:shown", { src: currentVideoSrc });
         hideKeptStoryVideoAfterBgReady("bg video loaded");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
+        updateBackgroundScrollAvailability();
         // Когда видео реально показано в фоне, мягко приглушаем BGM.
         setBgmDuckingTarget(DEFAULT_BGM_DUCKING_MULTIPLIER, DEFAULT_BGM_DUCKING_ATTACK_MS, 'bg video shown');
       };
@@ -2728,7 +2842,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     elBg.classList.remove("hidden");
     elBg.onerror = null;
     elBg.onload = null;
-    setBackgroundScrollOptions(scrollOptions);
+    setBackgroundScrollOptions(scrollOptions, elBg, elNovelWindow);
 
     elBg.onerror = function() {
       var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
@@ -3476,9 +3590,16 @@ function showStoryVideoPoster(posterSrc, fit) {
   // Постер используется и во время подготовки ролика, и как fallback-картинка.
   if (!elStoryVideoPoster) return;
   applyStoryVideoFit(fit);
+  elStoryVideoPoster.onload = null;
   if (posterSrc) {
+    elStoryVideoPoster.onload = function () {
+      if (backgroundScroll.owner === "storyVideo" && backgroundScroll.target === elStoryVideoPoster) {
+        updateBackgroundScrollAvailability();
+      }
+    };
     elStoryVideoPoster.src = posterSrc;
     elStoryVideoPoster.classList.remove("hidden");
+    switchStoryVideoScrollTarget(elStoryVideoPoster);
     if (typeof updateBlurBackground === "function") updateBlurBackground(posterSrc);
   } else {
     elStoryVideoPoster.removeAttribute("src");
@@ -3503,6 +3624,7 @@ function cleanupStoryVideoVisualOnly() {
   }
 
   if (elStoryVideoPoster) {
+    elStoryVideoPoster.onload = null;
     elStoryVideoPoster.removeAttribute("src");
     elStoryVideoPoster.classList.add("hidden");
   }
@@ -3513,6 +3635,7 @@ function cleanupStoryVideoVisualOnly() {
 
   setStoryVideoSkipHint("", false);
   if (elStoryVideoOverlay) elStoryVideoOverlay.classList.add("hidden");
+  restoreBackgroundScrollAfterStoryVideo();
 
   audio.currentStoryVideoVolume = 0;
   applyAudioSettings();
@@ -3668,6 +3791,8 @@ function startStoryVideoPlayback(action) {
   if (elStoryVideoPoster) elStoryVideoPoster.classList.add("hidden");
   if (elStoryVideoFallbackText) elStoryVideoFallbackText.classList.add("hidden");
   elStoryVideo.classList.remove("hidden");
+  switchStoryVideoScrollTarget(elStoryVideo);
+  updateBackgroundScrollAvailability();
   visualTrace("storyVideo:playback-start", {
     src: normalizeAssetUrl(elStoryVideo.currentSrc || elStoryVideo.src || ""),
     currentTime: Number(elStoryVideo.currentTime.toFixed(3)),
@@ -3751,7 +3876,7 @@ function prepareStoryVideoSeek(action) {
 }
 
 function startStoryVideo(action) {
-  // Команда video показывает полноэкранную блокирующую вставку с автоматическим продолжением.
+  // Команда video показывает полноэкранную вставку; при scroll разрешает двигать ролик/постер по горизонтали.
   if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
     console.warn("[VIDEO] story video skipped: missing DOM or src", action);
     setTimeout(function () {
@@ -3784,6 +3909,7 @@ function startStoryVideo(action) {
 
   applyStoryVideoFit(fit);
   elStoryVideoOverlay.classList.remove("hidden");
+  setStoryVideoScrollOptions(action.scroll, posterSrc ? elStoryVideoPoster : elStoryVideo);
   showStoryVideoPoster(posterSrc, fit);
   setStoryVideoSkipHint(skipText, storyVideoRuntime.skipAllowed);
 
@@ -3812,6 +3938,9 @@ function startStoryVideo(action) {
     if (typeof updateBlurBackgroundFromVideoFrame === "function") {
       updateBlurBackgroundFromVideoFrame(elStoryVideo, posterSrc);
     }
+    if (backgroundScroll.owner === "storyVideo" && backgroundScroll.target === elStoryVideo) {
+      updateBackgroundScrollAvailability();
+    }
   };
   elStoryVideo.onloadedmetadata = function () {
     prepareStoryVideoSeek(action);
@@ -3826,6 +3955,14 @@ function startStoryVideo(action) {
 
 function handleStoryVideoSkip(e) {
   if (!state.inVideo) return;
+  if (backgroundScroll.owner === "storyVideo" && backgroundScroll.dragging && e && e.type === "pointerup") {
+    handleBackgroundScrollPointerUp(e);
+  }
+  if (backgroundScroll.suppressClick) {
+    backgroundScroll.suppressClick = false;
+    swallowEvent(e);
+    return;
+  }
   if (Date.now() < (storyVideoRuntime.skipEnabledAt || 0)) {
     visualTrace("storyVideo:skip-guard", {
       now: Date.now(),

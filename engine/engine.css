@@ -330,11 +330,23 @@ body {
   opacity: 1;
 }
 
+.bg-scroll-hint.is-story-video {
+  z-index: 75;
+}
+
 .novel-window.bg-scrollable {
   cursor: grab;
 }
 
 .novel-window.bg-scroll-dragging {
+  cursor: grabbing;
+}
+
+.novel-window.bg-scrollable #storyVideoOverlay {
+  cursor: grab;
+}
+
+.novel-window.bg-scroll-dragging #storyVideoOverlay {
   cursor: grabbing;
 }
 

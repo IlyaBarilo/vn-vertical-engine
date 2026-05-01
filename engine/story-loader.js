@@ -576,7 +576,7 @@ function parseActionParams(paramTokens) {
   return params;
 }
 
-// Разбирает настройку горизонтального скролла фона из [bg] и команды bg.
+// Разбирает настройку горизонтального скролла для фоновых и видео-медиа из сценария.
 function parseBackgroundScrollOption(rawValue, lineNumber, line) {
   var value = String(rawValue === undefined ? "true" : rawValue).trim().toLowerCase();
 
@@ -610,7 +610,7 @@ function parseBackgroundScrollOption(rawValue, lineNumber, line) {
     }
   }
 
-  addParseError(lineNumber, line, `Invalid background scroll value "${rawValue}". Use true/false, left/center/right or 0..1.`, true);
+  addParseError(lineNumber, line, `Invalid scroll value "${rawValue}". Use true/false, left/center/right, 0..1 or 0..100.`, true);
   return null;
 }
 
@@ -808,6 +808,12 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   }
 
   var params = parseActionParams(tokens.slice(2));
+  if (params.scroll === undefined && tokens.slice(2).some(function(token) {
+    return String(token || "").toLowerCase() === "scroll";
+  })) {
+    params.scroll = true;
+  }
+
   var videoAsset = story.assets.videos[videoId];
   var videoSrc = videoAsset && typeof videoAsset === 'object'
     ? String(videoAsset.file || '').trim()
@@ -823,7 +829,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     videoId: videoId,
     src: videoSrc,
     poster: videoAsset.poster || '',
-    volume: typeof videoAsset.volume === 'number' ? videoAsset.volume : 0
+    volume: typeof videoAsset.volume === 'number' ? videoAsset.volume : 0,
+    scroll: videoAsset.scroll !== undefined ? videoAsset.scroll : false
   };
 
   if (params.start !== undefined) {
@@ -882,6 +889,12 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
     action.volume = params.volume;
+  }
+
+  if (params.scroll !== undefined) {
+    var parsedScroll = parseBackgroundScrollOption(params.scroll, lineNumber, line);
+    if (parsedScroll === null) return;
+    action.scroll = parsedScroll.enabled ? parsedScroll : false;
   }
 
   currentScene.actions.push(action);
@@ -1002,7 +1015,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       args[key] = value;
     }
 
-    if (category === 'backgrounds' && args.scroll === undefined && hasBareToken(rest, 'scroll')) {
+    if ((category === 'backgrounds' || category === 'videos') && args.scroll === undefined && hasBareToken(rest, 'scroll')) {
       args.scroll = 'true';
     }
 
@@ -1110,6 +1123,12 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         video.volume = parsedVideoVolume;
       }
 
+      if (args.scroll !== undefined) {
+        var parsedVideoScroll = parseBackgroundScrollOption(args.scroll, lineNumber, line);
+        if (parsedVideoScroll === null) return true;
+        video.scroll = parsedVideoScroll.enabled ? parsedVideoScroll : false;
+      }
+
       story.assets.videos[assetId] = video;
       return true;
     }
@@ -1170,7 +1189,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       addParseError(
         lineNumber,
         line,
-        'In [video], use only the new format: videoId file=... poster=... volume=...',
+        'In [video], use only the new format: videoId file=... poster=... volume=... scroll=...',
         true
       );
       return;
