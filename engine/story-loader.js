@@ -99,6 +99,10 @@
     blurOpacity: {
       target: 'blurOpacity',
       type: 'float'
+    },
+    autosave: {
+      target: 'autosave',
+      type: 'bool'
     }
   };
 

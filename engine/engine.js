@@ -2106,6 +2106,15 @@ applyUiScale();
 window.addEventListener("resize", applyUiScale);
 window.addEventListener("resize", updateBackgroundScrollAvailability);
 
+window.addEventListener("pagehide", function () {
+  flushAutosaveToStorageSync();
+});
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "hidden") {
+    flushAutosaveToStorageSync();
+  }
+});
+
 // ---------- Подготовка сцен ----------
 buildSceneMap();
 profiler.mark('The scene map has been created');
@@ -2160,7 +2169,7 @@ elDialog.addEventListener("keydown", function (e) {
 });
 
 btnRestart.addEventListener("click", function () {
-  restart();
+  restart({ clearAutosave: true });
 });
 
 btnMute.addEventListener("click", function () {
@@ -2258,9 +2267,399 @@ startLicensedEngine();
 //                   ОСНОВНЫЕ ФУНКЦИИ
 // =========================================================
 
+// ---------- Автосейв (localStorage, один слот) ----------
+// Дебаунс записи 2 с; синхронный flush при pagehide / скрытии вкладки.
+var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
+var VN_AUTOSAVE_PAYLOAD_VERSION = 2;
+var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
+var vnAutosaveTimer = null;
+var vnAutosaveBgScrollRestorePending = null;
+
+// Сравнение URL фона после нормализации (расхождение только origin при смене способа открытия страницы).
+function urlsMatchForAutosaveRestore(hrefA, hrefB) {
+  if (!hrefA || !hrefB) return false;
+  if (hrefA === hrefB) return true;
+  try {
+    var ua = new URL(hrefA);
+    var ub = new URL(hrefB);
+    return ua.pathname === ub.pathname && ua.search === ub.search;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Ищет статичный fallback у [bg], если основной файл ассета — то же видео (canvas blur часто ломается на file://).
+function findBlurFallbackImageForBgVideoUrl(normalizedVideoUrl) {
+  if (!STORY || !STORY.assets || !STORY.assets.backgrounds || !normalizedVideoUrl) return "";
+  var want = normalizeAssetUrl(normalizedVideoUrl);
+  var bgs = STORY.assets.backgrounds;
+  for (var id in bgs) {
+    if (!Object.prototype.hasOwnProperty.call(bgs, id)) continue;
+    var primaryPath = resolveAsset("@bg." + id);
+    if (!primaryPath || !isVideoAssetPath(primaryPath)) continue;
+    var primaryNorm = normalizeAssetUrl(primaryPath);
+    if (primaryNorm !== want && !urlsMatchForAutosaveRestore(primaryNorm, want)) continue;
+    var fb = getBackgroundAssetFallbackPath(bgs[id]);
+    if (!fb || isVideoAssetPath(fb)) continue;
+    return fb;
+  }
+  return "";
+}
+
+function isStoryAutosaveEnabled() {
+  if (!STORY || !STORY.meta) return true;
+  return STORY.meta.autosave !== false;
+}
+
+function computeStoryTextFingerprint() {
+  var text = typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : "";
+  var len = text.length;
+  var hash = 5381;
+  for (var i = 0; i < len; i++) {
+    hash = ((hash << 5) + hash) + text.charCodeAt(i);
+    hash = hash | 0;
+  }
+  return {
+    hashUnsigned: hash >>> 0,
+    hashHex: (hash >>> 0).toString(16),
+    textLength: len
+  };
+}
+
+function captureBlurSnapshotSrcForAutosave() {
+  if (!STORY || !STORY.meta || !STORY.meta.blurBackground) return "";
+  if (!elBlurBgLayer || elBlurBgLayer.classList.contains("hidden")) return "";
+  if (!elBlurBgImage) return "";
+  var s = String(elBlurBgImage.src || elBlurBgImage.currentSrc || "").trim();
+  if (!s) return "";
+  if (s.length > 320000) return "";
+  return s;
+}
+
+function captureBackgroundSnapshotForAutosave() {
+  if (elBgVideo && !elBgVideo.classList.contains("hidden") && (elBgVideo.currentSrc || elBgVideo.src)) {
+    var vnorm = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
+    return {
+      isVideo: true,
+      src: vnorm,
+      blurFallback: findBlurFallbackImageForBgVideoUrl(vnorm)
+    };
+  }
+  if (elBg && !elBg.classList.contains("hidden") && (elBg.currentSrc || elBg.src)) {
+    return {
+      isVideo: false,
+      src: normalizeAssetUrl(elBg.currentSrc || elBg.src || "")
+    };
+  }
+  return null;
+}
+
+function captureBackgroundScrollSnapshotForAutosave() {
+  if (!backgroundScroll || !backgroundScroll.enabled) return null;
+  if (backgroundScroll.owner !== "background" || !backgroundScroll.target) return null;
+  if (backgroundScroll.target !== elBg && backgroundScroll.target !== elBgVideo) return null;
+  return {
+    interactive: !!backgroundScroll.interactive,
+    position: typeof backgroundScroll.position === "number" ? backgroundScroll.position : 0.5,
+    focus: typeof backgroundScroll.focus === "number" ? backgroundScroll.focus : null,
+    start: typeof backgroundScroll.start === "number" ? backgroundScroll.start : 0.5
+  };
+}
+
+// Восстанавливает позицию left/right/center по inline left из setCharacter (35% / 65% / 50%).
+function inferCharPositionForAutosave(el) {
+  if (!el || !el.style) return "center";
+  var left = String(el.style.left || "").trim();
+  if (left.indexOf("35") !== -1) return "left";
+  if (left.indexOf("65") !== -1) return "right";
+  return "center";
+}
+
+// Снимок видимого персонажа для автосейва (один слой elChar).
+function captureCharacterSnapshotForAutosave() {
+  if (!elChar) return { hidden: true };
+  if (elChar.classList.contains("hidden")) return { hidden: true };
+  var srcRaw = elChar.currentSrc || elChar.src || "";
+  if (!String(srcRaw).trim()) return { hidden: true };
+  return {
+    hidden: false,
+    src: normalizeAssetUrl(srcRaw),
+    charId: elChar.dataset && elChar.dataset.charId ? String(elChar.dataset.charId) : "",
+    pos: inferCharPositionForAutosave(elChar)
+  };
+}
+
+// Показывает или скрывает персонажа после восстановления автосейва (до runCurrent).
+function applyAutosaveCharacterSnapshot(ch) {
+  if (!ch || typeof ch !== "object") return;
+  if (ch.hidden) {
+    hideAllCharacters();
+    return;
+  }
+  var src = typeof ch.src === "string" ? ch.src.trim() : "";
+  if (!src) {
+    hideAllCharacters();
+    return;
+  }
+  var pos = ch.pos === "left" || ch.pos === "right" || ch.pos === "center" ? ch.pos : "center";
+  var cid = typeof ch.charId === "string" && ch.charId ? ch.charId : null;
+  setCharacter(src, pos, cid, null);
+}
+
+function buildAutosavePayload() {
+  if (!STORY || !isStoryAutosaveEnabled()) return null;
+  if (state.inGame || state.inVideo) return null;
+  if (!state.sceneId) return null;
+
+  var scene = state.sceneMap[state.sceneId];
+  if (!scene || !Array.isArray(scene.actions)) return null;
+  if (state.actionIndex < 0 || state.actionIndex > scene.actions.length) return null;
+
+  var fp = computeStoryTextFingerprint();
+  var bgSnap = captureBackgroundSnapshotForAutosave();
+  var bgScroll = captureBackgroundScrollSnapshotForAutosave();
+  var charSnap = captureCharacterSnapshotForAutosave();
+  var blurSnap = captureBlurSnapshotSrcForAutosave();
+
+  // В runCurrent перед выполнением шага делается actionIndex++; во время ожидания клика «дальше»
+  // в state уже лежит индекс СЛЕДУЮЩЕГО действия. Если сохранить его как есть, после F5 runCurrent
+  // сразу выполнит следующий шаг без клика — при быстрых обновлениях сценарий «убегает» вперёд.
+  // Если открыто меню choice, индекс уже указывает ПОСЛЕ выполненного «menu» — без поправки после F5
+  // поднимется предыдущая реплика вместо меню (старый слот автосейва не обновлялся при видимых #choices).
+  var persistActionIndex = state.actionIndex;
+  var choicesVisible = !!(elChoices && !elChoices.classList.contains("hidden"));
+  if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
+    persistActionIndex = persistActionIndex - 1;
+  }
+
+  return {
+    v: VN_AUTOSAVE_PAYLOAD_VERSION,
+    hashHex: fp.hashHex,
+    textLength: fp.textLength,
+    metaStart: STORY.meta && STORY.meta.start ? String(STORY.meta.start) : "",
+    metaTitle: STORY.meta && STORY.meta.title ? String(STORY.meta.title) : "",
+    sceneId: state.sceneId,
+    actionIndex: persistActionIndex,
+    vars: JSON.parse(JSON.stringify(state.vars || {})),
+    waitingNext: !!state.waitingNext,
+    nextLocked: !!state.nextLocked,
+    bg: bgSnap,
+    bgScroll: bgScroll,
+    char: charSnap,
+    blurSnapshotSrc: blurSnap
+  };
+}
+
+function validateAutosavePayload(data) {
+  if (!data || data.v !== VN_AUTOSAVE_PAYLOAD_VERSION) return false;
+  var fp = computeStoryTextFingerprint();
+  if (String(data.hashHex || "") !== fp.hashHex) return false;
+  if (Number(data.textLength) !== fp.textLength) return false;
+  if (!data.sceneId) return false;
+  var scene = state.sceneMap[data.sceneId];
+  if (!scene || !Array.isArray(scene.actions)) return false;
+  var idx = parseInt(data.actionIndex, 10);
+  if (!isFinite(idx) || idx < 0 || idx > scene.actions.length) return false;
+  return true;
+}
+
+function flushAutosaveToStorageSync() {
+  if (!STORY || !isStoryAutosaveEnabled()) return;
+  try {
+    var payload = buildAutosavePayload();
+    if (!payload) return;
+    localStorage.setItem(VN_AUTOSAVE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn("[AUTOSAVE] flush failed:", err);
+  }
+}
+
+function clearAutosaveStorage() {
+  try {
+    localStorage.removeItem(VN_AUTOSAVE_STORAGE_KEY);
+  } catch (err) {
+    console.warn("[AUTOSAVE] clear failed:", err);
+  }
+}
+
+function scheduleAutosave() {
+  if (!STORY || !isStoryAutosaveEnabled()) return;
+  if (vnAutosaveTimer) {
+    clearTimeout(vnAutosaveTimer);
+    vnAutosaveTimer = null;
+  }
+  vnAutosaveTimer = setTimeout(function () {
+    vnAutosaveTimer = null;
+    flushAutosaveToStorageSync();
+  }, VN_AUTOSAVE_DEBOUNCE_MS);
+}
+
+// Восстанавливает pan/focus без смены src; true если позиция применена (видимый слой и для видео есть размеры кадра).
+function applyAutosaveBackgroundPanAndFocus(dataBg, dataBgScroll) {
+  if (!dataBg || !dataBg.src || !dataBgScroll || typeof dataBgScroll !== "object") return false;
+
+  var targetEl = dataBg.isVideo ? elBgVideo : elBg;
+  if (!targetEl) return false;
+
+  var want = normalizeAssetUrl(dataBg.src);
+  var have = normalizeAssetUrl(targetEl.currentSrc || targetEl.src || "");
+  if (!want || !have || !urlsMatchForAutosaveRestore(want, have)) return false;
+
+  if (targetEl.classList.contains("hidden")) return false;
+
+  if (dataBg.isVideo && !getScrollableMediaSize(targetEl)) return false;
+
+  var baseScroll = { enabled: false, start: 0.5, focus: null };
+  baseScroll.enabled = !!dataBgScroll.interactive;
+  baseScroll.start = typeof dataBgScroll.start === "number" ? dataBgScroll.start : 0.5;
+  var mergedScroll = mergeMediaFocusOptions(
+    baseScroll,
+    typeof dataBgScroll.focus === "number" ? dataBgScroll.focus : null
+  );
+  var normalized = normalizeBackgroundScrollOptions(mergedScroll);
+  var posOverride = typeof dataBgScroll.position === "number" ? clamp(dataBgScroll.position, 0, 1) : undefined;
+  activateMediaScroll(
+    normalized,
+    targetEl,
+    elNovelWindow,
+    "background",
+    posOverride
+  );
+  updateBackgroundScrollAvailability();
+  return true;
+}
+
+function flushAutosaveBgScrollRestorePending() {
+  var p = vnAutosaveBgScrollRestorePending;
+  if (!p || !p.dataBg || !p.dataBgScroll) return;
+
+  var want = normalizeAssetUrl(p.dataBg.src || "");
+  var targetEl = p.dataBg.isVideo ? elBgVideo : elBg;
+  if (!targetEl || !want) {
+    vnAutosaveBgScrollRestorePending = null;
+    return;
+  }
+
+  var have = normalizeAssetUrl(targetEl.currentSrc || targetEl.src || "");
+  if (have && !urlsMatchForAutosaveRestore(want, have)) {
+    vnAutosaveBgScrollRestorePending = null;
+    return;
+  }
+
+  if (applyAutosaveBackgroundPanAndFocus(p.dataBg, p.dataBgScroll)) {
+    vnAutosaveBgScrollRestorePending = null;
+    if (p.dataBg.isVideo) {
+      scheduleBlurRefreshFromBgVideo(typeof p.dataBg.blurFallback === "string" ? p.dataBg.blurFallback : "");
+    }
+  }
+}
+
+function tryApplyAutosave() {
+  if (!STORY || !isStoryAutosaveEnabled()) return false;
+  var raw = null;
+  try {
+    raw = localStorage.getItem(VN_AUTOSAVE_STORAGE_KEY);
+  } catch (err) {
+    return false;
+  }
+  if (!raw) return false;
+
+  var data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    clearAutosaveStorage();
+    return false;
+  }
+
+  if (!validateAutosavePayload(data)) {
+    clearAutosaveStorage();
+    return false;
+  }
+
+  state.sceneId = data.sceneId;
+  currentSceneId = data.sceneId;
+  state.actionIndex = parseInt(data.actionIndex, 10);
+  state.vars = data.vars && typeof data.vars === "object"
+    ? JSON.parse(JSON.stringify(data.vars))
+    : JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
+  applyLicenseStateToStoryVars();
+  state.waitingNext = !!data.waitingNext;
+  state.nextLocked = !!data.nextLocked;
+  state.inGame = false;
+  state.inVideo = false;
+  state.currentGame = null;
+  suppressAutoRunOnce = false;
+
+  hideChoices();
+  cleanupStoryVideoVisualOnly();
+  closeGameFrameVisualOnly();
+
+  if (data.bg && data.bg.src) {
+    var baseScroll = { enabled: false, start: 0.5, focus: null };
+    if (data.bgScroll && typeof data.bgScroll === "object") {
+      baseScroll.enabled = !!data.bgScroll.interactive;
+      baseScroll.start = typeof data.bgScroll.start === "number" ? data.bgScroll.start : 0.5;
+    }
+    var mergedScroll = mergeMediaFocusOptions(
+      baseScroll,
+      (data.bgScroll && typeof data.bgScroll.focus === "number") ? data.bgScroll.focus : null
+    );
+    var blurFb =
+      data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
+    setBackground(data.bg.src, blurFb, null, mergedScroll);
+  }
+
+  if (data.blurSnapshotSrc && typeof data.blurSnapshotSrc === "string" && data.blurSnapshotSrc.length > 0) {
+    updateBlurBackground(data.blurSnapshotSrc);
+  }
+
+  if (data.char && typeof data.char === "object") {
+    applyAutosaveCharacterSnapshot(data.char);
+  }
+
+  if (elName) {
+    elName.textContent = "";
+    elName.classList.add("hidden");
+  }
+  if (elText) {
+    elText.textContent = "";
+  }
+
+  console.log("[AUTOSAVE] restored", data.sceneId, data.actionIndex);
+  vnAutosaveBgScrollRestorePending =
+    data.bg && data.bgScroll && typeof data.bgScroll === "object"
+      ? { dataBg: data.bg, dataBgScroll: data.bgScroll }
+      : null;
+  runCurrent();
+  flushAutosaveBgScrollRestorePending();
+  var blurVideoFb =
+    data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
+  requestAnimationFrame(function () {
+    flushAutosaveBgScrollRestorePending();
+    requestAnimationFrame(function () {
+      flushAutosaveBgScrollRestorePending();
+      if (data.bg && data.bg.isVideo) {
+        scheduleBlurRefreshFromBgVideo(blurVideoFb);
+      }
+    });
+  });
+  return true;
+}
+
 function restart() {
+  vnAutosaveBgScrollRestorePending = null;
+
   // Сбрасываем ошибки парсинга
   window.PARSE_ERRORS = [];
+
+  var restartOptions = arguments.length > 0 && arguments[0] !== null && typeof arguments[0] === "object"
+    ? arguments[0]
+    : {};
+
+  if (restartOptions.clearAutosave) {
+    clearAutosaveStorage();
+  }
 
   suppressAutoRunOnce = false;
   lastNextTime = 0;
@@ -2269,15 +2668,19 @@ function restart() {
   state.nextLocked = false;
   state.inVideo = false;
 
-  // Никаких сохранений: просто сбрасываем переменные и идём в start.
-  state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
-  applyLicenseStateToStoryVars();
-  state.inGame = false;
   hideChoices();
-  // Рестарт останавливает текущее сюжетное видео без продолжения старой сцены.
   cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
   hideOverlay();
+
+  if (!restartOptions.clearAutosave && isStoryAutosaveEnabled() && tryApplyAutosave()) {
+    return;
+  }
+
+  // Полный сброс без автосейва (или сохранение недействительно).
+  state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
+  applyLicenseStateToStoryVars();
+  state.inGame = false;
 
   // Сбрасываем флаг первого диалога и класс диалога
   isFirstDialog = true;
@@ -2333,6 +2736,7 @@ function restart() {
 }
 
 function runCurrent() {
+  try {
   console.log("[VN] runCurrent ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
   console.log(
     "[VN] runCurrent",
@@ -2442,6 +2846,9 @@ if (state.sceneId === 'scene_02') {
       return;
     }
     
+  }
+  } finally {
+    scheduleAutosave();
   }
 }
 
@@ -3400,11 +3807,19 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         hideKeptStoryVideoAfterBgReady("bg video loaded");
         updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
         updateBackgroundScrollAvailability();
+        flushAutosaveBgScrollRestorePending();
         // Когда видео реально показано в фоне, пересчитываем ducking с учетом его громкости.
         // Немое фоновое видео не должно приглушать музыку.
         setBgmDuckingForActiveVideos('bg video shown');
       };
       elBgVideo.src = normalizedSrc;
+      elBgVideo.addEventListener(
+        "loadedmetadata",
+        function () {
+          flushAutosaveBgScrollRestorePending();
+        },
+        { once: true }
+      );
       visualTrace("bgVideo:src-set", { src: normalizedSrc });
       elBgVideo.loop = true;
       elBgVideo.playsInline = true;
@@ -3470,6 +3885,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         src: normalizeAssetUrl(elBg.currentSrc || elBg.src || normalizedSrc)
       });
       updateBackgroundScrollAvailability();
+      flushAutosaveBgScrollRestorePending();
     };
 
     visualTrace("bgImage:set", { src: normalizedSrc });
@@ -8709,7 +9125,9 @@ function updateBlurBackground(src) {
     console.log('[Engine] Устанавливаем размытый фон:', src);
     elBlurBgImage.src = src;
     elBlurBgLayer.classList.remove("hidden");
-    
+    // applySpacingSettings мог выставить display:none — без явного block слой остаётся невидимым.
+    elBlurBgLayer.style.display = "block";
+
     // Принудительно применяем стили
     elBlurBgImage.style.objectFit = 'cover';
     elBlurBgImage.style.width = '100%';
@@ -8737,6 +9155,9 @@ function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
 
   if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
     visualTrace("blurVideoFrame:capture-skip-no-size", { fallbackSrc: fallback });
+    var vidUrlNoSize = videoEl ? normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") : "";
+    var imgFbNoSize = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoSize);
+    if (imgFbNoSize) updateBlurBackground(imgFbNoSize);
     return;
   }
 
@@ -8753,11 +9174,21 @@ function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
     canvas.height = targetH;
 
     var ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      var vidUrlNoCtx = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
+      var imgFbNoCtx = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoCtx);
+      if (imgFbNoCtx) updateBlurBackground(imgFbNoCtx);
+      return;
+    }
 
     ctx.drawImage(videoEl, 0, 0, targetW, targetH);
     var frameDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-    if (!frameDataUrl) return;
+    if (!frameDataUrl) {
+      var vidUrlNoData = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
+      var imgFbNoData = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoData);
+      if (imgFbNoData) updateBlurBackground(imgFbNoData);
+      return;
+    }
 
     // Защита от гонки: применяем только последний захват кадра.
     if (captureSeq !== blurFrameCaptureSeq) return;
@@ -8773,7 +9204,41 @@ function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
       fallbackSrc: fallback
     });
     console.log('[VIDEO] first frame blur capture skipped:', e && e.name ? e.name : e);
+    var vidUrlCatch = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
+    var imgFbCatch = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlCatch);
+    if (imgFbCatch) updateBlurBackground(imgFbCatch);
   }
+}
+
+// После автосейва runCurrent снова вызывает setBackground с тем же роликом — loadeddata может не прийти,
+// и размытый слой остаётся пустым/скрытым. Несколько попыток + подписка на loadeddata догоняют кадр.
+function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
+  if (!STORY.meta || !STORY.meta.blurBackground) return;
+  var fb = typeof fallbackSrc === "string" ? fallbackSrc : "";
+
+  function tick() {
+    if (!elBgVideo || elBgVideo.classList.contains("hidden")) return;
+    var vsrc = elBgVideo.currentSrc || elBgVideo.src || "";
+    if (!vsrc) return;
+    if (!elBgVideo.videoWidth || !elBgVideo.videoHeight) return;
+    updateBlurBackgroundFromVideoFrame(elBgVideo, fb);
+  }
+
+  if (elBgVideo) {
+    elBgVideo.addEventListener(
+      "loadeddata",
+      function () {
+        tick();
+      },
+      { once: true }
+    );
+  }
+
+  tick();
+  setTimeout(tick, 0);
+  setTimeout(tick, 60);
+  setTimeout(tick, 200);
+  setTimeout(tick, 600);
 }
 
 
