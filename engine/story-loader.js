@@ -885,7 +885,7 @@ function parseBackgroundScrollOption(rawValue, lineNumber, line) {
   return null;
 }
 
-// Разбирает композиционный фокус media: точку изображения/видео, которую нужно поставить в центр окна.
+// Разбирает горизонтальный композиционный фокус media (focusX): долю ширины исходника 0..1 для object-position по X.
 function parseMediaFocusOption(rawValue, lineNumber, line) {
   var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
 
@@ -899,7 +899,26 @@ function parseMediaFocusOption(rawValue, lineNumber, line) {
     if (numeric >= 0 && numeric <= 100) return numeric / 100;
   }
 
-  addParseError(lineNumber, line, `Invalid focus value "${rawValue}". Use left/center/right, 0..1 or 0..100.`, true);
+  addParseError(lineNumber, line, `Invalid focusX value "${rawValue}". Use left/center/right, 0..1 or 0..100.`, true);
+  return null;
+}
+
+// Вертикальный композиционный фокус (focusY): доля по высоте исходника 0..1 для object-position по Y.
+// В движке применяется «как есть» (проценты CSS), без поджатия к краям кропа — в отличие от focusX.
+function parseMediaFocusYOption(rawValue, lineNumber, line) {
+  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+
+  if (value === "top" || value === "start") return 0;
+  if (value === "center" || value === "middle") return 0.5;
+  if (value === "bottom" || value === "end") return 1;
+
+  if (value !== "" && !isNaN(Number(value))) {
+    var numeric = Number(value);
+    if (numeric >= 0 && numeric <= 1) return numeric;
+    if (numeric >= 0 && numeric <= 100) return numeric / 100;
+  }
+
+  addParseError(lineNumber, line, `Invalid focusY value "${rawValue}". Use top/center/bottom, 0..1 or 0..100.`, true);
   return null;
 }
 
@@ -1133,7 +1152,9 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     poster: videoAsset.poster || '',
     volume: typeof videoAsset.volume === 'number' ? videoAsset.volume : 0,
     scroll: videoAsset.scroll !== undefined ? videoAsset.scroll : false,
-    focus: typeof videoAsset.focus === 'number' ? videoAsset.focus : undefined
+    focusX: typeof videoAsset.focusX === 'number' ? videoAsset.focusX : undefined,
+    focusY: typeof videoAsset.focusY === 'number' ? videoAsset.focusY : undefined,
+    scale: typeof videoAsset.scale === 'number' ? videoAsset.scale : undefined
   };
 
   if (params.start !== undefined) {
@@ -1206,10 +1227,27 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     action.scroll = parsedScroll.enabled ? parsedScroll : false;
   }
 
-  if (params.focus !== undefined) {
-    var parsedVideoFocus = parseMediaFocusOption(params.focus, lineNumber, line);
-    if (parsedVideoFocus === null) return;
-    action.focus = parsedVideoFocus;
+  var videoFocusXRaw = params.focusX !== undefined ? params.focusX : params.focusx;
+  if (videoFocusXRaw !== undefined) {
+    var parsedVideoFocusX = parseMediaFocusOption(videoFocusXRaw, lineNumber, line);
+    if (parsedVideoFocusX === null) return;
+    action.focusX = parsedVideoFocusX;
+  }
+
+  var videoFocusYRaw = params.focusY !== undefined ? params.focusY : params.focusy;
+  if (videoFocusYRaw !== undefined) {
+    var parsedVideoFocusY = parseMediaFocusYOption(videoFocusYRaw, lineNumber, line);
+    if (parsedVideoFocusY === null) return;
+    action.focusY = parsedVideoFocusY;
+  }
+
+  if (params.scale !== undefined) {
+    var parsedCmdVideoScale = parseFloat(String(params.scale));
+    if (!isFinite(parsedCmdVideoScale) || parsedCmdVideoScale <= 0) {
+      addParseError(lineNumber, line, 'The video scale= value must be a positive number', true);
+      return;
+    }
+    action.scale = parsedCmdVideoScale;
   }
 
   currentScene.actions.push(action);
@@ -1346,7 +1384,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
       if (category === 'backgrounds') {
         // Для фонов поддерживаем расширенный объект:
-        // file=..., fallback=..., volume=..., scroll=..., focus=...
+        // file=..., fallback=..., volume=..., scroll=..., focusx=..., focusy=..., scale=... (ключи в нижнем регистре)
         // volume — доля от master (0..1), по умолчанию в движке для видео = 0.
         var bgEntry = {
           file: args.file
@@ -1375,15 +1413,30 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           bgEntry.scroll = parsedScroll.enabled ? parsedScroll : false;
         }
 
-        if (args.focus !== undefined) {
-          var parsedBgFocus = parseMediaFocusOption(args.focus, lineNumber, line);
-          if (parsedBgFocus === null) return true;
-          bgEntry.focus = parsedBgFocus;
+        if (args.focusx !== undefined) {
+          var parsedBgFocusX = parseMediaFocusOption(args.focusx, lineNumber, line);
+          if (parsedBgFocusX === null) return true;
+          bgEntry.focusX = parsedBgFocusX;
+        }
+
+        if (args.focusy !== undefined) {
+          var parsedBgFocusY = parseMediaFocusYOption(args.focusy, lineNumber, line);
+          if (parsedBgFocusY === null) return true;
+          bgEntry.focusY = parsedBgFocusY;
+        }
+
+        if (args.scale !== undefined) {
+          var parsedBgScale = parseFloat(String(args.scale));
+          if (!isFinite(parsedBgScale) || parsedBgScale <= 0) {
+            addParseError(lineNumber, line, `Invalid background scale "${args.scale}". Use a positive number.`, true);
+            return true;
+          }
+          bgEntry.scale = parsedBgScale;
         }
 
         // Для простых строк без fallback/volume сохраняем старый формат (string),
         // чтобы не ломать обратную совместимость.
-        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focus === undefined) {
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined) {
           story.assets.backgrounds[assetId] = args.file;
         } else {
           story.assets.backgrounds[assetId] = bgEntry;
@@ -1450,10 +1503,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         video.scroll = parsedVideoScroll.enabled ? parsedVideoScroll : false;
       }
 
-      if (args.focus !== undefined) {
-        var parsedAssetVideoFocus = parseMediaFocusOption(args.focus, lineNumber, line);
-        if (parsedAssetVideoFocus === null) return true;
-        video.focus = parsedAssetVideoFocus;
+      if (args.focusx !== undefined) {
+        var parsedAssetVideoFocusX = parseMediaFocusOption(args.focusx, lineNumber, line);
+        if (parsedAssetVideoFocusX === null) return true;
+        video.focusX = parsedAssetVideoFocusX;
+      }
+
+      if (args.focusy !== undefined) {
+        var parsedAssetVideoFocusY = parseMediaFocusYOption(args.focusy, lineNumber, line);
+        if (parsedAssetVideoFocusY === null) return true;
+        video.focusY = parsedAssetVideoFocusY;
+      }
+
+      if (args.scale !== undefined) {
+        var parsedAssetVideoScale = parseFloat(String(args.scale));
+        if (!isFinite(parsedAssetVideoScale) || parsedAssetVideoScale <= 0) {
+          addParseError(lineNumber, line, `Invalid video scale "${args.scale}". Use a positive number.`, true);
+          return true;
+        }
+        video.scale = parsedAssetVideoScale;
       }
 
       story.assets.videos[assetId] = video;
@@ -1516,7 +1584,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       addParseError(
         lineNumber,
         line,
-        'In [video], use only the new format: videoId file=... poster=... volume=... scroll=... focus=...',
+        'In [video], use only the new format: videoId file=... poster=... volume=... scroll=... focusx=... focusy=... scale=...',
         true
       );
       return;
@@ -2154,10 +2222,27 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         if (parsedScroll === null) return;
         bgAction.scroll = parsedScroll.enabled ? parsedScroll : false;
       }
-      if (bgParams.focus !== undefined) {
-        const parsedBgFocus = parseMediaFocusOption(bgParams.focus, lineNumber, line);
-        if (parsedBgFocus === null) return;
-        bgAction.focus = parsedBgFocus;
+      var bgFocusXRaw = bgParams.focusX !== undefined ? bgParams.focusX : bgParams.focusx;
+      if (bgFocusXRaw !== undefined) {
+        const parsedBgFocusX = parseMediaFocusOption(bgFocusXRaw, lineNumber, line);
+        if (parsedBgFocusX === null) return;
+        bgAction.focusX = parsedBgFocusX;
+      }
+
+      if (bgParams.scale !== undefined) {
+        const parsedBgCmdScale = parseFloat(String(bgParams.scale));
+        if (!isFinite(parsedBgCmdScale) || parsedBgCmdScale <= 0) {
+          addParseError(lineNumber, line, 'The bg scale= value must be a positive number', true);
+          return;
+        }
+        bgAction.scale = parsedBgCmdScale;
+      }
+
+      var bgFocusYRaw = bgParams.focusY !== undefined ? bgParams.focusY : bgParams.focusy;
+      if (bgFocusYRaw !== undefined) {
+        const parsedBgFocusY = parseMediaFocusYOption(bgFocusYRaw, lineNumber, line);
+        if (parsedBgFocusY === null) return;
+        bgAction.focusY = parsedBgFocusY;
       }
 
       actions.push(bgAction);

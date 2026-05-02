@@ -15,20 +15,21 @@ startScene=scIntro01
 [bg]
 # Формат описания для фона:
 # имя-фона = путь_и_название_файла
-bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg
+bgCampusHall file=assets/backgrounds/bg-campus-hall.jpg scale=1 focusy=0.5
 bgLibraryEvening file=assets/backgrounds/bg-library-evening.jpg
 bgLibraryEveningWide file=assets/backgrounds/bg-library-evening-wide.jpg scroll
 bgBranchCafe file=assets/backgrounds/bg-campus-cafe.jpg
 bgBranchCafeWide file=assets/backgrounds/bg-campus-cafe-wide.jpg scroll
-bgBranchCafeVideoWide file=assets/backgrounds/bg-campus-cafe-wide.mp4 volume=0.0 scroll focus=0.4748
+bgBranchCafeVideoWide file=assets/backgrounds/bg-campus-cafe-wide.mp4 volume=0.0 scroll focusx=0.4748
 bgBranchCafe2 file=assets/backgrounds/bg-campus-cafe2.jpg
-bgBranchCafe2Wide file=assets/backgrounds/bg-campus-cafe2-wide.jpg scroll focus=0.4684
+bgBranchCafe2Wide file=assets/backgrounds/bg-campus-cafe2-wide.jpg scroll focusx=0.4684
 bgBranchCafe3 file=assets/backgrounds/bg-campus-cafe3.jpg
-bgBranchCafe3Wide file=assets/backgrounds/bg-campus-cafe3-wide.jpg scroll focus=0.4801
+bgBranchCafe3Wide file=assets/backgrounds/bg-campus-cafe3-wide.jpg scroll focusx=0.4801
 bgBranchLab file=assets/backgrounds/bg-it-lab.jpg
 bgBranchLabWide file=assets/backgrounds/bg-it-lab.jpg scroll
 bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg volume=0.0
 bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
+bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
 [char]
@@ -386,11 +387,13 @@ goto scFinale01
 
 scene scBranchYard01
 
-bg bgBranchYard
+bg bgBranchYardWide
 hide all
 
 "Во дворе тихо: фонари рисуют дорожки света, и даже шаги звучат как часть саундтрека."
 "Над кампусом — глубокое вечернее небо. Анна вдруг улыбается, будто придумала маленькое испытание."
+
+bg bgBranchYard
 
 show anna excited
 anna: "Знаешь, вечер — лучшее время для воображения. Давай представим, что мы проводим маленький спутник сквозь поток космическких обломков."
