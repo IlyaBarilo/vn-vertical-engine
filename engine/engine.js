@@ -932,13 +932,16 @@ var elStage = document.getElementById("stage");
 
 // чтобы клик по кнопкам/слайдеру/меню НЕ листал
 function isUiClick(target) {
-  return !!(target.closest &&
-    (target.closest(".topbar") ||
-    target.closest("#dialog") ||
-    target.closest("#choices") ||
-    target.closest("#storyVideoOverlay") ||
-    target.closest("#gameModal") ||
-    target.closest("#statsGameModal")));
+  if (!target || !target.closest) return false;
+  if (target.closest(".topbar")) return true;
+  if (target.closest("#dialog")) return true;
+  if (target.closest("#choices")) return true;
+  if (target.closest("#storyVideoOverlay")) return true;
+  var gm = target.closest("#gameModal");
+  if (gm && !gm.classList.contains("hidden")) return true;
+  var sgm = target.closest("#statsGameModal");
+  if (sgm && !sgm.classList.contains("hidden")) return true;
+  return false;
 }
 
 elStage.addEventListener("click", function (e) {
@@ -1417,6 +1420,31 @@ var backgroundScroll = {
   backgroundContainer: null,
   backgroundPosition: 0.5
 };
+
+// Отладка автосейва: в консоли фильтр [AUTOSAVE_DEBUG]. Выключить: window.VN_AUTOSAVE_DEBUG = false
+// Объявлено до startLicensedEngine/pagehide, чтобы не было ReferenceError при синхронном restart().
+if (typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === undefined) {
+  window.VN_AUTOSAVE_DEBUG = true;
+}
+
+/** Укороченный стек для логов (кто вызвал flush/build). */
+function autosaveDebugShortStack() {
+  try {
+    var s = new Error().stack;
+    if (!s) return "";
+    var lines = s.split("\n");
+    return lines.slice(2, 7).join(" <- ");
+  } catch (err) {
+    return "";
+  }
+}
+
+/** Единая точка логов автосейва; не спамит, если window.VN_AUTOSAVE_DEBUG === false. */
+function autosaveDebugLog(tag, detail) {
+  if (typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === false) return;
+  if (detail !== undefined) console.log("[AUTOSAVE_DEBUG]", tag, detail);
+  else console.log("[AUTOSAVE_DEBUG]", tag);
+}
 
 // Возвращает реальные размеры img/video-элемента, потому что браузер хранит их в разных полях.
 function getScrollableMediaSize(mediaEl) {
@@ -2116,12 +2144,42 @@ window.addEventListener("resize", applyUiScale);
 window.addEventListener("resize", updateBackgroundScrollAvailability);
 
 window.addEventListener("pagehide", function () {
+  autosaveDebugLog("lifecycle:pagehide", {
+    sceneId: state && state.sceneId,
+    actionIndex: state && state.actionIndex,
+    inGame: state && state.inGame,
+    waitingNext: state && state.waitingNext,
+    nextLocked: state && state.nextLocked
+  });
+  if (vnAutosaveTimer) {
+    clearTimeout(vnAutosaveTimer);
+    vnAutosaveTimer = null;
+  }
   flushAutosaveToStorageSync();
 });
 document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "hidden") {
+    autosaveDebugLog("lifecycle:visibilityhidden", {
+      sceneId: state && state.sceneId,
+      actionIndex: state && state.actionIndex
+    });
+    if (vnAutosaveTimer) {
+      clearTimeout(vnAutosaveTimer);
+      vnAutosaveTimer = null;
+    }
     flushAutosaveToStorageSync();
   }
+});
+window.addEventListener("beforeunload", function () {
+  autosaveDebugLog("lifecycle:beforeunload", {
+    sceneId: state && state.sceneId,
+    actionIndex: state && state.actionIndex
+  });
+  if (vnAutosaveTimer) {
+    clearTimeout(vnAutosaveTimer);
+    vnAutosaveTimer = null;
+  }
+  flushAutosaveToStorageSync();
 });
 
 // ---------- Подготовка сцен ----------
@@ -2277,7 +2335,8 @@ startLicensedEngine();
 // =========================================================
 
 // ---------- Автосейв (localStorage, один слот) ----------
-// Дебаунс записи 2 с; синхронный flush при pagehide / скрытии вкладки.
+// Состояние сценария живёт в памяти движка; в localStorage пишем с дебаунсом (редко перезаписываем диск),
+// плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
 var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
 var VN_AUTOSAVE_PAYLOAD_VERSION = 2;
 var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
@@ -2318,6 +2377,43 @@ function findBlurFallbackImageForBgVideoUrl(normalizedVideoUrl) {
 function isStoryAutosaveEnabled() {
   if (!STORY || !STORY.meta) return true;
   return STORY.meta.autosave !== false;
+}
+
+/**
+ * Снимает «мёртвую» комбинацию nextLocked без waitingNext посередине сцены (после гонок при F5),
+ * иначе onNext не вызывается и кажется, что диалог не реагирует.
+ */
+function fixAutosaveDeadlockInteractionFlags() {
+  if (!state || !state.sceneId || !state.sceneMap) return;
+  var scene = state.sceneMap[state.sceneId];
+  if (!scene || !Array.isArray(scene.actions)) return;
+  var len = scene.actions.length;
+  if (state.actionIndex < len && !state.waitingNext && state.nextLocked) {
+    autosaveDebugLog("fixDeadlock:cleared_nextLocked", {
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      actionsLen: len
+    });
+    state.nextLocked = false;
+  }
+}
+
+/** То же правило для сериализации: не записываем в слот блокировку без ожидания клика при незаконченной сцене. */
+function normalizeVNInteractionFlagsForPersist(scene, runtimeActionIndex, waitingNext, nextLocked) {
+  var wn = !!waitingNext;
+  var nl = !!nextLocked;
+  if (
+    scene &&
+    Array.isArray(scene.actions) &&
+    typeof runtimeActionIndex === "number" &&
+    runtimeActionIndex >= 0 &&
+    runtimeActionIndex < scene.actions.length &&
+    !wn &&
+    nl
+  ) {
+    nl = false;
+  }
+  return { waitingNext: wn, nextLocked: nl };
 }
 
 function computeStoryTextFingerprint() {
@@ -2405,14 +2501,42 @@ function applyAutosaveCharacterSnapshot(ch) {
   setCharacter(src, pos, cid, null);
 }
 
-function buildAutosavePayload() {
-  if (!STORY || !isStoryAutosaveEnabled()) return null;
-  if (state.inGame || state.inVideo) return null;
-  if (!state.sceneId) return null;
+/**
+ * Собирает JSON автосейва. opts.persistActionIndex — явный индекс шага (например шаг game/video до инкремента в runCurrent).
+ */
+function buildAutosavePayload(opts) {
+  opts = opts || {};
+  if (!STORY || !isStoryAutosaveEnabled()) {
+    autosaveDebugLog("buildPayload:null", { reason: "no_story_or_disabled" });
+    return null;
+  }
+  if (!opts.allowDuringEmbeddedMedia && (state.inGame || state.inVideo)) {
+    autosaveDebugLog("buildPayload:null", {
+      reason: "embedded_media",
+      inGame: state.inGame,
+      inVideo: state.inVideo
+    });
+    return null;
+  }
+  if (!state.sceneId) {
+    autosaveDebugLog("buildPayload:null", { reason: "no_sceneId" });
+    return null;
+  }
 
   var scene = state.sceneMap[state.sceneId];
-  if (!scene || !Array.isArray(scene.actions)) return null;
-  if (state.actionIndex < 0 || state.actionIndex > scene.actions.length) return null;
+  if (!scene || !Array.isArray(scene.actions)) {
+    autosaveDebugLog("buildPayload:null", { reason: "bad_scene", sceneId: state.sceneId });
+    return null;
+  }
+  if (state.actionIndex < 0 || state.actionIndex > scene.actions.length) {
+    autosaveDebugLog("buildPayload:null", {
+      reason: "actionIndex_out_of_range",
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      actionsLen: scene.actions.length
+    });
+    return null;
+  }
 
   var fp = computeStoryTextFingerprint();
   var bgSnap = captureBackgroundSnapshotForAutosave();
@@ -2423,11 +2547,45 @@ function buildAutosavePayload() {
   // сразу выполнит следующий шаг без клика — при быстрых обновлениях сценарий «убегает» вперёд.
   // Если открыто меню choice, индекс уже указывает ПОСЛЕ выполненного «menu» — без поправки после F5
   // поднимется предыдущая реплика вместо меню (старый слот автосейва не обновлялся при видимых #choices).
-  var persistActionIndex = state.actionIndex;
-  var choicesVisible = !!(elChoices && !elChoices.classList.contains("hidden"));
-  if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
-    persistActionIndex = persistActionIndex - 1;
+  var persistActionIndex;
+  if (typeof opts.persistActionIndex === "number" && isFinite(opts.persistActionIndex)) {
+    persistActionIndex = opts.persistActionIndex | 0;
+    if (persistActionIndex < 0 || persistActionIndex > scene.actions.length) {
+      autosaveDebugLog("buildPayload:null", {
+        reason: "persistActionIndex_invalid",
+        persistActionIndex: persistActionIndex,
+        actionsLen: scene.actions.length
+      });
+      return null;
+    }
+  } else {
+    persistActionIndex = state.actionIndex;
+    var choicesVisible = !!(elChoices && !elChoices.classList.contains("hidden"));
+    if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
+      persistActionIndex = persistActionIndex - 1;
+    }
   }
+
+  var flagsForDisk = normalizeVNInteractionFlagsForPersist(
+    scene,
+    state.actionIndex,
+    state.waitingNext,
+    state.nextLocked
+  );
+
+  autosaveDebugLog("buildPayload:ok", {
+    sceneId: state.sceneId,
+    runtimeActionIndex: state.actionIndex,
+    persistActionIndex: persistActionIndex,
+    actionsLen: scene.actions.length,
+    waitingNextRuntime: !!state.waitingNext,
+    nextLockedRuntime: !!state.nextLocked,
+    waitingNextDisk: flagsForDisk.waitingNext,
+    nextLockedDisk: flagsForDisk.nextLocked,
+    choicesVisible: !!(elChoices && !elChoices.classList.contains("hidden")),
+    optsPersistOverride: typeof opts.persistActionIndex === "number",
+    stack: autosaveDebugShortStack()
+  });
 
   return {
     v: VN_AUTOSAVE_PAYLOAD_VERSION,
@@ -2438,8 +2596,8 @@ function buildAutosavePayload() {
     sceneId: state.sceneId,
     actionIndex: persistActionIndex,
     vars: JSON.parse(JSON.stringify(state.vars || {})),
-    waitingNext: !!state.waitingNext,
-    nextLocked: !!state.nextLocked,
+    waitingNext: flagsForDisk.waitingNext,
+    nextLocked: flagsForDisk.nextLocked,
     bg: bgSnap,
     bgScroll: bgScroll,
     char: charSnap
@@ -2459,14 +2617,41 @@ function validateAutosavePayload(data) {
   return true;
 }
 
-function flushAutosaveToStorageSync() {
-  if (!STORY || !isStoryAutosaveEnabled()) return;
+/**
+ * Немедленная запись автосейва. Если передан готовый payload (например точка входа в game/video), пишет его как есть.
+ */
+function flushAutosaveToStorageSync(prebuiltPayload) {
+  if (!STORY || !isStoryAutosaveEnabled()) {
+    autosaveDebugLog("flush:skip", { reason: "no_story_or_disabled" });
+    return;
+  }
   try {
-    var payload = buildAutosavePayload();
-    if (!payload) return;
+    var usesPrebuilt =
+      arguments.length >= 1 && prebuiltPayload !== undefined && prebuiltPayload !== null;
+    var payload = usesPrebuilt ? prebuiltPayload : buildAutosavePayload();
+    if (!payload) {
+      autosaveDebugLog("flush:no_payload", {
+        usesPrebuilt: usesPrebuilt,
+        inGame: state.inGame,
+        inVideo: state.inVideo,
+        sceneId: state.sceneId,
+        actionIndex: state.actionIndex,
+        stack: autosaveDebugShortStack()
+      });
+      return;
+    }
     localStorage.setItem(VN_AUTOSAVE_STORAGE_KEY, JSON.stringify(payload));
+    autosaveDebugLog("flush:written", {
+      usesPrebuilt: usesPrebuilt,
+      sceneId: payload.sceneId,
+      actionIndex: payload.actionIndex,
+      waitingNext: payload.waitingNext,
+      nextLocked: payload.nextLocked,
+      stack: autosaveDebugShortStack()
+    });
   } catch (err) {
     console.warn("[AUTOSAVE] flush failed:", err);
+    autosaveDebugLog("flush:error", String(err && err.message ? err.message : err));
   }
 }
 
@@ -2478,6 +2663,10 @@ function clearAutosaveStorage() {
   }
 }
 
+/**
+ * Откладывает запись автосейва: снимок всегда берётся из актуального state при срабатывании таймера,
+ * чтобы не дергать localStorage на каждом шаге, но не терять прогресс при паузе > 2 с.
+ */
 function scheduleAutosave() {
   if (!STORY || !isStoryAutosaveEnabled()) return;
   if (vnAutosaveTimer) {
@@ -2486,8 +2675,15 @@ function scheduleAutosave() {
   }
   vnAutosaveTimer = setTimeout(function () {
     vnAutosaveTimer = null;
+    autosaveDebugLog("debounce:fired", {
+      sceneId: state.sceneId,
+      actionIndex: state.actionIndex,
+      waitingNext: state.waitingNext,
+      nextLocked: state.nextLocked
+    });
     flushAutosaveToStorageSync();
   }, VN_AUTOSAVE_DEBOUNCE_MS);
+  autosaveDebugLog("debounce:scheduled", { ms: VN_AUTOSAVE_DEBOUNCE_MS });
 }
 
 // Восстанавливает pan/focus без смены src; true если позиция применена (видимый слой и для видео есть размеры кадра).
@@ -2550,6 +2746,34 @@ function flushAutosaveBgScrollRestorePending() {
   }
 }
 
+/**
+ * executeIfBlock во время игры вставляет действия в scene.actions; автосейв хранит индекс уже после этого «раздувания».
+ * После перезагрузки STORY парсится заново — массив короче, индекс оказывается ≥ length → пустой текст и конец сцены.
+ * При ожидании клика откатываемся к последнему if_block: runCurrent снова выполнит вставку ветки (vars из слота уже применены).
+ */
+function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
+  if (!state || !state.sceneId || !state.sceneMap) return;
+  var scene = state.sceneMap[state.sceneId];
+  if (!scene || !Array.isArray(scene.actions)) return;
+  var idx = state.actionIndex;
+  var len = scene.actions.length;
+  if (idx < len) return;
+  if (!savedWaitingNext) return;
+  var ifIdx = -1;
+  for (var i = scene.actions.length - 1; i >= 0; i--) {
+    if (scene.actions[i] && scene.actions[i].type === "if_block") {
+      ifIdx = i;
+      break;
+    }
+  }
+  if (ifIdx < 0) {
+    autosaveDebugLog("restore:splice_mismatch_no_if_block", { savedIndex: idx, coldLen: len });
+    return;
+  }
+  state.actionIndex = ifIdx;
+  autosaveDebugLog("restore:rewind_to_if_block", { savedIndex: idx, coldLen: len, ifIdx: ifIdx });
+}
+
 function tryApplyAutosave() {
   if (!STORY || !isStoryAutosaveEnabled()) return false;
   var raw = null;
@@ -2564,14 +2788,33 @@ function tryApplyAutosave() {
   try {
     data = JSON.parse(raw);
   } catch (err) {
+    autosaveDebugLog("restore:parse_failed", String(err && err.message ? err.message : err));
     clearAutosaveStorage();
     return false;
   }
 
   if (!validateAutosavePayload(data)) {
+    var fpNow = computeStoryTextFingerprint();
+    autosaveDebugLog("restore:validate_failed", {
+      sceneId: data && data.sceneId,
+      actionIndex: data && data.actionIndex,
+      v: data && data.v,
+      slotHashHex: data && data.hashHex,
+      slotTextLength: data && data.textLength,
+      currentHashHex: fpNow.hashHex,
+      currentTextLength: fpNow.textLength
+    });
     clearAutosaveStorage();
     return false;
   }
+
+  autosaveDebugLog("restore:slot_before_apply", {
+    sceneId: data.sceneId,
+    actionIndex: data.actionIndex,
+    waitingNext: data.waitingNext,
+    nextLocked: data.nextLocked,
+    rawLen: raw.length
+  });
 
   state.sceneId = data.sceneId;
   currentSceneId = data.sceneId;
@@ -2582,6 +2825,14 @@ function tryApplyAutosave() {
   applyLicenseStateToStoryVars();
   state.waitingNext = !!data.waitingNext;
   state.nextLocked = !!data.nextLocked;
+  rewindAutosaveIndexIfPastColdSceneEnd(!!data.waitingNext);
+  fixAutosaveDeadlockInteractionFlags();
+  autosaveDebugLog("restore:state_after_flags", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked
+  });
   state.inGame = false;
   state.inVideo = false;
   state.currentGame = null;
@@ -2624,6 +2875,16 @@ function tryApplyAutosave() {
       ? { dataBg: data.bg, dataBgScroll: data.bgScroll }
       : null;
   runCurrent();
+  autosaveDebugLog("restore:after_runCurrent", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked,
+    inGame: state.inGame,
+    inVideo: state.inVideo,
+    elTextLen: elText ? String(elText.textContent || "").length : -1,
+    gameModalHidden: elGameModal ? elGameModal.classList.contains("hidden") : null
+  });
   flushAutosaveBgScrollRestorePending();
   var blurVideoFb =
     data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
@@ -2776,6 +3037,11 @@ if (state.sceneId === 'scene_02') {
     // если дошли до конца сцены — останавливаемся
     if (state.actionIndex >= scene.actions.length) {
       console.log('[VN] Достигнут конец сцены', state.sceneId);
+      autosaveDebugLog("runCurrent:end_of_scene", {
+        sceneId: state.sceneId,
+        actionIndex: state.actionIndex,
+        actionsLen: scene.actions.length
+      });
       state.waitingNext = false;
       state.nextLocked = true; // Блокируем дальнейшие клики
       return;
@@ -2861,8 +3127,14 @@ function onNext(e) {
     dt: Date.now() - lastNextTime
   });
 
-  if (state.inGame || state.inVideo) return;
-  if (elGameModal && !elGameModal.classList.contains("hidden")) return;
+  if (state.inGame || state.inVideo) {
+    autosaveDebugLog("onNext:blocked", { reason: "inGame_or_inVideo", inGame: state.inGame, inVideo: state.inVideo });
+    return;
+  }
+  if (elGameModal && !elGameModal.classList.contains("hidden")) {
+    autosaveDebugLog("onNext:blocked", { reason: "gameModal_visible" });
+    return;
+  }
 
   console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
   console.trace(); // <-- Добавьте это! Покажет стек вызовов
@@ -2871,6 +3143,7 @@ function onNext(e) {
   var now = Date.now();
   if (now - lastNextTime < NEXT_COOLDOWN) {
     console.log("[VN] onNext проигнорирован (защита от двойного клика)");
+    autosaveDebugLog("onNext:blocked", { reason: "cooldown_ms", dt: now - lastNextTime, NEXT_COOLDOWN: NEXT_COOLDOWN });
     return;
   }
   console.log('[TIMING] Время между кликами:', now - lastNextTime, 'ms');
@@ -2892,12 +3165,19 @@ function onNext(e) {
     e.stopPropagation();
   }
   
-  if (!elChoices.classList.contains("hidden")) return;
-  if (state.inGame || state.inVideo) return;
+  if (!elChoices.classList.contains("hidden")) {
+    autosaveDebugLog("onNext:blocked", { reason: "choices_visible" });
+    return;
+  }
+  if (state.inGame || state.inVideo) {
+    autosaveDebugLog("onNext:blocked", { reason: "inGame_or_inVideo_late", inGame: state.inGame, inVideo: state.inVideo });
+    return;
+  }
 
   // ВАЖНО: проверяем, ждём ли мы следующего действия
   if (!state.waitingNext) {
     console.log('[VN] onNext ignored - not waiting for next');
+    autosaveDebugLog("onNext:blocked", { reason: "not_waitingNext" });
     return;
   }
 
@@ -2905,11 +3185,19 @@ function onNext(e) {
   var scene = state.sceneMap[state.sceneId];
   if (state.actionIndex >= scene.actions.length) {
     console.log('[VN] Достигнут конец сценария, игнорируем клик');
+    autosaveDebugLog("onNext:blocked", {
+      reason: "past_end_of_scene",
+      actionIndex: state.actionIndex,
+      actionsLen: scene && scene.actions ? scene.actions.length : -1
+    });
     return;
   }
 
   // Разрешаем только один "next" до следующего say/text
-  if (state.nextLocked) return;
+  if (state.nextLocked) {
+    autosaveDebugLog("onNext:blocked", { reason: "nextLocked" });
+    return;
+  }
   state.nextLocked = true;
 
   // Защита от двойных событий (click после pointerup и т.п.)
@@ -3543,11 +3831,6 @@ function executeAction(action) {
       // ВНИМАНИЕ: без eval для безопасности. Поддержим только простую форму:
       // { key: "score", op: ">=", value: 3, then: "...", else: "..." }
       return executeIfSafe(action);
-
-    case "game":
-      // game: { id: "quiz1", src: "games/quiz1/index.html", onResult: { setKey: "quizScore", goto: "..." } }
-      openGame(action);
-      return true;
 
     case "video":
       startStoryVideo(action);
@@ -4742,9 +5025,25 @@ function finishStoryVideo(reason) {
   state.nextLocked = false;
   setBgmDuckingForActiveVideos("story video finished: " + (reason || "done"));
 
-  setTimeout(function () {
-    runCurrent();
-  }, 0);
+  autosaveDebugLog("finishStoryVideo:before_runCurrent", {
+    reason: reason || "done",
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex
+  });
+
+  // Синхронно, как после closeGame: иначе pagehide между тиками сохраняет неконсистентный next/waiting.
+  runCurrent();
+
+  autosaveDebugLog("finishStoryVideo:after_runCurrent", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked,
+    elTextLen: elText ? String(elText.textContent || "").length : -1
+  });
+
+  flushAutosaveToStorageSync();
+  lastNextTime = 0;
 }
 
 function showStoryVideoFallback(action, reason) {
@@ -4896,15 +5195,35 @@ function startStoryVideo(action) {
   // Команда video показывает полноэкранную вставку; при scroll разрешает двигать ролик/постер по горизонтали.
   if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
     console.warn("[VIDEO] story video skipped: missing DOM or src", action);
-    setTimeout(function () {
-      state.inVideo = false;
-      state.nextLocked = false;
-      runCurrent();
-    }, 0);
+    state.inVideo = false;
+    state.nextLocked = false;
+    runCurrent();
     return;
   }
 
   cleanupStoryVideoVisualOnly();
+
+  var videoStepIdx = state.actionIndex - 1;
+  if (videoStepIdx >= 0) {
+    var scVid = state.sceneMap[state.sceneId];
+    var actVid = scVid && scVid.actions ? scVid.actions[videoStepIdx] : null;
+    if (actVid && actVid.type === "video") {
+      var vidCheckpoint = buildAutosavePayload({ persistActionIndex: videoStepIdx });
+      if (vidCheckpoint) {
+        autosaveDebugLog("checkpoint:video_written", { persistActionIndex: videoStepIdx });
+        flushAutosaveToStorageSync(vidCheckpoint);
+      } else {
+        autosaveDebugLog("checkpoint:video_skipped", { reason: "build_null", videoStepIdx: videoStepIdx });
+      }
+    } else {
+      autosaveDebugLog("checkpoint:video_skipped", {
+        reason: "no_video_action_at_index",
+        videoStepIdx: videoStepIdx,
+        actualType: actVid ? actVid.type : null
+      });
+    }
+  }
+
   state.inVideo = true;
   storyVideoRuntime.action = action;
   storyVideoRuntime.done = false;
@@ -5021,6 +5340,28 @@ function openGame(action) {
     return;
   }
 
+  // Пока inGame=true, buildAutosavePayload не пишет слот — фиксируем индекс шага «game» до открытия модалки.
+  var gameStepIdx = state.actionIndex - 1;
+  if (gameStepIdx >= 0) {
+    var scGame = state.sceneMap[state.sceneId];
+    var actGame = scGame && scGame.actions ? scGame.actions[gameStepIdx] : null;
+    if (actGame && actGame.type === "game") {
+      var checkpoint = buildAutosavePayload({ persistActionIndex: gameStepIdx });
+      if (checkpoint) {
+        autosaveDebugLog("checkpoint:game_written", { persistActionIndex: gameStepIdx });
+        flushAutosaveToStorageSync(checkpoint);
+      } else {
+        autosaveDebugLog("checkpoint:game_skipped", { reason: "build_null", gameStepIdx: gameStepIdx });
+      }
+    } else {
+      autosaveDebugLog("checkpoint:game_skipped", {
+        reason: "no_game_action_at_index",
+        gameStepIdx: gameStepIdx,
+        actualType: actGame ? actGame.type : null
+      });
+    }
+  }
+
   state.inGame = true;
   state.currentGame = {
     gameId: action.gameId || 'game',
@@ -5111,12 +5452,31 @@ function closeGame(resultData) {
 
   state.currentGame = null;
   state.waitingNext = false;
-  state.nextLocked = true;
+  state.nextLocked = false;
 
-  setTimeout(function() {
-    state.nextLocked = false;
-    runCurrent();
-  }, 0);
+  autosaveDebugLog("closeGame:before_runCurrent", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    resultVar: finishedGame.resultVar,
+    resultValue: finishedGame.resultVar ? state.vars[finishedGame.resultVar] : undefined,
+    manualClose: manualClose
+  });
+
+  // Нельзя откладывать runCurrent: между closeGame и следующим тиком в storage попадает «мертвое» состояние
+  // (nextLocked=true, waitingNext=false), страница после F5 не реагирует на «дальше» и теряет текст.
+  runCurrent();
+
+  autosaveDebugLog("closeGame:after_runCurrent", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked,
+    elTextLen: elText ? String(elText.textContent || "").length : -1
+  });
+
+  flushAutosaveToStorageSync();
+  // Закрытие модалки по кнопке задаёт lastNextTime — снимаем охладитель, чтобы первый клик по диалогу прошёл.
+  lastNextTime = 0;
 }
 
 function closeGameFrameVisualOnly() {
