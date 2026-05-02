@@ -251,8 +251,9 @@
         satellite: {
             baseRadius: 40,
             xPos: 0.08,
-            acceleration: 0.04,
-            deceleration: 0.02,
+            // Сглаживание вертикальной скорости к цели джойстика: чем ближе к 1, тем меньше инерция (быстрее отклик).
+            acceleration: 0.96,
+            deceleration: 0.93,
             maxSpeed: 1, // 0.015
             moveSpeedCoef: 0.22 // 0.72
         },
@@ -537,7 +538,13 @@
     function loop(timestamp) {
         if (gameState !== 'PLAYING') return;
 
-        const dt = Math.min(34, timestamp - lastTime);
+        // Реальный интервал между кадрами. Раньше dt жёстко резался до 34 мс «как у 60 FPS» —
+        // при низком FPS (5–15) физика и таймер отставали от реального времени в разы, а спавн
+        // шёл по performance.now(), из‑за чего игра «тормозила» и ломалось ощущение отклика.
+        // Верхняя граница лишь ограничивает скачок после долгой паузы вкладки.
+        const MAX_FRAME_DT_MS = 250;
+        const rawDt = timestamp - lastTime;
+        const dt = Math.min(MAX_FRAME_DT_MS, Math.max(0, rawDt));
         lastTime = timestamp;
 
         update(dt, timestamp);
@@ -576,7 +583,8 @@
             ? CONFIG.satellite.acceleration
             : CONFIG.satellite.deceleration;
 
-        // нормализация под 60 FPS
+        // Экспоненциальное сближение с целью: при честном dt (см. loop) один длинный кадр
+        // эквивалентен нескольким коротким — отклик не «застывает» на низком FPS.
         const lerpFactor = 1 - Math.pow(1 - response, dt / 16.6667);
 
         sat.vy += (targetSpeedPerSec - sat.vy) * lerpFactor;
