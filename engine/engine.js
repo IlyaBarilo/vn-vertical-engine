@@ -891,9 +891,11 @@ var elStatsBody = document.getElementById("statsBody");
 // Новые DOM-элементы
 var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
-var blurFrameCaptureSeq = 0;
+var elBlurBgVideo = document.getElementById("blurBgVideo");
+/** Счётчик вызовов syncBlurBackgroundVideo: отменяет устаревшие обработчики при быстрой смене сцен. */
+var blurBgVideoSyncSeq = 0;
 
-[elBg, elBgVideo, elStoryVideo, elStoryVideoPoster, elChar, elBlurBgImage].forEach(function (el) {
+[elBg, elBgVideo, elStoryVideo, elStoryVideoPoster, elChar, elBlurBgImage, elBlurBgVideo].forEach(function (el) {
   if (!el) return;
   el.setAttribute("draggable", "false");
   el.addEventListener("dragstart", function (e) {
@@ -910,6 +912,7 @@ let currentSceneId = null;
 // Для отладки
 console.log('[Engine] blurBgLayer:', elBlurBgLayer);
 console.log('[Engine] blurBgImage:', elBlurBgImage);
+console.log('[Engine] blurBgVideo:', elBlurBgVideo);
 
 btnStats.addEventListener("click", function () {
   toggleStatsPanel();
@@ -1739,6 +1742,12 @@ function applyBackgroundScrollPosition() {
     : backgroundScroll.position;
   var x = clamp(position, 0, 1) * 100;
   targetEl.style.objectPosition = x.toFixed(3) + "% center";
+  // Дубликат под blur должен совпадать по кропу с основным роликом при pan wide-bg.
+  if (STORY && STORY.meta && STORY.meta.blurBackground && elBlurBgVideo && !elBlurBgVideo.classList.contains("hidden")) {
+    if (targetEl === elBgVideo || targetEl === elStoryVideo) {
+      copyBgVideoObjectPositionToBlur(targetEl, elBlurBgVideo);
+    }
+  }
 }
 
 // Показывает короткую подсказку, чтобы игрок заметил возможность сдвинуть широкий фон.
@@ -2326,16 +2335,6 @@ function computeStoryTextFingerprint() {
   };
 }
 
-function captureBlurSnapshotSrcForAutosave() {
-  if (!STORY || !STORY.meta || !STORY.meta.blurBackground) return "";
-  if (!elBlurBgLayer || elBlurBgLayer.classList.contains("hidden")) return "";
-  if (!elBlurBgImage) return "";
-  var s = String(elBlurBgImage.src || elBlurBgImage.currentSrc || "").trim();
-  if (!s) return "";
-  if (s.length > 320000) return "";
-  return s;
-}
-
 function captureBackgroundSnapshotForAutosave() {
   if (elBgVideo && !elBgVideo.classList.contains("hidden") && (elBgVideo.currentSrc || elBgVideo.src)) {
     var vnorm = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
@@ -2419,8 +2418,6 @@ function buildAutosavePayload() {
   var bgSnap = captureBackgroundSnapshotForAutosave();
   var bgScroll = captureBackgroundScrollSnapshotForAutosave();
   var charSnap = captureCharacterSnapshotForAutosave();
-  var blurSnap = captureBlurSnapshotSrcForAutosave();
-
   // В runCurrent перед выполнением шага делается actionIndex++; во время ожидания клика «дальше»
   // в state уже лежит индекс СЛЕДУЮЩЕГО действия. Если сохранить его как есть, после F5 runCurrent
   // сразу выполнит следующий шаг без клика — при быстрых обновлениях сценарий «убегает» вперёд.
@@ -2445,8 +2442,7 @@ function buildAutosavePayload() {
     nextLocked: !!state.nextLocked,
     bg: bgSnap,
     bgScroll: bgScroll,
-    char: charSnap,
-    blurSnapshotSrc: blurSnap
+    char: charSnap
   };
 }
 
@@ -2608,10 +2604,6 @@ function tryApplyAutosave() {
     var blurFb =
       data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
     setBackground(data.bg.src, blurFb, null, mergedScroll);
-  }
-
-  if (data.blurSnapshotSrc && typeof data.blurSnapshotSrc === "string" && data.blurSnapshotSrc.length > 0) {
-    updateBlurBackground(data.blurSnapshotSrc);
   }
 
   if (data.char && typeof data.char === "object") {
@@ -3805,7 +3797,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         elBgVideo.classList.remove("hidden");
         visualTrace("bgVideo:shown", { src: currentVideoSrc });
         hideKeptStoryVideoAfterBgReady("bg video loaded");
-        updateBlurBackgroundFromVideoFrame(elBgVideo, normalizedFallbackSrc);
+        syncBlurBackgroundVideo(elBgVideo, normalizedFallbackSrc);
         updateBackgroundScrollAvailability();
         flushAutosaveBgScrollRestorePending();
         // Когда видео реально показано в фоне, пересчитываем ducking с учетом его громкости.
@@ -4963,8 +4955,8 @@ function startStoryVideo(action) {
       currentTime: Number(elStoryVideo.currentTime.toFixed(3)),
       readyState: elStoryVideo.readyState
     });
-    if (typeof updateBlurBackgroundFromVideoFrame === "function") {
-      updateBlurBackgroundFromVideoFrame(elStoryVideo, posterSrc);
+    if (typeof syncBlurBackgroundVideo === "function") {
+      syncBlurBackgroundVideo(elStoryVideo, posterSrc);
     }
     if (backgroundScroll.owner === "storyVideo" && backgroundScroll.target === elStoryVideo) {
       updateBackgroundScrollAvailability();
@@ -9103,26 +9095,52 @@ function applySpacingSettings() {
 }
 
 // Управление размытым фоном
+
+/** Сбрасывает второй видеоэлемент blur-слоя: без воспроизведения, чтобы не держать лишний декодинг. */
+function hideBlurBackgroundVideo() {
+  if (!elBlurBgVideo) return;
+  elBlurBgVideo.onerror = null;
+  try {
+    elBlurBgVideo.pause();
+  } catch (e) {}
+  elBlurBgVideo.removeAttribute("src");
+  try {
+    elBlurBgVideo.load();
+  } catch (e2) {}
+  elBlurBgVideo.classList.add("hidden");
+}
+
+/** Переносит object-position с основного ролика на blur-дубликат (совпадает с pan wide-bg). */
+function copyBgVideoObjectPositionToBlur(sourceVideo, blurVideo) {
+  if (!sourceVideo || !blurVideo || !sourceVideo.style) return;
+  var op = sourceVideo.style.objectPosition;
+  if (op) blurVideo.style.objectPosition = op;
+  else blurVideo.style.objectPosition = "";
+}
+
 function updateBlurBackground(src) {
   console.log('[Engine] updateBlurBackground called with src:', src);
   console.log('[Engine] elBlurBgLayer:', elBlurBgLayer);
   console.log('[Engine] elBlurBgImage:', elBlurBgImage);
   console.log('[Engine] STORY.meta:', STORY.meta);
   console.log('[Engine] STORY.meta.blurBackground:', STORY.meta?.blurBackground);
-  
+
   if (!elBlurBgLayer || !elBlurBgImage) {
     console.warn('[Engine] Элементы размытого фона не найдены');
     return;
   }
-  
+
   if (!STORY.meta || !STORY.meta.blurBackground) {
     console.log('[Engine] Размытый фон отключен в метаданных');
     elBlurBgLayer.classList.add("hidden");
+    hideBlurBackgroundVideo();
     return;
   }
-  
+
   if (src && src !== "") {
     console.log('[Engine] Устанавливаем размытый фон:', src);
+    hideBlurBackgroundVideo();
+    elBlurBgImage.classList.remove("hidden");
     elBlurBgImage.src = src;
     elBlurBgLayer.classList.remove("hidden");
     // applySpacingSettings мог выставить display:none — без явного block слой остаётся невидимым.
@@ -9135,83 +9153,125 @@ function updateBlurBackground(src) {
   } else {
     console.log('[Engine] src пустой, скрываем размытый фон');
     elBlurBgLayer.classList.add("hidden");
+    hideBlurBackgroundVideo();
   }
 }
 
-function updateBlurBackgroundFromVideoFrame(videoEl, fallbackSrc) {
+/**
+ * Размытый фон для видео: второй <video> с тем же источником, без play(), пауза на кадре 0 после loadeddata.
+ * Обходит canvas и data URL — в localStorage не кладётся тяжёлый blurSnapshotSrc.
+ */
+function syncBlurBackgroundVideo(videoEl, fallbackSrc) {
   if (!elBlurBgLayer || !elBlurBgImage) return;
   if (!STORY.meta || !STORY.meta.blurBackground) return;
 
-  var captureSeq = ++blurFrameCaptureSeq;
-  var fallback = normalizeAssetUrl(fallbackSrc || "");
-  visualTrace("blurVideoFrame:capture-start", {
-    fallbackSrc: fallback,
-    videoSrc: videoEl ? normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") : ""
-  });
+  var fallbackTrim = typeof fallbackSrc === "string" ? fallbackSrc.trim() : "";
+  var vidNormForFb = videoEl ? normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") : "";
+  var imageFallback = fallbackTrim || findBlurFallbackImageForBgVideoUrl(vidNormForFb);
 
-  if (fallback) {
-    updateBlurBackground(fallback);
+  function applyImageFallback() {
+    hideBlurBackgroundVideo();
+    if (imageFallback) updateBlurBackground(imageFallback);
+    else elBlurBgLayer.classList.add("hidden");
   }
 
-  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-    visualTrace("blurVideoFrame:capture-skip-no-size", { fallbackSrc: fallback });
-    var vidUrlNoSize = videoEl ? normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") : "";
-    var imgFbNoSize = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoSize);
-    if (imgFbNoSize) updateBlurBackground(imgFbNoSize);
+  if (!elBlurBgVideo) {
+    if (imageFallback) updateBlurBackground(imageFallback);
     return;
   }
 
-  try {
-    var maxDim = 960;
-    var srcW = videoEl.videoWidth;
-    var srcH = videoEl.videoHeight;
-    var scale = Math.min(1, maxDim / Math.max(srcW, srcH));
-    var targetW = Math.max(1, Math.round(srcW * scale));
-    var targetH = Math.max(1, Math.round(srcH * scale));
+  var seq = ++blurBgVideoSyncSeq;
 
-    var canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-
-    var ctx = canvas.getContext('2d');
-    if (!ctx) {
-      var vidUrlNoCtx = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
-      var imgFbNoCtx = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoCtx);
-      if (imgFbNoCtx) updateBlurBackground(imgFbNoCtx);
-      return;
-    }
-
-    ctx.drawImage(videoEl, 0, 0, targetW, targetH);
-    var frameDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-    if (!frameDataUrl) {
-      var vidUrlNoData = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
-      var imgFbNoData = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlNoData);
-      if (imgFbNoData) updateBlurBackground(imgFbNoData);
-      return;
-    }
-
-    // Защита от гонки: применяем только последний захват кадра.
-    if (captureSeq !== blurFrameCaptureSeq) return;
-    updateBlurBackground(frameDataUrl);
-    visualTrace("blurVideoFrame:capture-done", {
-      targetWidth: targetW,
-      targetHeight: targetH
-    });
-  } catch (e) {
-    // На file:// и при CORS браузер может запретить canvas export; оставляем poster/текущий blur.
-    visualTrace("blurVideoFrame:capture-skip", {
-      error: e && e.name ? e.name : String(e),
-      fallbackSrc: fallback
-    });
-    console.log('[VIDEO] first frame blur capture skipped:', e && e.name ? e.name : e);
-    var vidUrlCatch = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
-    var imgFbCatch = fallback || findBlurFallbackImageForBgVideoUrl(vidUrlCatch);
-    if (imgFbCatch) updateBlurBackground(imgFbCatch);
+  if (!videoEl) {
+    applyImageFallback();
+    return;
   }
+
+  var targetNorm = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
+  visualTrace("blurVideoSync:start", {
+    fallbackSrc: imageFallback,
+    videoSrc: targetNorm
+  });
+
+  if (!targetNorm) {
+    visualTrace("blurVideoSync:no-src", {});
+    applyImageFallback();
+    return;
+  }
+
+  elBlurBgImage.removeAttribute("src");
+  elBlurBgImage.classList.add("hidden");
+  elBlurBgVideo.classList.remove("hidden");
+
+  elBlurBgVideo.muted = true;
+  elBlurBgVideo.defaultMuted = true;
+  elBlurBgVideo.loop = false;
+  elBlurBgVideo.autoplay = false;
+  if ("playsInline" in elBlurBgVideo) elBlurBgVideo.playsInline = true;
+  elBlurBgVideo.setAttribute("playsinline", "");
+  elBlurBgVideo.preload = "auto";
+
+  function finalizeBlurVideoFrame() {
+    if (seq !== blurBgVideoSyncSeq) return;
+    try {
+      elBlurBgVideo.pause();
+      elBlurBgVideo.currentTime = 0;
+    } catch (e) {}
+    copyBgVideoObjectPositionToBlur(videoEl, elBlurBgVideo);
+    elBlurBgVideo.style.objectFit = "cover";
+    elBlurBgVideo.style.width = "100%";
+    elBlurBgVideo.style.height = "100%";
+    elBlurBgLayer.classList.remove("hidden");
+    elBlurBgLayer.style.display = "block";
+    visualTrace("blurVideoSync:ready", {
+      videoWidth: elBlurBgVideo.videoWidth,
+      videoHeight: elBlurBgVideo.videoHeight
+    });
+  }
+
+  elBlurBgVideo.onerror = function () {
+    if (seq !== blurBgVideoSyncSeq) return;
+    visualTrace("blurVideoSync:error", { videoSrc: targetNorm });
+    hideBlurBackgroundVideo();
+    if (imageFallback) updateBlurBackground(imageFallback);
+    else elBlurBgLayer.classList.add("hidden");
+  };
+
+  var sameSrc =
+    normalizeAssetUrl(elBlurBgVideo.currentSrc || elBlurBgVideo.src || "") === targetNorm &&
+    !!(elBlurBgVideo.currentSrc || elBlurBgVideo.src);
+
+  if (sameSrc && elBlurBgVideo.readyState >= 2) {
+    finalizeBlurVideoFrame();
+    return;
+  }
+
+  elBlurBgVideo.addEventListener(
+    "loadeddata",
+    function () {
+      if (seq !== blurBgVideoSyncSeq) return;
+      finalizeBlurVideoFrame();
+    },
+    { once: true }
+  );
+
+  var rawAssign = videoEl.currentSrc || videoEl.src || "";
+  elBlurBgVideo.src = rawAssign;
+  try {
+    elBlurBgVideo.load();
+  } catch (e3) {}
+
+  setTimeout(function () {
+    if (seq !== blurBgVideoSyncSeq) return;
+    if (!elBlurBgVideo.videoWidth && imageFallback) {
+      visualTrace("blurVideoSync:timeout-fallback", { videoSrc: targetNorm });
+      applyImageFallback();
+    }
+  }, 600);
 }
 
 // После автосейва runCurrent снова вызывает setBackground с тем же роликом — loadeddata может не прийти,
-// и размытый слой остаётся пустым/скрытым. Несколько попыток + подписка на loadeddata догоняют кадр.
+// и blur-дубликат может отстать. Несколько попыток + подписка на loadeddata подтягивают синхронизацию.
 function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
   if (!STORY.meta || !STORY.meta.blurBackground) return;
   var fb = typeof fallbackSrc === "string" ? fallbackSrc : "";
@@ -9220,8 +9280,7 @@ function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
     if (!elBgVideo || elBgVideo.classList.contains("hidden")) return;
     var vsrc = elBgVideo.currentSrc || elBgVideo.src || "";
     if (!vsrc) return;
-    if (!elBgVideo.videoWidth || !elBgVideo.videoHeight) return;
-    updateBlurBackgroundFromVideoFrame(elBgVideo, fb);
+    syncBlurBackgroundVideo(elBgVideo, fb);
   }
 
   if (elBgVideo) {

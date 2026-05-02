@@ -936,6 +936,23 @@ body {
   backface-visibility: hidden;
 }
 
+/* Дубликат фонового видео под размытием: тот же источник, без воспроизведения (кадр 0). */
+.blur-bg-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(calc(var(--blurStrength) * var(--viewportScale))) brightness(var(--blurBrightness));
+  opacity: var(--blurOpacity);
+  transform: scale(1.5) translateZ(0);
+  transform-origin: center center;
+  will-change: transform, filter;
+  backface-visibility: hidden;
+}
+
 /* Сцена */
 .stage {
   position: absolute;
@@ -2077,6 +2094,7 @@ body {
 .char,
 .blur-bg-layer,
 .blur-bg-image,
+.blur-bg-video,
 .overlay {
   touch-action: none;
 }
