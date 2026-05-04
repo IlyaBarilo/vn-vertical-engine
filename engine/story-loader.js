@@ -922,10 +922,49 @@ function parseMediaFocusYOption(rawValue, lineNumber, line) {
   return null;
 }
 
+// Нормализует стартовый zoom для 360-фона в долю 0..1.
+// Значение можно задавать как 0..1 или как проценты 0..100.
+function parseMediaFocusZOption(rawValue, lineNumber, line) {
+  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+
+  if (value !== "" && !isNaN(Number(value))) {
+    var numeric = Number(value);
+    if (numeric >= 0 && numeric <= 1) return numeric;
+    if (numeric >= 0 && numeric <= 100) return numeric / 100;
+  }
+
+  addParseError(lineNumber, line, `Invalid focusZ value "${rawValue}". Use 0..1 or 0..100.`, true);
+  return null;
+}
+
+// Нормализует стартовый угол обзора для 360-фона в градусах.
+// Диапазон ограничен безопасными значениями для мобильных и десктопа.
+function parseMediaFovOption(rawValue, lineNumber, line) {
+  var numeric = Number(rawValue);
+  if (!isFinite(numeric)) {
+    addParseError(lineNumber, line, `Invalid fov value "${rawValue}". Use a number from 35 to 90.`, true);
+    return null;
+  }
+  if (numeric < 35 || numeric > 90) {
+    addParseError(lineNumber, line, `fov "${rawValue}" is out of range. Use 35..90.`, true);
+    return null;
+  }
+  return numeric;
+}
+
 // Проверяет bare-флаг вида "scroll" без значения, не путая его с "scroll=false".
 function hasBareToken(text, tokenName) {
   var re = new RegExp("(^|\\s)" + tokenName + "(?=\\s|$)", "i");
   return re.test(String(text || ""));
+}
+
+// Определяет включение 360-режима по bare-токену "360" или mode/projection=360.
+function hasPanorama360Flag(rawText, optionsObject) {
+  if (hasBareToken(rawText, "360")) return true;
+  if (!optionsObject || typeof optionsObject !== "object") return false;
+  var modeValue = optionsObject.mode !== undefined ? String(optionsObject.mode).toLowerCase() : "";
+  var projectionValue = optionsObject.projection !== undefined ? String(optionsObject.projection).toLowerCase() : "";
+  return modeValue === "360" || projectionValue === "360";
 }
 
 function stripInlineComment(line) {
@@ -1434,9 +1473,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           bgEntry.scale = parsedBgScale;
         }
 
+        if (hasPanorama360Flag(rest, args)) {
+          bgEntry.is360 = true;
+        }
+
+        if (args.focusz !== undefined) {
+          var parsedBgFocusZ = parseMediaFocusZOption(args.focusz, lineNumber, line);
+          if (parsedBgFocusZ === null) return true;
+          bgEntry.focusZ = parsedBgFocusZ;
+        }
+
+        if (args.fov !== undefined) {
+          var parsedBgFov = parseMediaFovOption(args.fov, lineNumber, line);
+          if (parsedBgFov === null) return true;
+          bgEntry.fov = parsedBgFov;
+        }
+
         // Для простых строк без fallback/volume сохраняем старый формат (string),
         // чтобы не ломать обратную совместимость.
-        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined) {
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined && bgEntry.is360 === undefined && bgEntry.focusZ === undefined && bgEntry.fov === undefined) {
           story.assets.backgrounds[assetId] = args.file;
         } else {
           story.assets.backgrounds[assetId] = bgEntry;
@@ -2212,6 +2267,9 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       };
 
       const bgParams = parseActionParams(bgTokens.slice(1));
+      if (hasPanorama360Flag(bgTokens.slice(1).join(' '), bgParams)) {
+        bgAction.is360 = true;
+      }
       if (bgParams.scroll === undefined && bgTokens.slice(1).some(function(token) {
         return String(token || "").toLowerCase() === "scroll";
       })) {
@@ -2243,6 +2301,19 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         const parsedBgFocusY = parseMediaFocusYOption(bgFocusYRaw, lineNumber, line);
         if (parsedBgFocusY === null) return;
         bgAction.focusY = parsedBgFocusY;
+      }
+
+      var bgFocusZRaw = bgParams.focusZ !== undefined ? bgParams.focusZ : bgParams.focusz;
+      if (bgFocusZRaw !== undefined) {
+        const parsedBgFocusZ = parseMediaFocusZOption(bgFocusZRaw, lineNumber, line);
+        if (parsedBgFocusZ === null) return;
+        bgAction.focusZ = parsedBgFocusZ;
+      }
+
+      if (bgParams.fov !== undefined) {
+        const parsedBgFov = parseMediaFovOption(bgParams.fov, lineNumber, line);
+        if (parsedBgFov === null) return;
+        bgAction.fov = parsedBgFov;
       }
 
       actions.push(bgAction);

@@ -432,6 +432,22 @@ This project uses the following open-source libraries:
 -   **Usage:** included in the repository without modifications, works
     fully offline
 
+### jsrsasign (MIT License)
+
+-   **Purpose:** offline license signature verification
+-   **File:** `lib/jsrsasign-all-min.js` (version 11.1.0)
+-   **License:** MIT (see [NOTICE.md](NOTICE.md) for details)
+-   **Usage:** included in the repository without modifications, works
+    fully offline
+
+### three.js (MIT License)
+
+-   **Purpose:** 360 background rendering (WebGL layer)
+-   **File:** `lib/three.min.js` (version 0.152.2)
+-   **License:** MIT (see [NOTICE.md](NOTICE.md) for details)
+-   **Usage:** included in the repository without modifications, works
+    offline in the current distribution format
+
 ### Full Notices List
 
 Detailed information about licenses and usage terms of third-party
@@ -450,6 +466,7 @@ software can be found in the [NOTICE.md](NOTICE.md) file.
 ## 🔄 Dependency Updates
 
 Mermaid is updated manually as new versions are released.
+three.js and jsrsasign are also updated manually as needed.
 
 
 

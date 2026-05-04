@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Конвертер 360 JPG в JS-пакет</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111827;
+      --panel: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --border: #374151;
+      --accent: #3b82f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    h1 { margin: 0 0 10px; font-size: 20px; }
+    h2 { margin: 0 0 10px; font-size: 16px; }
+    label { display: block; margin-bottom: 6px; color: var(--muted); }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px;
+      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    textarea { min-height: 240px; resize: vertical; }
+    .row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+    button.primary {
+      border-color: #1d4ed8;
+      background: var(--accent);
+      color: white;
+    }
+    .hint { color: var(--muted); font-size: 12px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 820px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Конвертер 360 JPG - JS-пакет</h1>
+      <div class="hint">
+        Назначение: подготовить файл <span class="mono">*.360.js</span> для офлайн-режима (без сервера), чтобы движок мог грузить 360-ресурс из JS.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Входные данные</h2>
+      <div class="row">
+        <div>
+          <label for="fileInput">JPG/PNG 2:1</label>
+          <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" />
+          <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
+        </div>
+        <div>
+          <label for="sourceKey">Ключ исходного file=... из истории</label>
+          <input id="sourceKey" type="text" placeholder="local/360/images/test101.jpg" />
+          <div class="hint" style="margin-top:8px;">Этот ключ будет использоваться движком для поиска данных.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Генерация пакета</h2>
+      <div class="actions">
+        <button id="btnGenerate" class="primary" type="button">Сгенерировать JS</button>
+        <button id="btnDownload" type="button" disabled>Скачать .360.js</button>
+      </div>
+      <div id="status" class="hint" style="margin-top:10px;">Ожидание.</div>
+      <div class="hint" style="margin-top:10px;">
+        Формат: пакет пишет данные в <span class="mono">window.VN360_PACKS[sourceKey]</span>.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Предпросмотр результата</h2>
+      <textarea id="output" spellcheck="false" placeholder="Здесь появится .360.js"></textarea>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    var fileInput = document.getElementById("fileInput");
+    var sourceKeyEl = document.getElementById("sourceKey");
+    var imageInfoEl = document.getElementById("imageInfo");
+    var statusEl = document.getElementById("status");
+    var outputEl = document.getElementById("output");
+    var btnGenerate = document.getElementById("btnGenerate");
+    var btnDownload = document.getElementById("btnDownload");
+
+    var generatedText = "";
+    var suggestedFileName = "asset.360.js";
+    var loadedFile = null;
+    var loadedDataUrl = "";
+    var loadedMeta = null;
+
+    // Экранирует строку для безопасной вставки в JS-литерал.
+    function jsStringLiteral(raw) {
+      return String(raw || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
+    }
+
+    // Разбивает длинную строку data-url на куски, чтобы итоговый файл легче открывался в редакторе.
+    function chunkString(text, chunkSize) {
+      var chunks = [];
+      var i = 0;
+      var size = Math.max(128, chunkSize || 16384);
+      while (i < text.length) {
+        chunks.push(text.slice(i, i + size));
+        i += size;
+      }
+      return chunks;
+    }
+
+    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1.
+    function updateImageInfo(meta) {
+      if (!meta) {
+        imageInfoEl.textContent = "Файл еще не выбран.";
+        imageInfoEl.className = "hint";
+        return;
+      }
+      var ratio = meta.height > 0 ? meta.width / meta.height : 0;
+      var ratioDiff = Math.abs(ratio - 2);
+      var ratioOk = ratioDiff <= 0.05;
+      imageInfoEl.innerHTML =
+        "Файл: <span class='mono'>" + meta.name + "</span>, " +
+        "размер: " + meta.size + " байт, " +
+        "кадр: " + meta.width + "x" + meta.height + ", " +
+        "ratio: " + ratio.toFixed(4) + " " +
+        (ratioOk ? "<span class='ok'>(OK ~ 2:1)</span>" : "<span class='warn'>(не похоже на 2:1)</span>");
+      imageInfoEl.className = "hint";
+    }
+
+    // Читает изображение как data-url и достает его размеры через Image.
+    function readImageFile(file) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function() {
+          var dataUrl = String(reader.result || "");
+          var img = new Image();
+          img.onload = function() {
+            resolve({
+              dataUrl: dataUrl,
+              meta: {
+                name: file.name,
+                size: file.size,
+                type: file.type || "image/jpeg",
+                width: img.naturalWidth || img.width || 0,
+                height: img.naturalHeight || img.height || 0
+              }
+            });
+          };
+          img.onerror = function() {
+            reject(new Error("Не удалось прочитать размеры изображения."));
+          };
+          img.src = dataUrl;
+        };
+        reader.onerror = function() {
+          reject(new Error("Ошибка чтения файла."));
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Собирает итоговый текст .360.js в простом формате для регистрации ресурса.
+    function buildPackJs(sourceKey, dataUrl, meta) {
+      var chunks = chunkString(dataUrl, 16384);
+      var chunkLines = chunks.map(function(part) {
+        return "    '" + jsStringLiteral(part) + "'";
+      }).join(",\n");
+
+      return [
+        "(function() {",
+        "  'use strict';",
+        "  window.VN360_PACKS = window.VN360_PACKS || {};",
+        "  window.VN360_PACKS_META = window.VN360_PACKS_META || {};",
+        "",
+        "  // Ключ должен совпадать с file=... из истории для автопоиска пакета движком.",
+        "  var sourceKey = '" + jsStringLiteral(sourceKey) + "';",
+        "  var dataUrl = [",
+        chunkLines,
+        "  ].join('');",
+        "",
+        "  window.VN360_PACKS[sourceKey] = dataUrl;",
+        "  window.VN360_PACKS_META[sourceKey] = {",
+        "    generatedAt: '" + new Date().toISOString() + "',",
+        "    type: '" + jsStringLiteral(meta.type || "image/jpeg") + "',",
+        "    size: " + Number(meta.size || 0) + ",",
+        "    width: " + Number(meta.width || 0) + ",",
+        "    height: " + Number(meta.height || 0),
+        "  };",
+        "})();",
+        ""
+      ].join("\n");
+    }
+
+    // Подсказывает имя результирующего файла на основе исходного jpg/png.
+    function suggestPackFileName(fileName) {
+      var name = String(fileName || "asset");
+      var dot = name.lastIndexOf(".");
+      if (dot > 0) name = name.slice(0, dot);
+      return name + ".360.js";
+    }
+
+    fileInput.addEventListener("change", function() {
+      var file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+      loadedFile = file;
+      generatedText = "";
+      outputEl.value = "";
+      btnDownload.disabled = true;
+      if (!file) {
+        loadedDataUrl = "";
+        loadedMeta = null;
+        updateImageInfo(null);
+        statusEl.textContent = "Файл не выбран.";
+        return;
+      }
+      suggestedFileName = suggestPackFileName(file.name);
+      if (!sourceKeyEl.value.trim()) {
+        sourceKeyEl.value = "local/360/images/" + file.name;
+      }
+      statusEl.textContent = "Чтение изображения...";
+      readImageFile(file).then(function(result) {
+        loadedDataUrl = result.dataUrl;
+        loadedMeta = result.meta;
+        updateImageInfo(loadedMeta);
+        statusEl.innerHTML = "<span class='ok'>Файл прочитан. Можно генерировать JS.</span>";
+      }).catch(function(err) {
+        loadedDataUrl = "";
+        loadedMeta = null;
+        updateImageInfo(null);
+        statusEl.innerHTML = "<span class='warn'>" + err.message + "</span>";
+      });
+    });
+
+    btnGenerate.addEventListener("click", function() {
+      var sourceKey = sourceKeyEl.value.trim();
+      if (!loadedFile || !loadedDataUrl || !loadedMeta) {
+        statusEl.innerHTML = "<span class='warn'>Сначала выберите и загрузите изображение.</span>";
+        return;
+      }
+      if (!sourceKey) {
+        statusEl.innerHTML = "<span class='warn'>Укажите ключ file=... (source key).</span>";
+        return;
+      }
+      generatedText = buildPackJs(sourceKey, loadedDataUrl, loadedMeta);
+      outputEl.value = generatedText;
+      btnDownload.disabled = false;
+      statusEl.innerHTML = "<span class='ok'>Готово. Пакет сформирован.</span>";
+    });
+
+    btnDownload.addEventListener("click", function() {
+      if (!generatedText) return;
+      var blob = new Blob([generatedText], { type: "application/javascript;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = suggestedFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+    });
+  </script>
+</body>
+</html>

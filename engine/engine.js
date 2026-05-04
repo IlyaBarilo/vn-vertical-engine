@@ -783,6 +783,7 @@ var elTitle = document.getElementById("title");
 var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
+var elBg360 = document.getElementById("bg360Layer");
 var elBgScrollHint = document.getElementById("bgScrollHint");
 var elChar = document.getElementById("charLayer");
 var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
@@ -976,7 +977,9 @@ if (elNovelWindow) {
   elNovelWindow.addEventListener("pointermove", handleBackgroundScrollPointerMove);
   elNovelWindow.addEventListener("pointerup", handleBackgroundScrollPointerUp);
   elNovelWindow.addEventListener("pointercancel", handleBackgroundScrollPointerCancel);
+  elNovelWindow.addEventListener("wheel", handleBackgroundScrollWheel, { passive: false });
 }
+setupBg360Interactions();
 
 
 
@@ -1399,6 +1402,8 @@ var state = {
 // Допустимый диапазон scale для фона/сюжетного видео (множитель к «базовому» object-fit: cover).
 var BG_MEDIA_SCALE_MIN = 0.05;
 var BG_MEDIA_SCALE_MAX = 8;
+var BG_360_FOV_MIN = 35;
+var BG_360_FOV_MAX = 90;
 
 var backgroundScroll = {
   enabled: false,
@@ -1416,15 +1421,41 @@ var backgroundScroll = {
   dragging: false,
   pointerId: null,
   dragStartX: 0,
+  dragStartY: 0,
   dragStartPosition: 0.5,
+  dragStartFocusY: 0.5,
   moved: false,
   suppressClick: false,
   suppressTimer: null,
   hintTimer: null,
-  backgroundOptions: { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 },
+  panorama360Fallback: false,
+  backgroundOptions: { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false },
   backgroundTarget: null,
   backgroundContainer: null,
   backgroundPosition: 0.5
+};
+
+// Runtime 360-фона: держит WebGL-ресурсы, жесты и текущее направление камеры.
+var bg360Runtime = {
+  active: false,
+  interactive: false,
+  renderer: null,
+  scene: null,
+  camera: null,
+  mesh: null,
+  material: null,
+  geometry: null,
+  texture: null,
+  video: null,
+  frameId: 0,
+  yawDeg: 180,
+  pitchDeg: 0,
+  fovDeg: 70,
+  pointers: {},
+  pinchDistance: null,
+  dragPointerId: null,
+  dragLastX: 0,
+  dragLastY: 0
 };
 
 // Отладка автосейва: в консоли фильтр [AUTOSAVE_DEBUG]. Выключить: window.VN_AUTOSAVE_DEBUG = false
@@ -1489,6 +1520,7 @@ function activateMediaScroll(options, targetEl, containerEl, owner, positionOver
   backgroundScroll.target = nextTarget;
   backgroundScroll.container = nextContainer;
   backgroundScroll.interactive = !!normalized.enabled;
+  backgroundScroll.panorama360Fallback = normalized.panorama360Fallback === true;
   backgroundScroll.mediaScale = normalizeMediaScale(normalized.scale, 1);
   backgroundScroll.enabled =
     backgroundScroll.interactive ||
@@ -1501,6 +1533,7 @@ function activateMediaScroll(options, targetEl, containerEl, owner, positionOver
   backgroundScroll.position = typeof positionOverride === "number"
     ? clamp(positionOverride, 0, 1)
     : backgroundScroll.start;
+  backgroundScroll.dragStartFocusY = typeof backgroundScroll.focusY === "number" ? backgroundScroll.focusY : 0.5;
   backgroundScroll.dragging = false;
   backgroundScroll.moved = false;
   applyBackgroundScrollPosition();
@@ -1597,7 +1630,8 @@ function disableBackgroundScroll() {
   backgroundScroll.focusX = null;
   backgroundScroll.focusY = null;
   backgroundScroll.mediaScale = 1;
-  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
+  backgroundScroll.panorama360Fallback = false;
+  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
   backgroundScroll.backgroundTarget = null;
   backgroundScroll.backgroundContainer = null;
   backgroundScroll.backgroundPosition = 0.5;
@@ -1642,7 +1676,12 @@ function updateBackgroundScrollAvailability() {
     : Math.max(rect.width / mediaSize.width, rect.height / mediaSize.height)) * layoutScale;
   var renderedWidth = mediaSize.width * scale;
   backgroundScroll.maxOffset = Math.max(0, renderedWidth - rect.width);
-  backgroundScroll.available = backgroundScroll.interactive && backgroundScroll.maxOffset > 1;
+  // Для 360-fallback интерактив нужен даже когда горизонтального запаса мало:
+  // остаются вертикальный обзор и zoom колесом.
+  backgroundScroll.available = backgroundScroll.interactive && (
+    backgroundScroll.maxOffset > 1 ||
+    backgroundScroll.panorama360Fallback
+  );
 
   elNovelWindow.classList.toggle("bg-scrollable", backgroundScroll.available);
 
@@ -1876,7 +1915,7 @@ function handleBackgroundScrollPointerDown(e) {
   if (e.pointerType === "mouse" && e.button !== 0) return;
   if (isUiClick(e.target) && backgroundScroll.owner !== "storyVideo") return;
 
-  if (typeof backgroundScroll.focusX === "number") {
+  if (typeof backgroundScroll.focusX === "number" && backgroundScroll.maxOffset > 1) {
     var msDrag = typeof backgroundScroll.mediaScale === "number" ? backgroundScroll.mediaScale : 1;
     backgroundScroll.position = computeFocusedMediaPosition(
       backgroundScroll.target || elBg,
@@ -1889,7 +1928,9 @@ function handleBackgroundScrollPointerDown(e) {
   backgroundScroll.dragging = true;
   backgroundScroll.pointerId = e.pointerId;
   backgroundScroll.dragStartX = e.clientX;
+  backgroundScroll.dragStartY = e.clientY;
   backgroundScroll.dragStartPosition = backgroundScroll.position;
+  backgroundScroll.dragStartFocusY = typeof backgroundScroll.focusY === "number" ? backgroundScroll.focusY : 0.5;
   backgroundScroll.moved = false;
 
   if (elNovelWindow) {
@@ -1902,24 +1943,33 @@ function handleBackgroundScrollPointerDown(e) {
   }
 }
 
-// Во время drag меняем только горизонтальную позицию, вертикальное движение игнорируем.
+// Во время drag меняем горизонтальную позицию; в 360-fallback добавляем вертикальный обзор по Y.
 function handleBackgroundScrollPointerMove(e) {
   if (!backgroundScroll) return;
   if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
-  if (!backgroundScroll.maxOffset) return;
 
   var dx = e.clientX - backgroundScroll.dragStartX;
-  if (Math.abs(dx) > 3) {
+  var dy = e.clientY - backgroundScroll.dragStartY;
+  if (Math.abs(dx) > 3 || (backgroundScroll.panorama360Fallback && Math.abs(dy) > 3)) {
     backgroundScroll.moved = true;
   }
 
-  backgroundScroll.position = clamp(
-    backgroundScroll.dragStartPosition - (dx / backgroundScroll.maxOffset),
-    0,
-    1
-  );
+  if (backgroundScroll.maxOffset > 1) {
+    backgroundScroll.position = clamp(
+      backgroundScroll.dragStartPosition + (dx / backgroundScroll.maxOffset),
+      0,
+      1
+    );
+  }
   if (backgroundScroll.owner === "background") {
     backgroundScroll.backgroundPosition = backgroundScroll.position;
+  }
+  if (backgroundScroll.panorama360Fallback) {
+    var containerHeight = backgroundScroll.container ? backgroundScroll.container.clientHeight : (elNovelWindow ? elNovelWindow.clientHeight : 0);
+    if (containerHeight > 0) {
+      var yDelta = (e.clientY - backgroundScroll.dragStartY) / containerHeight;
+      backgroundScroll.focusY = clamp((typeof backgroundScroll.dragStartFocusY === "number" ? backgroundScroll.dragStartFocusY : 0.5) - yDelta, 0, 1);
+    }
   }
   applyBackgroundScrollPosition();
 
@@ -1927,6 +1977,20 @@ function handleBackgroundScrollPointerMove(e) {
     e.preventDefault();
     e.stopPropagation();
   }
+}
+
+// Поддерживает zoom колесом в 360-fallback (без WebGL), меняя mediaScale в реальном времени.
+function handleBackgroundScrollWheel(e) {
+  if (!backgroundScroll || !backgroundScroll.interactive) return;
+  if (!backgroundScroll.panorama360Fallback) return;
+  if (isUiClick(e.target) && backgroundScroll.owner !== "storyVideo") return;
+  var currentScale = typeof backgroundScroll.mediaScale === "number" ? backgroundScroll.mediaScale : 1;
+  var nextScale = e.deltaY < 0 ? currentScale * 1.06 : currentScale * 0.94;
+  backgroundScroll.mediaScale = normalizeMediaScale(nextScale, currentScale);
+  applyBackgroundScrollPosition();
+  updateBackgroundScrollAvailability();
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 // Завершает drag и подавляет следующий click, если пользователь действительно двигал фон.
@@ -2052,6 +2116,27 @@ function getBackgroundAssetFocusY(assetEntry) {
   return normalizeMediaFocusY(assetEntry.focusY, null);
 }
 
+// Возвращает флаг 360-фона из [bg]; поддерживаем явный is360 и mode/projection=360 для совместимости.
+function getBackgroundAssetIs360(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return false;
+  if (assetEntry.is360 === true) return true;
+  var mode = typeof assetEntry.mode === "string" ? assetEntry.mode.toLowerCase() : "";
+  var projection = typeof assetEntry.projection === "string" ? assetEntry.projection.toLowerCase() : "";
+  return mode === "360" || projection === "360";
+}
+
+// Возвращает focusZ (нормализованный зум 0..1) из [bg], если задан.
+function getBackgroundAssetFocusZ(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  return normalizeMediaFocusZ(assetEntry.focusZ, null);
+}
+
+// Возвращает стартовый FOV в градусах из [bg], если задан.
+function getBackgroundAssetFov(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  return normalizeMediaFov(assetEntry.fov, null);
+}
+
 // Переводит focusX в долю 0..1; null означает, что композиционный фокус по X не задан.
 function normalizeMediaFocus(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -2088,14 +2173,31 @@ function normalizeMediaScale(value, fallback) {
   return clamp(n, BG_MEDIA_SCALE_MIN, BG_MEDIA_SCALE_MAX);
 }
 
+// Нормализует focusZ в долю 0..1 для 360-зумирования.
+function normalizeMediaFocusZ(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var n = Number(value);
+  if (!isFinite(n)) return fallback;
+  if (n > 1 && n <= 100) n = n / 100;
+  return clamp(n, 0, 1);
+}
+
+// Нормализует стартовый FOV для 360-режима в безопасный диапазон.
+function normalizeMediaFov(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var n = Number(value);
+  if (!isFinite(n)) return fallback;
+  return clamp(n, BG_360_FOV_MIN, BG_360_FOV_MAX);
+}
+
 // Приводит разные формы scroll/focusX/focusY/scale из сценария к единому объекту для рендера.
 function normalizeBackgroundScrollOptions(value) {
   if (value === true) {
-    return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1 };
+    return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
   }
 
   if (!value) {
-    return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
+    return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
   }
 
   if (typeof value === "object") {
@@ -2104,20 +2206,24 @@ function normalizeBackgroundScrollOptions(value) {
     var focusX = normalizeMediaFocus(value.focusX, null);
     var focusY = normalizeMediaFocusY(value.focusY, null);
     var scale = normalizeMediaScale(value.scale, 1);
+    var is360 = value.is360 === true;
+    var focusZ = normalizeMediaFocusZ(value.focusZ, null);
+    var fov = normalizeMediaFov(value.fov, null);
+    var panorama360Fallback = value.panorama360Fallback === true;
     if (scale === null) scale = 1;
-    return { enabled: enabled, start: start, focusX: focusX, focusY: focusY, scale: scale };
+    return { enabled: enabled, start: start, focusX: focusX, focusY: focusY, scale: scale, is360: is360, focusZ: focusZ, fov: fov, panorama360Fallback: panorama360Fallback };
   }
 
   if (typeof value === "string") {
     var raw = value.toLowerCase();
-    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
-    if (raw === "left" || raw === "start") return { enabled: true, start: 0, focusX: null, focusY: null, scale: 1 };
-    if (raw === "right" || raw === "end") return { enabled: true, start: 1, focusX: null, focusY: null, scale: 1 };
-    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1 };
-    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1 };
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    if (raw === "left" || raw === "start") return { enabled: true, start: 0, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    if (raw === "right" || raw === "end") return { enabled: true, start: 1, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
   }
 
-  return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
+  return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
 }
 
 // Переводит стартовую позицию скролла в долю от 0 до 1.
@@ -2133,11 +2239,14 @@ function normalizeBackgroundScrollStart(value, fallback) {
 }
 
 // Добавляет focusX, focusY и/или scale к настройкам media, не включая drag-скролл, если он не был задан отдельно.
-function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY) {
+function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, focusZ, fov) {
   if (
     (focusX === null || focusX === undefined) &&
     (scale === null || scale === undefined) &&
-    (focusY === null || focusY === undefined)
+    (focusY === null || focusY === undefined) &&
+    (is360 === null || is360 === undefined) &&
+    (focusZ === null || focusZ === undefined) &&
+    (fov === null || fov === undefined)
   ) {
     return scrollOptions;
   }
@@ -2155,6 +2264,17 @@ function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY) {
     var normalizedScale = normalizeMediaScale(scale, null);
     if (normalizedScale !== null) normalized.scale = normalizedScale;
   }
+  if (is360 !== null && is360 !== undefined) {
+    normalized.is360 = is360 === true;
+  }
+  if (focusZ !== null && focusZ !== undefined) {
+    var normalizedFocusZ = normalizeMediaFocusZ(focusZ, null);
+    if (normalizedFocusZ !== null) normalized.focusZ = normalizedFocusZ;
+  }
+  if (fov !== null && fov !== undefined) {
+    var normalizedFov = normalizeMediaFov(fov, null);
+    if (normalizedFov !== null) normalized.fov = normalizedFov;
+  }
   return normalized;
 }
 
@@ -2164,13 +2284,18 @@ function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY) {
 // все null — тогда единственный источник зума/фокуса этот объект; без подмешивания scale сюда зум теряется.
 function getBackgroundAssetScrollOptions(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object" || assetEntry.scroll === undefined) {
-    var baseNoScroll = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
+    var baseNoScroll = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null };
     var scaleOnly = getBackgroundAssetScale(assetEntry);
     if (scaleOnly !== null) baseNoScroll.scale = scaleOnly;
     var focusOnly = getBackgroundAssetFocusX(assetEntry);
     if (focusOnly !== null) baseNoScroll.focusX = focusOnly;
     var focusYOnly = getBackgroundAssetFocusY(assetEntry);
     if (focusYOnly !== null) baseNoScroll.focusY = focusYOnly;
+    if (getBackgroundAssetIs360(assetEntry)) baseNoScroll.is360 = true;
+    var focusZOnly = getBackgroundAssetFocusZ(assetEntry);
+    if (focusZOnly !== null) baseNoScroll.focusZ = focusZOnly;
+    var fovOnly = getBackgroundAssetFov(assetEntry);
+    if (fovOnly !== null) baseNoScroll.fov = fovOnly;
     return baseNoScroll;
   }
   var fromScroll = normalizeBackgroundScrollOptions(assetEntry.scroll);
@@ -2180,6 +2305,11 @@ function getBackgroundAssetScrollOptions(assetEntry) {
   if (focusAsset !== null) fromScroll.focusX = focusAsset;
   var focusYAsset = getBackgroundAssetFocusY(assetEntry);
   if (focusYAsset !== null) fromScroll.focusY = focusYAsset;
+  if (getBackgroundAssetIs360(assetEntry)) fromScroll.is360 = true;
+  var focusZAsset = getBackgroundAssetFocusZ(assetEntry);
+  if (focusZAsset !== null) fromScroll.focusZ = focusZAsset;
+  var fovAsset = getBackgroundAssetFov(assetEntry);
+  if (fovAsset !== null) fromScroll.fov = fovAsset;
   return fromScroll;
 }
 
@@ -2279,6 +2409,7 @@ profiler.mark('Audio is set up');
 applyUiScale();
 window.addEventListener("resize", applyUiScale);
 window.addEventListener("resize", updateBackgroundScrollAvailability);
+window.addEventListener("resize", resizeBg360Renderer);
 
 window.addEventListener("pagehide", function () {
   autosaveDebugLog("lifecycle:pagehide", {
@@ -3015,6 +3146,11 @@ function tryApplyAutosave() {
       data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
     setBackground(data.bg.src, blurFb, null, mergedScroll);
   }
+  // Если в слоте нет снимка bg, восстанавливаем последний bg из уже пройденных действий сцены.
+  // Это защищает от «черного экрана» после F5 на шагах ожидания choice/text.
+  if (!(data.bg && data.bg.src)) {
+    restoreBgFromScenePrefixForAutosave(state.sceneId, state.actionIndex);
+  }
 
   if (data.char && typeof data.char === "object") {
     applyAutosaveCharacterSnapshot(data.char);
@@ -3056,6 +3192,38 @@ function tryApplyAutosave() {
       }
     });
   });
+  return true;
+}
+
+// Восстанавливает последний bg из префикса сцены [0..actionIndex), когда в автосейве нет data.bg.
+// Используем только визуальный тип bg, без выполнения логических/ветвящихся действий.
+function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
+  if (!state || !state.sceneMap || !sceneId) return false;
+  var scene = state.sceneMap[sceneId];
+  if (!scene || !Array.isArray(scene.actions) || scene.actions.length === 0) return false;
+
+  var limit = clamp(parseInt(actionIndex, 10) || 0, 0, scene.actions.length);
+  var lastBgAction = null;
+  for (var i = 0; i < limit; i++) {
+    var a = scene.actions[i];
+    if (a && a.type === "bg") {
+      lastBgAction = a;
+    }
+  }
+  if (!lastBgAction) return false;
+
+  var bgAssetInfo = resolveBackgroundAsset(lastBgAction.src);
+  var bgMediaOptions = lastBgAction.scroll !== undefined ? lastBgAction.scroll : bgAssetInfo.scroll;
+  bgMediaOptions = mergeMediaFocusOptions(
+    bgMediaOptions,
+    lastBgAction.focusX !== undefined ? lastBgAction.focusX : bgAssetInfo.focusX,
+    lastBgAction.scale !== undefined ? lastBgAction.scale : bgAssetInfo.scale,
+    lastBgAction.focusY !== undefined ? lastBgAction.focusY : bgAssetInfo.focusY,
+    lastBgAction.is360 !== undefined ? lastBgAction.is360 : bgAssetInfo.is360,
+    lastBgAction.focusZ !== undefined ? lastBgAction.focusZ : bgAssetInfo.focusZ,
+    lastBgAction.fov !== undefined ? lastBgAction.fov : bgAssetInfo.fov
+  );
+  setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
   return true;
 }
 
@@ -3739,7 +3907,10 @@ function executeAction(action) {
         bgMediaOptions,
         action.focusX !== undefined ? action.focusX : bgAssetInfo.focusX,
         action.scale !== undefined ? action.scale : bgAssetInfo.scale,
-        action.focusY !== undefined ? action.focusY : bgAssetInfo.focusY
+        action.focusY !== undefined ? action.focusY : bgAssetInfo.focusY,
+        action.is360 !== undefined ? action.is360 : bgAssetInfo.is360,
+        action.focusZ !== undefined ? action.focusZ : bgAssetInfo.focusZ,
+        action.fov !== undefined ? action.fov : bgAssetInfo.fov
       );
       setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
       return false;
@@ -4139,17 +4310,500 @@ function gotoScene(sceneId) {
 //                   ВИЗУАЛ
 // =========================================================
 
+// Преобразует focusZ 0..1 в FOV: меньший FOV визуально приближает картинку внутри 360-сферы.
+function mapFocusZToFov(focusZ) {
+  var z = normalizeMediaFocusZ(focusZ, 0.5);
+  return BG_360_FOV_MAX - (BG_360_FOV_MAX - BG_360_FOV_MIN) * z;
+}
+
+// Проверяет, доступен ли WebGL-рендер для 360-фона.
+function canUseBg360Renderer() {
+  if (!window.THREE) return false;
+  if (!elBg360) return false;
+  try {
+    var testCanvas = document.createElement("canvas");
+    return !!(testCanvas.getContext("webgl") || testCanvas.getContext("experimental-webgl"));
+  } catch (e) {
+    return false;
+  }
+}
+
+// Создаёт renderer/camera/scene для 360 и переиспользует их между сменами фона.
+function ensureBg360Renderer() {
+  if (!canUseBg360Renderer()) return false;
+  if (bg360Runtime.renderer) return true;
+
+  var renderer = new window.THREE.WebGLRenderer({
+    canvas: elBg360,
+    antialias: true,
+    alpha: true,
+    powerPreference: "high-performance"
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(Math.max(1, elNovelWindow.clientWidth), Math.max(1, elNovelWindow.clientHeight), false);
+
+  var scene = new window.THREE.Scene();
+  var camera = new window.THREE.PerspectiveCamera(70, 1, 0.1, 1100);
+
+  bg360Runtime.renderer = renderer;
+  bg360Runtime.scene = scene;
+  bg360Runtime.camera = camera;
+  return true;
+}
+
+// Обновляет размер WebGL-буфера под текущее окно новеллы.
+function resizeBg360Renderer() {
+  if (!bg360Runtime.renderer || !bg360Runtime.camera || !elNovelWindow) return;
+  var width = Math.max(1, elNovelWindow.clientWidth);
+  var height = Math.max(1, elNovelWindow.clientHeight);
+  bg360Runtime.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  bg360Runtime.renderer.setSize(width, height, false);
+  bg360Runtime.camera.aspect = width / height;
+  bg360Runtime.camera.updateProjectionMatrix();
+}
+
+// Применяет yaw/pitch/fov к камере и кадрирует 360-сферу.
+function updateBg360Camera() {
+  if (!bg360Runtime.camera) return;
+  bg360Runtime.pitchDeg = clamp(bg360Runtime.pitchDeg, -85, 85);
+  bg360Runtime.fovDeg = clamp(bg360Runtime.fovDeg, BG_360_FOV_MIN, BG_360_FOV_MAX);
+  bg360Runtime.camera.fov = bg360Runtime.fovDeg;
+  bg360Runtime.camera.updateProjectionMatrix();
+  bg360Runtime.camera.rotation.order = "YXZ";
+  bg360Runtime.camera.rotation.y = window.THREE.MathUtils.degToRad(bg360Runtime.yawDeg || 0);
+  bg360Runtime.camera.rotation.x = window.THREE.MathUtils.degToRad(bg360Runtime.pitchDeg || 0);
+}
+
+// Возвращает число активных указателей на canvas для распознавания drag/pinch.
+function getBg360PointerCount() {
+  return Object.keys(bg360Runtime.pointers).length;
+}
+
+// Считает дистанцию между двумя указателями, чтобы реализовать pinch-zoom.
+function getBg360PinchDistance() {
+  var keys = Object.keys(bg360Runtime.pointers);
+  if (keys.length < 2) return null;
+  var a = bg360Runtime.pointers[keys[0]];
+  var b = bg360Runtime.pointers[keys[1]];
+  var dx = a.x - b.x;
+  var dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Обрабатывает pointerdown для 360: старт drag и фиксация двух пальцев для pinch.
+function handleBg360PointerDown(e) {
+  if (!bg360Runtime.active || !elBg360) return;
+  if (!bg360Runtime.interactive) return;
+  bg360Runtime.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  if (getBg360PointerCount() === 1) {
+    bg360Runtime.dragPointerId = e.pointerId;
+    bg360Runtime.dragLastX = e.clientX;
+    bg360Runtime.dragLastY = e.clientY;
+  } else if (getBg360PointerCount() >= 2) {
+    bg360Runtime.pinchDistance = getBg360PinchDistance();
+    bg360Runtime.dragPointerId = null;
+  }
+  if (elBg360.setPointerCapture) {
+    try { elBg360.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  e.preventDefault();
+}
+
+// Обрабатывает pointermove для 360: один указатель вращает, два указателя масштабируют FOV.
+function handleBg360PointerMove(e) {
+  if (!bg360Runtime.active || !bg360Runtime.pointers[e.pointerId]) return;
+  if (!bg360Runtime.interactive) return;
+  bg360Runtime.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+
+  var pointerCount = getBg360PointerCount();
+  if (pointerCount >= 2) {
+    var newDistance = getBg360PinchDistance();
+    if (bg360Runtime.pinchDistance !== null && newDistance !== null) {
+      var delta = newDistance - bg360Runtime.pinchDistance;
+      bg360Runtime.fovDeg = clamp(bg360Runtime.fovDeg - delta * 0.08, BG_360_FOV_MIN, BG_360_FOV_MAX);
+      updateBg360Camera();
+    }
+    bg360Runtime.pinchDistance = newDistance;
+  } else if (bg360Runtime.dragPointerId === e.pointerId) {
+    var dx = e.clientX - bg360Runtime.dragLastX;
+    var dy = e.clientY - bg360Runtime.dragLastY;
+    bg360Runtime.dragLastX = e.clientX;
+    bg360Runtime.dragLastY = e.clientY;
+    // Инвертируем оси: движение воспринимается как «тяну сцену».
+    bg360Runtime.yawDeg = (bg360Runtime.yawDeg + dx * 0.12) % 360;
+    bg360Runtime.pitchDeg = clamp(bg360Runtime.pitchDeg + dy * 0.12, -85, 85);
+    updateBg360Camera();
+  }
+  e.preventDefault();
+}
+
+// Очищает pointer-состояние при завершении касания/мыши.
+function handleBg360PointerUpLike(e) {
+  if (elBg360 && elBg360.releasePointerCapture) {
+    try { elBg360.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+  delete bg360Runtime.pointers[e.pointerId];
+  if (bg360Runtime.dragPointerId === e.pointerId) {
+    bg360Runtime.dragPointerId = null;
+  }
+  if (getBg360PointerCount() < 2) {
+    bg360Runtime.pinchDistance = null;
+  }
+}
+
+// Поддерживает zoom колесом на десктопе, изменяя FOV в допустимых пределах.
+function handleBg360Wheel(e) {
+  if (!bg360Runtime.active) return;
+  if (!bg360Runtime.interactive) return;
+  bg360Runtime.fovDeg = clamp(bg360Runtime.fovDeg + e.deltaY * 0.03, BG_360_FOV_MIN, BG_360_FOV_MAX);
+  updateBg360Camera();
+  e.preventDefault();
+}
+
+// Готовит canvas-события для 360-управления; вызывается один раз при старте движка.
+function setupBg360Interactions() {
+  if (!elBg360) return;
+  elBg360.addEventListener("pointerdown", handleBg360PointerDown);
+  elBg360.addEventListener("pointermove", handleBg360PointerMove);
+  elBg360.addEventListener("pointerup", handleBg360PointerUpLike);
+  elBg360.addEventListener("pointercancel", handleBg360PointerUpLike);
+  elBg360.addEventListener("wheel", handleBg360Wheel, { passive: false });
+}
+
+// Освобождает текущую 360-сцену (текстуры/материалы/геометрию/видео), сохраняя renderer для повторного использования.
+function clearBg360MediaResources() {
+  if (bg360Runtime.mesh && bg360Runtime.scene) {
+    bg360Runtime.scene.remove(bg360Runtime.mesh);
+  }
+  if (bg360Runtime.material && typeof bg360Runtime.material.dispose === "function") {
+    bg360Runtime.material.dispose();
+  }
+  if (bg360Runtime.geometry && typeof bg360Runtime.geometry.dispose === "function") {
+    bg360Runtime.geometry.dispose();
+  }
+  if (bg360Runtime.texture && typeof bg360Runtime.texture.dispose === "function") {
+    bg360Runtime.texture.dispose();
+  }
+  if (bg360Runtime.video) {
+    try { bg360Runtime.video.pause(); } catch (e) {}
+    bg360Runtime.video.removeAttribute("src");
+    bg360Runtime.video.load();
+  }
+
+  bg360Runtime.mesh = null;
+  bg360Runtime.material = null;
+  bg360Runtime.geometry = null;
+  bg360Runtime.texture = null;
+  bg360Runtime.video = null;
+}
+
+// Рисует 360-сцену кадрами requestAnimationFrame, пока слой активен.
+function renderBg360Frame() {
+  if (!bg360Runtime.active || !bg360Runtime.renderer || !bg360Runtime.scene || !bg360Runtime.camera) return;
+  bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+  bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
+}
+
+// Останавливает 360-режим и скрывает canvas-слой.
+function disableBg360Renderer() {
+  bg360Runtime.active = false;
+  bg360Runtime.interactive = false;
+  if (bg360Runtime.frameId) {
+    cancelAnimationFrame(bg360Runtime.frameId);
+    bg360Runtime.frameId = 0;
+  }
+  clearBg360MediaResources();
+  bg360Runtime.pointers = {};
+  bg360Runtime.pinchDistance = null;
+  bg360Runtime.dragPointerId = null;
+  if (elBg360) {
+    elBg360.classList.add("hidden");
+  }
+}
+
+// Пытается найти data-url 360-пакета по исходному file=... через window.VN360_PACKS.
+// Поддерживает прямой ключ, относительный путь и сравнение через normalizeAssetUrl.
+function resolveBg360PackDataUrl(sourceUrl) {
+  var packs = window.VN360_PACKS;
+  if (!packs || typeof packs !== "object") return "";
+
+  var source = String(sourceUrl || "");
+  if (!source) return "";
+  if (typeof packs[source] === "string") return packs[source];
+
+  var normalizedSource = normalizeAssetUrl(source);
+  if (typeof packs[normalizedSource] === "string") return packs[normalizedSource];
+
+  var decodedSource = "";
+  try {
+    decodedSource = decodeURIComponent(normalizedSource);
+  } catch (e) {
+    decodedSource = normalizedSource;
+  }
+  if (typeof packs[decodedSource] === "string") return packs[decodedSource];
+
+  // Пробуем относительный путь от папки index.html: так проще хранить ключи в story-стиле.
+  var baseHref = window.location.href;
+  var slashIndex = baseHref.lastIndexOf("/");
+  var baseDirHref = slashIndex >= 0 ? baseHref.slice(0, slashIndex + 1) : baseHref;
+  if (normalizedSource.indexOf(baseDirHref) === 0) {
+    var rel = normalizedSource.slice(baseDirHref.length);
+    if (typeof packs[rel] === "string") return packs[rel];
+    if (typeof packs["./" + rel] === "string") return packs["./" + rel];
+    if (typeof packs["/" + rel] === "string") return packs["/" + rel];
+  }
+
+  // Последний шанс: нормализуем ключи из пака и сравниваем с целевым URL.
+  var keys = Object.keys(packs);
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    if (normalizeAssetUrl(key) === normalizedSource && typeof packs[key] === "string") {
+      return packs[key];
+    }
+  }
+  return "";
+}
+
+// Хранит состояние динамической загрузки *.360.js, чтобы не дублировать <script> и колбэки.
+var bg360PackScriptState = Object.create(null);
+
+// По исходному пути изображения строит путь к js-пакету: test101.jpg -> test101.360.js.
+function getBg360PackScriptUrl(sourceUrl) {
+  var normalized = normalizeAssetUrl(sourceUrl);
+  if (!/\.(jpe?g|png)(\?.*)?$/i.test(normalized)) return "";
+  return normalized.replace(/\.(jpe?g|png)(\?.*)?$/i, ".360.js$2");
+}
+
+// Запрашивает js-пакет для 360-фона и сообщает, нужно ли подождать перед рендером.
+// Возвращает:
+// - "ready": данные уже есть;
+// - "loading": пакет грузится, рендер нужно отложить;
+// - "none": грузить нечего (или уже была ошибка).
+function ensureBg360PackLoaded(sourceUrl, onReady) {
+  if (resolveBg360PackDataUrl(sourceUrl)) return "ready";
+
+  var packScriptUrl = getBg360PackScriptUrl(sourceUrl);
+  if (!packScriptUrl) return "none";
+
+  var state = bg360PackScriptState[packScriptUrl];
+  if (state && state.status === "loaded") {
+    return resolveBg360PackDataUrl(sourceUrl) ? "ready" : "none";
+  }
+  if (state && state.status === "loading") {
+    if (typeof onReady === "function") state.waiters.push(onReady);
+    return "loading";
+  }
+  if (state && state.status === "error") {
+    return "none";
+  }
+
+  bg360PackScriptState[packScriptUrl] = {
+    status: "loading",
+    waiters: typeof onReady === "function" ? [onReady] : []
+  };
+
+  var script = document.createElement("script");
+  script.src = packScriptUrl;
+  script.async = true;
+  script.onload = function() {
+    var entry = bg360PackScriptState[packScriptUrl];
+    if (!entry) return;
+    entry.status = "loaded";
+    var waiters = entry.waiters.slice();
+    entry.waiters.length = 0;
+    for (var i = 0; i < waiters.length; i++) {
+      try { waiters[i](true); } catch (e) {}
+    }
+  };
+  script.onerror = function() {
+    var entry = bg360PackScriptState[packScriptUrl];
+    if (!entry) return;
+    entry.status = "error";
+    var waiters = entry.waiters.slice();
+    entry.waiters.length = 0;
+    for (var i = 0; i < waiters.length; i++) {
+      try { waiters[i](false); } catch (e) {}
+    }
+  };
+  document.body.appendChild(script);
+  return "loading";
+}
+
+// Включает 360-рендер для equirectangular-фона (изображение или видео) и применяет стартовые focus/fov.
+function setBackground360(src, fallbackSrc, scrollOptions) {
+  if (!src) return;
+
+  var normalized = normalizeBackgroundScrollOptions(scrollOptions);
+  var normalizedSrc = normalizeAssetUrl(src);
+  var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
+  var isVideo = isVideoAssetPath(normalizedSrc);
+  var packedDataUrl = "";
+  if (!isVideo) {
+    var packState = ensureBg360PackLoaded(normalizedSrc, function(ok) {
+      if (ok) {
+        setBackground360(src, fallbackSrc, scrollOptions);
+      }
+    });
+    // Важно: пока пакет подгружается, не трогаем текущие слои, иначе при restore возможен «черный экран».
+    if (packState === "loading") {
+      return;
+    }
+    packedDataUrl = resolveBg360PackDataUrl(normalizedSrc);
+  }
+  var textureSource = packedDataUrl || normalizedSrc;
+
+  // Для 360-слоя интерактив включается только при явном scroll в сценарии.
+  // Это позволяет зафиксировать ракурс для сцен, где обзор не должен двигаться.
+  bg360Runtime.interactive = normalized.enabled === true;
+  function buildNonWebgl360FallbackOptions(baseOptions) {
+    // Фолбэк без WebGL: включаем drag по широкой 2:1-картинке, чтобы 360 не превращался в полностью статичный фон.
+    var fallback = Object.assign({}, normalizeBackgroundScrollOptions(baseOptions), { is360: false, panorama360Fallback: true });
+    fallback.enabled = true;
+    fallback.start = clamp(typeof fallback.focusX === "number" ? fallback.focusX : 0.5, 0, 1);
+    fallback.focusY = clamp(typeof fallback.focusY === "number" ? fallback.focusY : 0.5, 0, 1);
+    if (fallback.scale === null || fallback.scale === undefined) {
+      fallback.scale = 1;
+    }
+    return fallback;
+  }
+  if (!ensureBg360Renderer()) {
+    console.warn("[BG360] WebGL/THREE недоступны, включен drag-фолбэк без 3D");
+    setBackground(src, fallbackSrc, null, buildNonWebgl360FallbackOptions(normalized));
+    return;
+  }
+
+  disableBackgroundScroll();
+  if (elBg) elBg.classList.add("hidden");
+  if (elBgVideo) {
+    try { elBgVideo.pause(); } catch (e) {}
+    elBgVideo.onloadeddata = null;
+    elBgVideo.onerror = null;
+    elBgVideo.removeAttribute("src");
+    elBgVideo.load();
+    elBgVideo.classList.add("hidden");
+  }
+  // 360-фон пока считается визуальным слоем без отдельного аудио-канала.
+  setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
+  audio.currentBgVideoVolume = 0;
+
+  clearBg360MediaResources();
+  resizeBg360Renderer();
+
+  var initialYaw = clamp(typeof normalized.focusX === "number" ? normalized.focusX : 0.5, 0, 1) * 360;
+  var initialPitch = -85 + clamp(typeof normalized.focusY === "number" ? normalized.focusY : 0.5, 0, 1) * 170;
+  var initialFov = normalizeMediaFov(normalized.fov, null);
+  if (initialFov === null) {
+    initialFov = mapFocusZToFov(normalized.focusZ);
+  }
+
+  bg360Runtime.yawDeg = initialYaw;
+  bg360Runtime.pitchDeg = initialPitch;
+  bg360Runtime.fovDeg = initialFov;
+  updateBg360Camera();
+
+  var geometry = new window.THREE.SphereGeometry(500, 60, 40);
+  geometry.scale(-1, 1, 1);
+  bg360Runtime.geometry = geometry;
+
+  if (packedDataUrl) {
+    console.log("[BG360] Используется data-пакет для:", normalizedSrc);
+  }
+
+  function onLoadTexture(texture) {
+    var material = new window.THREE.MeshBasicMaterial({ map: texture });
+    var mesh = new window.THREE.Mesh(geometry, material);
+    bg360Runtime.texture = texture;
+    bg360Runtime.material = material;
+    bg360Runtime.mesh = mesh;
+    bg360Runtime.scene.add(mesh);
+    bg360Runtime.active = true;
+    if (elBg360) elBg360.classList.remove("hidden");
+    if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
+    bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
+    if (typeof updateBlurBackground === "function") {
+      updateBlurBackground(normalizedFallback || normalizedSrc);
+    }
+  }
+
+  function onLoadError() {
+    console.warn("[BG360] Не удалось загрузить ресурс:", normalizedSrc);
+    disableBg360Renderer();
+    var fallbackOptions = buildNonWebgl360FallbackOptions(normalized);
+    if (normalizedFallback) {
+      setBackground(normalizedFallback, "", null, fallbackOptions);
+    } else {
+      setBackground(normalizedSrc, "", null, fallbackOptions);
+    }
+  }
+
+  if (isVideo) {
+    var video = document.createElement("video");
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = normalizedSrc;
+    bg360Runtime.video = video;
+    video.onloadeddata = function() {
+      var texture = new window.THREE.VideoTexture(video);
+      texture.minFilter = window.THREE.LinearFilter;
+      texture.magFilter = window.THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      onLoadTexture(texture);
+      var playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(function() {});
+      }
+    };
+    video.onerror = onLoadError;
+    video.load();
+    return;
+  }
+
+  // Для file:// TextureLoader может падать из-за CORS (origin null).
+  // В этом режиме грузим картинку через HTMLImageElement без crossOrigin и оборачиваем в THREE.Texture вручную.
+  if (window.location && window.location.protocol === "file:") {
+    var fileImage = new Image();
+    fileImage.onload = function() {
+      var texture = new window.THREE.Texture(fileImage);
+      texture.needsUpdate = true;
+      texture.minFilter = window.THREE.LinearFilter;
+      texture.magFilter = window.THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      texture.colorSpace = window.THREE.SRGBColorSpace || texture.colorSpace;
+      onLoadTexture(texture);
+    };
+    fileImage.onerror = onLoadError;
+    fileImage.src = textureSource;
+    return;
+  }
+
+  var loader = new window.THREE.TextureLoader();
+  loader.load(
+    textureSource,
+    function(texture) {
+      texture.colorSpace = window.THREE.SRGBColorSpace || texture.colorSpace;
+      onLoadTexture(texture);
+    },
+    undefined,
+    onLoadError
+  );
+}
+
 // Переключает фоновое медиа и при необходимости включает горизонтальный скролл wide-изображения или видео.
 function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
+  var normalizedScrollOptions = normalizeBackgroundScrollOptions(scrollOptions);
+  var use360 = normalizedScrollOptions.is360 === true;
   if (!src) {
     visualTrace("setBackground:empty-src", { fallbackSrc: fallbackSrc || "" });
+    disableBg360Renderer();
     disableBackgroundScroll();
     // Если фоновое видео больше не задано, возвращаем BGM к обычной громкости.
     setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'setBackground empty src');
     // Без фонового видео громкость его канала всегда 0.
     audio.currentBgVideoVolume = 0;
     if (fallbackSrc) {
-      setBackground(fallbackSrc, "", null, scrollOptions);
+      setBackground(fallbackSrc, "", null, normalizedScrollOptions);
     }
     return;
   }
@@ -4157,6 +4811,13 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallbackSrc = normalizeAssetUrl(fallbackSrc || "");
   var isVideo = isVideoAssetPath(normalizedSrc);
+
+  if (use360) {
+    setBackground360(normalizedSrc, normalizedFallbackSrc, normalizedScrollOptions);
+    return;
+  }
+
+  disableBg360Renderer();
   visualTrace("setBackground:start", {
     src: normalizedSrc,
     fallbackSrc: normalizedFallbackSrc,
@@ -4177,13 +4838,13 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         fallbackSrc: normalizedFallbackSrc
       });
       hideKeptStoryVideoAfterBgReady("bg video already failed");
-      setBackground(normalizedFallbackSrc, "", null, scrollOptions);
+      setBackground(normalizedFallbackSrc, "", null, normalizedScrollOptions);
     }
     return;
   }
 
   if (isVideo) {
-    setBackgroundScrollOptions(scrollOptions, elBgVideo, elNovelWindow);
+    setBackgroundScrollOptions(normalizedScrollOptions, elBgVideo, elNovelWindow);
     if (elBgVideo) {
       elBgVideo.onerror = null;
       elBgVideo.onloadeddata = null;
@@ -4215,7 +4876,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
             fallbackSrc: normalizedFallbackSrc
           });
           hideKeptStoryVideoAfterBgReady("bg video fallback image");
-          setBackground(normalizedFallbackSrc, "", null, scrollOptions);
+          setBackground(normalizedFallbackSrc, "", null, normalizedScrollOptions);
           return;
         }
 
@@ -4298,7 +4959,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     elBg.classList.remove("hidden");
     elBg.onerror = null;
     elBg.onload = null;
-    setBackgroundScrollOptions(scrollOptions, elBg, elNovelWindow);
+    setBackgroundScrollOptions(normalizedScrollOptions, elBg, elNovelWindow);
 
     elBg.onerror = function() {
       var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
@@ -6147,6 +6808,9 @@ function resolveBackgroundAsset(ref) {
   var focusX = null;
   var focusY = null;
   var scale = null;
+  var is360 = false;
+  var focusZ = null;
+  var fov = null;
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
@@ -6157,6 +6821,9 @@ function resolveBackgroundAsset(ref) {
     focusX = getBackgroundAssetFocusX(bgEntry);
     focusY = getBackgroundAssetFocusY(bgEntry);
     scale = getBackgroundAssetScale(bgEntry);
+    is360 = getBackgroundAssetIs360(bgEntry);
+    focusZ = getBackgroundAssetFocusZ(bgEntry);
+    fov = getBackgroundAssetFov(bgEntry);
   }
 
   return {
@@ -6166,7 +6833,10 @@ function resolveBackgroundAsset(ref) {
     scroll: scroll,
     focusX: focusX,
     focusY: focusY,
-    scale: scale
+    scale: scale,
+    is360: is360,
+    focusZ: focusZ,
+    fov: fov
   };
 }
 

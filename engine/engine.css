@@ -286,6 +286,12 @@ body {
   z-index: 2;
 }
 
+/* Отдельный слой для 360-фона: рендерится в canvas и принимает жесты drag/pinch. */
+.bg-360 {
+  touch-action: none;
+  pointer-events: auto;
+}
+
 /* Подсказка появляется только у фонов, где сценарий разрешил горизонтальный скролл. */
 .bg-scroll-hint {
   position: absolute;

@@ -94,6 +94,7 @@
       <div id="novelWindow" class="novel-window">
         <img id="bgLayer" class="bg" alt="" draggable="false" />
         <video id="bgVideoLayer" class="bg hidden" muted loop playsinline preload="auto"></video>
+        <canvas id="bg360Layer" class="bg bg-360 hidden" aria-hidden="true"></canvas>
         <div id="bgScrollHint" class="bg-scroll-hint hidden" aria-hidden="true">Перемещайте фон</div>
         <img id="charLayer" class="char hidden" alt="" draggable="false" />
         <div id="overlay" class="overlay hidden"></div>
@@ -168,6 +169,7 @@
         { src: "engine/story-loader.js" },
         { src: "license-key.js", optional: true },
         { src: "lib/jsrsasign-all-min.js" },
+        { src: "lib/three.min.js", optional: true },
         { src: "engine/engine.js" }
       ];
 
