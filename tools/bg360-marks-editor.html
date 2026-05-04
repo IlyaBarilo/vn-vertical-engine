@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BG360 Marks Editor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #12141a;
+      --panel: #1b1f2a;
+      --panel-2: #242a38;
+      --text: #e9edf7;
+      --muted: #9aa5c0;
+      --accent: #77a5ff;
+      --danger: #ff6f6f;
+      --ok: #67d195;
+      --border: #3a435a;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    .viewer-wrap {
+      position: relative;
+      background: #0d0f14;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      min-height: 420px;
+    }
+
+    #viewer { width: 100%; height: 100%; display: block; }
+    #marksOverlay {
+      position: absolute; inset: 0;
+      pointer-events: none;
+    }
+
+    .crosshair {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 28px;
+      height: 28px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0.95;
+    }
+
+    .crosshair::before,
+    .crosshair::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: rgba(255,255,255,0.95);
+      box-shadow: 0 0 8px rgba(0,0,0,0.65);
+      transform: translate(-50%, -50%);
+    }
+
+    .crosshair::before {
+      width: 2px;
+      height: 28px;
+    }
+
+    .crosshair::after {
+      width: 28px;
+      height: 2px;
+    }
+
+    .mark-dot {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      transform: translate(-50%, -50%);
+      border-radius: 999px;
+      border: 2px solid #fff;
+      background: rgba(0, 0, 0, 0.45);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+      pointer-events: none;
+    }
+
+    .mark-dot.text {
+      border-style: dashed;
+      background: rgba(30, 30, 30, 0.65);
+    }
+
+    h1, h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    h2 { margin-top: 14px; font-size: 14px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .row.two {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input, select, button, textarea {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    input[type="range"] { padding: 0; }
+
+    button {
+      cursor: pointer;
+      background: #2a3350;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.danger { background: #4a2d36; border-color: #703d4b; color: #ffd6df; }
+    button.good { background: #223a32; border-color: #35584d; color: #d6ffee; }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+      margin: 8px 0;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #cfe1ff;
+      background: rgba(90, 130, 210, 0.16);
+      border: 1px solid rgba(90, 130, 210, 0.4);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .points-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .point-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .point-meta { color: var(--muted); }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .panel { max-height: 48vh; }
+      .viewer-wrap { min-height: 52vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <h1>Редактор 360-меток</h1>
+
+      <div class="row">
+        <label for="bgImageInput">360-изображение (2:1 equirect)</label>
+        <input id="bgImageInput" type="file" accept="image/*" />
+      </div>
+
+      <div class="row">
+        <label for="bgIdInput">ID фона из [bg]</label>
+        <input id="bgIdInput" type="text" value="bg360Campus" />
+      </div>
+
+      <div class="row two">
+        <div>
+          <label for="focusXInput">focusX (0..1)</label>
+          <input id="focusXInput" type="number" min="0" max="1" step="0.0001" value="0.5" />
+        </div>
+        <div>
+          <label for="focusYInput">focusY (0..1)</label>
+          <input id="focusYInput" type="number" min="0" max="1" step="0.0001" value="0.5" />
+        </div>
+      </div>
+
+      <div class="row two">
+        <button id="applyFocusBtn" class="good" type="button">Применить focus</button>
+        <button id="readFocusBtn" type="button">Считать focus из камеры</button>
+      </div>
+
+      <h2>Новая метка</h2>
+      <div class="row two">
+        <button id="placeMarkBtn" class="good" type="button">Поставить метку</button>
+        <div></div>
+      </div>
+      <div class="row">
+        <label for="newPointTypeInput">type</label>
+        <select id="newPointTypeInput">
+          <option value="walk">walk</option>
+          <option value="text">text</option>
+        </select>
+      </div>
+      <div class="hint">
+        Наведите перекрестье в центре на нужную точку и нажмите «Поставить метку».
+        Камера: ЛКМ/drag — поворот, колесо — zoom.
+      </div>
+
+      <div class="status" id="statusBox">Загрузите 360-изображение.</div>
+
+      <h2>Список меток</h2>
+      <div class="points-list" id="pointsList"></div>
+      <div class="row two">
+        <button id="clearPointsBtn" class="danger" type="button">Очистить метки</button>
+        <button id="copyJsonBtn" type="button">Скопировать JSON</button>
+      </div>
+
+      <h2>Экспорт для сценария</h2>
+      <div class="row">
+        <textarea id="exportBox" readonly></textarea>
+      </div>
+      <div class="row two">
+        <button id="copyScriptBtn" class="good" type="button">Скопировать команды</button>
+        <button id="downloadPointsBtn" type="button">Скачать points.json</button>
+      </div>
+    </aside>
+
+    <section class="viewer-wrap">
+      <canvas id="viewer"></canvas>
+      <div id="marksOverlay"></div>
+      <div class="crosshair" aria-hidden="true"></div>
+    </section>
+  </div>
+
+  <script src="../lib/three.min.js"></script>
+  <script>
+    "use strict";
+
+    var viewerCanvas = document.getElementById("viewer");
+    var marksOverlay = document.getElementById("marksOverlay");
+    /** Родитель canvas — нужен для смещения координат оверлея относительно рамки. */
+    var viewerWrap = viewerCanvas && viewerCanvas.parentElement ? viewerCanvas.parentElement : null;
+    var bgImageInput = document.getElementById("bgImageInput");
+    var bgIdInput = document.getElementById("bgIdInput");
+    var focusXInput = document.getElementById("focusXInput");
+    var focusYInput = document.getElementById("focusYInput");
+    var applyFocusBtn = document.getElementById("applyFocusBtn");
+    var readFocusBtn = document.getElementById("readFocusBtn");
+    var newPointTypeInput = document.getElementById("newPointTypeInput");
+    var statusBox = document.getElementById("statusBox");
+    var pointsList = document.getElementById("pointsList");
+    var exportBox = document.getElementById("exportBox");
+    var clearPointsBtn = document.getElementById("clearPointsBtn");
+    var placeMarkBtn = document.getElementById("placeMarkBtn");
+    var copyScriptBtn = document.getElementById("copyScriptBtn");
+    var copyJsonBtn = document.getElementById("copyJsonBtn");
+    var downloadPointsBtn = document.getElementById("downloadPointsBtn");
+
+    var renderer = null;
+    var scene = null;
+    var camera = null;
+    var sphereMesh = null;
+    var sphereTexture = null;
+    var raycaster = null;
+
+    var yawDeg = 180;
+    var pitchDeg = 0;
+    var fovDeg = 70;
+
+    var dragState = {
+      active: false,
+      moved: false,
+      lastX: 0,
+      lastY: 0
+    };
+
+    var points = [];
+    var pointCounter = 1;
+    var tempProjectVec = null;
+    var tempCameraDir = null;
+    // Зафиксированные значения focus для текста команды.
+    var fixedFocus = { x: 0.5, y: 0.5 };
+
+    /**
+     * Создаёт базовую 360-сцену и переиспользует её при смене изображений.
+     */
+    function initViewer() {
+      if (!window.THREE) {
+        setStatus("Не найден ../lib/three.min.js", true);
+        return;
+      }
+
+      renderer = new window.THREE.WebGLRenderer({
+        canvas: viewerCanvas,
+        antialias: true,
+        alpha: true
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+      scene = new window.THREE.Scene();
+      camera = new window.THREE.PerspectiveCamera(fovDeg, 1, 0.1, 1100);
+      raycaster = new window.THREE.Raycaster();
+
+      var geometry = new window.THREE.SphereGeometry(500, 64, 40);
+      geometry.scale(-1, 1, 1);
+      var material = new window.THREE.MeshBasicMaterial({ color: 0x222222, wireframe: true });
+      sphereMesh = new window.THREE.Mesh(geometry, material);
+      scene.add(sphereMesh);
+
+      applyCameraAngles();
+      resizeViewer();
+      requestAnimationFrame(renderFrame);
+    }
+
+    /**
+     * Обновляет сообщение состояния в панели инструмента.
+     */
+    function setStatus(text, isError) {
+      statusBox.textContent = text;
+      statusBox.style.background = isError ? "rgba(200,70,70,0.15)" : "rgba(90,130,210,0.16)";
+      statusBox.style.borderColor = isError ? "rgba(220,90,90,0.45)" : "rgba(90,130,210,0.4)";
+      statusBox.style.color = isError ? "#ffd7d7" : "#cfe1ff";
+    }
+
+    /**
+     * Подгоняет размер рендера под фактический размер контейнера.
+     */
+    function resizeViewer() {
+      if (!renderer || !camera || !viewerCanvas) return;
+      var rect = viewerCanvas.getBoundingClientRect();
+      var width = Math.max(1, Math.floor(rect.width));
+      var height = Math.max(1, Math.floor(rect.height));
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+
+    /**
+     * Применяет yaw/pitch/fov к камере в том же стиле, что и движок VN.
+     */
+    function applyCameraAngles() {
+      if (!camera || !window.THREE) return;
+      pitchDeg = clamp(pitchDeg, -85, 85);
+      fovDeg = clamp(fovDeg, 35, 90);
+      camera.fov = fovDeg;
+      camera.updateProjectionMatrix();
+      camera.rotation.order = "YXZ";
+      camera.rotation.y = window.THREE.MathUtils.degToRad(yawDeg || 0);
+      camera.rotation.x = window.THREE.MathUtils.degToRad(pitchDeg || 0);
+    }
+
+    /**
+     * Возвращает clamp для числовых диапазонов.
+     */
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    /**
+     * Пересчитывает focusX/focusY из текущих углов камеры.
+     */
+    function cameraToFocus() {
+      var yawNorm = ((yawDeg % 360) + 360) % 360;
+      var focusX = yawNorm / 360;
+      var focusY = (pitchDeg + 85) / 170;
+      return {
+        focusX: clamp(focusX, 0, 1),
+        focusY: clamp(focusY, 0, 1)
+      };
+    }
+
+    /**
+     * Возвращает следующий свободный ID в формате markN.
+     */
+    function getNextMarkId() {
+      var maxN = 0;
+      points.forEach(function (p) {
+        var m = String(p.id || "").match(/^mark(\d+)$/i);
+        if (!m) return;
+        var n = Number(m[1]);
+        if (isFinite(n)) maxN = Math.max(maxN, n);
+      });
+      return "mark" + (maxN + 1);
+    }
+
+    /**
+     * Применяет focusX/focusY к yaw/pitch, повторяя формулу движка.
+     */
+    function applyFocusValues(fx, fy) {
+      var x = clamp(Number(fx), 0, 1);
+      var y = clamp(Number(fy), 0, 1);
+      yawDeg = x * 360;
+      pitchDeg = -85 + y * 170;
+      applyCameraAngles();
+      updateExport();
+    }
+
+    /**
+     * Загружает выбранное пользователем изображение как текстуру 360-сферы.
+     */
+    function loadImageFile(file) {
+      if (!file) return;
+      var objectUrl = URL.createObjectURL(file);
+      var loader = new window.THREE.TextureLoader();
+
+      loader.load(
+        objectUrl,
+        function (tex) {
+          if (sphereTexture && typeof sphereTexture.dispose === "function") {
+            sphereTexture.dispose();
+          }
+          sphereTexture = tex;
+          sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
+          sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
+          setStatus("Изображение загружено: " + file.name, false);
+          URL.revokeObjectURL(objectUrl);
+        },
+        undefined,
+        function () {
+          setStatus("Ошибка загрузки изображения.", true);
+          URL.revokeObjectURL(objectUrl);
+        }
+      );
+    }
+
+    /**
+     * Возвращает UV-координаты точки на сфере по позиции курсора на canvas.
+     */
+    function pickUvFromPointer(clientX, clientY) {
+      if (!renderer || !camera || !sphereMesh || !raycaster || !window.THREE) return null;
+      var rect = viewerCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+
+      // После drag dblclick может прийти до следующего кадра renderer.render().
+      // Принудительно синхронизируем матрицы, чтобы raycast использовал актуальный угол камеры.
+      camera.updateMatrixWorld(true);
+      sphereMesh.updateMatrixWorld(true);
+
+      var ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      var ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+      var ndc = new window.THREE.Vector2(ndcX, ndcY);
+      raycaster.setFromCamera(ndc, camera);
+
+      var hits = raycaster.intersectObject(sphereMesh, false);
+      if (!hits || hits.length === 0 || !hits[0].uv) return null;
+
+      return { u: clamp(hits[0].uv.x, 0, 1), v: clamp(hits[0].uv.y, 0, 1) };
+    }
+
+    /**
+     * Добавляет новую метку в список по UV-координатам.
+     * Если передан worldPoint (Vector3 из raycast), оверлей рисуется через project() —
+     * иначе возможна ошибка по вертикали из-за несовпадения ручной UV→sphere с Three.js.
+     */
+    function addPointAtUv(uv, worldPoint) {
+      if (!uv) return;
+
+      var type = String(newPointTypeInput.value || "walk").trim().toLowerCase();
+      var id = getNextMarkId();
+
+      var finalId = id;
+      var suffix = 2;
+      while (points.some(function (p) { return p.id === finalId; })) {
+        finalId = id + "_" + suffix;
+        suffix += 1;
+      }
+
+      var entry = {
+        id: finalId,
+        x: Number(uv.u.toFixed(4)),
+        y: Number(uv.v.toFixed(4)),
+        type: (type === "text" ? "text" : "walk")
+      };
+      if (worldPoint && window.THREE) {
+        entry.wx = Number(worldPoint.x.toFixed(6));
+        entry.wy = Number(worldPoint.y.toFixed(6));
+        entry.wz = Number(worldPoint.z.toFixed(6));
+      }
+      points.push(entry);
+      pointCounter += 1;
+
+      renderPointsList();
+      updateExport();
+    }
+
+    /**
+     * Добавляет метку по направлению камеры через луч из центра экрана.
+     */
+    function addPointFromCenterCrosshair() {
+      if (!renderer || !camera || !sphereMesh || !raycaster || !window.THREE) return;
+      camera.updateMatrixWorld(true);
+      sphereMesh.updateMatrixWorld(true);
+
+      var center = new window.THREE.Vector2(0, 0);
+      raycaster.setFromCamera(center, camera);
+      var hits = raycaster.intersectObject(sphereMesh, false);
+      if (!hits || hits.length === 0 || !hits[0].uv) {
+        setStatus("Не удалось поставить метку: нет пересечения с панорамой.", true);
+        return;
+      }
+      var uv = { u: clamp(hits[0].uv.x, 0, 1), v: clamp(hits[0].uv.y, 0, 1) };
+      var worldHit = hits[0].point.clone();
+      addPointAtUv(uv, worldHit);
+      setStatus("Метка добавлена в центр прицела.", false);
+    }
+
+    /**
+     * Удаляет метку по индексу из списка.
+     */
+    function removePoint(index) {
+      if (index < 0 || index >= points.length) return;
+      points.splice(index, 1);
+      renderPointsList();
+      updateExport();
+    }
+
+    /**
+     * Переименовывает метку с проверкой уникальности ID.
+     */
+    function renamePoint(index, nextIdRaw) {
+      if (index < 0 || index >= points.length) return;
+      var nextId = String(nextIdRaw || "").trim();
+      if (!nextId) {
+        setStatus("ID метки не может быть пустым.", true);
+        renderPointsList();
+        return;
+      }
+      var duplicate = points.some(function (p, i) {
+        return i !== index && p.id === nextId;
+      });
+      if (duplicate) {
+        setStatus("ID уже используется: " + nextId, true);
+        renderPointsList();
+        return;
+      }
+      points[index].id = nextId;
+      renderPointsList();
+      updateExport();
+    }
+
+    /**
+     * Рисует панель списка меток слева.
+     */
+    function renderPointsList() {
+      pointsList.innerHTML = "";
+
+      if (points.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "hint";
+        empty.textContent = "Пока нет меток.";
+        pointsList.appendChild(empty);
+        return;
+      }
+
+      points.forEach(function (p, idx) {
+        var item = document.createElement("div");
+        item.className = "point-item";
+
+        var info = document.createElement("div");
+        var nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.value = p.id;
+        nameInput.title = "ID метки";
+        nameInput.addEventListener("change", function () {
+          renamePoint(idx, nameInput.value);
+        });
+        nameInput.addEventListener("blur", function () {
+          renamePoint(idx, nameInput.value);
+        });
+
+        var meta = document.createElement("div");
+        meta.className = "point-meta";
+        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + p.type;
+        info.appendChild(nameInput);
+        info.appendChild(meta);
+
+        var removeBtn = document.createElement("button");
+        removeBtn.className = "danger";
+        removeBtn.textContent = "Удалить";
+        removeBtn.addEventListener("click", function () {
+          removePoint(idx);
+        });
+
+        item.appendChild(info);
+        item.appendChild(removeBtn);
+        pointsList.appendChild(item);
+      });
+    }
+
+    /**
+     * Экранирует HTML в текстовых подписях списка.
+     */
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    /**
+     * Обновляет поле экспорта: bg c focus и команду bg360marks.
+     */
+    function updateExport() {
+      var bgId = String(bgIdInput.value || "bg360Campus").trim() || "bg360Campus";
+      var marksPart = points.map(function (p) {
+        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + p.type + ")";
+      }).join(" ");
+
+      var lines = [];
+      lines.push("bg " + bgId + " 360 focusx=" + fixedFocus.x.toFixed(4) + " focusy=" + fixedFocus.y.toFixed(4));
+      if (marksPart) {
+        lines.push("bg360marks " + bgId + " " + marksPart);
+      } else {
+        lines.push("# bg360marks " + bgId + " (mark1, 0.5000, 0.5000, walk)");
+      }
+
+      exportBox.value = lines.join("\n");
+    }
+
+    /**
+     * Обновляет поля focusX/focusY по текущему направлению камеры,
+     * не меняя зафиксированные значения в тексте команды.
+     */
+    function refreshFocusInputsFromCamera() {
+      var focus = cameraToFocus();
+      focusXInput.value = focus.focusX.toFixed(4);
+      focusYInput.value = focus.focusY.toFixed(4);
+    }
+
+    /**
+     * Извлекает focusx/focusy из команды в exportBox.
+     */
+    function readFocusFromCommandText() {
+      var text = String(exportBox.value || "");
+      var mX = text.match(/focusx\s*=\s*([0-9]*\.?[0-9]+)/i);
+      var mY = text.match(/focusy\s*=\s*([0-9]*\.?[0-9]+)/i);
+      if (!mX || !mY) return null;
+      var x = clamp(Number(mX[1]), 0, 1);
+      var y = clamp(Number(mY[1]), 0, 1);
+      if (!isFinite(x) || !isFinite(y)) return null;
+      return { x: x, y: y };
+    }
+
+    /**
+     * Проецирует мировую точку на сфере в координаты внутри marksOverlay (родитель viewer-wrap).
+     */
+    function projectWorldToOverlayPx(wx, wy, wz) {
+      if (!window.THREE || !camera || !viewerCanvas || !viewerWrap) return null;
+      if (!tempProjectVec) tempProjectVec = new window.THREE.Vector3();
+      if (!tempCameraDir) tempCameraDir = new window.THREE.Vector3();
+
+      camera.updateMatrixWorld(true);
+      tempProjectVec.set(wx, wy, wz);
+
+      var camPos = camera.getWorldPosition(new window.THREE.Vector3());
+      var toPoint = tempProjectVec.clone().sub(camPos).normalize();
+      camera.getWorldDirection(tempCameraDir);
+      if (toPoint.dot(tempCameraDir) < 0.02) return null;
+
+      tempProjectVec.set(wx, wy, wz);
+      tempProjectVec.project(camera);
+
+      var canvasRect = viewerCanvas.getBoundingClientRect();
+      var wrapRect = viewerWrap.getBoundingClientRect();
+      var x = (tempProjectVec.x * 0.5 + 0.5) * canvasRect.width + (canvasRect.left - wrapRect.left);
+      var y = (-tempProjectVec.y * 0.5 + 0.5) * canvasRect.height + (canvasRect.top - wrapRect.top);
+      return { x: x, y: y };
+    }
+
+    /**
+     * Запасной путь для старых меток без wx/wy/wz: UV→экран (может быть менее точным).
+     */
+    function projectUvToScreen(u, v, width, height) {
+      if (!window.THREE || !camera) return null;
+      if (!tempProjectVec) tempProjectVec = new window.THREE.Vector3();
+      if (!tempCameraDir) tempCameraDir = new window.THREE.Vector3();
+
+      camera.updateMatrixWorld(true);
+
+      var U = clamp(Number(u), 0, 1);
+      var V = clamp(Number(v), 0, 1);
+      var thetaPolar = (1 - V) * Math.PI;
+      var phiAz = U * Math.PI * 2;
+      var sinPolar = Math.sin(thetaPolar);
+      var x0 = -Math.cos(phiAz) * sinPolar;
+      var y0 = Math.cos(thetaPolar);
+      var z0 = Math.sin(phiAz) * sinPolar;
+      tempProjectVec.set(-x0, y0, z0);
+
+      camera.getWorldDirection(tempCameraDir);
+      if (tempProjectVec.clone().normalize().dot(tempCameraDir) < 0.02) return null;
+
+      tempProjectVec.project(camera);
+      return {
+        x: (tempProjectVec.x * 0.5 + 0.5) * width,
+        y: (-tempProjectVec.y * 0.5 + 0.5) * height
+      };
+    }
+
+    /**
+     * Рисует визуальные маркеры поверх canvas в текущем положении камеры.
+     */
+    function renderOverlayMarks() {
+      marksOverlay.innerHTML = "";
+      if (!points.length) return;
+
+      var rect = viewerCanvas.getBoundingClientRect();
+      var width = rect.width;
+      var height = rect.height;
+
+      points.forEach(function (p, index) {
+        var pos = null;
+        if (p.wx != null && p.wy != null && p.wz != null) {
+          pos = projectWorldToOverlayPx(p.wx, p.wy, p.wz);
+        }
+        if (!pos) {
+          pos = projectUvToScreen(p.x, p.y, width, height);
+          if (viewerWrap && pos) {
+            var wrapRect = viewerWrap.getBoundingClientRect();
+            pos = {
+              x: pos.x + (rect.left - wrapRect.left),
+              y: pos.y + (rect.top - wrapRect.top)
+            };
+          }
+        }
+        if (!pos) return;
+
+        var el = document.createElement("div");
+        el.className = "mark-dot" + (p.type === "text" ? " text" : "");
+        el.style.left = pos.x + "px";
+        el.style.top = pos.y + "px";
+        el.textContent = String(index + 1);
+        marksOverlay.appendChild(el);
+      });
+    }
+
+    /**
+     * Основной кадр рендера: рисует сферу и оверлей меток.
+     */
+    function renderFrame() {
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
+      renderOverlayMarks();
+      requestAnimationFrame(renderFrame);
+    }
+
+    /**
+     * Копирует строку в буфер обмена с fallback для старых браузеров.
+     */
+    function copyText(text) {
+      var value = String(text || "");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(function () {
+          setStatus("Скопировано в буфер обмена.", false);
+        }).catch(function () {
+          setStatus("Не удалось скопировать автоматически.", true);
+        });
+        return;
+      }
+
+      var tmp = document.createElement("textarea");
+      tmp.value = value;
+      document.body.appendChild(tmp);
+      tmp.select();
+      try {
+        document.execCommand("copy");
+        setStatus("Скопировано в буфер обмена.", false);
+      } catch (e) {
+        setStatus("Не удалось скопировать автоматически.", true);
+      }
+      document.body.removeChild(tmp);
+    }
+
+    /**
+     * Отдаёт файл JSON с метками для сохранения рядом с проектом.
+     */
+    function downloadJson() {
+      var payload = {
+        bgId: String(bgIdInput.value || "").trim(),
+        focus: cameraToFocus(),
+        points: points
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "bg360-points.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Привязывает обработчики UI и мыши для камеры/добавления точек.
+     */
+    function bindEvents() {
+      window.addEventListener("resize", function () {
+        resizeViewer();
+      });
+
+      bgImageInput.addEventListener("change", function () {
+        var file = bgImageInput.files && bgImageInput.files[0];
+        if (file) loadImageFile(file);
+      });
+
+      applyFocusBtn.addEventListener("click", function () {
+        fixedFocus.x = clamp(Number(focusXInput.value), 0, 1);
+        fixedFocus.y = clamp(Number(focusYInput.value), 0, 1);
+        focusXInput.value = fixedFocus.x.toFixed(4);
+        focusYInput.value = fixedFocus.y.toFixed(4);
+        applyFocusValues(fixedFocus.x, fixedFocus.y);
+        updateExport();
+      });
+
+      readFocusBtn.addEventListener("click", function () {
+        var focus = readFocusFromCommandText();
+        if (!focus) {
+          setStatus("В команде не найдены focusx/focusy.", true);
+          return;
+        }
+        fixedFocus.x = focus.x;
+        fixedFocus.y = focus.y;
+        focusXInput.value = fixedFocus.x.toFixed(4);
+        focusYInput.value = fixedFocus.y.toFixed(4);
+        applyFocusValues(fixedFocus.x, fixedFocus.y);
+        updateExport();
+      });
+
+      bgIdInput.addEventListener("input", updateExport);
+
+      clearPointsBtn.addEventListener("click", function () {
+        points = [];
+        renderPointsList();
+        updateExport();
+      });
+
+      placeMarkBtn.addEventListener("click", function () {
+        addPointFromCenterCrosshair();
+      });
+
+      copyScriptBtn.addEventListener("click", function () {
+        copyText(exportBox.value);
+      });
+
+      copyJsonBtn.addEventListener("click", function () {
+        copyText(JSON.stringify(points, null, 2));
+      });
+
+      downloadPointsBtn.addEventListener("click", downloadJson);
+
+      viewerCanvas.addEventListener("pointerdown", function (e) {
+        dragState.active = true;
+        dragState.moved = false;
+        dragState.lastX = e.clientX;
+        dragState.lastY = e.clientY;
+        if (viewerCanvas.setPointerCapture) {
+          try { viewerCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+      });
+
+      viewerCanvas.addEventListener("pointermove", function (e) {
+        if (!dragState.active) return;
+        var dx = e.clientX - dragState.lastX;
+        var dy = e.clientY - dragState.lastY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragState.moved = true;
+
+        dragState.lastX = e.clientX;
+        dragState.lastY = e.clientY;
+
+        yawDeg = (yawDeg + dx * 0.12) % 360;
+        pitchDeg = clamp(pitchDeg + dy * 0.12, -85, 85);
+        applyCameraAngles();
+        refreshFocusInputsFromCamera();
+        // Движение камеры не должно менять зафиксированные focus в тексте команды.
+        e.preventDefault();
+      });
+
+      function pointerUpLike(e) {
+        if (!dragState.active) return;
+        dragState.active = false;
+        if (viewerCanvas.releasePointerCapture) {
+          try { viewerCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
+        }
+
+      }
+
+      viewerCanvas.addEventListener("pointerup", pointerUpLike);
+      viewerCanvas.addEventListener("pointercancel", function () {
+        dragState.active = false;
+      });
+
+      viewerCanvas.addEventListener("wheel", function (e) {
+        fovDeg = clamp(fovDeg + e.deltaY * 0.03, 35, 90);
+        applyCameraAngles();
+        refreshFocusInputsFromCamera();
+        // Zoom камеры не должен менять зафиксированные focus в тексте команды.
+        e.preventDefault();
+      }, { passive: false });
+
+      // Drag-and-drop изображения прямо на viewer.
+      viewerCanvas.addEventListener("dragover", function (e) {
+        e.preventDefault();
+      });
+      viewerCanvas.addEventListener("drop", function (e) {
+        e.preventDefault();
+        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) loadImageFile(file);
+      });
+    }
+
+    /**
+     * Инициализирует редактор.
+     */
+    function bootstrap() {
+      initViewer();
+      bindEvents();
+      renderPointsList();
+      updateExport();
+      refreshFocusInputsFromCamera();
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

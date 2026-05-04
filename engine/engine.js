@@ -4306,23 +4306,25 @@ function renderBg360Marks() {
 var bg360MarkProjPoint = null;
 var bg360MarkProjCameraDir = null;
 
-// Преобразует UV equirect-координаты (0..1) в единичный 3D-вектор сферы.
-// U двигается по долготе, V — по широте. Из-за geometry.scale(-1,1,1) инвертируем X.
+// Преобразует UV текстуры сферы (0..1) в единичный вектор направления на сфере.
+// Должно совпадать с THREE.SphereGeometry (см. uvs: второй компонент = 1 - v_ряда)
+// и с последующим geometry.scale(-1, 1, 1), как в setBackground360.
 function bg360UvToDirection(u, v) {
   if (!window.THREE) return null;
   if (!bg360MarkProjPoint) bg360MarkProjPoint = new window.THREE.Vector3();
 
-  var uu = clamp(Number(u), 0, 1);
-  var vv = clamp(Number(v), 0, 1);
-  var lon = (uu - 0.5) * Math.PI * 2;
-  var lat = (0.5 - vv) * Math.PI;
-  var cosLat = Math.cos(lat);
+  var U = clamp(Number(u), 0, 1);
+  var V = clamp(Number(v), 0, 1);
 
-  bg360MarkProjPoint.set(
-    -cosLat * Math.cos(lon), // инверсия X синхронизирует с внутренней сферой
-    Math.sin(lat),
-    cosLat * Math.sin(lon)
-  );
+  var thetaPolar = (1 - V) * Math.PI;
+  var phiAz = U * Math.PI * 2;
+  var sinPolar = Math.sin(thetaPolar);
+
+  var x0 = -Math.cos(phiAz) * sinPolar;
+  var y0 = Math.cos(thetaPolar);
+  var z0 = Math.sin(phiAz) * sinPolar;
+
+  bg360MarkProjPoint.set(-x0, y0, z0);
   return bg360MarkProjPoint;
 }
 
