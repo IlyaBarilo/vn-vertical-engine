@@ -847,6 +847,82 @@ function parseActionParams(paramTokens) {
   return params;
 }
 
+// Разбирает параметры вида key=value из строки, сохраняя значения в кавычках с пробелами.
+// Нужно для команд, где значения ожидаемо содержат пробелы (например text="Подсказка для игрока").
+function parseActionParamsFromText(rawText) {
+  var params = {};
+  var text = String(rawText || "");
+  // Формат близок к parseAssetLine: key = "value with spaces" | '...' | bare
+  var re = /([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*("([^"]*)"|'([^']*)'|[^\s]+)/g;
+  var m;
+  while ((m = re.exec(text)) !== null) {
+    var key = m[1];
+    var rawValue = m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : m[2]);
+    if (rawValue === "true") params[key] = true;
+    else if (rawValue === "false") params[key] = false;
+    else if (rawValue !== "" && !isNaN(Number(rawValue))) params[key] = Number(rawValue);
+    else params[key] = rawValue;
+  }
+  return params;
+}
+
+// Разбирает команду bg360marks: bgId + набор меток в скобках.
+// Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk) (hint1, 0.50, 0.20, text)
+function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
+  var body = String(cleanLine || "").substring("bg360marks".length).trim();
+  if (!body) {
+    addParseError(lineNumber, originalLine, 'bg360marks требует id фона и список меток', true);
+    return null;
+  }
+
+  var firstSpace = body.indexOf(" ");
+  var bgId = firstSpace === -1 ? body : body.slice(0, firstSpace).trim();
+  var rest = firstSpace === -1 ? "" : body.slice(firstSpace + 1);
+
+  if (!bgId) {
+    addParseError(lineNumber, originalLine, 'bg360marks: пустой id фона', true);
+    return null;
+  }
+
+  var marks = [];
+  var re = /\(([^)]+)\)/g;
+  var m;
+  while ((m = re.exec(rest)) !== null) {
+    var inner = String(m[1] || "");
+    var parts = inner.split(",").map(function (x) { return String(x || "").trim(); });
+    if (parts.length < 4) {
+      addParseError(lineNumber, originalLine, 'bg360marks: метка должна быть (id, x, y, type)', true);
+      return null;
+    }
+    var markId = parts[0];
+    var x = Number(parts[1]);
+    var y = Number(parts[2]);
+    var kind = String(parts[3] || "").toLowerCase();
+
+    if (!markId) {
+      addParseError(lineNumber, originalLine, 'bg360marks: пустой id метки', true);
+      return null;
+    }
+    if (!isFinite(x) || x < 0 || x > 1 || !isFinite(y) || y < 0 || y > 1) {
+      addParseError(lineNumber, originalLine, 'bg360marks: x/y должны быть числами 0..1', true);
+      return null;
+    }
+    if (kind !== "walk" && kind !== "text") {
+      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk или text', true);
+      return null;
+    }
+
+    marks.push({ id: markId, x: x, y: y, kind: kind });
+  }
+
+  if (!marks.length) {
+    addParseError(lineNumber, originalLine, 'bg360marks: не найдено ни одной метки "(...)"', true);
+    return null;
+  }
+
+  return { type: "bg360marks", bgId: bgId, marks: marks };
+}
+
 // Разбирает настройку горизонтального скролла для фоновых и видео-медиа из сценария.
 function parseBackgroundScrollOption(rawValue, lineNumber, line) {
   var value = String(rawValue === undefined ? "true" : rawValue).trim().toLowerCase();
@@ -2253,6 +2329,40 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       addParseError(lineNumber, line, 'Commands inside "menu" must be placed inside a "choice" block', true);
       return;
     }
+
+    // bg360marks bgId (id, x, y, kind) ...
+    if (cleanLine.startsWith('bg360marks ')) {
+      var marksAction = parseBg360MarksCommand(cleanLine, lineNumber, line);
+      if (!marksAction) return;
+      actions.push(marksAction);
+      return;
+    }
+
+    // walk360 bgId text="..." button="..." result=varName
+    if (cleanLine.startsWith('walk360 ')) {
+      var body360 = cleanLine.substring(7).trim();
+      if (!body360) {
+        addParseError(lineNumber, line, 'walk360 требует id фона', true);
+        return;
+      }
+      var sp = body360.indexOf(' ');
+      var bgId360 = sp === -1 ? body360 : body360.slice(0, sp).trim();
+      var rest360 = sp === -1 ? "" : body360.slice(sp + 1);
+      if (!bgId360) {
+        addParseError(lineNumber, line, 'walk360: пустой id фона', true);
+        return;
+      }
+
+      var params360 = parseActionParamsFromText(rest360);
+      actions.push({
+        type: 'walk360',
+        bgId: bgId360,
+        text: params360.text !== undefined ? String(params360.text) : "",
+        button: params360.button !== undefined ? String(params360.button) : "",
+        result: params360.result !== undefined ? String(params360.result) : ""
+      });
+      return;
+    }
     
     // bg [имя]
     if (cleanLine.startsWith('bg ')) {
@@ -2263,7 +2373,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
       const bgAction = {
         type: 'bg',
-        src: `@bg.${bgName || "unknown"}`
+        src: `@bg.${bgName || "unknown"}`,
+        bgId: bgName || ""
       };
 
       const bgParams = parseActionParams(bgTokens.slice(1));

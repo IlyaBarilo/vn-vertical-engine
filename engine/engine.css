@@ -292,6 +292,54 @@ body {
   pointer-events: auto;
 }
 
+/* Слой меток поверх 360-фона (координаты 0..1 по экрану, не по сфере). */
+.bg360-marks {
+  position: absolute;
+  inset: 0;
+  z-index: 6; /* над фоном, но ниже диалога/меню */
+  /* Контейнер всегда пропускает жесты к canvas, чтобы камера 360 крутилась. */
+  pointer-events: none;
+}
+
+.bg360-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: calc(1.2rem * var(--visualScale));
+  height: calc(1.2rem * var(--visualScale));
+  border-radius: 999px;
+  border: var(--ui-border-width) solid rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.35);
+  box-shadow: 0 0.35rem 1.15rem rgba(0,0,0,0.45);
+  cursor: pointer;
+  /* Кликаться должна только сама метка, а не весь слой. */
+  pointer-events: auto;
+}
+
+.bg360-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0.23rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.85);
+  opacity: 0.75;
+}
+
+.bg360-mark.kind-text {
+  border-style: dashed;
+}
+
+.bg360-mark.is-locked {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* В неинтерактивном режиме walk360 метки не принимают клики. */
+.bg360-marks:not(.is-interactive) .bg360-mark {
+  pointer-events: none;
+}
+
 /* Подсказка появляется только у фонов, где сценарий разрешил горизонтальный скролл. */
 .bg-scroll-hint {
   position: absolute;

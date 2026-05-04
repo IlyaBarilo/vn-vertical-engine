@@ -306,6 +306,37 @@ if resultGame == 0 -> bad_end
 
     bg backgroundId
 
+### 360 backgrounds: markers and walk360 (planned)
+
+These design notes describe a **future** scripting feature; the engine may not
+implement all of it yet.
+
+- **Command order in a scene:** first show the 360 background with `bg
+  <backgroundId>`, then define markers with `bg360marks`, then run `walk360`
+  with the same id. Example marker line:
+
+  `bg360marks bg360Campus (mark1, 0.30, 0.55, walk) (mark2, 0.72, 0.40, walk) (hint1, 0.50, 0.20, text)`
+
+- **`walk360` UI:** `text="…"` is a **title** above the exit control (same role
+  as a menu title); the exit button uses the usual `button=` style for this
+  command family.
+
+- **Flow after a marker click (model A):** execution continues with the **next
+  script lines**; a **result** variable (or the command’s `result=` target) is
+  set so you can branch with `if` / `set` and similar logic.
+
+- **Wrong background id:** if `walk360` names a background that is **not** the
+  one currently on screen, treat it as a scenario mistake but **keep running**:
+  use an **empty** result and proceed.
+
+- **Interaction lock:** the equirect image can stay visible after a choice;
+  **marker hit-testing is disabled** until the next `bg` command (**any** new
+  `bg` clears the lock). The user may still **pan the 360 view**; only markers
+  are blocked so `result` cannot change again by accident.
+
+- **Edge-of-screen indicators** for markers outside the current view: deferred
+  (not required for the first version).
+
 ### Characters
 
     show character emotion

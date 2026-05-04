@@ -784,6 +784,7 @@ var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
 var elBg360 = document.getElementById("bg360Layer");
+var elBg360Marks = document.getElementById("bg360MarksLayer");
 var elBgScrollHint = document.getElementById("bgScrollHint");
 var elChar = document.getElementById("charLayer");
 var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
@@ -1388,6 +1389,8 @@ var state = {
   sceneMap: {},
   // Переменные (на будущее, для if/set и результатов мини-игр)
   vars: JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {})),
+  // Текущий id фона из [bg], показанный командой bg (нужно для walk360 и проверок сценария).
+  currentBgId: null,
   // Флаг: ждём ли клика "дальше"
   waitingNext: false,
   // Флаг: открыта ли мини-игра
@@ -1456,6 +1459,22 @@ var bg360Runtime = {
   dragPointerId: null,
   dragLastX: 0,
   dragLastY: 0
+};
+
+// Runtime меток 360: хранит список меток и управляет интерактивностью до следующего bg.
+var bg360MarksRuntime = {
+  bgId: null,
+  marks: [],
+  locked: false,
+  interactive: false
+};
+
+// Runtime walk360: активен, пока игрок не выберет метку или не выйдет кнопкой.
+var walk360Runtime = {
+  active: false,
+  bgId: null,
+  resultVar: "",
+  done: false
 };
 
 // Отладка автосейва: в консоли фильтр [AUTOSAVE_DEBUG]. Выключить: window.VN_AUTOSAVE_DEBUG = false
@@ -3243,6 +3262,9 @@ function restart() {
 
   suppressAutoRunOnce = false;
   lastNextTime = 0;
+  // На рестарте инвалидируем старые асинхронные загрузки персонажа,
+  // чтобы callback из предыдущего состояния не «вернул» старый спрайт.
+  __activeCharSeq++;
   state.currentGame = null;
   state.waitingNext = false;
   state.nextLocked = false;
@@ -3252,6 +3274,8 @@ function restart() {
   cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
   hideOverlay();
+  // Явно сбрасываем персонажа до запуска стартовой сцены.
+  hideAllCharacters();
 
   if (!restartOptions.clearAutosave && isStoryAutosaveEnabled() && tryApplyAutosave()) {
     return;
@@ -3293,6 +3317,7 @@ function restart() {
   state.sceneId = STORY.meta && STORY.meta.start ? STORY.meta.start : null;
   currentSceneId = state.sceneId;
   state.actionIndex = 0;
+  state.currentBgId = null;
   state.waitingNext = false;
 
   // (по желанию) останавливаем звук при рестарте:
@@ -3901,6 +3926,10 @@ function executeAction(action) {
 
   switch (action.type) {
     case "bg":
+      // Любая смена фона сбрасывает блокировку меток 360 (и прячет их, пока сценарий не задаст новые).
+      resetBg360MarksOnNewBackground();
+      // Если walk360 ещё активен, то это ошибка сценария, но движок должен продолжить работу.
+      cancelWalk360IfActive("bg");
       var bgAssetInfo = resolveBackgroundAsset(action.src);
       var bgMediaOptions = action.scroll !== undefined ? action.scroll : bgAssetInfo.scroll;
       bgMediaOptions = mergeMediaFocusOptions(
@@ -3912,8 +3941,19 @@ function executeAction(action) {
         action.focusZ !== undefined ? action.focusZ : bgAssetInfo.focusZ,
         action.fov !== undefined ? action.fov : bgAssetInfo.fov
       );
+      // Сохраняем id фона, чтобы walk360 мог проверить соответствие.
+      state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
       setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
       return false;
+
+    case "bg360marks":
+      // Список меток относится к конкретному фону из [bg].
+      applyBg360Marks(action);
+      return false;
+
+    case "walk360":
+      // Блокирующая команда: ждём, пока игрок выберет метку или нажмёт кнопку выхода.
+      return startWalk360(action);
 
     case "char":
       console.log('[ENGINE] ПОЛУЧЕН CHAR ACTION:', JSON.stringify(action));
@@ -4172,6 +4212,272 @@ function executeAction(action) {
       // неизвестный action — пропускаем
       return false;
   }
+}
+
+// Извлекает bgId из ссылки вида "@bg.someId".
+function extractBgIdFromRef(ref) {
+  var s = String(ref || "");
+  var m = s.match(/^@bg\.([A-Za-z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
+
+// Полный сброс меток при любом новом bg: это освобождает hit-test и убирает старые метки.
+function resetBg360MarksOnNewBackground() {
+  bg360MarksRuntime.bgId = null;
+  bg360MarksRuntime.marks = [];
+  bg360MarksRuntime.locked = false;
+  bg360MarksRuntime.interactive = false;
+  renderBg360Marks();
+}
+
+// Отмена активного walk360 (например если сценарий неожиданно сменил фон).
+function cancelWalk360IfActive(reason) {
+  if (!walk360Runtime.active) return;
+  console.warn("[walk360] cancelled due to", reason);
+  finishWalk360("");
+}
+
+// Применяет команду bg360marks: подготавливает слой меток (показываем/прячем в зависимости от walk360).
+function applyBg360Marks(action) {
+  var bgId = action && action.bgId ? String(action.bgId) : "";
+  var marks = action && Array.isArray(action.marks) ? action.marks : [];
+
+  bg360MarksRuntime.bgId = bgId;
+  bg360MarksRuntime.marks = marks.map(function (m) {
+    return {
+      id: String(m.id || ""),
+      x: Number(m.x),
+      y: Number(m.y),
+      kind: String(m.kind || "walk")
+    };
+  });
+  bg360MarksRuntime.locked = false;
+  // Интерактивность включится только внутри walk360.
+  bg360MarksRuntime.interactive = false;
+  renderBg360Marks();
+}
+
+// Перерисовывает DOM-слой меток 360.
+function renderBg360Marks() {
+  if (!elBg360Marks) return;
+
+  // Скрываем слой полностью, если меток нет.
+  var hasMarks = Array.isArray(bg360MarksRuntime.marks) && bg360MarksRuntime.marks.length > 0;
+  elBg360Marks.classList.toggle("hidden", !hasMarks);
+  elBg360Marks.classList.toggle("is-interactive", !!(hasMarks && bg360MarksRuntime.interactive && !bg360MarksRuntime.locked));
+
+  while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
+  if (!hasMarks) return;
+
+  bg360MarksRuntime.marks.forEach(function (mark) {
+    var btn = document.createElement("div");
+    btn.className = "bg360-mark";
+    if (mark.kind === "text") btn.classList.add("kind-text");
+    if (bg360MarksRuntime.locked) btn.classList.add("is-locked");
+
+    // Сохраняем исходные UV-координаты метки (0..1), чтобы в каждом кадре
+    // проецировать её в экранную позицию согласно текущему углу камеры.
+    btn.style.left = "50%";
+    btn.style.top = "50%";
+    btn.setAttribute("role", "button");
+    btn.setAttribute("tabindex", "0");
+    btn.dataset.markId = mark.id;
+    btn.dataset.markU = String(mark.x);
+    btn.dataset.markV = String(mark.y);
+
+    // Клик по метке разрешён только в интерактивном режиме walk360.
+    btn.addEventListener("click", function (e) {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+      if (!walk360Runtime.active) return;
+      if (bg360MarksRuntime.locked) return;
+      if (!bg360MarksRuntime.interactive) return;
+      onWalk360SelectMark(mark.id);
+    });
+
+    elBg360Marks.appendChild(btn);
+  });
+
+  // После построения DOM сразу считаем экранные позиции.
+  updateBg360MarksProjection();
+}
+
+// Служебные векторы для проекции меток 360 (создаются лениво, чтобы не плодить объекты каждый кадр).
+var bg360MarkProjPoint = null;
+var bg360MarkProjCameraDir = null;
+
+// Преобразует UV equirect-координаты (0..1) в единичный 3D-вектор сферы.
+// U двигается по долготе, V — по широте. Из-за geometry.scale(-1,1,1) инвертируем X.
+function bg360UvToDirection(u, v) {
+  if (!window.THREE) return null;
+  if (!bg360MarkProjPoint) bg360MarkProjPoint = new window.THREE.Vector3();
+
+  var uu = clamp(Number(u), 0, 1);
+  var vv = clamp(Number(v), 0, 1);
+  var lon = (uu - 0.5) * Math.PI * 2;
+  var lat = (0.5 - vv) * Math.PI;
+  var cosLat = Math.cos(lat);
+
+  bg360MarkProjPoint.set(
+    -cosLat * Math.cos(lon), // инверсия X синхронизирует с внутренней сферой
+    Math.sin(lat),
+    cosLat * Math.sin(lon)
+  );
+  return bg360MarkProjPoint;
+}
+
+// Обновляет экранные координаты меток под текущий угол камеры.
+// Метка скрывается, если находится вне текущего поля зрения.
+function updateBg360MarksProjection() {
+  if (!elBg360Marks) return;
+  if (!bg360Runtime.active || !bg360Runtime.camera || !window.THREE) return;
+
+  var nodes = elBg360Marks.querySelectorAll(".bg360-mark");
+  if (!nodes || !nodes.length) return;
+
+  if (!bg360MarkProjCameraDir) bg360MarkProjCameraDir = new window.THREE.Vector3();
+  bg360Runtime.camera.getWorldDirection(bg360MarkProjCameraDir);
+
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    var u = Number(node.dataset.markU);
+    var v = Number(node.dataset.markV);
+    var dir = bg360UvToDirection(u, v);
+    if (!dir) continue;
+
+    // Проверяем, смотрит ли камера в сторону точки (точки за спиной скрываем).
+    var facing = dir.dot(bg360MarkProjCameraDir) > 0;
+    if (!facing) {
+      node.classList.add("hidden");
+      continue;
+    }
+
+    node.classList.remove("hidden");
+    dir.project(bg360Runtime.camera);
+    node.style.left = ((dir.x * 0.5 + 0.5) * 100) + "%";
+    node.style.top = ((-dir.y * 0.5 + 0.5) * 100) + "%";
+  }
+}
+
+// Запускает walk360: показывает панель, включает hit-test меток и блокирует обычный next.
+function startWalk360(action) {
+  var bgId = action && action.bgId ? String(action.bgId) : "";
+  var resultVar = action && action.result ? String(action.result) : "";
+  var titleText = action && action.text ? String(action.text) : "";
+  var buttonText = action && action.button ? String(action.button) : "";
+
+  // Если фон не совпадает — это ошибка сценария, но продолжаем с пустым результатом.
+  if (!bgId || state.currentBgId !== bgId) {
+    console.warn("[walk360] background mismatch", { requested: bgId, current: state.currentBgId });
+    if (resultVar) state.vars[resultVar] = "";
+    return false;
+  }
+
+  walk360Runtime.active = true;
+  walk360Runtime.bgId = bgId;
+  walk360Runtime.resultVar = resultVar;
+  walk360Runtime.done = false;
+
+  // Включаем интерактивность меток только во время walk360.
+  bg360MarksRuntime.interactive = true;
+  bg360MarksRuntime.locked = false;
+  renderBg360Marks();
+
+  showWalk360Panel(titleText, buttonText);
+
+  // Это ожидание управляется внутренними событиями (метка/кнопка), а не onNext.
+  return "async";
+}
+
+// Обрабатывает выбор метки: фиксируем result, выключаем hit-test и продолжаем сценарий.
+function onWalk360SelectMark(markId) {
+  var id = String(markId || "");
+  if (!walk360Runtime.active) return;
+  if (walk360Runtime.done) return;
+
+  if (walk360Runtime.resultVar) {
+    state.vars[walk360Runtime.resultVar] = id;
+  }
+
+  // После выбора метки сразу скрываем все метки: интерактив уже завершён.
+  bg360MarksRuntime.locked = true;
+  bg360MarksRuntime.interactive = false;
+  bg360MarksRuntime.marks = [];
+  renderBg360Marks();
+
+  finishWalk360(id);
+}
+
+// Завершает walk360 (и по метке, и по кнопке выхода).
+function finishWalk360(selectedId) {
+  if (!walk360Runtime.active) return;
+  if (walk360Runtime.done) return;
+  walk360Runtime.done = true;
+
+  hideWalk360Panel();
+
+  // Сбрасываем флаги ожидания, чтобы продолжить выполнение.
+  state.inGame = false;
+  state.inVideo = false;
+  state.waitingNext = false;
+  state.nextLocked = false;
+
+  walk360Runtime.active = false;
+  walk360Runtime.bgId = null;
+  walk360Runtime.resultVar = "";
+
+  runCurrent();
+}
+
+// Показывает панель walk360 в контейнере choices (чтобы onNext автоматически блокировался).
+function showWalk360Panel(titleText, buttonText) {
+  if (!elChoices) return;
+
+  clearFitChoiceLayout();
+  elChoices.classList.remove("hidden");
+  elChoices.innerHTML = "";
+  elDialog.classList.add("hiddenByChoices");
+
+  var panel = document.createElement("div");
+  panel.className = "choicePanel walk360Panel";
+
+  var title = document.createElement("div");
+  title.className = "choiceTitle walk360Title";
+  title.textContent = renderTextVars(String(titleText || ""));
+  if (title.textContent !== "") panel.appendChild(title);
+
+  var list = document.createElement("div");
+  list.className = "choiceList";
+
+  var btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "choiceBtn walk360ExitBtn";
+  btn.textContent = renderTextVars(String(buttonText || "Выход"));
+
+  btn.addEventListener("click", function (e) {
+    if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+    if (e && typeof e.preventDefault === "function") e.preventDefault();
+    if (!walk360Runtime.active) return;
+    if (walk360Runtime.resultVar) state.vars[walk360Runtime.resultVar] = "";
+    // После выхода метки тоже скрываем, чтобы не оставлять «пустой» UI.
+    bg360MarksRuntime.locked = true;
+    bg360MarksRuntime.interactive = false;
+    bg360MarksRuntime.marks = [];
+    renderBg360Marks();
+    finishWalk360("");
+  });
+
+  list.appendChild(btn);
+  panel.appendChild(list);
+  elChoices.appendChild(panel);
+}
+
+function hideWalk360Panel() {
+  if (!elChoices) return;
+  // Не трогаем showChoices() напрямую; walk360 использует тот же контейнер, поэтому чистим полностью.
+  elDialog.classList.remove("hiddenByChoices");
+  elChoices.classList.add("hidden");
+  elChoices.innerHTML = "";
 }
 
 function executeIfSafe(action) {
@@ -4501,6 +4807,8 @@ function clearBg360MediaResources() {
 function renderBg360Frame() {
   if (!bg360Runtime.active || !bg360Runtime.renderer || !bg360Runtime.scene || !bg360Runtime.camera) return;
   bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+  // Привязываем метки к текущему углу обзора: пересчёт на каждом кадре.
+  updateBg360MarksProjection();
   bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
 }
 
