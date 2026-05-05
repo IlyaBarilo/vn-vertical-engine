@@ -1,5 +1,6 @@
 local/
 .cursor/
+.cursorignore
 AGENTS.md
 license-key.js
 story.js
