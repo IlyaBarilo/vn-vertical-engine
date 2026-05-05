@@ -11,6 +11,8 @@ lang=ru                  # Язык инфтерфейса программы. �
 startScene=scIntro01
 # topSpacing=500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
+transition = fade # fade, instant или none
+transitionMs = 180
 
 [bg]
 # Формат описания для фона:

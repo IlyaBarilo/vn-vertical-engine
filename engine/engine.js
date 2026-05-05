@@ -103,6 +103,11 @@ if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
 
 let __charSeq = 0;
 let __activeCharSeq = 0;
+let __visualTransitionSeq = 0;
+
+var VISUAL_TRANSITION_OUT_MS = 85;
+var VISUAL_TRANSITION_IN_MS = 110;
+var VISUAL_TRANSITION_TOTAL_MS = VISUAL_TRANSITION_OUT_MS + VISUAL_TRANSITION_IN_MS;
 
 const UI_I18N = {
   en: {
@@ -3414,6 +3419,8 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
 
 function restart() {
   vnAutosaveBgScrollRestorePending = null;
+  __visualTransitionSeq++;
+  clearVisualTransitionClasses();
 
   // Сбрасываем ошибки парсинга
   window.PARSE_ERRORS = [];
@@ -3574,15 +3581,25 @@ if (state.sceneId === 'scene_02') {
     }
 
 
-    var action = scene.actions[state.actionIndex];
+    var actionIndexBeforeInc = state.actionIndex;
+    var action = scene.actions[actionIndexBeforeInc];
+    if (isVisualBatchCandidate(action)) {
+      var visualBatchActions = collectVisualBatchActions(scene, actionIndexBeforeInc);
+      action = {
+        type: "visual_batch",
+        actions: visualBatchActions
+      };
+      state.actionIndex += visualBatchActions.length;
+    } else {
+      state.actionIndex++;
+    }
     console.log('[FLOW] runCurrent:action picked', {
       sceneId: state.sceneId,
-      actionIndexBeforeInc: state.actionIndex,
+      actionIndexBeforeInc: actionIndexBeforeInc,
       action: action,
       waitingNext: state.waitingNext,
       nextLocked: state.nextLocked
     });
-    state.actionIndex++;
 
     if (!action || !action.type) continue;
 
@@ -4088,6 +4105,390 @@ function isTruthyValue(value) {
 //                   ACTION EXECUTION
 // =========================================================
 
+// Эти действия можно собрать в один визуальный переход до ближайшей реплики/выбора.
+function isVisualBatchCandidate(action) {
+  return !!(action && (
+    action.type === "bg" ||
+    action.type === "char" ||
+    action.type === "bg360marks"
+  ));
+}
+
+// Забирает подряд идущие визуальные действия, чтобы фон и персонаж менялись синхронно.
+function collectVisualBatchActions(scene, startIndex) {
+  var actions = [];
+  if (!scene || !Array.isArray(scene.actions)) return actions;
+  for (var i = startIndex; i < scene.actions.length; i++) {
+    var action = scene.actions[i];
+    if (!isVisualBatchCandidate(action)) break;
+    actions.push(action);
+  }
+  return actions;
+}
+
+function delayVisualTransition(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, Math.max(0, ms || 0));
+  });
+}
+
+function waitVisualTransitionFrame() {
+  return new Promise(function(resolve) {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
+// Читает [meta] transition/transitionMs: fade включает батч-переход, none/instant/off отключают.
+function getVisualTransitionSettings() {
+  var meta = STORY && STORY.meta ? STORY.meta : {};
+  var rawMode = String(meta.transition === undefined || meta.transition === null ? "fade" : meta.transition).trim().toLowerCase();
+  var enabled = !(rawMode === "none" || rawMode === "instant" || rawMode === "off" || rawMode === "false" || rawMode === "0");
+  var totalMs = typeof meta.transitionMs === "number" && isFinite(meta.transitionMs)
+    ? clamp(meta.transitionMs, 0, 2000)
+    : VISUAL_TRANSITION_TOTAL_MS;
+  var outRatio = VISUAL_TRANSITION_OUT_MS / VISUAL_TRANSITION_TOTAL_MS;
+  var outMs = Math.round(totalMs * outRatio);
+  var inMs = Math.max(0, totalMs - outMs);
+
+  return {
+    enabled: enabled && totalMs > 0,
+    outMs: outMs,
+    inMs: inMs
+  };
+}
+
+// CSS-переход берёт длительность из переменной, поэтому для fade-out и fade-in можно задавать разные части.
+function setVisualTransitionDuration(ms) {
+  document.documentElement.style.setProperty("--visualTransitionMs", Math.max(0, Math.round(ms || 0)) + "ms");
+}
+
+// Загружает картинку до старта fade-out, чтобы после исчезновения старого кадра не было пустой паузы.
+function preloadImageForVisualTransition(src) {
+  var normalizedSrc = normalizeAssetUrl(src || "");
+  if (!normalizedSrc) return Promise.resolve(false);
+  if (failedAssets.images[normalizedSrc]) return Promise.resolve(false);
+
+  return new Promise(function(resolve) {
+    var image = new Image();
+    image.onload = function() {
+      resolve(true);
+    };
+    image.onerror = function() {
+      failedAssets.images[normalizedSrc] = true;
+      resolve(false);
+    };
+    image.src = normalizedSrc;
+  });
+}
+
+function setVisualTransitionTransparent(el, transparent) {
+  if (!el) return;
+  el.classList.toggle("visual-transition-transparent", !!transparent);
+}
+
+function clearVisualTransitionClasses() {
+  [elBg, elBgVideo, elBg360, elChar].forEach(function(el) {
+    setVisualTransitionTransparent(el, false);
+  });
+}
+
+function isElementVisibleForVisualTransition(el) {
+  return !!(el && !el.classList.contains("hidden"));
+}
+
+function getVisibleBackgroundTransitionElements() {
+  return [elBg, elBgVideo, elBg360].filter(function(el) {
+    return isElementVisibleForVisualTransition(el);
+  });
+}
+
+function getPreparedBackgroundTargetElement(preparedBg) {
+  if (!preparedBg || !preparedBg.file) return null;
+  if (preparedBg.mediaOptions && preparedBg.mediaOptions.is360 === true) return elBg360;
+  if (isVideoAssetPath(preparedBg.file)) return elBgVideo;
+  return elBg;
+}
+
+function applyCharacterVisualPosition(pos) {
+  if (!elChar) return;
+  if (pos === "left") {
+    elChar.style.left = "35%";
+    elChar.style.transform = "translateX(-50%)";
+  } else if (pos === "right") {
+    elChar.style.left = "65%";
+    elChar.style.transform = "translateX(-50%)";
+  } else {
+    elChar.style.left = "50%";
+    elChar.style.transform = "translateX(-50%)";
+  }
+}
+
+// Готовит финальное состояние фона из команды bg, но не меняет DOM до общего swap.
+function prepareBackgroundVisualAction(action) {
+  if (!action) return null;
+  resetBg360MarksOnNewBackground();
+  cancelWalk360IfActive("bg");
+
+  var bgAssetInfo = resolveBackgroundAsset(action.src);
+  var bgMediaOptions = action.scroll !== undefined ? action.scroll : bgAssetInfo.scroll;
+  bgMediaOptions = mergeMediaFocusOptions(
+    bgMediaOptions,
+    action.focusX !== undefined ? action.focusX : bgAssetInfo.focusX,
+    action.scale !== undefined ? action.scale : bgAssetInfo.scale,
+    action.focusY !== undefined ? action.focusY : bgAssetInfo.focusY,
+    action.is360 !== undefined ? action.is360 : bgAssetInfo.is360,
+    action.focusZ !== undefined ? action.focusZ : bgAssetInfo.focusZ,
+    action.fov !== undefined ? action.fov : bgAssetInfo.fov
+  );
+
+  state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
+
+  var normalizedSrc = normalizeAssetUrl(bgAssetInfo.file || "");
+  var currentBg = captureBackgroundSnapshotForAutosave();
+  var currentSrc = currentBg && currentBg.src ? normalizeAssetUrl(currentBg.src) : "";
+  var changesVisual = !!normalizedSrc && (
+    !currentSrc ||
+    !urlsMatchForAutosaveRestore(currentSrc, normalizedSrc) ||
+    (bgMediaOptions && bgMediaOptions.is360 === true)
+  );
+
+  return {
+    action: action,
+    file: bgAssetInfo.file,
+    fallback: bgAssetInfo.fallback,
+    volume: bgAssetInfo.volume,
+    mediaOptions: bgMediaOptions,
+    normalizedSrc: normalizedSrc,
+    changesVisual: changesVisual
+  };
+}
+
+// Готовит финальное состояние персонажа: show с картинкой, hide all или пропуск, если ассет не найден.
+function prepareCharacterVisualAction(action) {
+  if (!action) return null;
+
+  if ((!action.charId || action.charId === null) && action.src === null) {
+    return {
+      kind: "hide",
+      changesVisual: isElementVisibleForVisualTransition(elChar)
+    };
+  }
+
+  if (!action.charId) {
+    return {
+      kind: "hide",
+      changesVisual: isElementVisibleForVisualTransition(elChar)
+    };
+  }
+
+  var src = resolveAsset(null, action.charId, action.emotion);
+  if (!src) {
+    console.log('[VISUAL BATCH] char skipped: image not found', action);
+    return { kind: "skip", changesVisual: false };
+  }
+
+  var normalizedSrc = normalizeAssetUrl(src);
+  if (failedAssets.images[normalizedSrc]) {
+    console.log('[VISUAL BATCH] char skipped: image marked failed', normalizedSrc);
+    return { kind: "skip", changesVisual: false };
+  }
+
+  var currentSrc = normalizeAssetUrl(elChar ? (elChar.getAttribute("src") || elChar.currentSrc || elChar.src || "") : "");
+  var currentCharId = elChar && elChar.dataset ? elChar.dataset.charId : "";
+  var hidden = !isElementVisibleForVisualTransition(elChar);
+  var changesVisual =
+    hidden ||
+    !currentSrc ||
+    !urlsMatchForAutosaveRestore(currentSrc, normalizedSrc) ||
+    currentCharId !== action.charId;
+
+  return {
+    kind: "show",
+    src: src,
+    normalizedSrc: normalizedSrc,
+    pos: action.pos,
+    charId: action.charId,
+    changesVisual: changesVisual
+  };
+}
+
+// Из набора подряд идущих визуальных команд оставляет финальный фон, финального персонажа и все метки 360.
+function buildVisualBatchPlan(actions) {
+  var plan = {
+    bg: null,
+    char: null,
+    marks: []
+  };
+
+  actions.forEach(function(action) {
+    if (!action) return;
+    if (action.type === "bg") {
+      plan.bg = prepareBackgroundVisualAction(action);
+    } else if (action.type === "char") {
+      plan.char = prepareCharacterVisualAction(action);
+    } else if (action.type === "bg360marks") {
+      plan.marks.push(action);
+    }
+  });
+
+  return plan;
+}
+
+function preloadVisualBatchPlan(plan) {
+  var waits = [];
+  if (plan && plan.bg && plan.bg.file && !isVideoAssetPath(plan.bg.file)) {
+    waits.push(preloadImageForVisualTransition(plan.bg.file));
+  }
+  if (plan && plan.char && plan.char.kind === "show" && plan.char.changesVisual) {
+    waits.push(preloadImageForVisualTransition(plan.char.normalizedSrc));
+  }
+  return Promise.all(waits);
+}
+
+function planHasVisualTransition(plan) {
+  return !!(plan && (
+    (plan.bg && plan.bg.changesVisual) ||
+    (plan.char && plan.char.changesVisual)
+  ));
+}
+
+function getVisualBatchFadeOutElements(plan) {
+  var elements = [];
+  if (plan && plan.bg && plan.bg.changesVisual) {
+    elements = elements.concat(getVisibleBackgroundTransitionElements());
+  }
+  if (plan && plan.char && plan.char.changesVisual && isElementVisibleForVisualTransition(elChar)) {
+    elements.push(elChar);
+  }
+  return elements;
+}
+
+function getVisualBatchFadeInElements(plan) {
+  var elements = [];
+  if (plan && plan.bg && plan.bg.changesVisual) {
+    var bgTarget = getPreparedBackgroundTargetElement(plan.bg);
+    if (bgTarget) elements.push(bgTarget);
+  }
+  if (plan && plan.char && plan.char.kind === "show" && plan.char.changesVisual && elChar) {
+    elements.push(elChar);
+  }
+  return elements;
+}
+
+function applyPreparedBackgroundVisualState(preparedBg) {
+  if (!preparedBg) return;
+  setBackground(preparedBg.file, preparedBg.fallback, preparedBg.volume, preparedBg.mediaOptions);
+}
+
+function applyPreparedCharacterVisualState(preparedChar) {
+  if (!preparedChar || !elChar) return;
+
+  __activeCharSeq++;
+  elChar.onload = null;
+  elChar.onerror = null;
+
+  if (preparedChar.kind === "hide") {
+    elChar.classList.add("hidden");
+    elChar.src = "";
+    elChar.removeAttribute("data-char-id");
+    elChar.style.height = "0px";
+    return;
+  }
+
+  if (preparedChar.kind !== "show") return;
+  if (failedAssets.images[preparedChar.normalizedSrc]) return;
+
+  applyCharacterVisualPosition(preparedChar.pos);
+  if (preparedChar.charId) {
+    elChar.dataset.charId = preparedChar.charId;
+  }
+  elChar.style.maxHeight = "none";
+  elChar.src = preparedChar.normalizedSrc;
+  elChar.classList.remove("hidden");
+  adjustCharacterScale();
+  requestAnimationFrame(function() {
+    adjustCharacterScale();
+  });
+}
+
+function applyVisualBatchPlan(plan) {
+  if (!plan) return;
+  applyPreparedBackgroundVisualState(plan.bg);
+  plan.marks.forEach(function(action) {
+    applyBg360Marks(action);
+  });
+  applyPreparedCharacterVisualState(plan.char);
+}
+
+// Выполняет общий короткий переход для финального фона и персонажа, затем продолжает сценарий.
+function executeVisualBatch(actions) {
+  if (!actions || actions.length === 0) return false;
+
+  var plan = buildVisualBatchPlan(actions);
+  var transitionSettings = getVisualTransitionSettings();
+  var hasTransition = planHasVisualTransition(plan) && transitionSettings.enabled;
+  var hasCharacterShow = !!(plan.char && plan.char.kind === "show");
+
+  if (hasCharacterShow && !firstScreenMetrics.firstScreenShown) {
+    firstScreenMetrics.waitingForCharacter = true;
+  }
+
+  if (!hasTransition) {
+    applyVisualBatchPlan(plan);
+    if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
+    return false;
+  }
+
+  var seq = ++__visualTransitionSeq;
+  preloadVisualBatchPlan(plan).then(function() {
+    if (seq !== __visualTransitionSeq) return;
+
+    var fadeOutElements = getVisualBatchFadeOutElements(plan);
+    setVisualTransitionDuration(transitionSettings.outMs);
+    fadeOutElements.forEach(function(el) {
+      setVisualTransitionTransparent(el, true);
+    });
+
+    return delayVisualTransition(fadeOutElements.length > 0 ? transitionSettings.outMs : 0);
+  }).then(function() {
+    if (seq !== __visualTransitionSeq) return;
+
+    var fadeInElements = getVisualBatchFadeInElements(plan);
+    setVisualTransitionDuration(transitionSettings.inMs);
+    fadeInElements.forEach(function(el) {
+      setVisualTransitionTransparent(el, true);
+    });
+
+    applyVisualBatchPlan(plan);
+
+    return waitVisualTransitionFrame().then(function() {
+      if (seq !== __visualTransitionSeq) return;
+      fadeInElements.forEach(function(el) {
+        setVisualTransitionTransparent(el, false);
+      });
+      return delayVisualTransition(fadeInElements.length > 0 ? transitionSettings.inMs : 0);
+    });
+  }).then(function() {
+    if (seq !== __visualTransitionSeq) return;
+    clearVisualTransitionClasses();
+    if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
+    state.nextLocked = false;
+    state.waitingNext = false;
+    runCurrent();
+  }).catch(function(err) {
+    console.warn("[VISUAL BATCH] transition failed:", err);
+    clearVisualTransitionClasses();
+    if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
+    state.nextLocked = false;
+    state.waitingNext = false;
+    runCurrent();
+  });
+
+  return "async";
+}
+
 // Возвращает true, если надо "ждать" (клик дальше/выбор/игра)
 function executeAction(action) {
   console.log(
@@ -4099,6 +4500,9 @@ function executeAction(action) {
   );
 
   switch (action.type) {
+    case "visual_batch":
+      return executeVisualBatch(action.actions || []);
+
     case "bg":
       // Любая смена фона сбрасывает блокировку меток 360 (и прячет их, пока сценарий не задаст новые).
       resetBg360MarksOnNewBackground();
@@ -5194,6 +5598,8 @@ function gotoScene(sceneId) {
   
   // ПОВЫШАЕМ СЧЁТЧИК, чтобы отменить все ожидающие загрузки
   __activeCharSeq++;
+  __visualTransitionSeq++;
+  clearVisualTransitionClasses();
 
   state.sceneId = sceneId;
   currentSceneId = sceneId;

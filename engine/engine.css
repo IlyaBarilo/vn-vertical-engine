@@ -316,6 +316,7 @@ body {
   object-fit: cover;
   object-position: center;
   z-index: 2;
+  transition: opacity var(--visualTransitionMs, 110ms) ease;
 }
 
 /* Отдельный слой для 360-фона: рендерится в canvas и принимает жесты drag/pinch. */
@@ -472,6 +473,12 @@ body {
   filter: drop-shadow(0 var(--char-shadow-y) var(--char-shadow-blur) var(--char-shadow-color));
   z-index: 3;
   pointer-events: none;
+  transition: opacity var(--visualTransitionMs, 110ms) ease;
+}
+
+/* Короткий общий fade-through для батча bg/show/hide перед следующей репликой. */
+.visual-transition-transparent {
+  opacity: 0 !important;
 }
 
 /* Затемнение/оверлей */

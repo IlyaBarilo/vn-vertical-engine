@@ -103,6 +103,14 @@
     autosave: {
       target: 'autosave',
       type: 'bool'
+    },
+    transition: {
+      target: 'transition',
+      type: 'string'
+    },
+    transitionMs: {
+      target: 'transitionMs',
+      type: 'int'
     }
   };
 
