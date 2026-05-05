@@ -1971,7 +1971,7 @@ function handleBackgroundScrollPointerDown(e) {
   }
 }
 
-// Во время drag меняем горизонтальную позицию; в 360-fallback добавляем вертикальный обзор по Y.
+// Во время drag двигаем фон в сторону указателя; в 360-fallback добавляем вертикальный обзор по Y.
 function handleBackgroundScrollPointerMove(e) {
   if (!backgroundScroll) return;
   if (!backgroundScroll.dragging || e.pointerId !== backgroundScroll.pointerId) return;
@@ -1983,8 +1983,9 @@ function handleBackgroundScrollPointerMove(e) {
   }
 
   if (backgroundScroll.maxOffset > 1) {
+    // У object-position увеличение X визуально уводит слой влево, поэтому dx вычитается.
     backgroundScroll.position = clamp(
-      backgroundScroll.dragStartPosition + (dx / backgroundScroll.maxOffset),
+      backgroundScroll.dragStartPosition - (dx / backgroundScroll.maxOffset),
       0,
       1
     );
