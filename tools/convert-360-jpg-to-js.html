@@ -91,18 +91,10 @@
 
     <div class="card">
       <h2>Входные данные</h2>
-      <div class="row">
-        <div>
-          <label for="fileInput">JPG/PNG 2:1</label>
-          <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" />
-          <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
-        </div>
-        <div>
-          <label for="sourceKey">Ключ исходного file=... из истории</label>
-          <input id="sourceKey" type="text" placeholder="local/360/images/test101.jpg" />
-          <div class="hint" style="margin-top:8px;">Этот ключ будет использоваться движком для поиска данных.</div>
-        </div>
-      </div>
+      <label for="fileInput">JPG/PNG 2:1</label>
+      <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" />
+      <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
+      <div class="hint" style="margin-top:8px;">Пакет сам привязывается к пути из истории: файл IMG.360.js рядом с IMG.jpg регистрируется как IMG.jpg.</div>
     </div>
 
     <div class="card">
@@ -113,7 +105,7 @@
       </div>
       <div id="status" class="hint" style="margin-top:10px;">Ожидание.</div>
       <div class="hint" style="margin-top:10px;">
-        Формат: пакет пишет данные в <span class="mono">window.VN360_PACKS[sourceKey]</span>.
+        Формат: пакет пишет данные в <span class="mono">window.VN360_PACKS</span> по ключу, вычисленному из имени самого <span class="mono">*.360.js</span>.
       </div>
     </div>
 
@@ -127,7 +119,6 @@
     "use strict";
 
     var fileInput = document.getElementById("fileInput");
-    var sourceKeyEl = document.getElementById("sourceKey");
     var imageInfoEl = document.getElementById("imageInfo");
     var statusEl = document.getElementById("status");
     var outputEl = document.getElementById("output");
@@ -209,9 +200,18 @@
       });
     }
 
-    // Собирает итоговый текст .360.js в простом формате для регистрации ресурса.
-    function buildPackJs(sourceKey, dataUrl, meta) {
+    // Возвращает расширение исходной картинки, чтобы IMG.360.js регистрировался как IMG.jpg/jpeg/png.
+    function getSourceImageExtension(fileName, type) {
+      var lowerName = String(fileName || "").toLowerCase();
+      var match = lowerName.match(/\.(jpe?g|png)$/);
+      if (match) return "." + match[1];
+      return String(type || "").toLowerCase() === "image/png" ? ".png" : ".jpg";
+    }
+
+    // Собирает итоговый текст .360.js: ключ берется из пути самого пакета, без ручного дублирования story.js.
+    function buildPackJs(dataUrl, meta) {
       var chunks = chunkString(dataUrl, 16384);
+      var sourceExtension = getSourceImageExtension(meta.name, meta.type);
       var chunkLines = chunks.map(function(part) {
         return "    '" + jsStringLiteral(part) + "'";
       }).join(",\n");
@@ -222,8 +222,17 @@
         "  window.VN360_PACKS = window.VN360_PACKS || {};",
         "  window.VN360_PACKS_META = window.VN360_PACKS_META || {};",
         "",
-        "  // Ключ должен совпадать с file=... из истории для автопоиска пакета движком.",
-        "  var sourceKey = '" + jsStringLiteral(sourceKey) + "';",
+        "  // Ключ выводится из пути текущего JS: IMG.360.js регистрирует данные для IMG" + jsStringLiteral(sourceExtension) + ".",
+        "  function getPackSourceKey() {",
+        "    var script = document.currentScript || (function() {",
+        "      var scripts = document.getElementsByTagName('script');",
+        "      return scripts[scripts.length - 1] || null;",
+        "    })();",
+        "    var scriptUrl = script && script.src ? script.src : '';",
+        "    if (!scriptUrl && script && script.getAttribute) scriptUrl = script.getAttribute('src') || '';",
+        "    return String(scriptUrl || '').replace(/\\.360\\.js(\\?.*)?$/i, '" + jsStringLiteral(sourceExtension) + "$1');",
+        "  }",
+        "  var sourceKey = getPackSourceKey();",
         "  var dataUrl = [",
         chunkLines,
         "  ].join('');",
@@ -263,9 +272,6 @@
         return;
       }
       suggestedFileName = suggestPackFileName(file.name);
-      if (!sourceKeyEl.value.trim()) {
-        sourceKeyEl.value = "local/360/images/" + file.name;
-      }
       statusEl.textContent = "Чтение изображения...";
       readImageFile(file).then(function(result) {
         loadedDataUrl = result.dataUrl;
@@ -281,16 +287,11 @@
     });
 
     btnGenerate.addEventListener("click", function() {
-      var sourceKey = sourceKeyEl.value.trim();
       if (!loadedFile || !loadedDataUrl || !loadedMeta) {
         statusEl.innerHTML = "<span class='warn'>Сначала выберите и загрузите изображение.</span>";
         return;
       }
-      if (!sourceKey) {
-        statusEl.innerHTML = "<span class='warn'>Укажите ключ file=... (source key).</span>";
-        return;
-      }
-      generatedText = buildPackJs(sourceKey, loadedDataUrl, loadedMeta);
+      generatedText = buildPackJs(loadedDataUrl, loadedMeta);
       outputEl.value = generatedText;
       btnDownload.disabled = false;
       statusEl.innerHTML = "<span class='ok'>Готово. Пакет сформирован.</span>";

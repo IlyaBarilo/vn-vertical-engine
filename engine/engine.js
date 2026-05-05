@@ -1451,6 +1451,7 @@ var bg360Runtime = {
   texture: null,
   video: null,
   frameId: 0,
+  loadSeq: 0,
   yawDeg: 180,
   pitchDeg: 0,
   fovDeg: 70,
@@ -1465,6 +1466,7 @@ var bg360Runtime = {
 var bg360MarksRuntime = {
   bgId: null,
   marks: [],
+  lines: false,
   locked: false,
   interactive: false
 };
@@ -2630,6 +2632,14 @@ var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
 var vnAutosaveTimer = null;
 var vnAutosaveBgScrollRestorePending = null;
 
+// Снимает отложенную запись, чтобы после ручного сброса старый таймер не вернул прежний слот.
+function cancelPendingAutosaveTimer(reason) {
+  if (!vnAutosaveTimer) return;
+  clearTimeout(vnAutosaveTimer);
+  vnAutosaveTimer = null;
+  autosaveDebugLog("debounce:cancelled", { reason: reason || "" });
+}
+
 // Сравнение URL фона после нормализации (расхождение только origin при смене способа открытия страницы).
 function urlsMatchForAutosaveRestore(hrefA, hrefB) {
   if (!hrefA || !hrefB) return false;
@@ -2850,7 +2860,11 @@ function buildAutosavePayload(opts) {
   } else {
     persistActionIndex = state.actionIndex;
     var choicesVisible = !!(elChoices && !elChoices.classList.contains("hidden"));
-    if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
+    // walk360 — это асинхронное ожидание: пока игрок не выбрал метку, сохраняем саму команду,
+    // иначе после F5 сценарий перескочит к следующему действию и может преждевременно открыть menu.
+    if (walk360Runtime && walk360Runtime.active && persistActionIndex > 0) {
+      persistActionIndex = persistActionIndex - 1;
+    } else if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
       persistActionIndex = persistActionIndex - 1;
     }
   }
@@ -2871,6 +2885,7 @@ function buildAutosavePayload(opts) {
     nextLockedRuntime: !!state.nextLocked,
     waitingNextDisk: flagsForDisk.waitingNext,
     nextLockedDisk: flagsForDisk.nextLocked,
+    walk360Active: !!(walk360Runtime && walk360Runtime.active),
     choicesVisible: !!(elChoices && !elChoices.classList.contains("hidden")),
     optsPersistOverride: typeof opts.persistActionIndex === "number",
     stack: autosaveDebugShortStack()
@@ -2954,10 +2969,13 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
 }
 
 function clearAutosaveStorage() {
+  cancelPendingAutosaveTimer("clear_storage");
   try {
     localStorage.removeItem(VN_AUTOSAVE_STORAGE_KEY);
+    autosaveDebugLog("clear:removed", {});
   } catch (err) {
     console.warn("[AUTOSAVE] clear failed:", err);
+    autosaveDebugLog("clear:error", String(err && err.message ? err.message : err));
   }
 }
 
@@ -2967,10 +2985,7 @@ function clearAutosaveStorage() {
  */
 function scheduleAutosave() {
   if (!STORY || !isStoryAutosaveEnabled()) return;
-  if (vnAutosaveTimer) {
-    clearTimeout(vnAutosaveTimer);
-    vnAutosaveTimer = null;
-  }
+  cancelPendingAutosaveTimer("reschedule");
   vnAutosaveTimer = setTimeout(function () {
     vnAutosaveTimer = null;
     autosaveDebugLog("debounce:fired", {
@@ -3214,8 +3229,8 @@ function tryApplyAutosave() {
   return true;
 }
 
-// Восстанавливает последний bg из префикса сцены [0..actionIndex), когда в автосейве нет data.bg.
-// Используем только визуальный тип bg, без выполнения логических/ветвящихся действий.
+// Восстанавливает последний bg и связанные bg360marks из префикса сцены [0..actionIndex), когда в автосейве нет data.bg.
+// Используем только визуальные действия, без выполнения логики/ветвлений.
 function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
   if (!state || !state.sceneMap || !sceneId) return false;
   var scene = state.sceneMap[sceneId];
@@ -3223,10 +3238,14 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
 
   var limit = clamp(parseInt(actionIndex, 10) || 0, 0, scene.actions.length);
   var lastBgAction = null;
+  var lastBg360MarksAction = null;
   for (var i = 0; i < limit; i++) {
     var a = scene.actions[i];
     if (a && a.type === "bg") {
       lastBgAction = a;
+      lastBg360MarksAction = null;
+    } else if (a && a.type === "bg360marks") {
+      lastBg360MarksAction = a;
     }
   }
   if (!lastBgAction) return false;
@@ -3242,7 +3261,12 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
     lastBgAction.focusZ !== undefined ? lastBgAction.focusZ : bgAssetInfo.focusZ,
     lastBgAction.fov !== undefined ? lastBgAction.fov : bgAssetInfo.fov
   );
+  state.currentBgId = lastBgAction.bgId || extractBgIdFromRef(lastBgAction.src);
   setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
+  if (lastBg360MarksAction) {
+    // Метки нужны до повторного входа в walk360, иначе restore покажет фон без кликабельных точек.
+    applyBg360Marks(lastBg360MarksAction);
+  }
   return true;
 }
 
@@ -3256,7 +3280,9 @@ function restart() {
     ? arguments[0]
     : {};
 
-  if (restartOptions.clearAutosave) {
+  var shouldWriteCleanAutosaveAfterReset = !!restartOptions.clearAutosave;
+
+  if (shouldWriteCleanAutosaveAfterReset) {
     clearAutosaveStorage();
   }
 
@@ -3271,6 +3297,7 @@ function restart() {
   state.inVideo = false;
 
   hideChoices();
+  reset360InteractionStateForRestart("restart");
   cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
   hideOverlay();
@@ -3338,6 +3365,11 @@ function restart() {
   firstScreenMetrics.firstScreenShown = false;
 
   runCurrent();
+
+  if (shouldWriteCleanAutosaveAfterReset) {
+    // После ручного сброса сразу заменяем старый слот стартовым состоянием, а не ждём debounce/pagehide.
+    flushAutosaveToStorageSync();
+  }
 }
 
 function runCurrent() {
@@ -4225,6 +4257,7 @@ function extractBgIdFromRef(ref) {
 function resetBg360MarksOnNewBackground() {
   bg360MarksRuntime.bgId = null;
   bg360MarksRuntime.marks = [];
+  bg360MarksRuntime.lines = false;
   bg360MarksRuntime.locked = false;
   bg360MarksRuntime.interactive = false;
   renderBg360Marks();
@@ -4237,12 +4270,57 @@ function cancelWalk360IfActive(reason) {
   finishWalk360("");
 }
 
+// Сбрасывает 360-ожидание без runCurrent: при рестарте сценарий сам заново дойдёт до нужной команды.
+function reset360InteractionStateForRestart(reason) {
+  walk360Runtime.active = false;
+  walk360Runtime.bgId = null;
+  walk360Runtime.resultVar = "";
+  walk360Runtime.done = false;
+
+  bg360MarksRuntime.bgId = null;
+  bg360MarksRuntime.marks = [];
+  bg360MarksRuntime.lines = false;
+  bg360MarksRuntime.locked = false;
+  bg360MarksRuntime.interactive = false;
+  renderBg360Marks();
+
+  if (elChoices) {
+    clearFitChoiceLayout();
+    elChoices.classList.add("hidden");
+    elChoices.innerHTML = "";
+  }
+
+  // Отключаем старый canvas и инвалидируем его отложенные загрузки, чтобы после сброса не вернулся прежний 360-фон.
+  disableBg360Renderer();
+  console.log("[walk360] reset interaction state", reason || "");
+}
+
+// Прячет обычную реплику на время walk360 и убирает оставшийся текст/имя, чтобы не было пустой нижней плашки.
+function hideDialogForWalk360() {
+  if (elName) {
+    elName.textContent = "";
+    elName.classList.add("hidden");
+    elName.removeAttribute("data-protected");
+  }
+  if (elText) {
+    elText.textContent = "";
+  }
+  if (elDialog) {
+    elDialog.classList.add("hiddenByChoices");
+    elDialog.classList.remove("has-name", "has-hint");
+    elDialog.classList.add("no-name", "no-hint");
+  }
+  var hintElement = document.querySelector(".hint");
+  if (hintElement) hintElement.style.display = "none";
+}
+
 // Применяет команду bg360marks: подготавливает слой меток (показываем/прячем в зависимости от walk360).
 function applyBg360Marks(action) {
   var bgId = action && action.bgId ? String(action.bgId) : "";
   var marks = action && Array.isArray(action.marks) ? action.marks : [];
 
   bg360MarksRuntime.bgId = bgId;
+  bg360MarksRuntime.lines = !!(action && action.lines);
   bg360MarksRuntime.marks = marks.map(function (m) {
     return {
       id: String(m.id || ""),
@@ -4269,7 +4347,24 @@ function renderBg360Marks() {
   while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
   if (!hasMarks) return;
 
-  bg360MarksRuntime.marks.forEach(function (mark) {
+  var linesLayer = null;
+  if (bg360MarksRuntime.lines) {
+    linesLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    linesLayer.classList.add("bg360-mark-lines");
+    linesLayer.setAttribute("aria-hidden", "true");
+    linesLayer.setAttribute("preserveAspectRatio", "none");
+    elBg360Marks.appendChild(linesLayer);
+  }
+
+  bg360MarksRuntime.marks.forEach(function (mark, index) {
+    if (bg360MarksRuntime.lines) {
+      var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.classList.add("bg360-mark-line");
+      line.dataset.markId = mark.id;
+      line.dataset.markLineIndex = String(index);
+      linesLayer.appendChild(line);
+    }
+
     var btn = document.createElement("div");
     btn.className = "bg360-mark";
     if (mark.kind === "text") btn.classList.add("kind-text");
@@ -4282,6 +4377,7 @@ function renderBg360Marks() {
     btn.setAttribute("role", "button");
     btn.setAttribute("tabindex", "0");
     btn.dataset.markId = mark.id;
+    btn.dataset.markLineIndex = String(index);
     btn.dataset.markU = String(mark.x);
     btn.dataset.markV = String(mark.y);
 
@@ -4305,6 +4401,8 @@ function renderBg360Marks() {
 // Служебные векторы для проекции меток 360 (создаются лениво, чтобы не плодить объекты каждый кадр).
 var bg360MarkProjPoint = null;
 var bg360MarkProjCameraDir = null;
+var bg360MarkProjNadirPoint = null;
+var bg360MarkProjNadirCameraPoint = null;
 
 // Преобразует UV текстуры сферы (0..1) в единичный вектор направления на сфере.
 // Должно совпадать с THREE.SphereGeometry (см. uvs: второй компонент = 1 - v_ряда)
@@ -4345,20 +4443,110 @@ function updateBg360MarksProjection() {
     var u = Number(node.dataset.markU);
     var v = Number(node.dataset.markV);
     var dir = bg360UvToDirection(u, v);
-    if (!dir) continue;
+    if (!dir) {
+      updateBg360MarkLine(node, 0, 0, false);
+      continue;
+    }
 
     // Проверяем, смотрит ли камера в сторону точки (точки за спиной скрываем).
     var facing = dir.dot(bg360MarkProjCameraDir) > 0;
     if (!facing) {
       node.classList.add("hidden");
+      updateBg360MarkLine(node, 0, 0, false);
       continue;
     }
 
     node.classList.remove("hidden");
     dir.project(bg360Runtime.camera);
-    node.style.left = ((dir.x * 0.5 + 0.5) * 100) + "%";
-    node.style.top = ((-dir.y * 0.5 + 0.5) * 100) + "%";
+    var screenX = dir.x * 0.5 + 0.5;
+    var screenY = -dir.y * 0.5 + 0.5;
+    node.style.left = (screenX * 100) + "%";
+    node.style.top = (screenY * 100) + "%";
+    updateBg360MarkLine(node, screenX, screenY, true);
   }
+}
+
+// Читает множитель глубины точки "под камерой" из CSS, чтобы настройка 360-линий была рядом с размерами меток.
+function getBg360UnderCameraDepthMultiplier() {
+  var fallbackDepth = 3;
+  try {
+    var raw = getComputedStyle(document.documentElement).getPropertyValue("--bg360-under-camera-depth");
+    var value = Number(String(raw || "").trim());
+    return isFinite(value) && value > 0 ? value : fallbackDepth;
+  } catch (err) {
+    return fallbackDepth;
+  }
+}
+
+// Возвращает экранную проекцию нижней точки сферы под камерой; если она за горизонтом, уводит старт ниже экрана.
+function getBg360UnderCameraScreenPoint(width, height) {
+  if (!window.THREE || !bg360Runtime.camera || width <= 0 || height <= 0) {
+    return { x: width * 0.5, y: height };
+  }
+
+  if (!bg360MarkProjNadirPoint) bg360MarkProjNadirPoint = new window.THREE.Vector3();
+  if (!bg360MarkProjNadirCameraPoint) bg360MarkProjNadirCameraPoint = new window.THREE.Vector3();
+
+  bg360Runtime.camera.updateMatrixWorld(true);
+  var depthMultiplier = getBg360UnderCameraDepthMultiplier();
+  // Нижняя точка сферы в координатах 360-мира: направление строго вниз от центра камеры.
+  bg360MarkProjNadirCameraPoint.set(0, -500, 0).applyMatrix4(bg360Runtime.camera.matrixWorldInverse);
+  if (bg360MarkProjNadirCameraPoint.z >= -0.001) {
+    // Когда нижняя точка на горизонте или за камерой, её перспектива уходит в бесконечность ниже кадра.
+    return { x: width * 0.5, y: height * depthMultiplier };
+  }
+
+  bg360MarkProjNadirPoint.set(0, -500, 0).project(bg360Runtime.camera);
+  if (!isFinite(bg360MarkProjNadirPoint.x) || !isFinite(bg360MarkProjNadirPoint.y)) {
+    return { x: width * 0.5, y: height * depthMultiplier };
+  }
+
+  var projectedX = (bg360MarkProjNadirPoint.x * 0.5 + 0.5) * width;
+  var projectedY = (-bg360MarkProjNadirPoint.y * 0.5 + 0.5) * height;
+  // У горизонта проекция может стать огромной; ограничиваем только DOM-длину, оставляя старт под экраном.
+  return {
+    x: projectedX,
+    y: clamp(projectedY, -height * depthMultiplier, height * depthMultiplier)
+  };
+}
+
+// Рисует пунктирную линию от нижней точки сферы под камерой до метки; линия лежит под самой меткой.
+function updateBg360MarkLine(markNode, screenX, screenY, visible) {
+  if (!elBg360Marks || !bg360MarksRuntime.lines) return;
+
+  var lineIndex = markNode ? String(markNode.dataset.markLineIndex || "") : "";
+  var linesLayer = elBg360Marks.querySelector(".bg360-mark-lines");
+  var line = linesLayer && lineIndex !== "" ? linesLayer.children[Number(lineIndex)] : null;
+  if (!line || !line.classList || !line.classList.contains("bg360-mark-line")) return;
+
+  if (!visible) {
+    line.classList.add("hidden");
+    return;
+  }
+
+  var width = elBg360Marks.clientWidth || 0;
+  var height = elBg360Marks.clientHeight || 0;
+  if (width <= 0 || height <= 0) {
+    line.classList.add("hidden");
+    return;
+  }
+  linesLayer.setAttribute("viewBox", "0 0 " + width + " " + height);
+
+  var origin = getBg360UnderCameraScreenPoint(width, height);
+  var originX = origin.x;
+  var originY = origin.y;
+  var targetX = screenX * width;
+  var targetY = screenY * height;
+  if (!isFinite(originX) || !isFinite(originY) || !isFinite(targetX) || !isFinite(targetY)) {
+    line.classList.add("hidden");
+    return;
+  }
+  line.classList.remove("hidden");
+  // SVG-отрезок стабильнее повернутого div, когда старт находится далеко за нижней границей экрана.
+  line.setAttribute("x1", originX);
+  line.setAttribute("y1", originY);
+  line.setAttribute("x2", targetX);
+  line.setAttribute("y2", targetY);
 }
 
 // Запускает walk360: показывает панель, включает hit-test меток и блокирует обычный next.
@@ -4373,6 +4561,11 @@ function startWalk360(action) {
     console.warn("[walk360] background mismatch", { requested: bgId, current: state.currentBgId });
     if (resultVar) state.vars[resultVar] = "";
     return false;
+  }
+
+  if (resultVar) {
+    // Новое ожидание не должно наследовать выбор из предыдущей 360-точки или из старого автосейва.
+    state.vars[resultVar] = "";
   }
 
   walk360Runtime.active = true;
@@ -4435,42 +4628,58 @@ function finishWalk360(selectedId) {
 function showWalk360Panel(titleText, buttonText) {
   if (!elChoices) return;
 
+  var renderedTitle = renderTextVars(String(titleText || "")).trim();
+  var renderedButton = renderTextVars(String(buttonText || "")).trim();
+  var hasPanelContent = renderedTitle !== "" || renderedButton !== "";
+
   clearFitChoiceLayout();
-  elChoices.classList.remove("hidden");
   elChoices.innerHTML = "";
-  elDialog.classList.add("hiddenByChoices");
+  hideDialogForWalk360();
+
+  // Если сценарий не задал ни текст, ни кнопку, оставляем только 360-метки без нижней панели.
+  if (!hasPanelContent) {
+    elChoices.classList.add("hidden");
+    return;
+  }
+
+  elChoices.classList.remove("hidden");
 
   var panel = document.createElement("div");
   panel.className = "choicePanel walk360Panel";
 
-  var title = document.createElement("div");
-  title.className = "choiceTitle walk360Title";
-  title.textContent = renderTextVars(String(titleText || ""));
-  if (title.textContent !== "") panel.appendChild(title);
+  if (renderedTitle !== "") {
+    var title = document.createElement("div");
+    title.className = "choiceTitle walk360Title";
+    title.textContent = renderedTitle;
+    panel.appendChild(title);
+  }
 
-  var list = document.createElement("div");
-  list.className = "choiceList";
+  if (renderedButton !== "") {
+    var list = document.createElement("div");
+    list.className = "choiceList";
 
-  var btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "choiceBtn walk360ExitBtn";
-  btn.textContent = renderTextVars(String(buttonText || "Выход"));
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "choiceBtn walk360ExitBtn";
+    btn.textContent = renderedButton;
 
-  btn.addEventListener("click", function (e) {
-    if (e && typeof e.stopPropagation === "function") e.stopPropagation();
-    if (e && typeof e.preventDefault === "function") e.preventDefault();
-    if (!walk360Runtime.active) return;
-    if (walk360Runtime.resultVar) state.vars[walk360Runtime.resultVar] = "";
-    // После выхода метки тоже скрываем, чтобы не оставлять «пустой» UI.
-    bg360MarksRuntime.locked = true;
-    bg360MarksRuntime.interactive = false;
-    bg360MarksRuntime.marks = [];
-    renderBg360Marks();
-    finishWalk360("");
-  });
+    btn.addEventListener("click", function (e) {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+      if (!walk360Runtime.active) return;
+      if (walk360Runtime.resultVar) state.vars[walk360Runtime.resultVar] = "";
+      // После выхода метки тоже скрываем, чтобы не оставлять «пустой» UI.
+      bg360MarksRuntime.locked = true;
+      bg360MarksRuntime.interactive = false;
+      bg360MarksRuntime.marks = [];
+      renderBg360Marks();
+      finishWalk360("");
+    });
 
-  list.appendChild(btn);
-  panel.appendChild(list);
+    list.appendChild(btn);
+    panel.appendChild(list);
+  }
+
   elChoices.appendChild(panel);
 }
 
@@ -4816,6 +5025,8 @@ function renderBg360Frame() {
 
 // Останавливает 360-режим и скрывает canvas-слой.
 function disableBg360Renderer() {
+  // Каждое отключение инвалидирует старые async onload, чтобы они не вернули уже сброшенный фон.
+  bg360Runtime.loadSeq++;
   bg360Runtime.active = false;
   bg360Runtime.interactive = false;
   if (bg360Runtime.frameId) {
@@ -4941,16 +5152,24 @@ function ensureBg360PackLoaded(sourceUrl, onReady) {
 
 // Включает 360-рендер для equirectangular-фона (изображение или видео) и применяет стартовые focus/fov.
 function setBackground360(src, fallbackSrc, scrollOptions) {
-  if (!src) return;
+  if (!src) {
+    disableBg360Renderer();
+    return;
+  }
 
   var normalized = normalizeBackgroundScrollOptions(scrollOptions);
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
   var isVideo = isVideoAssetPath(normalizedSrc);
+  // Поколение загрузки защищает рестарт и смену фона от старых image/video callbacks.
+  var bg360LoadSeq = ++bg360Runtime.loadSeq;
+  function isCurrentBg360Load() {
+    return bg360LoadSeq === bg360Runtime.loadSeq;
+  }
   var packedDataUrl = "";
   if (!isVideo) {
     var packState = ensureBg360PackLoaded(normalizedSrc, function(ok) {
-      if (ok) {
+      if (ok && isCurrentBg360Load()) {
         setBackground360(src, fallbackSrc, scrollOptions);
       }
     });
@@ -5020,6 +5239,11 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   function onLoadTexture(texture) {
+    if (!isCurrentBg360Load()) {
+      // Если пользователь успел сделать сброс или включился другой фон, старую текстуру только освобождаем.
+      if (texture && typeof texture.dispose === "function") texture.dispose();
+      return;
+    }
     var material = new window.THREE.MeshBasicMaterial({ map: texture });
     var mesh = new window.THREE.Mesh(geometry, material);
     bg360Runtime.texture = texture;
@@ -5036,6 +5260,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   function onLoadError() {
+    if (!isCurrentBg360Load()) return;
     console.warn("[BG360] Не удалось загрузить ресурс:", normalizedSrc);
     disableBg360Renderer();
     var fallbackOptions = buildNonWebgl360FallbackOptions(normalized);
@@ -5055,11 +5280,16 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     video.src = normalizedSrc;
     bg360Runtime.video = video;
     video.onloadeddata = function() {
+      if (!isCurrentBg360Load()) {
+        try { video.pause(); } catch (e) {}
+        return;
+      }
       var texture = new window.THREE.VideoTexture(video);
       texture.minFilter = window.THREE.LinearFilter;
       texture.magFilter = window.THREE.LinearFilter;
       texture.generateMipmaps = false;
       onLoadTexture(texture);
+      if (!isCurrentBg360Load()) return;
       var playPromise = video.play();
       if (playPromise && typeof playPromise.catch === "function") {
         playPromise.catch(function() {});

@@ -146,6 +146,31 @@ body {
   --choice-panel-shadow-blur: calc(var(--choice-panel-shadow-blur-base) * var(--visualScale));
 
   /* =========================================================
+     360-МЕТКИ И ЛИНИИ
+     Править здесь базовые размеры меток и пунктира. Значения в px
+     масштабируются через --visualScale, а не через размер текста UI.
+     ========================================================= */
+  --bg360-mark-size-base: 28px;
+  --bg360-mark-dot-inset-base: 3.5px;
+  --bg360-mark-shadow-y-base: 6px;
+  --bg360-mark-shadow-blur-base: 18px;
+  --bg360-mark-line-width-base: 4px;
+  --bg360-mark-line-dash-base: 12px;
+  --bg360-mark-line-gap-base: 9px;
+  --bg360-mark-line-shadow-y-base: 3px;
+  --bg360-mark-line-shadow-blur-base: 7px;
+  --bg360-under-camera-depth: 3;
+  --bg360-mark-size: calc(var(--bg360-mark-size-base) * var(--visualScale));
+  --bg360-mark-dot-inset: calc(var(--bg360-mark-dot-inset-base) * var(--visualScale));
+  --bg360-mark-shadow-y: calc(var(--bg360-mark-shadow-y-base) * var(--visualScale));
+  --bg360-mark-shadow-blur: calc(var(--bg360-mark-shadow-blur-base) * var(--visualScale));
+  --bg360-mark-line-width: calc(var(--bg360-mark-line-width-base) * var(--visualScale));
+  --bg360-mark-line-dash: calc(var(--bg360-mark-line-dash-base) * var(--visualScale));
+  --bg360-mark-line-gap: calc(var(--bg360-mark-line-gap-base) * var(--visualScale));
+  --bg360-mark-line-shadow-y: calc(var(--bg360-mark-line-shadow-y-base) * var(--visualScale));
+  --bg360-mark-line-shadow-blur: calc(var(--bg360-mark-line-shadow-blur-base) * var(--visualScale));
+
+  /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА
      Править здесь, если полноэкранные панели выглядят слишком
      тесными или наоборот слишком раздутыми.
@@ -306,21 +331,42 @@ body {
   left: 0;
   top: 0;
   transform: translate(-50%, -50%);
-  width: calc(1.2rem * var(--visualScale));
-  height: calc(1.2rem * var(--visualScale));
+  width: var(--bg360-mark-size);
+  height: var(--bg360-mark-size);
   border-radius: 999px;
   border: var(--ui-border-width) solid rgba(255,255,255,0.85);
   background: rgba(0,0,0,0.35);
-  box-shadow: 0 0.35rem 1.15rem rgba(0,0,0,0.45);
+  box-shadow: 0 var(--bg360-mark-shadow-y) var(--bg360-mark-shadow-blur) rgba(0,0,0,0.45);
   cursor: pointer;
   /* Кликаться должна только сама метка, а не весь слой. */
   pointer-events: auto;
+  z-index: 2;
+}
+
+.bg360-mark-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bg360-mark-line {
+  stroke: rgba(255,255,255,0.58);
+  stroke-width: var(--bg360-mark-line-width);
+  stroke-linecap: round;
+  stroke-dasharray: var(--bg360-mark-line-dash) var(--bg360-mark-line-gap);
+  fill: none;
+  filter: drop-shadow(0 var(--bg360-mark-line-shadow-y) var(--bg360-mark-line-shadow-blur) rgba(0,0,0,0.45));
+  pointer-events: none;
 }
 
 .bg360-mark::after {
   content: "";
   position: absolute;
-  inset: 0.23rem;
+  inset: var(--bg360-mark-dot-inset);
   border-radius: 999px;
   background: rgba(255,255,255,0.85);
   opacity: 0.75;

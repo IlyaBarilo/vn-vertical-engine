@@ -866,8 +866,8 @@ function parseActionParamsFromText(rawText) {
   return params;
 }
 
-// Разбирает команду bg360marks: bgId + набор меток в скобках.
-// Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk) (hint1, 0.50, 0.20, text)
+// Разбирает команду bg360marks: bgId, набор меток в скобках и опции вроде lines.
+// Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk) (hint1, 0.50, 0.20, text) lines
 function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("bg360marks".length).trim();
   if (!body) {
@@ -915,12 +915,16 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
     marks.push({ id: markId, x: x, y: y, kind: kind });
   }
 
+  // Опции ищем только вне скобок, чтобы id метки случайно не включил режим линий.
+  var optionsText = rest.replace(/\([^)]*\)/g, " ");
+  var showLines = /\blines\b/i.test(optionsText);
+
   if (!marks.length) {
     addParseError(lineNumber, originalLine, 'bg360marks: не найдено ни одной метки "(...)"', true);
     return null;
   }
 
-  return { type: "bg360marks", bgId: bgId, marks: marks };
+  return { type: "bg360marks", bgId: bgId, marks: marks, lines: showLines };
 }
 
 // Разбирает настройку горизонтального скролла для фоновых и видео-медиа из сценария.
@@ -2330,7 +2334,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    // bg360marks bgId (id, x, y, kind) ...
+    // bg360marks bgId (id, x, y, kind) ... lines
     if (cleanLine.startsWith('bg360marks ')) {
       var marksAction = parseBg360MarksCommand(cleanLine, lineNumber, line);
       if (!marksAction) return;
