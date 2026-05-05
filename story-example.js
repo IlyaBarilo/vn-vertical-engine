@@ -32,6 +32,8 @@ bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
+bg360TestB101 file=local/360/images/test101.jpg scale=1 focusy=0.5 360
+
 [char]
 # Формат описания для персонажа:
 # имя_персонажа тип = значение
@@ -66,7 +68,7 @@ videoLab file=assets/backgrounds/bg-it-lab.mp4 poster=assets/backgrounds/bg-it-l
 [audio] 
 # Формат описания для музыки:
 # название_музыки = путь_и_название_файла
-bgmDay file=assets/audio/bgm-campus-day.mp3
+bgmDay file=assets/audio/bgm-campus-day.mp3 volume=0.7
 # bgmMysteryTest file=assets/audio/bgm-library-mystery.mp3
 # sfxClickTest file=assets/audio/sfx-button-click.mp3
 
@@ -85,6 +87,7 @@ x = 10 # объявление переменных
 y = 25
 z = 0
 labStep = 0
+walkResult = ""
 spaceResult = 0
 coffeeResult = 0
 benchmarkResult = 0
@@ -100,6 +103,8 @@ scene scIntro01
 
 # Показ фона:
 # bg название_фона
+
+
 bg bgCampusHall
 
 # Проигрывание музыки:

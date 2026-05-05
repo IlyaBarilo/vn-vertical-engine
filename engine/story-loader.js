@@ -1611,7 +1611,21 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           story.assets.backgrounds[assetId] = bgEntry;
         }
       } else {
-        story.assets[category][assetId] = args.file;
+        // Для аудио сохраняем старый строковый формат, пока у трека не задана базовая громкость.
+        var audioEntry = { file: args.file };
+        if (args.volume !== undefined) {
+          var parsedAudioVolume = parseFloat(String(args.volume));
+          if (!isFinite(parsedAudioVolume)) {
+            addParseError(lineNumber, line, `Invalid audio volume "${args.volume}". Use a number from 0 to 1.`, true);
+            return true;
+          }
+          if (parsedAudioVolume < 0 || parsedAudioVolume > 1) {
+            addParseError(lineNumber, line, `Audio volume "${args.volume}" is out of range. Use 0..1.`, true);
+            return true;
+          }
+          audioEntry.volume = parsedAudioVolume;
+        }
+        story.assets.audio[assetId] = audioEntry.volume === undefined ? args.file : audioEntry;
       }
       return true;
     }
@@ -2523,13 +2537,23 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         hasLoop = bgmParams.loop;
       }
 
-      actions.push({
+      var bgmAction = {
         type: 'bgm',
         src: `@audio.${bgmName || "unknown"}`,
         loop: hasLoop,
-        volume: 0.7,
         fadeMs: 400
-      });
+      };
+
+      // volume у команды music является точечным override; без него движок берёт volume из [audio] или дефолт.
+      if (bgmParams.volume !== undefined) {
+        if (typeof bgmParams.volume !== 'number' || bgmParams.volume < 0 || bgmParams.volume > 1) {
+          addParseError(lineNumber, line, 'Invalid music volume value "' + bgmParams.volume + '". Use volume=0..1.', true);
+          return;
+        }
+        bgmAction.volume = bgmParams.volume;
+      }
+
+      actions.push(bgmAction);
       return;
     }
     

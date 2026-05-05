@@ -253,7 +253,7 @@ igor name="Igor" file=assets/characters/ch-igor-smile.png  # if emotion is omitt
 igor color=#F00  # values can also be extended in separate lines
 
 [audio]
-bgmDay file=assets/audio/bgm-campus-day.mp3
+bgmDay file=assets/audio/bgm-campus-day.mp3 volume=0.5
 
 [video]
 introClip file=assets/video/intro.mp4 poster=assets/video/intro.jpg volume=0.8
@@ -366,7 +366,10 @@ Narrator:
 
     music musicId
     music musicId loop
+    music musicId volume=0.8
     music stop
+
+`volume` in `[audio]` sets the default BGM volume for that track. `volume` in the `music` command overrides it for a single playback.
 
 ### Video
 

@@ -2113,6 +2113,23 @@ function getBackgroundAssetPrimaryPath(assetEntry) {
   return "";
 }
 
+// Возвращает путь аудио-ассета: старые сценарии хранят строку, новые с volume — объект.
+function getAudioAssetPrimaryPath(assetEntry) {
+  if (!assetEntry) return "";
+  if (typeof assetEntry === "string") return assetEntry;
+  if (typeof assetEntry === "object" && typeof assetEntry.file === "string") {
+    return assetEntry.file;
+  }
+  return "";
+}
+
+// Возвращает базовую громкость трека из [audio]; null означает общий дефолт BGM.
+function getAudioAssetVolume(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  if (typeof assetEntry.volume !== "number") return null;
+  return clamp(assetEntry.volume, 0, 1);
+}
+
 function getBackgroundAssetFallbackPath(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object") return "";
   if (typeof assetEntry.fallback === "string") return assetEntry.fallback;
@@ -2835,6 +2852,58 @@ function applyAutosaveCharacterSnapshot(ch) {
   setCharacter(src, pos, cid, null);
 }
 
+// Сохраняет текущую BGM так, чтобы после F5 кнопка unmute могла возобновить тот же трек.
+function captureBgmSnapshotForAutosave() {
+  if (!audio || !audio.bgm) return null;
+  var src = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
+  if (!src) return null;
+  return {
+    src: src,
+    loop: audio.bgm.loop !== false,
+    volume: clamp((typeof audio.currentBgmVolume === "number" ? audio.currentBgmVolume : 0.7), 0, 1),
+    currentTime: isFinite(audio.bgm.currentTime) ? Math.max(0, audio.bgm.currentTime) : 0
+  };
+}
+
+// Восстанавливает BGM без принудительного включения звука: если UI в mute, трек только подготавливается.
+function applyAutosaveBgmSnapshot(bgmSnap) {
+  if (!audio || !audio.bgm) return false;
+  if (!bgmSnap || typeof bgmSnap !== "object" || !bgmSnap.src) {
+    stopBgmImmediate();
+    return false;
+  }
+
+  var src = normalizeAssetUrl(bgmSnap.src);
+  if (!src || failedAssets.audio[src]) return false;
+
+  audio.bgm.loop = bgmSnap.loop !== false;
+  audio.currentBgmVolume = clamp((typeof bgmSnap.volume === "number" ? bgmSnap.volume : 0.7), 0, 1);
+  try {
+    if (!audio.bgm.src || !urlsMatchForAutosaveRestore(normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || ""), src)) {
+      audio.bgm.pause();
+      audio.bgm.src = src;
+    }
+    var resumeAt = typeof bgmSnap.currentTime === "number" ? Math.max(0, bgmSnap.currentTime) : 0;
+    if (resumeAt > 0) {
+      try {
+        audio.bgm.currentTime = resumeAt;
+      } catch (timeError) {
+        audio.bgm.addEventListener("loadedmetadata", function restoreBgmTimeOnce() {
+          try { audio.bgm.currentTime = resumeAt; } catch (e) {}
+        }, { once: true });
+      }
+    }
+    applyAudioSettings();
+    if (!audio.muted && audio.masterVolume > 0) {
+      resumeBgmIfNeeded("autosave restore");
+    }
+    return true;
+  } catch (err) {
+    console.warn("[AUTOSAVE] bgm restore failed:", err);
+    return false;
+  }
+}
+
 /**
  * Собирает JSON автосейва. opts.persistActionIndex — явный индекс шага (например шаг game/video до инкремента в runCurrent).
  */
@@ -2876,6 +2945,7 @@ function buildAutosavePayload(opts) {
   var bgSnap = captureBackgroundSnapshotForAutosave();
   var bgScroll = captureBackgroundScrollSnapshotForAutosave();
   var charSnap = captureCharacterSnapshotForAutosave();
+  var bgmSnap = captureBgmSnapshotForAutosave();
   // В runCurrent перед выполнением шага делается actionIndex++; во время ожидания клика «дальше»
   // в state уже лежит индекс СЛЕДУЮЩЕГО действия. Если сохранить его как есть, после F5 runCurrent
   // сразу выполнит следующий шаг без клика — при быстрых обновлениях сценарий «убегает» вперёд.
@@ -2939,7 +3009,8 @@ function buildAutosavePayload(opts) {
     nextLocked: flagsForDisk.nextLocked,
     bg: bgSnap,
     bgScroll: bgScroll,
-    char: charSnap
+    char: charSnap,
+    bgm: bgmSnap
   };
 }
 
@@ -3225,6 +3296,12 @@ function tryApplyAutosave() {
     applyAutosaveCharacterSnapshot(data.char);
   }
 
+  if (Object.prototype.hasOwnProperty.call(data, "bgm")) {
+    applyAutosaveBgmSnapshot(data.bgm);
+  } else {
+    restoreBgmFromScenePrefixForAutosave(state.sceneId, state.actionIndex);
+  }
+
   if (elName) {
     elName.textContent = "";
     elName.classList.add("hidden");
@@ -3262,6 +3339,36 @@ function tryApplyAutosave() {
     });
   });
   return true;
+}
+
+// Для старых автосейвов без поля bgm восстанавливает последнюю пройденную music-команду текущей сцены.
+function restoreBgmFromScenePrefixForAutosave(sceneId, actionIndex) {
+  if (!state || !state.sceneMap || !sceneId) return false;
+  var scene = state.sceneMap[sceneId];
+  if (!scene || !Array.isArray(scene.actions) || scene.actions.length === 0) return false;
+
+  var limit = clamp(parseInt(actionIndex, 10) || 0, 0, scene.actions.length);
+  var lastBgmAction = null;
+  for (var i = 0; i < limit; i++) {
+    var a = scene.actions[i];
+    if (a && a.type === "bgm") {
+      lastBgmAction = a;
+    }
+  }
+  if (!lastBgmAction) return false;
+  if (!lastBgmAction.src) {
+    stopBgmImmediate();
+    return false;
+  }
+
+  var bgmAsset = resolveAudioAsset(lastBgmAction.src);
+  var volume = num(lastBgmAction.volume, bgmAsset.volume != null ? bgmAsset.volume : 0.7);
+  return applyAutosaveBgmSnapshot({
+    src: bgmAsset.file,
+    loop: !!lastBgmAction.loop,
+    volume: volume,
+    currentTime: 0
+  });
 }
 
 // Восстанавливает последний bg и связанные bg360marks из префикса сцены [0..actionIndex), когда в автосейве нет data.bg.
@@ -4214,7 +4321,14 @@ function executeAction(action) {
       return false;
 
     case "bgm":
-      playBgm(resolveAsset(action.src), !!action.loop, num(action.volume, 0.7), num(action.fadeMs, 0));
+      if (!action.src) {
+        // music stop должен очистить BGM-канал, чтобы автосейв не resurrect-ил старый трек.
+        stopBgmImmediate();
+        return false;
+      }
+      var bgmAsset = resolveAudioAsset(action.src);
+      // Базовая громкость из [audio] применяется только когда команда music не задала свой volume.
+      playBgm(bgmAsset.file, !!action.loop, num(action.volume, bgmAsset.volume != null ? bgmAsset.volume : 0.7), num(action.fadeMs, 0));
       return false;
 
     case "sfx":
@@ -7614,11 +7728,29 @@ function resolveAsset(ref, charId, emotion) {
     console.log('[Engine resolveAsset] Available audio:', Object.keys(STORY.assets.audio));
     const result = STORY.assets.audio[key];
     console.log('[Engine resolveAsset] Found audio:', result);
-    return result || "";
+    return getAudioAssetPrimaryPath(result);
   }
   
   console.log('[Engine resolveAsset] No match found for group:', group);
   return "";
+}
+
+// Собирает путь и базовую громкость аудио-ассета, не меняя поведение прямых путей.
+function resolveAudioAsset(ref) {
+  var file = resolveAsset(ref);
+  var volume = null;
+
+  if (typeof ref === "string" && ref.indexOf("@audio.") === 0 && STORY && STORY.assets && STORY.assets.audio) {
+    var audioId = ref.substring(7);
+    var audioEntry = STORY.assets.audio[audioId];
+    file = getAudioAssetPrimaryPath(audioEntry);
+    volume = getAudioAssetVolume(audioEntry);
+  }
+
+  return {
+    file: file || "",
+    volume: volume
+  };
 }
 
 // Собирает все настройки фонового ассета, чтобы команда bg не знала детали [bg].
@@ -8806,10 +8938,12 @@ function checkAssetsFiles() {
 
     // Аудио
     if (STORY.assets.audio) {
-      Object.entries(STORY.assets.audio).forEach(([id, path]) => {
-        if (typeof path !== "string" || path.trim() === "") {
+      Object.entries(STORY.assets.audio).forEach(([id, audioAsset]) => {
+        // Аудио может быть строкой или объектом с file/volume, поэтому проверяем фактический путь.
+        var audioPath = getAudioAssetPrimaryPath(audioAsset);
+        if (typeof audioPath !== "string" || audioPath.trim() === "") {
           result.missing.push({
-            path: `[invalid path: ${String(path)}]`,
+            path: `[invalid path: ${String(audioAsset)}]`,
             refs: [`audio: ${id}`]
           });
           return;
@@ -8817,7 +8951,7 @@ function checkAssetsFiles() {
 
         allFiles.push({
           id: id,
-          path: path.trim(),
+          path: audioPath.trim(),
           type: 'audio',
           category: 'audio',
           ref: id
