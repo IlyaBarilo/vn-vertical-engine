@@ -146,8 +146,8 @@ body {
   --choice-panel-shadow-blur: calc(var(--choice-panel-shadow-blur-base) * var(--visualScale));
 
   /* =========================================================
-     360-МЕТКИ И ЛИНИИ
-     Править здесь базовые размеры меток и пунктира. Значения в px
+     360-МЕТКИ, ЛИНИИ И ЗАГЛУШКА ШТАТИВА
+     Править здесь базовые размеры меток, пунктира и круга. Значения в px
      масштабируются через --visualScale, а не через размер текста UI.
      ========================================================= */
   --bg360-mark-size-base: 28px;
@@ -159,6 +159,11 @@ body {
   --bg360-mark-line-gap-base: 9px;
   --bg360-mark-line-shadow-y-base: 3px;
   --bg360-mark-line-shadow-blur-base: 7px;
+  --bg360-origin-cover-size-base: 600px;
+  --bg360-origin-cover-stroke-width-base: 2px;
+  --bg360-origin-cover-fill: rgba(255,255,255,1);
+  --bg360-origin-cover-stroke: rgba(255,255,255,0.20);
+  --bg360-origin-cover-reference-fov: 70;
   --bg360-under-camera-depth: 3;
   --bg360-mark-size: calc(var(--bg360-mark-size-base) * var(--visualScale));
   --bg360-mark-dot-inset: calc(var(--bg360-mark-dot-inset-base) * var(--visualScale));
@@ -169,6 +174,8 @@ body {
   --bg360-mark-line-gap: calc(var(--bg360-mark-line-gap-base) * var(--visualScale));
   --bg360-mark-line-shadow-y: calc(var(--bg360-mark-line-shadow-y-base) * var(--visualScale));
   --bg360-mark-line-shadow-blur: calc(var(--bg360-mark-line-shadow-blur-base) * var(--visualScale));
+  --bg360-origin-cover-size: calc(var(--bg360-origin-cover-size-base) * var(--visualScale));
+  --bg360-origin-cover-stroke-width: calc(var(--bg360-origin-cover-stroke-width-base) * var(--visualScale));
 
   /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА

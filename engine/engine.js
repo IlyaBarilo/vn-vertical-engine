@@ -1448,6 +1448,13 @@ var bg360Runtime = {
   mesh: null,
   material: null,
   geometry: null,
+  originCoverMesh: null,
+  originCoverMaterial: null,
+  originCoverGeometry: null,
+  originCoverStrokeMesh: null,
+  originCoverStrokeMaterial: null,
+  originCoverStrokeGeometry: null,
+  originCoverSignature: "",
   texture: null,
   video: null,
   frameId: 0,
@@ -4395,6 +4402,7 @@ function renderBg360Marks() {
   });
 
   // После построения DOM сразу считаем экранные позиции.
+  syncBg360OriginCoverMesh();
   updateBg360MarksProjection();
 }
 
@@ -4476,6 +4484,249 @@ function getBg360UnderCameraDepthMultiplier() {
   } catch (err) {
     return fallbackDepth;
   }
+}
+
+// Читает базовый px-размер из CSS и умножает на visualScale; это повторяет --bg360-origin-cover-size в CSS.
+function getBg360ScaledBaseCssPixel(baseVarName, fallbackPx) {
+  try {
+    var rootStyle = getComputedStyle(document.documentElement);
+    var rawBase = rootStyle.getPropertyValue(baseVarName);
+    var rawScale = rootStyle.getPropertyValue("--visualScale");
+    var base = Number(String(rawBase || "").replace("px", "").trim());
+    var scale = Number(String(rawScale || "").trim());
+    if (!isFinite(base) || base <= 0) base = fallbackPx;
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+    return base * scale;
+  } catch (err) {
+    return fallbackPx;
+  }
+}
+
+// Читает числовую CSS-настройку без единиц; используется для FOV, который не является CSS-длиной.
+function getBg360CssNumber(varName, fallbackValue) {
+  try {
+    var raw = getComputedStyle(document.documentElement).getPropertyValue(varName);
+    var value = Number(String(raw || "").trim());
+    return isFinite(value) ? value : fallbackValue;
+  } catch (err) {
+    return fallbackValue;
+  }
+}
+
+// Преобразует CSS-цвет rgba()/rgb()/hex в параметры THREE-материала.
+function parseBg360CssColor(varName, fallbackColor, fallbackOpacity) {
+  var raw = "";
+  try {
+    raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  } catch (err) {
+    raw = "";
+  }
+  var opacityFallback = typeof fallbackOpacity === "number" ? fallbackOpacity : 1;
+
+  var rgba = raw.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgba) {
+    var parts = rgba[1].split(",").map(function (part) { return String(part || "").trim(); });
+    var r = clamp(Number(parts[0]), 0, 255);
+    var g = clamp(Number(parts[1]), 0, 255);
+    var b = clamp(Number(parts[2]), 0, 255);
+    var a = parts.length > 3 ? clamp(Number(parts[3]), 0, 1) : opacityFallback;
+    if (isFinite(r) && isFinite(g) && isFinite(b) && isFinite(a)) {
+      return { color: (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b), opacity: a };
+    }
+  }
+
+  var hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    var value = hex[1];
+    if (value.length === 3) {
+      value = value.replace(/./g, function (ch) { return ch + ch; });
+    }
+    return { color: parseInt(value, 16), opacity: opacityFallback };
+  }
+
+  return { color: fallbackColor, opacity: opacityFallback };
+}
+
+// Переводит базовый экранный диаметр заглушки в угловой радиус на 360-сфере при эталонном FOV.
+function getBg360OriginCoverAngularRadius(viewHeight) {
+  var safeHeight = Math.max(1, Number(viewHeight) || 1);
+  var diameterPx = getBg360ScaledBaseCssPixel("--bg360-origin-cover-size-base", 110);
+  var referenceFov = normalizeMediaFov(getBg360CssNumber("--bg360-origin-cover-reference-fov", 70), 70);
+  var referenceTan = Math.tan(window.THREE.MathUtils.degToRad(referenceFov) * 0.5);
+  if (!isFinite(referenceTan) || referenceTan <= 0) referenceTan = Math.tan(window.THREE.MathUtils.degToRad(70) * 0.5);
+  // Угловой радиус сохраняет заплатку привязанной к панораме и даёт зуму менять её экранный размер естественно.
+  return clamp(Math.atan((diameterPx * 0.5) / (safeHeight * 0.5) * referenceTan), 0.002, Math.PI * 0.45);
+}
+
+// Переводит толщину обводки из базовых px в угловую ширину кольца на 360-сфере.
+function getBg360OriginCoverStrokeAngularWidth(viewHeight) {
+  var safeHeight = Math.max(1, Number(viewHeight) || 1);
+  var strokePx = getBg360ScaledBaseCssPixel("--bg360-origin-cover-stroke-width-base", 2);
+  var referenceFov = normalizeMediaFov(getBg360CssNumber("--bg360-origin-cover-reference-fov", 70), 70);
+  var referenceTan = Math.tan(window.THREE.MathUtils.degToRad(referenceFov) * 0.5);
+  if (!isFinite(referenceTan) || referenceTan <= 0) referenceTan = Math.tan(window.THREE.MathUtils.degToRad(70) * 0.5);
+  return clamp(Math.atan(strokePx / (safeHeight * 0.5) * referenceTan), 0, Math.PI * 0.08);
+}
+
+// Создаёт сферическую заплатку вокруг нижней точки 360-сферы, без пересечений с основной сферой.
+function createBg360NadirCapGeometry(radius, angularRadius, radialSegments, angularSegments) {
+  var geometry = new window.THREE.BufferGeometry();
+  var rings = Math.max(2, radialSegments || 16);
+  var segments = Math.max(32, angularSegments || 192);
+  var positions = [];
+  var indices = [];
+
+  for (var r = 0; r <= rings; r++) {
+    var theta = angularRadius * r / rings;
+    var sinTheta = Math.sin(theta);
+    var y = -Math.cos(theta) * radius;
+    for (var s = 0; s <= segments; s++) {
+      var phi = Math.PI * 2 * s / segments;
+      positions.push(Math.cos(phi) * sinTheta * radius, y, Math.sin(phi) * sinTheta * radius);
+    }
+  }
+
+  var row = segments + 1;
+  for (var rr = 0; rr < rings; rr++) {
+    for (var ss = 0; ss < segments; ss++) {
+      var a = rr * row + ss;
+      var b = a + 1;
+      var c = (rr + 1) * row + ss;
+      var d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  geometry.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Создаёт тонкое сферическое кольцо вокруг заплатки, чтобы обводка не была экранным оверлеем.
+function createBg360NadirRingGeometry(radius, innerAngularRadius, outerAngularRadius, angularSegments) {
+  var geometry = new window.THREE.BufferGeometry();
+  var segments = Math.max(32, angularSegments || 192);
+  var positions = [];
+  var indices = [];
+
+  for (var ring = 0; ring < 2; ring++) {
+    var theta = ring === 0 ? innerAngularRadius : outerAngularRadius;
+    var sinTheta = Math.sin(theta);
+    var y = -Math.cos(theta) * radius;
+    for (var s = 0; s <= segments; s++) {
+      var phi = Math.PI * 2 * s / segments;
+      positions.push(Math.cos(phi) * sinTheta * radius, y, Math.sin(phi) * sinTheta * radius);
+    }
+  }
+
+  var row = segments + 1;
+  for (var i = 0; i < segments; i++) {
+    var a = i;
+    var b = i + 1;
+    var c = row + i;
+    var d = c + 1;
+    indices.push(a, c, b, b, c, d);
+  }
+
+  geometry.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Освобождает 3D-заглушку штатива отдельно от основной сферы.
+function disposeBg360OriginCoverMesh() {
+  if (bg360Runtime.originCoverMesh && bg360Runtime.scene) {
+    bg360Runtime.scene.remove(bg360Runtime.originCoverMesh);
+  }
+  if (bg360Runtime.originCoverStrokeMesh && bg360Runtime.scene) {
+    bg360Runtime.scene.remove(bg360Runtime.originCoverStrokeMesh);
+  }
+  if (bg360Runtime.originCoverMaterial && typeof bg360Runtime.originCoverMaterial.dispose === "function") {
+    bg360Runtime.originCoverMaterial.dispose();
+  }
+  if (bg360Runtime.originCoverGeometry && typeof bg360Runtime.originCoverGeometry.dispose === "function") {
+    bg360Runtime.originCoverGeometry.dispose();
+  }
+  if (bg360Runtime.originCoverStrokeMaterial && typeof bg360Runtime.originCoverStrokeMaterial.dispose === "function") {
+    bg360Runtime.originCoverStrokeMaterial.dispose();
+  }
+  if (bg360Runtime.originCoverStrokeGeometry && typeof bg360Runtime.originCoverStrokeGeometry.dispose === "function") {
+    bg360Runtime.originCoverStrokeGeometry.dispose();
+  }
+  bg360Runtime.originCoverMesh = null;
+  bg360Runtime.originCoverMaterial = null;
+  bg360Runtime.originCoverGeometry = null;
+  bg360Runtime.originCoverStrokeMesh = null;
+  bg360Runtime.originCoverStrokeMaterial = null;
+  bg360Runtime.originCoverStrokeGeometry = null;
+  bg360Runtime.originCoverSignature = "";
+}
+
+// Создаёт/обновляет круг-заглушку как 3D-диск в нижней точке 360-сферы, чтобы он не съезжал при наклоне камеры.
+function syncBg360OriginCoverMesh() {
+  if (!window.THREE || !bg360Runtime.scene || !bg360Runtime.camera) return;
+  var hasCover = bg360MarksRuntime.lines && Array.isArray(bg360MarksRuntime.marks) && bg360MarksRuntime.marks.length > 0;
+  if (!hasCover) {
+    disposeBg360OriginCoverMesh();
+    return;
+  }
+
+  var viewHeight = elNovelWindow ? elNovelWindow.clientHeight : (elBg360Marks ? elBg360Marks.clientHeight : window.innerHeight);
+  var sphereRadius = 499;
+  var angularRadius = getBg360OriginCoverAngularRadius(viewHeight);
+  var strokeAngularWidth = getBg360OriginCoverStrokeAngularWidth(viewHeight);
+  var fill = parseBg360CssColor("--bg360-origin-cover-fill", 0xffffff, 1);
+  var stroke = parseBg360CssColor("--bg360-origin-cover-stroke", 0xffffff, 0.2);
+  var signature = [
+    angularRadius.toFixed(5),
+    strokeAngularWidth.toFixed(5),
+    fill.color,
+    fill.opacity.toFixed(3),
+    stroke.color,
+    stroke.opacity.toFixed(3)
+  ].join("|");
+  if (bg360Runtime.originCoverSignature === signature && bg360Runtime.originCoverMesh) return;
+
+  disposeBg360OriginCoverMesh();
+
+  var geometry = createBg360NadirCapGeometry(sphereRadius, angularRadius, 18, 256);
+  var material = new window.THREE.MeshBasicMaterial({
+    color: fill.color,
+    opacity: fill.opacity,
+    transparent: fill.opacity < 1,
+    side: window.THREE.DoubleSide,
+    depthTest: true,
+    depthWrite: fill.opacity >= 1
+  });
+  var mesh = new window.THREE.Mesh(geometry, material);
+  mesh.renderOrder = 2;
+  bg360Runtime.scene.add(mesh);
+
+  bg360Runtime.originCoverMesh = mesh;
+  bg360Runtime.originCoverMaterial = material;
+  bg360Runtime.originCoverGeometry = geometry;
+
+  if (strokeAngularWidth > 0 && stroke.opacity > 0) {
+    var ringGeometry = createBg360NadirRingGeometry(sphereRadius - 0.2, angularRadius, angularRadius + strokeAngularWidth, 256);
+    var ringMaterial = new window.THREE.MeshBasicMaterial({
+      color: stroke.color,
+      opacity: stroke.opacity,
+      transparent: stroke.opacity < 1,
+      side: window.THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: false
+    });
+    var ringMesh = new window.THREE.Mesh(ringGeometry, ringMaterial);
+    ringMesh.renderOrder = 3;
+    bg360Runtime.scene.add(ringMesh);
+    bg360Runtime.originCoverStrokeMesh = ringMesh;
+    bg360Runtime.originCoverStrokeMaterial = ringMaterial;
+    bg360Runtime.originCoverStrokeGeometry = ringGeometry;
+  }
+
+  bg360Runtime.originCoverSignature = signature;
 }
 
 // Возвращает экранную проекцию нижней точки сферы под камерой; если она за горизонтом, уводит старт ниже экрана.
@@ -4877,6 +5128,7 @@ function resizeBg360Renderer() {
   bg360Runtime.renderer.setSize(width, height, false);
   bg360Runtime.camera.aspect = width / height;
   bg360Runtime.camera.updateProjectionMatrix();
+  syncBg360OriginCoverMesh();
 }
 
 // Применяет yaw/pitch/fov к камере и кадрирует 360-сферу.
@@ -4989,6 +5241,7 @@ function setupBg360Interactions() {
 
 // Освобождает текущую 360-сцену (текстуры/материалы/геометрию/видео), сохраняя renderer для повторного использования.
 function clearBg360MediaResources() {
+  disposeBg360OriginCoverMesh();
   if (bg360Runtime.mesh && bg360Runtime.scene) {
     bg360Runtime.scene.remove(bg360Runtime.mesh);
   }
@@ -5250,6 +5503,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.material = material;
     bg360Runtime.mesh = mesh;
     bg360Runtime.scene.add(mesh);
+    syncBg360OriginCoverMesh();
     bg360Runtime.active = true;
     if (elBg360) elBg360.classList.remove("hidden");
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
