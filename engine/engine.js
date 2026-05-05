@@ -2165,15 +2165,41 @@ function getBackgroundAssetFov(assetEntry) {
   return normalizeMediaFov(assetEntry.fov, null);
 }
 
+// Проверяет имя переменной перед подстановкой в media-параметры.
+function isSafeScenarioVariableName(name) {
+  var key = String(name || "").trim();
+  return !!(
+    key &&
+    /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
+    key !== "__proto__" &&
+    key !== "prototype" &&
+    key !== "constructor"
+  );
+}
+
+// Подставляет значение переменной сценария для числовых media-параметров вроде focusx/focusz/fov.
+function resolveMediaVariableValue(value, contextLabel) {
+  if (typeof value !== "string") return value;
+
+  var key = value.trim();
+  if (!isSafeScenarioVariableName(key)) return value;
+  if (!state || !state.vars || !Object.prototype.hasOwnProperty.call(state.vars, key)) {
+    console.warn("[VN] media variable not found:", key, "for", contextLabel || "media");
+    return value;
+  }
+  return state.vars[key];
+}
+
 // Переводит focusX в долю 0..1; null означает, что композиционный фокус по X не задан.
 function normalizeMediaFocus(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
-  var textValue = typeof value === "string" ? value.trim().toLowerCase() : value;
+  var rawValue = typeof value === "string" ? value.trim() : value;
+  var textValue = typeof rawValue === "string" ? rawValue.toLowerCase() : rawValue;
   if (textValue === "left" || textValue === "start") return 0;
   if (textValue === "right" || textValue === "end") return 1;
   if (textValue === "center" || textValue === "middle") return 0.5;
 
-  var numeric = Number(textValue);
+  var numeric = Number(resolveMediaVariableValue(rawValue, "focusX"));
   if (!isFinite(numeric)) return fallback;
   if (numeric > 1 && numeric <= 100) numeric = numeric / 100;
   return clamp(numeric, 0, 1);
@@ -2182,12 +2208,13 @@ function normalizeMediaFocus(value, fallback) {
 // focusY: доля 0..1 по вертикали для object-position; в рендере идёт напрямую в % (без учёта «скрытой» высоты кропа).
 function normalizeMediaFocusY(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
-  var textValue = typeof value === "string" ? value.trim().toLowerCase() : value;
+  var rawValue = typeof value === "string" ? value.trim() : value;
+  var textValue = typeof rawValue === "string" ? rawValue.toLowerCase() : rawValue;
   if (textValue === "top" || textValue === "start") return 0;
   if (textValue === "bottom" || textValue === "end") return 1;
   if (textValue === "center" || textValue === "middle") return 0.5;
 
-  var numeric = Number(textValue);
+  var numeric = Number(resolveMediaVariableValue(rawValue, "focusY"));
   if (!isFinite(numeric)) return fallback;
   if (numeric > 1 && numeric <= 100) numeric = numeric / 100;
   return clamp(numeric, 0, 1);
@@ -2196,7 +2223,7 @@ function normalizeMediaFocusY(value, fallback) {
 // Нормализует scale сценария (положительное число); иначе возвращает fallback (например 1 или null).
 function normalizeMediaScale(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
-  var n = Number(value);
+  var n = Number(resolveMediaVariableValue(value, "scale"));
   if (!isFinite(n) || n <= 0) return fallback;
   return clamp(n, BG_MEDIA_SCALE_MIN, BG_MEDIA_SCALE_MAX);
 }
@@ -2204,7 +2231,7 @@ function normalizeMediaScale(value, fallback) {
 // Нормализует focusZ в долю 0..1 для 360-зумирования.
 function normalizeMediaFocusZ(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
-  var n = Number(value);
+  var n = Number(resolveMediaVariableValue(value, "focusZ"));
   if (!isFinite(n)) return fallback;
   if (n > 1 && n <= 100) n = n / 100;
   return clamp(n, 0, 1);
@@ -2213,7 +2240,7 @@ function normalizeMediaFocusZ(value, fallback) {
 // Нормализует стартовый FOV для 360-режима в безопасный диапазон.
 function normalizeMediaFov(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
-  var n = Number(value);
+  var n = Number(resolveMediaVariableValue(value, "fov"));
   if (!isFinite(n)) return fallback;
   return clamp(n, BG_360_FOV_MIN, BG_360_FOV_MAX);
 }

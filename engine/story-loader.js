@@ -516,6 +516,18 @@
     return true;
   }
 
+  // Проверяет, можно ли трактовать значение параметра как ссылку на переменную сценария.
+  function isSafeVariableReferenceValue(value) {
+    var key = String(value || '').trim();
+    return !!(
+      key &&
+      SAFE_VAR_NAME_RE.test(key) &&
+      key !== '__proto__' &&
+      key !== 'prototype' &&
+      key !== 'constructor'
+    );
+  }
+
   // Валидирует синтаксис безопасных выражений на этапе загрузки сценария (без выполнения кода).
   function validateSafeExpressionSyntax(expression, lineNumber, line, contextLabel) {
     var expr = String(expression || '').trim();
@@ -967,7 +979,8 @@ function parseBackgroundScrollOption(rawValue, lineNumber, line) {
 
 // Разбирает горизонтальный композиционный фокус media (focusX): долю ширины исходника 0..1 для object-position по X.
 function parseMediaFocusOption(rawValue, lineNumber, line) {
-  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  var rawText = String(rawValue === undefined ? "" : rawValue).trim();
+  var value = rawText.toLowerCase();
 
   if (value === "left" || value === "start") return 0;
   if (value === "center" || value === "middle") return 0.5;
@@ -979,14 +992,17 @@ function parseMediaFocusOption(rawValue, lineNumber, line) {
     if (numeric >= 0 && numeric <= 100) return numeric / 100;
   }
 
-  addParseError(lineNumber, line, `Invalid focusX value "${rawValue}". Use left/center/right, 0..1 or 0..100.`, true);
+  if (isSafeVariableReferenceValue(rawText)) return rawText;
+
+  addParseError(lineNumber, line, `Invalid focusX value "${rawValue}". Use left/center/right, 0..1, 0..100 or variable name.`, true);
   return null;
 }
 
 // Вертикальный композиционный фокус (focusY): доля по высоте исходника 0..1 для object-position по Y.
 // В движке применяется «как есть» (проценты CSS), без поджатия к краям кропа — в отличие от focusX.
 function parseMediaFocusYOption(rawValue, lineNumber, line) {
-  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  var rawText = String(rawValue === undefined ? "" : rawValue).trim();
+  var value = rawText.toLowerCase();
 
   if (value === "top" || value === "start") return 0;
   if (value === "center" || value === "middle") return 0.5;
@@ -998,14 +1014,17 @@ function parseMediaFocusYOption(rawValue, lineNumber, line) {
     if (numeric >= 0 && numeric <= 100) return numeric / 100;
   }
 
-  addParseError(lineNumber, line, `Invalid focusY value "${rawValue}". Use top/center/bottom, 0..1 or 0..100.`, true);
+  if (isSafeVariableReferenceValue(rawText)) return rawText;
+
+  addParseError(lineNumber, line, `Invalid focusY value "${rawValue}". Use top/center/bottom, 0..1, 0..100 or variable name.`, true);
   return null;
 }
 
 // Нормализует стартовый zoom для 360-фона в долю 0..1.
 // Значение можно задавать как 0..1 или как проценты 0..100.
 function parseMediaFocusZOption(rawValue, lineNumber, line) {
-  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  var rawText = String(rawValue === undefined ? "" : rawValue).trim();
+  var value = rawText.toLowerCase();
 
   if (value !== "" && !isNaN(Number(value))) {
     var numeric = Number(value);
@@ -1013,16 +1032,21 @@ function parseMediaFocusZOption(rawValue, lineNumber, line) {
     if (numeric >= 0 && numeric <= 100) return numeric / 100;
   }
 
-  addParseError(lineNumber, line, `Invalid focusZ value "${rawValue}". Use 0..1 or 0..100.`, true);
+  if (isSafeVariableReferenceValue(rawText)) return rawText;
+
+  addParseError(lineNumber, line, `Invalid focusZ value "${rawValue}". Use 0..1, 0..100 or variable name.`, true);
   return null;
 }
 
 // Нормализует стартовый угол обзора для 360-фона в градусах.
 // Диапазон ограничен безопасными значениями для мобильных и десктопа.
 function parseMediaFovOption(rawValue, lineNumber, line) {
+  var rawText = String(rawValue === undefined ? "" : rawValue).trim();
+  if (isSafeVariableReferenceValue(rawText)) return rawText;
+
   var numeric = Number(rawValue);
   if (!isFinite(numeric)) {
-    addParseError(lineNumber, line, `Invalid fov value "${rawValue}". Use a number from 35 to 90.`, true);
+    addParseError(lineNumber, line, `Invalid fov value "${rawValue}". Use a number from 35 to 90 or variable name.`, true);
     return null;
   }
   if (numeric < 35 || numeric > 90) {
@@ -1363,10 +1387,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   if (params.scale !== undefined) {
     var parsedCmdVideoScale = parseFloat(String(params.scale));
     if (!isFinite(parsedCmdVideoScale) || parsedCmdVideoScale <= 0) {
-      addParseError(lineNumber, line, 'The video scale= value must be a positive number', true);
-      return;
+      if (isSafeVariableReferenceValue(params.scale)) {
+        action.scale = String(params.scale).trim();
+      } else {
+        addParseError(lineNumber, line, 'The video scale= value must be a positive number or variable name', true);
+        return;
+      }
+    } else {
+      action.scale = parsedCmdVideoScale;
     }
-    action.scale = parsedCmdVideoScale;
   }
 
   currentScene.actions.push(action);
@@ -1547,10 +1576,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         if (args.scale !== undefined) {
           var parsedBgScale = parseFloat(String(args.scale));
           if (!isFinite(parsedBgScale) || parsedBgScale <= 0) {
-            addParseError(lineNumber, line, `Invalid background scale "${args.scale}". Use a positive number.`, true);
-            return true;
+            if (isSafeVariableReferenceValue(args.scale)) {
+              bgEntry.scale = String(args.scale).trim();
+            } else {
+              addParseError(lineNumber, line, `Invalid background scale "${args.scale}". Use a positive number or variable name.`, true);
+              return true;
+            }
+          } else {
+            bgEntry.scale = parsedBgScale;
           }
-          bgEntry.scale = parsedBgScale;
         }
 
         if (hasPanorama360Flag(rest, args)) {
@@ -1653,10 +1687,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (args.scale !== undefined) {
         var parsedAssetVideoScale = parseFloat(String(args.scale));
         if (!isFinite(parsedAssetVideoScale) || parsedAssetVideoScale <= 0) {
-          addParseError(lineNumber, line, `Invalid video scale "${args.scale}". Use a positive number.`, true);
-          return true;
+          if (isSafeVariableReferenceValue(args.scale)) {
+            video.scale = String(args.scale).trim();
+          } else {
+            addParseError(lineNumber, line, `Invalid video scale "${args.scale}". Use a positive number or variable name.`, true);
+            return true;
+          }
+        } else {
+          video.scale = parsedAssetVideoScale;
         }
-        video.scale = parsedAssetVideoScale;
       }
 
       story.assets.videos[assetId] = video;
@@ -2405,10 +2444,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (bgParams.scale !== undefined) {
         const parsedBgCmdScale = parseFloat(String(bgParams.scale));
         if (!isFinite(parsedBgCmdScale) || parsedBgCmdScale <= 0) {
-          addParseError(lineNumber, line, 'The bg scale= value must be a positive number', true);
-          return;
+          if (isSafeVariableReferenceValue(bgParams.scale)) {
+            bgAction.scale = String(bgParams.scale).trim();
+          } else {
+            addParseError(lineNumber, line, 'The bg scale= value must be a positive number or variable name', true);
+            return;
+          }
+        } else {
+          bgAction.scale = parsedBgCmdScale;
         }
-        bgAction.scale = parsedBgCmdScale;
       }
 
       var bgFocusYRaw = bgParams.focusY !== undefined ? bgParams.focusY : bgParams.focusy;
