@@ -1442,7 +1442,7 @@ var backgroundScroll = {
   suppressTimer: null,
   hintTimer: null,
   panorama360Fallback: false,
-  backgroundOptions: { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false },
+  backgroundOptions: { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false },
   backgroundTarget: null,
   backgroundContainer: null,
   backgroundPosition: 0.5
@@ -1669,7 +1669,7 @@ function disableBackgroundScroll() {
   backgroundScroll.focusY = null;
   backgroundScroll.mediaScale = 1;
   backgroundScroll.panorama360Fallback = false;
-  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+  backgroundScroll.backgroundOptions = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
   backgroundScroll.backgroundTarget = null;
   backgroundScroll.backgroundContainer = null;
   backgroundScroll.backgroundPosition = 0.5;
@@ -2193,6 +2193,12 @@ function getBackgroundAssetFov(assetEntry) {
   return normalizeMediaFov(assetEntry.fov, null);
 }
 
+// Возвращает локальный режим 360-пакета из [bg], если задан; auto означает выбор через [meta] и устройство.
+function getBackgroundAssetQuality(assetEntry) {
+  if (!assetEntry || typeof assetEntry !== "object") return null;
+  return normalizeBg360Quality(assetEntry.quality, null);
+}
+
 // Проверяет имя переменной перед подстановкой в media-параметры.
 function isSafeScenarioVariableName(name) {
   var key = String(name || "").trim();
@@ -2273,14 +2279,46 @@ function normalizeMediaFov(value, fallback) {
   return clamp(n, BG_360_FOV_MIN, BG_360_FOV_MAX);
 }
 
+// Нормализует режим 360-пакета: normal/mobile фиксируют вариант, auto откладывает выбор до настроек истории и устройства.
+function normalizeBg360Quality(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var raw = String(value).trim().toLowerCase();
+  if (raw === "mobile") return "mobile";
+  if (raw === "normal") return "normal";
+  if (raw === "auto") return "auto";
+  return fallback;
+}
+
+// Возвращает глобальный режим 360 из [meta]; если настройка не задана, сохраняет прежнее поведение normal.
+function getStoryBg360QualityMode() {
+  var meta = window.STORY && window.STORY.meta ? window.STORY.meta : {};
+  return normalizeBg360Quality(meta.bg360Quality, "normal");
+}
+
+// В auto-режиме выбирает облегченный 360-пакет только для уверенно определенного телефона.
+function getAutoBg360Quality() {
+  return isConfidentPhoneForUiBoost() ? "mobile" : "normal";
+}
+
+// Переводит локальный quality и настройку истории в фактический вариант JS-пакета для загрузки.
+function resolveBg360EffectiveQuality(value) {
+  var localQuality = normalizeBg360Quality(value, "auto");
+  if (localQuality === "normal" || localQuality === "mobile") return localQuality;
+
+  var storyQuality = getStoryBg360QualityMode();
+  if (storyQuality === "normal" || storyQuality === "mobile") return storyQuality;
+
+  return getAutoBg360Quality();
+}
+
 // Приводит разные формы scroll/focusX/focusY/scale из сценария к единому объекту для рендера.
 function normalizeBackgroundScrollOptions(value) {
   if (value === true) {
-    return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
   }
 
   if (!value) {
-    return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
   }
 
   if (typeof value === "object") {
@@ -2292,21 +2330,22 @@ function normalizeBackgroundScrollOptions(value) {
     var is360 = value.is360 === true;
     var focusZ = normalizeMediaFocusZ(value.focusZ, null);
     var fov = normalizeMediaFov(value.fov, null);
+    var quality = normalizeBg360Quality(value.quality, "auto");
     var panorama360Fallback = value.panorama360Fallback === true;
     if (scale === null) scale = 1;
-    return { enabled: enabled, start: start, focusX: focusX, focusY: focusY, scale: scale, is360: is360, focusZ: focusZ, fov: fov, panorama360Fallback: panorama360Fallback };
+    return { enabled: enabled, start: start, focusX: focusX, focusY: focusY, scale: scale, is360: is360, focusZ: focusZ, fov: fov, quality: quality, panorama360Fallback: panorama360Fallback };
   }
 
   if (typeof value === "string") {
     var raw = value.toLowerCase();
-    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
-    if (raw === "left" || raw === "start") return { enabled: true, start: 0, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
-    if (raw === "right" || raw === "end") return { enabled: true, start: 1, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
-    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
-    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
+    if (raw === "left" || raw === "start") return { enabled: true, start: 0, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
+    if (raw === "right" || raw === "end") return { enabled: true, start: 1, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
+    if (raw === "center" || raw === "middle") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return { enabled: true, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
   }
 
-  return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, panorama360Fallback: false };
+  return { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto", panorama360Fallback: false };
 }
 
 // Переводит стартовую позицию скролла в долю от 0 до 1.
@@ -2322,14 +2361,15 @@ function normalizeBackgroundScrollStart(value, fallback) {
 }
 
 // Добавляет focusX, focusY и/или scale к настройкам media, не включая drag-скролл, если он не был задан отдельно.
-function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, focusZ, fov) {
+function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, focusZ, fov, quality) {
   if (
     (focusX === null || focusX === undefined) &&
     (scale === null || scale === undefined) &&
     (focusY === null || focusY === undefined) &&
     (is360 === null || is360 === undefined) &&
     (focusZ === null || focusZ === undefined) &&
-    (fov === null || fov === undefined)
+    (fov === null || fov === undefined) &&
+    (quality === null || quality === undefined)
   ) {
     return scrollOptions;
   }
@@ -2358,6 +2398,10 @@ function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, foc
     var normalizedFov = normalizeMediaFov(fov, null);
     if (normalizedFov !== null) normalized.fov = normalizedFov;
   }
+  if (quality !== null && quality !== undefined) {
+    var normalizedQuality = normalizeBg360Quality(quality, null);
+    if (normalizedQuality !== null) normalized.quality = normalizedQuality;
+  }
   return normalized;
 }
 
@@ -2367,7 +2411,7 @@ function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, foc
 // все null — тогда единственный источник зума/фокуса этот объект; без подмешивания scale сюда зум теряется.
 function getBackgroundAssetScrollOptions(assetEntry) {
   if (!assetEntry || typeof assetEntry !== "object" || assetEntry.scroll === undefined) {
-    var baseNoScroll = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null };
+    var baseNoScroll = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1, is360: false, focusZ: null, fov: null, quality: "auto" };
     var scaleOnly = getBackgroundAssetScale(assetEntry);
     if (scaleOnly !== null) baseNoScroll.scale = scaleOnly;
     var focusOnly = getBackgroundAssetFocusX(assetEntry);
@@ -2379,6 +2423,8 @@ function getBackgroundAssetScrollOptions(assetEntry) {
     if (focusZOnly !== null) baseNoScroll.focusZ = focusZOnly;
     var fovOnly = getBackgroundAssetFov(assetEntry);
     if (fovOnly !== null) baseNoScroll.fov = fovOnly;
+    var qualityOnly = getBackgroundAssetQuality(assetEntry);
+    if (qualityOnly !== null) baseNoScroll.quality = qualityOnly;
     return baseNoScroll;
   }
   var fromScroll = normalizeBackgroundScrollOptions(assetEntry.scroll);
@@ -2393,6 +2439,8 @@ function getBackgroundAssetScrollOptions(assetEntry) {
   if (focusZAsset !== null) fromScroll.focusZ = focusZAsset;
   var fovAsset = getBackgroundAssetFov(assetEntry);
   if (fovAsset !== null) fromScroll.fov = fovAsset;
+  var qualityAsset = getBackgroundAssetQuality(assetEntry);
+  if (qualityAsset !== null) fromScroll.quality = qualityAsset;
   return fromScroll;
 }
 
@@ -3411,7 +3459,8 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
     lastBgAction.focusY !== undefined ? lastBgAction.focusY : bgAssetInfo.focusY,
     lastBgAction.is360 !== undefined ? lastBgAction.is360 : bgAssetInfo.is360,
     lastBgAction.focusZ !== undefined ? lastBgAction.focusZ : bgAssetInfo.focusZ,
-    lastBgAction.fov !== undefined ? lastBgAction.fov : bgAssetInfo.fov
+    lastBgAction.fov !== undefined ? lastBgAction.fov : bgAssetInfo.fov,
+    lastBgAction.quality !== undefined ? lastBgAction.quality : bgAssetInfo.quality
   );
   state.currentBgId = lastBgAction.bgId || extractBgIdFromRef(lastBgAction.src);
   setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
@@ -4400,7 +4449,8 @@ function prepareBackgroundVisualAction(action) {
     action.focusY !== undefined ? action.focusY : bgAssetInfo.focusY,
     action.is360 !== undefined ? action.is360 : bgAssetInfo.is360,
     action.focusZ !== undefined ? action.focusZ : bgAssetInfo.focusZ,
-    action.fov !== undefined ? action.fov : bgAssetInfo.fov
+    action.fov !== undefined ? action.fov : bgAssetInfo.fov,
+    action.quality !== undefined ? action.quality : bgAssetInfo.quality
   );
 
   state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
@@ -5042,7 +5092,8 @@ function executeAction(action) {
         action.focusY !== undefined ? action.focusY : bgAssetInfo.focusY,
         action.is360 !== undefined ? action.is360 : bgAssetInfo.is360,
         action.focusZ !== undefined ? action.focusZ : bgAssetInfo.focusZ,
-        action.fov !== undefined ? action.fov : bgAssetInfo.fov
+        action.fov !== undefined ? action.fov : bgAssetInfo.fov,
+        action.quality !== undefined ? action.quality : bgAssetInfo.quality
       );
       // Сохраняем id фона, чтобы walk360 мог проверить соответствие.
       state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
@@ -6368,57 +6419,98 @@ function disableBg360Renderer() {
   }
 }
 
-// Пытается найти data-url 360-пакета по исходному file=... через window.VN360_PACKS.
-// Поддерживает прямой ключ, относительный путь и сравнение через normalizeAssetUrl.
-function resolveBg360PackDataUrl(sourceUrl) {
-  var packs = window.VN360_PACKS;
-  if (!packs || typeof packs !== "object") return "";
+// Проверяет, что путь указывает на JS-пакет 360, а не на исходную картинку.
+function isBg360PackScriptPath(path) {
+  return /-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(String(path || ""));
+}
+
+// Собирает варианты ключа для поиска: абсолютный URL, декодированный URL и путь от index.html.
+function getBg360PackLookupKeys(sourceUrl) {
+  var result = [];
+  function addKey(value) {
+    var key = String(value || "");
+    if (key && result.indexOf(key) === -1) result.push(key);
+  }
 
   var source = String(sourceUrl || "");
-  if (!source) return "";
-  if (typeof packs[source] === "string") return packs[source];
-
+  addKey(source);
   var normalizedSource = normalizeAssetUrl(source);
-  if (typeof packs[normalizedSource] === "string") return packs[normalizedSource];
+  addKey(normalizedSource);
 
-  var decodedSource = "";
   try {
-    decodedSource = decodeURIComponent(normalizedSource);
+    var decodedSource = decodeURIComponent(normalizedSource);
+    addKey(decodedSource);
   } catch (e) {
-    decodedSource = normalizedSource;
+    addKey(normalizedSource);
   }
-  if (typeof packs[decodedSource] === "string") return packs[decodedSource];
 
-  // Пробуем относительный путь от папки index.html: так проще хранить ключи в story-стиле.
+  // Пакет регистрирует и абсолютный URL, и путь от index.html, чтобы перенос папки проекта не ломал ключи.
   var baseHref = window.location.href;
   var slashIndex = baseHref.lastIndexOf("/");
   var baseDirHref = slashIndex >= 0 ? baseHref.slice(0, slashIndex + 1) : baseHref;
   if (normalizedSource.indexOf(baseDirHref) === 0) {
     var rel = normalizedSource.slice(baseDirHref.length);
-    if (typeof packs[rel] === "string") return packs[rel];
-    if (typeof packs["./" + rel] === "string") return packs["./" + rel];
-    if (typeof packs["/" + rel] === "string") return packs["/" + rel];
+    addKey(rel);
+    addKey("./" + rel);
+    addKey("/" + rel);
   }
 
-  // Последний шанс: нормализуем ключи из пака и сравниваем с целевым URL.
-  var keys = Object.keys(packs);
-  for (var i = 0; i < keys.length; i++) {
-    var key = keys[i];
-    if (normalizeAssetUrl(key) === normalizedSource && typeof packs[key] === "string") {
-      return packs[key];
-    }
+  return result;
+}
+
+// Достаёт data-url только из variant-хранилища нового JS-пакета.
+function readBg360PackDataUrlByKey(key, quality) {
+  var variants = window.VN360_PACKS_VARIANTS;
+  var normalizedQuality = resolveBg360EffectiveQuality(quality);
+
+  if (normalizedQuality && variants && variants[key] && typeof variants[key][normalizedQuality] === "string") {
+    return variants[key][normalizedQuality];
   }
   return "";
 }
 
-// Хранит состояние динамической загрузки *.360.js, чтобы не дублировать <script> и колбэки.
+// Пытается найти data-url 360-пакета по JS-пути из file=... и выбранному normal/mobile.
+function resolveBg360PackDataUrl(sourceUrl, quality) {
+  var variants = window.VN360_PACKS_VARIANTS;
+  if (!variants || typeof variants !== "object") return "";
+
+  var lookupKeys = getBg360PackLookupKeys(sourceUrl);
+  for (var i = 0; i < lookupKeys.length; i++) {
+    var found = readBg360PackDataUrlByKey(lookupKeys[i], quality);
+    if (found) return found;
+  }
+
+  // Последний шанс: нормализуем ключи из пака и сравниваем с целевым URL.
+  var normalizedSource = normalizeAssetUrl(sourceUrl);
+  var allKeys = Object.keys(variants);
+  for (var j = 0; j < allKeys.length; j++) {
+    var key = allKeys[j];
+    if (normalizeAssetUrl(key) === normalizedSource) {
+      var value = readBg360PackDataUrlByKey(key, quality);
+      if (value) return value;
+    }
+  }
+
+  return "";
+}
+
+// Хранит состояние динамической загрузки *-360.js, чтобы не дублировать <script> и колбэки.
 var bg360PackScriptState = Object.create(null);
 
-// По исходному пути изображения строит путь к js-пакету: test101.jpg -> test101.360.js.
-function getBg360PackScriptUrl(sourceUrl) {
+// По пути из file=... выбирает JS-пакет: scene-360.js или scene-360-mobile.js, даже если в истории указан конкретный вариант.
+function getBg360PackScriptUrl(sourceUrl, quality) {
   var normalized = normalizeAssetUrl(sourceUrl);
-  if (!/\.(jpe?g|png)(\?.*)?$/i.test(normalized)) return "";
-  return normalized.replace(/\.(jpe?g|png)(\?.*)?$/i, ".360.js$2");
+  var normalizedQuality = resolveBg360EffectiveQuality(quality);
+  if (!isBg360PackScriptPath(normalized)) {
+    return "";
+  }
+  if (normalizedQuality === "normal" && /-360-mobile\.js(\?.*)?$/i.test(normalized)) {
+    return normalized.replace(/-360-mobile\.js(\?.*)?$/i, "-360.js$1");
+  }
+  if (normalizedQuality === "mobile" && /-360\.js(\?.*)?$/i.test(normalized)) {
+    return normalized.replace(/-360\.js(\?.*)?$/i, "-360-mobile.js$1");
+  }
+  return normalized;
 }
 
 // Запрашивает js-пакет для 360-фона и сообщает, нужно ли подождать перед рендером.
@@ -6426,15 +6518,16 @@ function getBg360PackScriptUrl(sourceUrl) {
 // - "ready": данные уже есть;
 // - "loading": пакет грузится, рендер нужно отложить;
 // - "none": грузить нечего (или уже была ошибка).
-function ensureBg360PackLoaded(sourceUrl, onReady) {
-  if (resolveBg360PackDataUrl(sourceUrl)) return "ready";
+function ensureBg360PackLoaded(sourceUrl, quality, onReady) {
+  if (resolveBg360PackDataUrl(sourceUrl, quality)) return "ready";
 
-  var packScriptUrl = getBg360PackScriptUrl(sourceUrl);
+  var packScriptUrl = getBg360PackScriptUrl(sourceUrl, quality);
   if (!packScriptUrl) return "none";
+  if (resolveBg360PackDataUrl(packScriptUrl, quality)) return "ready";
 
   var state = bg360PackScriptState[packScriptUrl];
   if (state && state.status === "loaded") {
-    return resolveBg360PackDataUrl(sourceUrl) ? "ready" : "none";
+    return (resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(packScriptUrl, quality)) ? "ready" : "none";
   }
   if (state && state.status === "loading") {
     if (typeof onReady === "function") state.waiters.push(onReady);
@@ -6476,7 +6569,7 @@ function ensureBg360PackLoaded(sourceUrl, onReady) {
   return "loading";
 }
 
-// Включает 360-рендер для equirectangular-фона (изображение или видео) и применяет стартовые focus/fov.
+// Включает 360-рендер для equirectangular-фона из JS-пакета или видео и применяет стартовые focus/fov.
 function setBackground360(src, fallbackSrc, scrollOptions) {
   if (!src) {
     disableBg360Renderer();
@@ -6487,6 +6580,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
   var isVideo = isVideoAssetPath(normalizedSrc);
+  // На этом шаге auto превращается в normal/mobile с учетом [meta] и текущего устройства.
+  var bg360Quality = resolveBg360EffectiveQuality(normalized.quality);
+  var selectedPackScriptUrl = getBg360PackScriptUrl(normalizedSrc, bg360Quality);
+  var isPackScriptSource = isBg360PackScriptPath(normalizedSrc);
   // Поколение загрузки защищает рестарт и смену фона от старых image/video callbacks.
   var bg360LoadSeq = ++bg360Runtime.loadSeq;
   function isCurrentBg360Load() {
@@ -6494,7 +6591,11 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
   var packedDataUrl = "";
   if (!isVideo) {
-    var packState = ensureBg360PackLoaded(normalizedSrc, function(ok) {
+    if (!isPackScriptSource) {
+      console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", normalizedSrc);
+      return;
+    }
+    var packState = ensureBg360PackLoaded(normalizedSrc, bg360Quality, function(ok) {
       if (ok && isCurrentBg360Load()) {
         setBackground360(src, fallbackSrc, scrollOptions);
       }
@@ -6503,7 +6604,11 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     if (packState === "loading") {
       return;
     }
-    packedDataUrl = resolveBg360PackDataUrl(normalizedSrc);
+    packedDataUrl = resolveBg360PackDataUrl(normalizedSrc, bg360Quality) || resolveBg360PackDataUrl(selectedPackScriptUrl, bg360Quality);
+    if (isPackScriptSource && !packedDataUrl) {
+      console.warn("[BG360] JS-пакет загружен, но data-url не зарегистрирован:", selectedPackScriptUrl || normalizedSrc);
+      return;
+    }
   }
   var textureSource = packedDataUrl || normalizedSrc;
 
@@ -8696,6 +8801,7 @@ function resolveBackgroundAsset(ref) {
   var is360 = false;
   var focusZ = null;
   var fov = null;
+  var quality = null;
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
@@ -8709,6 +8815,7 @@ function resolveBackgroundAsset(ref) {
     is360 = getBackgroundAssetIs360(bgEntry);
     focusZ = getBackgroundAssetFocusZ(bgEntry);
     fov = getBackgroundAssetFov(bgEntry);
+    quality = getBackgroundAssetQuality(bgEntry);
   }
 
   return {
@@ -8721,7 +8828,8 @@ function resolveBackgroundAsset(ref) {
     scale: scale,
     is360: is360,
     focusZ: focusZ,
-    fov: fov
+    fov: fov,
+    quality: quality
   };
 }
 

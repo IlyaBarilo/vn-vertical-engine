@@ -9,9 +9,10 @@ window.STORY_TEXT = `
 title=Вуз: демо-новелла с выбором
 lang=ru                  # Язык инфтерфейса программы. Возможны значения: en, ru
 startScene=scIntro01
+bg360Quality=auto       # auto: mobile только на телефоне; normal/mobile — ручной режим для всех устройств
 # topSpacing=500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
-transition = fade # fade, black, white, instant или none
+transition = fade       # fade, black, white, instant или none
 transitionMs = 180
 
 [bg]
@@ -33,8 +34,6 @@ bgBranchLabVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/back
 bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
-
-bg360TestB101 file=local/360/images/test101.jpg scale=1 focusy=0.5 360
 
 [char]
 # Формат описания для персонажа:

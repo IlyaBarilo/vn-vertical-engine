@@ -176,7 +176,8 @@
         title: "Без названия",
         start: null,
         lang: 'en',
-        blurBackground: true
+        blurBackground: true,
+        bg360Quality: 'normal'
       },
       assets: {
         backgrounds: {},
@@ -274,7 +275,7 @@
       // Парсим в зависимости от секции
       switch (currentSection) {
         case 'meta':
-          parseMetaLine(line, story);
+          parseMetaLine(lineNumber, line, story);
           break;
         case 'bg':
           parseAssetLine(lineNumber, line, 'backgrounds', story);
@@ -1079,6 +1080,23 @@ function hasPanorama360Flag(rawText, optionsObject) {
   return modeValue === "360" || projectionValue === "360";
 }
 
+// Проверяет, что 360-фон указывает на новый JS-пакет или на настоящий видеофайл, а не на исходную картинку.
+function validateBg360SourcePath(rawPath, lineNumber, line) {
+  var path = String(rawPath || "").trim();
+  if (/-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(path)) return true;
+  if (/\.(mp4|webm)(\?.*)?$/i.test(path)) return true;
+  addParseError(lineNumber, line, `360 background file must be a -360.js package or video, got "${rawPath}".`, true);
+  return false;
+}
+
+// Разбирает режим качества 360-пакета: normal/mobile задают вариант вручную, auto оставляет выбор движку.
+function parseBg360QualityOption(rawValue, lineNumber, line) {
+  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  if (value === "normal" || value === "mobile" || value === "auto") return value;
+  addParseError(lineNumber, line, `Invalid 360 quality "${rawValue}". Use auto, normal or mobile.`, true);
+  return null;
+}
+
 function stripInlineComment(line) {
   var text = String(line || '');
   var quote = null;
@@ -1413,7 +1431,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
   // Парсинг метаданных
-  function parseMetaLine(line, story) {
+  function parseMetaLine(lineNumber, line, story) {
     var originalLine = line;
 
     // Удаляем комментарий после #
@@ -1445,7 +1463,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       story.meta.start = value;
 
       if (!value || value.trim() === '') {
-        addParseError(0, originalLine, "startScene cannot be empty", true);
+        addParseError(lineNumber, originalLine, "startScene cannot be empty", true);
       }
 
       return;
@@ -1457,6 +1475,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
       story.meta.lang = lang;
       window.STORY_LANG = lang;
+      return;
+    }
+
+    // Глобальный режим 360 хранится в meta, чтобы команды могли брать единый normal/mobile/auto.
+    if (key === 'bg360Quality') {
+      var parsedBg360Quality = parseBg360QualityOption(value, lineNumber, originalLine);
+      if (parsedBg360Quality !== null) {
+        story.meta.bg360Quality = parsedBg360Quality;
+      }
       return;
     }
 
@@ -1596,6 +1623,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         }
 
         if (hasPanorama360Flag(rest, args)) {
+          if (!validateBg360SourcePath(args.file, lineNumber, line)) return true;
           bgEntry.is360 = true;
         }
 
@@ -1611,9 +1639,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           bgEntry.fov = parsedBgFov;
         }
 
+        if (args.quality !== undefined) {
+          var parsedBgQuality = parseBg360QualityOption(args.quality, lineNumber, line);
+          if (parsedBgQuality === null) return true;
+          bgEntry.quality = parsedBgQuality;
+        }
+
         // Для простых строк без fallback/volume сохраняем старый формат (string),
         // чтобы не ломать обратную совместимость.
-        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined && bgEntry.is360 === undefined && bgEntry.focusZ === undefined && bgEntry.fov === undefined) {
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined && bgEntry.is360 === undefined && bgEntry.focusZ === undefined && bgEntry.fov === undefined && bgEntry.quality === undefined) {
           story.assets.backgrounds[assetId] = args.file;
         } else {
           story.assets.backgrounds[assetId] = bgEntry;
@@ -2495,6 +2529,12 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         const parsedBgFov = parseMediaFovOption(bgParams.fov, lineNumber, line);
         if (parsedBgFov === null) return;
         bgAction.fov = parsedBgFov;
+      }
+
+      if (bgParams.quality !== undefined) {
+        const parsedBgQuality = parseBg360QualityOption(bgParams.quality, lineNumber, line);
+        if (parsedBgQuality === null) return;
+        bgAction.quality = parsedBgQuality;
       }
 
       actions.push(bgAction);

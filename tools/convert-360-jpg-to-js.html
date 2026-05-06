@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Конвертер 360 JPG в JS-пакет</title>
+  <title>Конвертер 360 изображения в JS-пакет</title>
   <style>
     :root {
       color-scheme: dark;
@@ -39,7 +39,7 @@
     h1 { margin: 0 0 10px; font-size: 20px; }
     h2 { margin: 0 0 10px; font-size: 16px; }
     label { display: block; margin-bottom: 6px; color: var(--muted); }
-    input[type="text"], textarea {
+    input[type="text"], select, textarea {
       width: 100%;
       border: 1px solid var(--border);
       background: #0f172a;
@@ -60,6 +60,53 @@
       flex-wrap: wrap;
       align-items: center;
     }
+    .settings-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 10px;
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    .result-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+    .variant-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f172a;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+    .variant-card h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .variant-preview {
+      width: 100%;
+      aspect-ratio: 2 / 1;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #020617;
+      cursor: zoom-in;
+    }
+    .variant-meta {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .variant-meta strong {
+      color: var(--text);
+      font-weight: 600;
+    }
     button {
       border: 1px solid var(--border);
       background: #0f172a;
@@ -77,41 +124,126 @@
     .ok { color: var(--ok); }
     .warn { color: var(--warn); }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    @media (max-width: 820px) { .row { grid-template-columns: 1fr; } }
+    @media (max-width: 820px) {
+      .row,
+      .settings-grid,
+      .result-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Конвертер 360 JPG - JS-пакет</h1>
+      <h1>Конвертер 360 изображения - JS-пакет</h1>
       <div class="hint">
-        Назначение: подготовить файл <span class="mono">*.360.js</span> для офлайн-режима (без сервера), чтобы движок мог грузить 360-ресурс из JS.
+        Назначение: подготовить файл <span class="mono">*-360.js</span> для офлайн-режима (без сервера), чтобы движок мог грузить 360-ресурс из JS.
       </div>
     </div>
 
     <div class="card">
       <h2>Входные данные</h2>
-      <label for="fileInput">JPG/PNG 2:1</label>
-      <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" />
+      <label for="fileInput">Изображение 2:1</label>
+      <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
       <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
-      <div class="hint" style="margin-top:8px;">Пакет сам привязывается к пути из истории: файл IMG.360.js рядом с IMG.jpg регистрируется как IMG.jpg.</div>
+      <div class="hint" style="margin-top:8px;">Normal сохраняется как IMG-360.js. Mobile сохраняется отдельно как IMG-360-mobile.js. В истории указывайте JS-пакет, а не исходное изображение.</div>
     </div>
 
     <div class="card">
-      <h2>Генерация пакета</h2>
+      <h2>Настройки normal</h2>
+      <div class="settings-grid">
+        <div class="field">
+          <label for="normalHeight">Высота</label>
+          <select id="normalHeight">
+            <option value="source" selected>Исходный размер</option>
+            <option value="2048">2048 px</option>
+            <option value="1440">1440 px</option>
+            <option value="1080">1080 px</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="normalQuality">Качество</label>
+          <select id="normalQuality">
+            <option value="1.00">100</option>
+            <option value="0.95">95</option>
+            <option value="0.85" selected>85</option>
+            <option value="0.75">75</option>
+            <option value="0.50">50</option>
+            <option value="0.25">25</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="normalFormat">Формат</label>
+          <select id="normalFormat">
+            <option value="image/webp" selected>WebP</option>
+            <option value="image/jpeg">JPG</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;">Normal генерируется вручную по этим настройкам и сохраняется как основной JS-пакет.</div>
+    </div>
+
+    <div class="card">
+      <h2>Настройки mobile</h2>
+      <div class="settings-grid">
+        <div class="field">
+          <label for="mobileHeight">Высота</label>
+          <select id="mobileHeight">
+            <option value="source">Исходный размер</option>
+            <option value="2048">2048 px</option>
+            <option value="1440" selected>1440 px</option>
+            <option value="1080">1080 px</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mobileQuality">Качество</label>
+          <select id="mobileQuality">
+            <option value="1.00">100</option>
+            <option value="0.95">95</option>
+            <option value="0.85">85</option>
+            <option value="0.75" selected>75</option>
+            <option value="0.50">50</option>
+            <option value="0.25">25</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mobileFormat">Формат</label>
+          <select id="mobileFormat">
+            <option value="image/webp" selected>WebP</option>
+            <option value="image/jpeg">JPG</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;">Mobile генерируется отдельно по этим настройкам и загружается только при quality=mobile.</div>
+    </div>
+
+    <div class="card">
+      <h2>Генерация пакетов</h2>
       <div class="actions">
-        <button id="btnGenerate" class="primary" type="button">Сгенерировать JS</button>
-        <button id="btnDownload" type="button" disabled>Скачать .360.js</button>
+        <button id="btnGenerate" class="primary" type="button">Сгенерировать normal + mobile</button>
+        <button id="btnDownload" type="button" disabled>Скачать выбранный JS</button>
+        <select id="outputVariant" disabled style="max-width:220px;">
+          <option value="normal">Показать normal</option>
+          <option value="mobile">Показать mobile</option>
+        </select>
       </div>
       <div id="status" class="hint" style="margin-top:10px;">Ожидание.</div>
       <div class="hint" style="margin-top:10px;">
-        Формат: пакет пишет данные в <span class="mono">window.VN360_PACKS</span> по ключу, вычисленному из имени самого <span class="mono">*.360.js</span>.
+        Формат: пакет пишет данные в <span class="mono">window.VN360_PACKS_VARIANTS</span> по URL самого <span class="mono">*-360.js</span>.
       </div>
     </div>
 
     <div class="card">
-      <h2>Предпросмотр результата</h2>
-      <textarea id="output" spellcheck="false" placeholder="Здесь появится .360.js"></textarea>
+      <h2>Варианты экспорта</h2>
+      <div id="resultGrid" class="result-grid">
+        <div class="hint">После генерации здесь появятся размеры, вес и превью normal/mobile.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Предпросмотр JS</h2>
+      <textarea id="output" spellcheck="false" placeholder="Здесь появится -360.js"></textarea>
     </div>
   </div>
 
@@ -124,18 +256,39 @@
     var outputEl = document.getElementById("output");
     var btnGenerate = document.getElementById("btnGenerate");
     var btnDownload = document.getElementById("btnDownload");
+    var normalHeightEl = document.getElementById("normalHeight");
+    var normalQualityEl = document.getElementById("normalQuality");
+    var normalFormatEl = document.getElementById("normalFormat");
+    var mobileHeightEl = document.getElementById("mobileHeight");
+    var mobileQualityEl = document.getElementById("mobileQuality");
+    var mobileFormatEl = document.getElementById("mobileFormat");
+    var outputVariantEl = document.getElementById("outputVariant");
+    var resultGridEl = document.getElementById("resultGrid");
 
-    var generatedText = "";
-    var suggestedFileName = "asset.360.js";
+    var generatedPacks = { normal: null, mobile: null };
+    var suggestedFileNames = { normal: "asset-360.js", mobile: "asset-360-mobile.js" };
     var loadedFile = null;
     var loadedDataUrl = "";
     var loadedMeta = null;
+    var loadedImage = null;
 
     // Экранирует строку для безопасной вставки в JS-литерал.
     function jsStringLiteral(raw) {
       return String(raw || "")
         .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'");
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n");
+    }
+
+    // Экранирует короткие пользовательские строки перед выводом в HTML.
+    function escapeHtml(raw) {
+      return String(raw || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     // Разбивает длинную строку data-url на куски, чтобы итоговый файл легче открывался в редакторе.
@@ -150,6 +303,48 @@
       return chunks;
     }
 
+    // Форматирует байты в человекочитаемый вид для сравнения normal и mobile.
+    function formatBytes(value) {
+      var bytes = Math.max(0, Number(value) || 0);
+      if (bytes < 1024) return bytes + " Б";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " КБ";
+      return (bytes / 1024 / 1024).toFixed(2) + " МБ";
+    }
+
+    // Возвращает MIME-тип из data-url, чтобы показать фактический формат после canvas-экспорта.
+    function getDataUrlMime(dataUrl) {
+      var match = String(dataUrl || "").match(/^data:([^;,]+)[;,]/i);
+      return match ? match[1].toLowerCase() : "";
+    }
+
+    // Считает примерный размер бинарного изображения внутри data-url без учета JS-обертки.
+    function getDataUrlByteSize(dataUrl) {
+      var text = String(dataUrl || "");
+      var comma = text.indexOf(",");
+      if (comma < 0) return text.length;
+      var header = text.slice(0, comma).toLowerCase();
+      var payload = text.slice(comma + 1);
+      if (header.indexOf(";base64") >= 0) {
+        var clean = payload.replace(/\s/g, "");
+        var padding = /==$/.test(clean) ? 2 : /=$/.test(clean) ? 1 : 0;
+        return Math.max(0, Math.floor(clean.length * 3 / 4) - padding);
+      }
+      try {
+        return decodeURIComponent(payload).length;
+      } catch (e) {
+        return payload.length;
+      }
+    }
+
+    // Переводит MIME-тип в короткое название для карточек и meta-полей.
+    function formatMimeLabel(mime) {
+      var type = String(mime || "").toLowerCase();
+      if (type === "image/jpeg") return "JPG";
+      if (type === "image/webp") return "WebP";
+      if (type === "image/png") return "PNG";
+      return type || "unknown";
+    }
+
     // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1.
     function updateImageInfo(meta) {
       if (!meta) {
@@ -161,8 +356,8 @@
       var ratioDiff = Math.abs(ratio - 2);
       var ratioOk = ratioDiff <= 0.05;
       imageInfoEl.innerHTML =
-        "Файл: <span class='mono'>" + meta.name + "</span>, " +
-        "размер: " + meta.size + " байт, " +
+        "Файл: <span class='mono'>" + escapeHtml(meta.name) + "</span>, " +
+        "размер: " + formatBytes(meta.size) + ", " +
         "кадр: " + meta.width + "x" + meta.height + ", " +
         "ratio: " + ratio.toFixed(4) + " " +
         (ratioOk ? "<span class='ok'>(OK ~ 2:1)</span>" : "<span class='warn'>(не похоже на 2:1)</span>");
@@ -185,7 +380,8 @@
                 type: file.type || "image/jpeg",
                 width: img.naturalWidth || img.width || 0,
                 height: img.naturalHeight || img.height || 0
-              }
+              },
+              image: img
             });
           };
           img.onerror = function() {
@@ -200,18 +396,90 @@
       });
     }
 
-    // Возвращает расширение исходной картинки, чтобы IMG.360.js регистрировался как IMG.jpg/jpeg/png.
-    function getSourceImageExtension(fileName, type) {
-      var lowerName = String(fileName || "").toLowerCase();
-      var match = lowerName.match(/\.(jpe?g|png)$/);
-      if (match) return "." + match[1];
-      return String(type || "").toLowerCase() === "image/png" ? ".png" : ".jpg";
+    // Возвращает настройки ручного экспорта для normal или mobile из формы.
+    function getVariantSettings(heightEl, qualityEl, formatEl) {
+      var rawHeight = heightEl.value === "source" ? "source" : parseInt(heightEl.value, 10);
+      var quality = parseFloat(qualityEl.value);
+      if (!isFinite(quality)) quality = 0.75;
+      return {
+        targetHeight: rawHeight,
+        quality: Math.max(0.01, Math.min(1, quality)),
+        type: formatEl.value || "image/webp"
+      };
     }
 
-    // Собирает итоговый текст .360.js: ключ берется из пути самого пакета, без ручного дублирования story.js.
-    function buildPackJs(dataUrl, meta) {
-      var chunks = chunkString(dataUrl, 16384);
-      var sourceExtension = getSourceImageExtension(meta.name, meta.type);
+    // Кодирует canvas в выбранный формат; если WebP недоступен, аккуратно падает обратно на JPG.
+    function encodeCanvasToDataUrl(canvas, requestedType, quality) {
+      var warnings = [];
+      var dataUrl = canvas.toDataURL(requestedType, quality);
+      var actualType = getDataUrlMime(dataUrl);
+      if (actualType !== String(requestedType || "").toLowerCase()) {
+        warnings.push("Браузер не поддержал " + formatMimeLabel(requestedType) + ", использован JPG.");
+        dataUrl = canvas.toDataURL("image/jpeg", quality);
+        actualType = getDataUrlMime(dataUrl);
+      }
+      return {
+        dataUrl: dataUrl,
+        type: actualType || requestedType || "image/jpeg",
+        warnings: warnings
+      };
+    }
+
+    // Создает вариант пакета: масштабирует по высоте или оставляет исходный размер, затем кодирует canvas.
+    function buildImageVariant(mode, title, settings) {
+      if (!loadedImage || !loadedMeta) throw new Error("Изображение еще не загружено.");
+      var fallbackHeight = Number(settings.targetHeight) || 1440;
+      var sourceHeight = Math.max(1, loadedMeta.height || loadedImage.naturalHeight || loadedImage.height || fallbackHeight);
+      var sourceWidth = Math.max(1, loadedMeta.width || loadedImage.naturalWidth || loadedImage.width || sourceHeight * 2);
+      var useSourceSize = settings.targetHeight === "source";
+      var requestedHeight = useSourceSize ? sourceHeight : Math.max(1, Number(settings.targetHeight) || sourceHeight);
+      var targetHeight = Math.min(requestedHeight, sourceHeight);
+      var targetWidth = Math.max(1, Math.round(sourceWidth * targetHeight / sourceHeight));
+      var canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      var ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D недоступен, вариант не сформирован.");
+      ctx.imageSmoothingEnabled = true;
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+      // Черная подложка нужна для JPG: прозрачные PNG иначе могут дать неожиданный цвет.
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+      ctx.drawImage(loadedImage, 0, 0, targetWidth, targetHeight);
+
+      var encoded = encodeCanvasToDataUrl(canvas, settings.type, settings.quality);
+      return {
+        mode: mode,
+        title: title,
+        dataUrl: encoded.dataUrl,
+        type: encoded.type,
+        sourceType: loadedMeta.type || "image/jpeg",
+        sourceName: loadedMeta.name,
+        sourceSize: loadedMeta.size,
+        width: targetWidth,
+        height: targetHeight,
+        quality: settings.quality,
+        targetHeight: useSourceSize ? null : requestedHeight,
+        targetHeightLabel: useSourceSize ? "исходная" : requestedHeight + " px",
+        imageBytes: getDataUrlByteSize(encoded.dataUrl),
+        warnings: encoded.warnings
+      };
+    }
+
+    // Создает normal-вариант по ручным настройкам основного JS-пакета.
+    function buildNormalVariant() {
+      return buildImageVariant("normal", "Normal", getVariantSettings(normalHeightEl, normalQualityEl, normalFormatEl));
+    }
+
+    // Создает mobile-вариант по ручным настройкам облегченного JS-пакета.
+    function buildMobileVariant() {
+      return buildImageVariant("mobile", "Mobile", getVariantSettings(mobileHeightEl, mobileQualityEl, mobileFormatEl));
+    }
+
+    // Собирает итоговый текст -360.js: ключ берется из пути самого пакета, без ручного дублирования story.js.
+    function buildPackJs(variant) {
+      var chunks = chunkString(variant.dataUrl, 16384);
       var chunkLines = chunks.map(function(part) {
         return "    '" + jsStringLiteral(part) + "'";
       }).join(",\n");
@@ -219,95 +487,300 @@
       return [
         "(function() {",
         "  'use strict';",
-        "  window.VN360_PACKS = window.VN360_PACKS || {};",
-        "  window.VN360_PACKS_META = window.VN360_PACKS_META || {};",
+        "  window.VN360_PACKS_VARIANTS = window.VN360_PACKS_VARIANTS || {};",
+        "  window.VN360_PACKS_META_VARIANTS = window.VN360_PACKS_META_VARIANTS || {};",
         "",
-        "  // Ключ выводится из пути текущего JS: IMG.360.js регистрирует данные для IMG" + jsStringLiteral(sourceExtension) + ".",
-        "  function getPackSourceKey() {",
+        "  // Пакет регистрируется по URL самого JS, поэтому имя исходной картинки после экспорта не важно.",
+        "  function normalizePackUrl(rawUrl) {",
+        "    try {",
+        "      return new URL(rawUrl, window.location.href).href;",
+        "    } catch (e) {",
+        "      return String(rawUrl || '');",
+        "    }",
+        "  }",
+        "  function getPackScriptUrl() {",
         "    var script = document.currentScript || (function() {",
         "      var scripts = document.getElementsByTagName('script');",
         "      return scripts[scripts.length - 1] || null;",
         "    })();",
         "    var scriptUrl = script && script.src ? script.src : '';",
         "    if (!scriptUrl && script && script.getAttribute) scriptUrl = script.getAttribute('src') || '';",
-        "    return String(scriptUrl || '').replace(/\\.360\\.js(\\?.*)?$/i, '" + jsStringLiteral(sourceExtension) + "$1');",
+        "    return normalizePackUrl(scriptUrl);",
         "  }",
-        "  var sourceKey = getPackSourceKey();",
+        "  function getNormalPackUrl(scriptUrl) {",
+        "    return String(scriptUrl || '').replace(/-360(?:-[a-z0-9_-]+)?\\.js(\\?.*)?$/i, '-360.js$1');",
+        "  }",
+        "  function getRelativePackUrl(scriptUrl) {",
+        "    var baseHref = window.location.href;",
+        "    var slashIndex = baseHref.lastIndexOf('/');",
+        "    var baseDirHref = slashIndex >= 0 ? baseHref.slice(0, slashIndex + 1) : baseHref;",
+        "    return scriptUrl.indexOf(baseDirHref) === 0 ? scriptUrl.slice(baseDirHref.length) : '';",
+        "  }",
+        "  function addPackKey(keys, key) {",
+        "    key = String(key || '');",
+        "    if (key && keys.indexOf(key) === -1) keys.push(key);",
+        "  }",
+        "  function registerPackKey(key, dataUrl, meta) {",
+        "    if (!key) return;",
+        "    window.VN360_PACKS_VARIANTS[key] = window.VN360_PACKS_VARIANTS[key] || {};",
+        "    window.VN360_PACKS_META_VARIANTS[key] = window.VN360_PACKS_META_VARIANTS[key] || {};",
+        "    window.VN360_PACKS_VARIANTS[key][meta.mode] = dataUrl;",
+        "    window.VN360_PACKS_META_VARIANTS[key][meta.mode] = meta;",
+        "  }",
+        "  var scriptUrl = getPackScriptUrl();",
+        "  var relativeScriptUrl = getRelativePackUrl(scriptUrl);",
+        "  var normalPackUrl = getNormalPackUrl(scriptUrl);",
+        "  var relativeNormalPackUrl = getRelativePackUrl(normalPackUrl);",
+        "  var packMode = '" + jsStringLiteral(variant.mode) + "';",
         "  var dataUrl = [",
         chunkLines,
         "  ].join('');",
         "",
-        "  window.VN360_PACKS[sourceKey] = dataUrl;",
-        "  window.VN360_PACKS_META[sourceKey] = {",
+        "  var packMeta = {",
         "    generatedAt: '" + new Date().toISOString() + "',",
-        "    type: '" + jsStringLiteral(meta.type || "image/jpeg") + "',",
-        "    size: " + Number(meta.size || 0) + ",",
-        "    width: " + Number(meta.width || 0) + ",",
-        "    height: " + Number(meta.height || 0),
+        "    mode: packMode,",
+        "    sourceName: '" + jsStringLiteral(variant.sourceName || "") + "',",
+        "    sourceType: '" + jsStringLiteral(variant.sourceType || "image/jpeg") + "',",
+        "    sourceSize: " + Number(variant.sourceSize || 0) + ",",
+        "    type: '" + jsStringLiteral(variant.type || "image/jpeg") + "',",
+        "    size: " + Number(variant.imageBytes || 0) + ",",
+        "    width: " + Number(variant.width || 0) + ",",
+        "    height: " + Number(variant.height || 0) + ",",
+        "    quality: " + (variant.quality === null ? "null" : Number(variant.quality || 0).toFixed(2)) + ",",
+        "    targetHeight: " + (variant.targetHeight === null ? "null" : Number(variant.targetHeight || 0)) + ",",
+        "    targetHeightLabel: '" + jsStringLiteral(variant.targetHeightLabel || "") + "'",
         "  };",
+        "",
+        "  var allKeys = [];",
+        "  addPackKey(allKeys, scriptUrl);",
+        "  addPackKey(allKeys, relativeScriptUrl);",
+        "  addPackKey(allKeys, normalPackUrl);",
+        "  addPackKey(allKeys, relativeNormalPackUrl);",
+        "  for (var i = 0; i < allKeys.length; i++) {",
+        "    registerPackKey(allKeys[i], dataUrl, packMeta);",
+        "  }",
         "})();",
         ""
       ].join("\n");
     }
 
-    // Подсказывает имя результирующего файла на основе исходного jpg/png.
-    function suggestPackFileName(fileName) {
+    // Подсказывает имена результирующих файлов на основе имени входного изображения.
+    function suggestPackFileNames(fileName) {
       var name = String(fileName || "asset");
       var dot = name.lastIndexOf(".");
       if (dot > 0) name = name.slice(0, dot);
-      return name + ".360.js";
+      return {
+        normal: name + "-360.js",
+        mobile: name + "-360-mobile.js"
+      };
+    }
+
+    // Очищает результаты при смене исходника или настроек, чтобы нельзя было скачать устаревший пакет.
+    function resetGeneratedPacks() {
+      generatedPacks = { normal: null, mobile: null };
+      outputEl.value = "";
+      btnDownload.disabled = true;
+      outputVariantEl.disabled = true;
+      resultGridEl.innerHTML = '<div class="hint">После генерации здесь появятся размеры, вес и превью normal/mobile.</div>';
+    }
+
+    // Переключает textarea на JS выбранного режима.
+    function showOutputVariant(mode) {
+      var pack = generatedPacks[mode] || generatedPacks.normal || generatedPacks.mobile;
+      if (!pack) {
+        outputEl.value = "";
+        return;
+      }
+      outputVariantEl.value = pack.mode;
+      outputEl.value = pack.jsText;
+    }
+
+    // Создает Blob URL для просмотра результата без огромного data-url в адресной строке.
+    function openVariantPreview(variant) {
+      var comma = variant.dataUrl.indexOf(",");
+      var payload = variant.dataUrl.slice(comma + 1);
+      var binary = atob(payload);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      var mime = getDataUrlMime(variant.dataUrl) || variant.type || "image/jpeg";
+      var blob = new Blob([bytes], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var opened = window.open(url, "_blank");
+      if (!opened) {
+        statusEl.innerHTML = "<span class='warn'>Браузер заблокировал окно предпросмотра.</span>";
+      }
+      setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+    }
+
+    // Добавляет строку метаданных в карточку результата.
+    function appendMetaLine(parent, label, value) {
+      var line = document.createElement("div");
+      line.innerHTML = "<strong>" + escapeHtml(label) + ":</strong> " + escapeHtml(value);
+      parent.appendChild(line);
+    }
+
+    // Рисует карточки normal/mobile с превью, размерами и кнопками скачивания.
+    function renderResults() {
+      resultGridEl.innerHTML = "";
+      ["normal", "mobile"].forEach(function(mode) {
+        var pack = generatedPacks[mode];
+        if (!pack) return;
+
+        var card = document.createElement("div");
+        card.className = "variant-card";
+
+        var title = document.createElement("h3");
+        title.textContent = pack.title + " (" + pack.fileName + ")";
+        card.appendChild(title);
+
+        var img = document.createElement("img");
+        img.className = "variant-preview";
+        img.alt = pack.title + " preview";
+        img.src = pack.dataUrl;
+        img.addEventListener("click", function() {
+          openVariantPreview(pack);
+        });
+        card.appendChild(img);
+
+        var meta = document.createElement("div");
+        meta.className = "variant-meta";
+        appendMetaLine(meta, "Кадр", pack.width + "x" + pack.height);
+        appendMetaLine(meta, "Формат", formatMimeLabel(pack.type));
+        appendMetaLine(meta, "Изображение", formatBytes(pack.imageBytes));
+        appendMetaLine(meta, "JS-пакет", formatBytes(pack.jsBytes));
+        appendMetaLine(meta, "Качество", Math.round(pack.quality * 100));
+        appendMetaLine(meta, "Целевая высота", pack.targetHeightLabel || (pack.targetHeight + " px"));
+        if (pack.warnings && pack.warnings.length) appendMetaLine(meta, "Предупреждение", pack.warnings.join(" "));
+        card.appendChild(meta);
+
+        var actions = document.createElement("div");
+        actions.className = "actions";
+
+        var btnShow = document.createElement("button");
+        btnShow.type = "button";
+        btnShow.textContent = "Показать JS";
+        btnShow.addEventListener("click", function() {
+          showOutputVariant(pack.mode);
+        });
+        actions.appendChild(btnShow);
+
+        var btnPreview = document.createElement("button");
+        btnPreview.type = "button";
+        btnPreview.textContent = "Открыть превью";
+        btnPreview.addEventListener("click", function() {
+          openVariantPreview(pack);
+        });
+        actions.appendChild(btnPreview);
+
+        var btnSave = document.createElement("button");
+        btnSave.type = "button";
+        btnSave.textContent = "Скачать JS";
+        btnSave.addEventListener("click", function() {
+          downloadPack(pack.mode);
+        });
+        actions.appendChild(btnSave);
+
+        card.appendChild(actions);
+        resultGridEl.appendChild(card);
+      });
+    }
+
+    // Скачивает JS-пакет выбранного режима.
+    function downloadPack(mode) {
+      var pack = generatedPacks[mode];
+      if (!pack) return;
+      var blob = new Blob([pack.jsText], { type: "application/javascript;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = pack.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+    }
+
+    // Формирует оба режима и сохраняет готовый JS в generatedPacks.
+    function generatePacks() {
+      var normal = buildNormalVariant();
+      var mobile = buildMobileVariant();
+
+      normal.fileName = suggestedFileNames.normal;
+      mobile.fileName = suggestedFileNames.mobile;
+      normal.jsText = buildPackJs(normal);
+      mobile.jsText = buildPackJs(mobile);
+      normal.jsBytes = new Blob([normal.jsText], { type: "application/javascript;charset=utf-8" }).size;
+      mobile.jsBytes = new Blob([mobile.jsText], { type: "application/javascript;charset=utf-8" }).size;
+
+      generatedPacks.normal = normal;
+      generatedPacks.mobile = mobile;
+      outputVariantEl.disabled = false;
+      btnDownload.disabled = false;
+      renderResults();
+      showOutputVariant(outputVariantEl.value || "normal");
     }
 
     fileInput.addEventListener("change", function() {
       var file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
       loadedFile = file;
-      generatedText = "";
-      outputEl.value = "";
-      btnDownload.disabled = true;
+      resetGeneratedPacks();
       if (!file) {
         loadedDataUrl = "";
         loadedMeta = null;
+        loadedImage = null;
         updateImageInfo(null);
         statusEl.textContent = "Файл не выбран.";
         return;
       }
-      suggestedFileName = suggestPackFileName(file.name);
+      suggestedFileNames = suggestPackFileNames(file.name);
       statusEl.textContent = "Чтение изображения...";
       readImageFile(file).then(function(result) {
         loadedDataUrl = result.dataUrl;
         loadedMeta = result.meta;
+        loadedImage = result.image;
         updateImageInfo(loadedMeta);
         statusEl.innerHTML = "<span class='ok'>Файл прочитан. Можно генерировать JS.</span>";
       }).catch(function(err) {
         loadedDataUrl = "";
         loadedMeta = null;
+        loadedImage = null;
         updateImageInfo(null);
         statusEl.innerHTML = "<span class='warn'>" + err.message + "</span>";
       });
     });
 
+    normalHeightEl.addEventListener("change", resetGeneratedPacks);
+    normalQualityEl.addEventListener("change", resetGeneratedPacks);
+    normalFormatEl.addEventListener("change", resetGeneratedPacks);
+    mobileHeightEl.addEventListener("change", resetGeneratedPacks);
+    mobileQualityEl.addEventListener("change", resetGeneratedPacks);
+    mobileFormatEl.addEventListener("change", resetGeneratedPacks);
+    outputVariantEl.addEventListener("change", function() {
+      showOutputVariant(outputVariantEl.value);
+    });
+
     btnGenerate.addEventListener("click", function() {
-      if (!loadedFile || !loadedDataUrl || !loadedMeta) {
+      if (!loadedFile || !loadedDataUrl || !loadedMeta || !loadedImage) {
         statusEl.innerHTML = "<span class='warn'>Сначала выберите и загрузите изображение.</span>";
         return;
       }
-      generatedText = buildPackJs(loadedDataUrl, loadedMeta);
-      outputEl.value = generatedText;
-      btnDownload.disabled = false;
-      statusEl.innerHTML = "<span class='ok'>Готово. Пакет сформирован.</span>";
+      btnGenerate.disabled = true;
+      statusEl.textContent = "Генерация normal и mobile...";
+      setTimeout(function() {
+        try {
+          generatePacks();
+          statusEl.innerHTML = "<span class='ok'>Готово. Пакеты normal и mobile сформированы.</span>";
+        } catch (err) {
+          resetGeneratedPacks();
+          statusEl.innerHTML = "<span class='warn'>" + escapeHtml(err.message) + "</span>";
+        } finally {
+          btnGenerate.disabled = false;
+        }
+      }, 0);
     });
 
     btnDownload.addEventListener("click", function() {
-      if (!generatedText) return;
-      var blob = new Blob([generatedText], { type: "application/javascript;charset=utf-8" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = suggestedFileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+      downloadPack(outputVariantEl.value || "normal");
     });
   </script>
 </body>

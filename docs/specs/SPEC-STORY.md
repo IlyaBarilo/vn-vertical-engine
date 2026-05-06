@@ -113,6 +113,7 @@ anna: "Привет!"
 title = Demo Story
 startScene = intro
 lang = en
+bg360Quality = auto
 ```
 
 Поддерживаемые поля:
@@ -147,6 +148,18 @@ scene intro
 lang = en
 lang = ru
 ```
+
+### `bg360Quality`
+
+Глобальный режим загрузки JS-пакетов 360-фонов.
+
+```text
+bg360Quality = auto
+bg360Quality = normal
+bg360Quality = mobile
+```
+
+`normal` всегда грузит основной `*-360.js`, `mobile` всегда грузит `*-360-mobile.js`, `auto` выбирает mobile только на уверенно определенном телефоне. Если параметр не задан, используется `normal`, чтобы старые истории не меняли поведение.
 
 ### Параметры интерфейса
 
@@ -195,6 +208,18 @@ libraryEvening file=assets/backgrounds/bg_library_evening.jpg
 ```text
 bg campusHall
 ```
+
+Для 360-фонов нужно указывать JS-пакет, а не исходное изображение:
+
+```text
+[bg]
+campus360 file=assets/360/campus-360.js 360 quality=auto
+
+[scene]
+bg campus360 quality=mobile
+```
+
+`quality` принимает `auto`, `normal` или `mobile`. Если `quality` не задан или равен `auto`, используется глобальный `bg360Quality` из `[meta]`; при итоговом `mobile` движок загрузит соседний пакет `campus-360-mobile.js`. Путь к `.jpg/.png/.webp` в 360-фоне считается ошибкой.
 
 ---
 
