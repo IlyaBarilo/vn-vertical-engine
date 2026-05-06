@@ -35,6 +35,8 @@ bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
+bg360_B101 file=assets/360/b101-360.js scale=1 focusx=0.5 focusy=0.5 360
+
 [char]
 # Формат описания для персонажа:
 # имя_персонажа тип = значение
@@ -175,6 +177,7 @@ menu
 "Зайти в кафе и услышать студенческие байки" -> scBranchCafe01
 "Заглянуть в IT-лабораторию и увидеть магию технологий" -> scBranchLab01
 "Выйти во двор и поймать ночное настроение университета" -> scBranchYard01
+"Зайти в современную аудиторию вуза" -> sc360_B101
 
 scene scBranchCafe01
 
@@ -659,6 +662,28 @@ igor: "Зато сразу видно, как меняется напряжен�
 goto scFinale01
 
 
+
+scene sc360_B101
+
+show anna support
+anna: "Сейчас посмотрим современную аудиторию университета в режиме 360."
+
+anna: "В начале в максимальном качестве."
+
+hide all
+
+bg bg360_B101 360 scroll focusx=0.2503 focusy=0.4344 quality=normal
+walk360 bg360_B101 text="Вы сидите за компьютером, но можно оглянуться." button="Продолжить в низком качестве" result=walkResult
+
+bg bg360_B101 360 scroll focusx=0.2503 focusy=0.4344 quality=mobile
+walk360 bg360_B101 text="Качество понизили для скорости обработки устройством." button="Продолжить" result=walkResult
+
+bg bg360_B101 360 focusx=0.2503 focusy=0.4344
+
+show anna support
+anna: "В новелле можно использовать не только изображения и видео, но и 360-панорамы."
+
+goto scFinale01
 
 
 # # Test
