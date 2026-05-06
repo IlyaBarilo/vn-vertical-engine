@@ -694,7 +694,7 @@ goto sc360multi101
 scene sc360multi101
 
 menu title="Выберите стиль"
-choice "80s-synthwave-retro-futurism.png"
+choice "80s synthwave retro futurism"
   bg bg360_80ssynthwaveretrofuturism 360 scroll
   walk360 bg360_80ssynthwaveretrofuturism button="Продолжить"
   
