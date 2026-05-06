@@ -35,7 +35,13 @@ bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
-bg360_B101 file=assets/360/b101-360.js scale=1 focusx=0.5 focusy=0.5 360
+bg360_B101 file=assets/360/B101/b101-360.js scale=1 focusx=0.5 focusy=0.5 360 focusx=0.2503 focusy=0.4344
+bg360_solar file=assets/360/B101/solar-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_japan file=assets/360/B101/japan-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_artdecoluxury file=assets/360/B101/art-deco-luxury-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_arcticcrystallaboratory file=assets/360/B101/arctic-crystal-laboratory-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_aquaticfuturism file=assets/360/B101/aquatic-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_80ssynthwaveretrofuturism file=assets/360/B101/80s-synthwave-retro-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
 
 [char]
 # Формат описания для персонажа:
@@ -672,18 +678,58 @@ anna: "В начале в максимальном качестве."
 
 hide all
 
-bg bg360_B101 360 scroll focusx=0.2503 focusy=0.4344 quality=normal
+bg bg360_B101 360 scroll quality=normal
 walk360 bg360_B101 text="Вы сидите за компьютером, но можно оглянуться." button="Продолжить в низком качестве" result=walkResult
 
-bg bg360_B101 360 scroll focusx=0.2503 focusy=0.4344 quality=mobile
+bg bg360_B101 360 scroll quality=mobile
 walk360 bg360_B101 text="Качество понизили для скорости обработки устройством." button="Продолжить" result=walkResult
 
-bg bg360_B101 360 focusx=0.2503 focusy=0.4344
+bg bg360_B101 360
 
-show anna support
-anna: "В новелле можно использовать не только изображения и видео, но и 360-панорамы."
+show anna welcome
+anna: "Можно  переоформить панорамы в раличных стилях."
 
-goto scFinale01
+goto sc360multi101
+
+scene sc360multi101
+
+menu title="Выберите стиль"
+choice "80s-synthwave-retro-futurism.png"
+  bg bg360_80ssynthwaveretrofuturism 360 scroll
+  walk360 bg360_80ssynthwaveretrofuturism button="Продолжить"
+  
+
+choice "Art Deco luxury"
+  bg bg360_artdecoluxury 360 scroll
+  walk360 bg360_artdecoluxury button="Продолжить"
+  
+
+choice "Арктическая кристаллическая лаборатория"
+  bg bg360_arcticcrystallaboratory 360 scroll
+  walk360 bg360_arcticcrystallaboratory button="Продолжить"
+  
+
+choice "Подводный Атлантис"
+  bg bg360_aquaticfuturism 360 scroll
+  walk360 bg360_aquaticfuturism button="Продолжить"
+  
+
+choice "Соларпанк эко-футуризм"
+  bg bg360_solar 360 scroll
+  walk360 bg360_solar button="Продолжить"
+  
+
+choice "Японский дзен-минимализм"
+  bg bg360_japan 360 scroll
+  walk360 bg360_japan button="Продолжить"
+  
+
+choice "Завершить просмотр"
+  goto scFinale01
+
+end
+
+goto sc360multi101
 
 
 # # Test
