@@ -157,7 +157,8 @@ const UI_I18N = {
     gamesNoGames: "No games found",
     videoSkipHint: "Click to skip",
     videoUnavailable: "Video unavailable",
-    bgScrollHint: "Move background sideways"
+    bgScrollHint: "Move background sideways",
+    bg360Hint: "Move viewpoint"
   },
   ru: {
     mute: "Звук",
@@ -201,7 +202,8 @@ const UI_I18N = {
     gamesNoGames: "Игры не найдены",
     videoSkipHint: "Нажмите, чтобы пропустить",
     videoUnavailable: "Видео недоступно",
-    bgScrollHint: "Перемещайте фон"
+    bgScrollHint: "Перемещайте фон",
+    bg360Hint: "Двигайте обзор, приближайте"
   }
 };
 
@@ -255,7 +257,10 @@ function applyUiLanguage() {
   if (hint) hint.textContent = t("hintContinue");
 
   var bgScrollHint = document.getElementById("bgScrollHint");
-  if (bgScrollHint) bgScrollHint.textContent = t("bgScrollHint");
+  if (bgScrollHint) {
+    var hintKey = bgScrollHint.classList.contains("is-360") ? "bg360Hint" : "bgScrollHint";
+    bgScrollHint.textContent = t(hintKey);
+  }
 
   var statsTitle = document.querySelector(".statsTitle");
   if (statsTitle) statsTitle.textContent = t("statsTitle");
@@ -1683,6 +1688,18 @@ function disableBackgroundScroll() {
 
 // Пересчитывает, есть ли у текущего img/video скрытая ширина для горизонтального перетаскивания.
 function updateBackgroundScrollAvailability() {
+  // Для активного WebGL-360 используем отдельную подсказку навигации.
+  // Иначе общий resize-хендлер для wide-bg скрывает hint, хотя 360 остаётся интерактивным.
+  if (bg360Runtime && bg360Runtime.active) {
+    if (elNovelWindow) {
+      elNovelWindow.classList.remove("bg-scrollable");
+      elNovelWindow.classList.remove("bg-scroll-dragging");
+    }
+    if (bg360Runtime.interactive) showBg360NavigationHint();
+    else hideBackgroundScrollHint();
+    return;
+  }
+
   var targetEl = backgroundScroll.target || elBg;
   var containerEl = backgroundScroll.container || elNovelWindow;
 
@@ -1934,6 +1951,19 @@ function showBackgroundScrollHint() {
   });
 }
 
+// Показывает подсказку навигации 360, когда обзор можно двигать в любом направлении.
+function showBg360NavigationHint() {
+  if (!elBgScrollHint || !bg360Runtime.interactive) return;
+  clearTimeout(backgroundScroll.hintTimer);
+  elBgScrollHint.textContent = t("bg360Hint");
+  elBgScrollHint.classList.remove("is-story-video");
+  elBgScrollHint.classList.add("is-360");
+  elBgScrollHint.classList.remove("hidden");
+  requestAnimationFrame(function () {
+    if (elBgScrollHint) elBgScrollHint.classList.add("is-visible");
+  });
+}
+
 // Скрывает подсказку без удаления элемента, чтобы ее можно было снова показать при следующем фоне.
 function hideBackgroundScrollHint() {
   if (!elBgScrollHint) return;
@@ -1941,6 +1971,7 @@ function hideBackgroundScrollHint() {
   backgroundScroll.hintTimer = null;
   elBgScrollHint.classList.remove("is-visible");
   elBgScrollHint.classList.remove("is-story-video");
+  elBgScrollHint.classList.remove("is-360");
   elBgScrollHint.classList.add("hidden");
 }
 
@@ -6803,6 +6834,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     syncBg360OriginCoverMesh();
     bg360Runtime.active = true;
     if (elBg360) elBg360.classList.remove("hidden");
+    if (bg360Runtime.interactive) showBg360NavigationHint();
+    else hideBackgroundScrollHint();
     // Важно: сначала рисуем первый кадр нового 360, и только затем убираем hold-слой.
     // Иначе между "готово" и первым rAF-кадром может мелькнуть чёрный фон.
     if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
