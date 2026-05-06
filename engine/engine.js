@@ -1415,7 +1415,10 @@ var state = {
   // Сюжетное видео блокирует выполнение сцены до завершения, пропуска или таймаута fallback.
   inVideo: false,
   lastNextAt: 0,
-  nextLocked: false
+  nextLocked: false,
+  // Очередь временных действий (например, тело выбранного пункта menu), которые
+  // исполняются сразу и не мутируют исходный массив scene.actions.
+  pendingActions: []
 };
 
 // Допустимый диапазон scale для фона/сюжетного видео (множитель к «базовому» object-fit: cover).
@@ -1458,6 +1461,9 @@ var backgroundScroll = {
 var bg360Runtime = {
   active: false,
   interactive: false,
+  sourceSrc: "",
+  blurFallbackSrc: "",
+  isVideoSource: false,
   renderer: null,
   scene: null,
   camera: null,
@@ -2773,6 +2779,9 @@ var VN_AUTOSAVE_PAYLOAD_VERSION = 2;
 var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
 var vnAutosaveTimer = null;
 var vnAutosaveBgScrollRestorePending = null;
+// Последний успешно показанный фон/видео для восстановления «унаследованного» визуала
+// в сценах, где нет собственного bg (например, menu/text после перехода).
+var vnAutosaveLastVisualSnapshot = null;
 
 // Снимает отложенную запись, чтобы после ручного сброса старый таймер не вернул прежний слот.
 function cancelPendingAutosaveTimer(reason) {
@@ -2871,8 +2880,26 @@ function computeStoryTextFingerprint() {
 }
 
 function captureBackgroundSnapshotForAutosave() {
+  function isUsableAutosaveBgSrc(src) {
+    var normalized = normalizeAssetUrl(src || "");
+    if (!normalized) return false;
+    // Пустой <img src> в браузере часто превращается в URL текущей страницы (index.html),
+    // такой путь нельзя считать валидным снимком фона для автосейва.
+    var currentPage = normalizeAssetUrl((window && window.location && window.location.href) ? window.location.href : "");
+    if (currentPage && urlsMatchForAutosaveRestore(normalized, currentPage)) return false;
+    return true;
+  }
+
+  if (bg360Runtime && bg360Runtime.active && bg360Runtime.sourceSrc) {
+    return {
+      isVideo: !!bg360Runtime.isVideoSource,
+      src: normalizeAssetUrl(bg360Runtime.sourceSrc),
+      blurFallback: bg360Runtime.blurFallbackSrc ? normalizeAssetUrl(bg360Runtime.blurFallbackSrc) : ""
+    };
+  }
   if (elBgVideo && !elBgVideo.classList.contains("hidden") && (elBgVideo.currentSrc || elBgVideo.src)) {
     var vnorm = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
+    if (!isUsableAutosaveBgSrc(vnorm)) return null;
     return {
       isVideo: true,
       src: vnorm,
@@ -2880,15 +2907,49 @@ function captureBackgroundSnapshotForAutosave() {
     };
   }
   if (elBg && !elBg.classList.contains("hidden") && (elBg.currentSrc || elBg.src)) {
+    var inorm = normalizeAssetUrl(elBg.currentSrc || elBg.src || "");
+    if (!isUsableAutosaveBgSrc(inorm)) return null;
     return {
       isVideo: false,
-      src: normalizeAssetUrl(elBg.currentSrc || elBg.src || "")
+      src: inorm
     };
   }
   return null;
 }
 
+// Обновляет и возвращает «последний визуальный снимок» для автосейва.
+// Если текущий bg не виден, сохраняем предыдущее валидное значение.
+function captureLastVisualSnapshotForAutosave(currentBgSnap) {
+  if (currentBgSnap && currentBgSnap.src) {
+    vnAutosaveLastVisualSnapshot = JSON.parse(JSON.stringify(currentBgSnap));
+  }
+  if (vnAutosaveLastVisualSnapshot && vnAutosaveLastVisualSnapshot.src) {
+    return JSON.parse(JSON.stringify(vnAutosaveLastVisualSnapshot));
+  }
+  return null;
+}
+
 function captureBackgroundScrollSnapshotForAutosave() {
+  // Для активного 360 сохраняем положение камеры и интерактивность напрямую из runtime.
+  // Иначе после F5 восстановится только источник, но не ракурс/управление.
+  if (bg360Runtime && bg360Runtime.active) {
+    var fx = clamp((typeof bg360Runtime.yawDeg === "number" ? bg360Runtime.yawDeg : 180) / 360, 0, 1);
+    var fy = clamp(((typeof bg360Runtime.pitchDeg === "number" ? bg360Runtime.pitchDeg : 0) + 85) / 170, 0, 1);
+    var q = "auto";
+    if (bg360Runtime.sourceSrc && /-360-mobile\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "mobile";
+    else if (bg360Runtime.sourceSrc && /-360\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "normal";
+    return {
+      interactive: !!bg360Runtime.interactive,
+      position: fx,
+      focusX: fx,
+      focusY: fy,
+      scale: 1,
+      start: fx,
+      is360: true,
+      fov: typeof bg360Runtime.fovDeg === "number" ? bg360Runtime.fovDeg : null,
+      quality: q
+    };
+  }
   if (!backgroundScroll || !backgroundScroll.enabled) return null;
   if (backgroundScroll.owner !== "background" || !backgroundScroll.target) return null;
   if (backgroundScroll.target !== elBg && backgroundScroll.target !== elBgVideo) return null;
@@ -3033,6 +3094,7 @@ function buildAutosavePayload(opts) {
 
   var fp = computeStoryTextFingerprint();
   var bgSnap = captureBackgroundSnapshotForAutosave();
+  var lastVisualSnap = captureLastVisualSnapshotForAutosave(bgSnap);
   var bgScroll = captureBackgroundScrollSnapshotForAutosave();
   var charSnap = captureCharacterSnapshotForAutosave();
   var bgmSnap = captureBgmSnapshotForAutosave();
@@ -3094,10 +3156,13 @@ function buildAutosavePayload(opts) {
     metaTitle: STORY.meta && STORY.meta.title ? String(STORY.meta.title) : "",
     sceneId: state.sceneId,
     actionIndex: persistActionIndex,
+    // currentBgId помогает восстановить унаследованный фон, когда текущая сцена не содержит bg.
+    currentBgId: state.currentBgId ? String(state.currentBgId) : "",
     vars: JSON.parse(JSON.stringify(state.vars || {})),
     waitingNext: flagsForDisk.waitingNext,
     nextLocked: flagsForDisk.nextLocked,
     bg: bgSnap,
+    lastVisualSnapshot: lastVisualSnap,
     bgScroll: bgScroll,
     char: charSnap,
     bgm: bgmSnap
@@ -3293,6 +3358,14 @@ function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
 }
 
 function tryApplyAutosave() {
+  function isUsableAutosaveBgSrc(src) {
+    var normalized = normalizeAssetUrl(src || "");
+    if (!normalized) return false;
+    var currentPage = normalizeAssetUrl((window && window.location && window.location.href) ? window.location.href : "");
+    if (currentPage && urlsMatchForAutosaveRestore(normalized, currentPage)) return false;
+    return true;
+  }
+
   if (!STORY || !isStoryAutosaveEnabled()) return false;
   var raw = null;
   try {
@@ -3326,6 +3399,32 @@ function tryApplyAutosave() {
     return false;
   }
 
+  var restoreScene = state.sceneMap[data.sceneId];
+  var restoreIdx = clamp(
+    parseInt(data.actionIndex, 10) || 0,
+    0,
+    restoreScene && Array.isArray(restoreScene.actions) ? restoreScene.actions.length : 0
+  );
+  var restoreAction = restoreScene && Array.isArray(restoreScene.actions)
+    ? restoreScene.actions[restoreIdx]
+    : null;
+  // Миграционный safeguard для старых слотов (до lastVisualSnapshot):
+  // если слот открывает меню и не содержит никакого визуального снимка,
+  // восстановление даст «пустой» экран — такой слот сбрасываем.
+  if (
+    restoreAction &&
+    restoreAction.type === "choice" &&
+    !(data.bg && data.bg.src) &&
+    !(data.lastVisualSnapshot && data.lastVisualSnapshot.src)
+  ) {
+    autosaveDebugLog("restore:skip_legacy_choice_without_visual_snapshot", {
+      sceneId: data.sceneId,
+      actionIndex: data.actionIndex
+    });
+    clearAutosaveStorage();
+    return false;
+  }
+
   autosaveDebugLog("restore:slot_before_apply", {
     sceneId: data.sceneId,
     actionIndex: data.actionIndex,
@@ -3337,6 +3436,9 @@ function tryApplyAutosave() {
   state.sceneId = data.sceneId;
   currentSceneId = data.sceneId;
   state.actionIndex = parseInt(data.actionIndex, 10);
+  state.currentBgId = typeof data.currentBgId === "string" && data.currentBgId
+    ? data.currentBgId
+    : null;
   state.vars = data.vars && typeof data.vars === "object"
     ? JSON.parse(JSON.stringify(data.vars))
     : JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
@@ -3360,7 +3462,10 @@ function tryApplyAutosave() {
   cleanupStoryVideoVisualOnly();
   closeGameFrameVisualOnly();
 
-  if (data.bg && data.bg.src) {
+  var restoreBgSnapshot = (data.bg && isUsableAutosaveBgSrc(data.bg.src))
+    ? data.bg
+    : ((data.lastVisualSnapshot && isUsableAutosaveBgSrc(data.lastVisualSnapshot.src)) ? data.lastVisualSnapshot : null);
+  if (restoreBgSnapshot && restoreBgSnapshot.src) {
     var baseScroll = { enabled: false, start: 0.5, focusX: null, focusY: null, scale: 1 };
     if (data.bgScroll && typeof data.bgScroll === "object") {
       baseScroll.enabled = !!data.bgScroll.interactive;
@@ -3370,16 +3475,46 @@ function tryApplyAutosave() {
       baseScroll,
       data.bgScroll ? getBgScrollFocusXFromAutosavePayload(data.bgScroll) : null,
       data.bgScroll && typeof data.bgScroll.scale === "number" ? data.bgScroll.scale : undefined,
-      data.bgScroll ? getBgScrollFocusYFromAutosavePayload(data.bgScroll) : null
+      data.bgScroll ? getBgScrollFocusYFromAutosavePayload(data.bgScroll) : null,
+      data.bgScroll && data.bgScroll.is360 === true ? true : null,
+      null,
+      data.bgScroll && typeof data.bgScroll.fov === "number" ? data.bgScroll.fov : null,
+      data.bgScroll && typeof data.bgScroll.quality === "string" ? data.bgScroll.quality : null
     );
+    // Для 360-пакетов (file=...-360.js) при восстановлении явно включаем 360-режим,
+    // иначе setBackground пойдёт в обычный image-слой и попытается загрузить JS как картинку.
+    var restoreIs360 = isBg360PackScriptPath(restoreBgSnapshot.src);
+    if (!restoreIs360 && state.currentBgId) {
+      try {
+        var restoreBgAsset = resolveBackgroundAsset("@bg." + state.currentBgId);
+        restoreIs360 = !!(restoreBgAsset && restoreBgAsset.is360);
+      } catch (e) {}
+    }
+    if (restoreIs360) {
+      mergedScroll = mergeMediaFocusOptions(mergedScroll, null, undefined, null, true);
+    }
     var blurFb =
-      data.bg && typeof data.bg.blurFallback === "string" ? data.bg.blurFallback : "";
-    setBackground(data.bg.src, blurFb, null, mergedScroll);
+      restoreBgSnapshot && typeof restoreBgSnapshot.blurFallback === "string" ? restoreBgSnapshot.blurFallback : "";
+    if (restoreIs360 && !blurFb && state.currentBgId) {
+      // Для 360 без явного blurFallback пытаемся взять fallback из ассета, чтобы blur-слой
+      // не получал JS-путь вида *-360.js.
+      try {
+        var blurAsset = resolveBackgroundAsset("@bg." + state.currentBgId);
+        if (blurAsset && blurAsset.fallback && !isBg360PackScriptPath(blurAsset.fallback)) {
+          blurFb = blurAsset.fallback;
+        }
+      } catch (e) {}
+    }
+    setBackground(restoreBgSnapshot.src, blurFb, null, mergedScroll);
+    // После успешного восстановления обновляем кэш унаследованного визуала.
+    vnAutosaveLastVisualSnapshot = JSON.parse(JSON.stringify(restoreBgSnapshot));
   }
   // Если в слоте нет снимка bg, восстанавливаем последний bg из уже пройденных действий сцены.
   // Это защищает от «черного экрана» после F5 на шагах ожидания choice/text.
-  if (!(data.bg && data.bg.src)) {
-    restoreBgFromScenePrefixForAutosave(state.sceneId, state.actionIndex);
+  if (!(restoreBgSnapshot && restoreBgSnapshot.src)) {
+    if (!restoreBgFromCurrentBgIdForAutosave(state.currentBgId)) {
+      restoreBgFromScenePrefixForAutosave(state.sceneId, state.actionIndex);
+    }
   }
 
   if (data.char && typeof data.char === "object") {
@@ -3459,6 +3594,18 @@ function restoreBgmFromScenePrefixForAutosave(sceneId, actionIndex) {
     volume: volume,
     currentTime: 0
   });
+}
+
+// Восстанавливает фон по bgId, который был активен до входа в «пустую» сцену без bg.
+// Это надёжнее для 360/видео кейсов, где прямой снимок data.bg мог отсутствовать.
+function restoreBgFromCurrentBgIdForAutosave(currentBgId) {
+  var bgId = typeof currentBgId === "string" ? currentBgId.trim() : "";
+  if (!bgId) return false;
+  var bgAssetInfo = resolveBackgroundAsset("@bg." + bgId);
+  if (!bgAssetInfo || !bgAssetInfo.file) return false;
+  state.currentBgId = bgId;
+  setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgAssetInfo.scroll);
+  return true;
 }
 
 // Восстанавливает последний bg и связанные bg360marks из префикса сцены [0..actionIndex), когда в автосейве нет data.bg.
@@ -3653,8 +3800,11 @@ if (state.sceneId === 'scene_02') {
       return;
     }
 
-    // если дошли до конца сцены — останавливаемся
-    if (state.actionIndex >= scene.actions.length) {
+    // Если дошли до конца сцены и нет временных действий — останавливаемся.
+    if (
+      state.actionIndex >= scene.actions.length &&
+      (!Array.isArray(state.pendingActions) || state.pendingActions.length === 0)
+    ) {
       console.log('[VN] Достигнут конец сцены', state.sceneId);
       autosaveDebugLog("runCurrent:end_of_scene", {
         sceneId: state.sceneId,
@@ -3668,16 +3818,21 @@ if (state.sceneId === 'scene_02') {
 
 
     var actionIndexBeforeInc = state.actionIndex;
-    var action = scene.actions[actionIndexBeforeInc];
-    if (isVisualBatchCandidate(action)) {
-      var visualBatchActions = collectVisualBatchActions(scene, actionIndexBeforeInc);
-      action = {
-        type: "visual_batch",
-        actions: visualBatchActions
-      };
-      state.actionIndex += visualBatchActions.length;
+    var action = null;
+    if (Array.isArray(state.pendingActions) && state.pendingActions.length > 0) {
+      action = state.pendingActions.shift();
     } else {
-      state.actionIndex++;
+      action = scene.actions[actionIndexBeforeInc];
+      if (isVisualBatchCandidate(action)) {
+        var visualBatchActions = collectVisualBatchActions(scene, actionIndexBeforeInc);
+        action = {
+          type: "visual_batch",
+          actions: visualBatchActions
+        };
+        state.actionIndex += visualBatchActions.length;
+      } else {
+        state.actionIndex++;
+      }
     }
     console.log('[FLOW] runCurrent:action picked', {
       sceneId: state.sceneId,
@@ -6374,6 +6529,7 @@ function handleBg360PointerDown(e) {
   if (elBg360.setPointerCapture) {
     try { elBg360.setPointerCapture(e.pointerId); } catch (err) {}
   }
+  updateBg360CursorClasses();
   e.preventDefault();
 }
 
@@ -6417,6 +6573,7 @@ function handleBg360PointerUpLike(e) {
   if (getBg360PointerCount() < 2) {
     bg360Runtime.pinchDistance = null;
   }
+  updateBg360CursorClasses();
 }
 
 // Поддерживает zoom колесом на десктопе, изменяя FOV в допустимых пределах.
@@ -6436,6 +6593,14 @@ function setupBg360Interactions() {
   elBg360.addEventListener("pointerup", handleBg360PointerUpLike);
   elBg360.addEventListener("pointercancel", handleBg360PointerUpLike);
   elBg360.addEventListener("wheel", handleBg360Wheel, { passive: false });
+}
+
+// Обновляет классы курсора у 360-canvas: на ПК показываем "руку", когда обзор можно тянуть.
+function updateBg360CursorClasses() {
+  if (!elBg360) return;
+  elBg360.classList.toggle("is-interactive", !!bg360Runtime.interactive);
+  var dragging = !!(bg360Runtime.active && bg360Runtime.interactive && bg360Runtime.dragPointerId !== null);
+  elBg360.classList.toggle("is-dragging", dragging);
 }
 
 // Создаёт временный слой-«скриншот» для 360, чтобы старый кадр оставался на экране до готовности нового.
@@ -6548,6 +6713,9 @@ function disableBg360Renderer() {
   bg360Runtime.loadSeq++;
   bg360Runtime.active = false;
   bg360Runtime.interactive = false;
+  bg360Runtime.sourceSrc = "";
+  bg360Runtime.blurFallbackSrc = "";
+  bg360Runtime.isVideoSource = false;
   if (bg360Runtime.frameId) {
     cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = 0;
@@ -6559,6 +6727,7 @@ function disableBg360Renderer() {
   if (elBg360) {
     elBg360.classList.add("hidden");
   }
+  updateBg360CursorClasses();
   hideBg360HoldLayer();
 }
 
@@ -6723,6 +6892,11 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
   var isVideo = isVideoAssetPath(normalizedSrc);
+  // Сохраняем текущий 360-источник для автосейва, чтобы после F5 не подставлялся
+  // «последний обычный» фон из 2D-слоёв.
+  bg360Runtime.sourceSrc = normalizedSrc;
+  bg360Runtime.blurFallbackSrc = normalizedFallback;
+  bg360Runtime.isVideoSource = !!isVideo;
   // На этом шаге auto превращается в normal/mobile с учетом [meta] и текущего устройства.
   var bg360Quality = resolveBg360EffectiveQuality(normalized.quality);
   var selectedPackScriptUrl = getBg360PackScriptUrl(normalizedSrc, bg360Quality);
@@ -6763,6 +6937,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   // Для 360-слоя интерактив включается только при явном scroll в сценарии.
   // Это позволяет зафиксировать ракурс для сцен, где обзор не должен двигаться.
   bg360Runtime.interactive = normalized.enabled === true;
+  updateBg360CursorClasses();
   function buildNonWebgl360FallbackOptions(baseOptions) {
     // Фолбэк без WebGL: включаем drag по широкой 2:1-картинке, чтобы 360 не превращался в полностью статичный фон.
     var fallback = Object.assign({}, normalizeBackgroundScrollOptions(baseOptions), { is360: false, panorama360Fallback: true });
@@ -6854,7 +7029,12 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
     if (typeof updateBlurBackground === "function") {
-      updateBlurBackground(normalizedFallback || normalizedSrc);
+      // Для 360-пакета sourceSrc указывает на JS; blur-слой должен получать только изображение/видео fallback.
+      var blurSource = normalizedFallback || "";
+      if (!blurSource && !isPackScriptSource) {
+        blurSource = normalizedSrc;
+      }
+      if (blurSource) updateBlurBackground(blurSource);
     }
   }
 
@@ -7740,7 +7920,13 @@ function showChoices(choices, choiceAction) {
       text.textContent = renderTextVars(String(choice.text || ("Выбор " + (index + 1))));
       btn.appendChild(text);
 
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (evt) {
+        if (evt && typeof evt.preventDefault === "function") evt.preventDefault();
+        if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
+        // Считаем клик по пункту меню «последним next», чтобы защита от двойных кликов
+        // отфильтровала только мгновенный сквозной клик (если браузер его сгенерирует).
+        lastNextTime = Date.now();
+
         if (choice.sfx) {
           playSfx(resolveAsset(choice.sfx), 1);
         }
@@ -7756,14 +7942,13 @@ function showChoices(choices, choiceAction) {
         hideChoices();
 
         if (Array.isArray(choice.actions) && choice.actions.length > 0) {
-          var sceneNow = state.sceneMap[state.sceneId];
-          if (sceneNow && Array.isArray(sceneNow.actions)) {
-            var clonedChoiceActions = JSON.parse(JSON.stringify(choice.actions));
-            Array.prototype.splice.apply(
-              sceneNow.actions,
-              [state.actionIndex, 0].concat(clonedChoiceActions)
-            );
+          var clonedChoiceActions = JSON.parse(JSON.stringify(choice.actions));
+          if (!Array.isArray(state.pendingActions)) {
+            state.pendingActions = [];
           }
+          // Выбранные действия выполняем через runtime-очередь, чтобы не копить
+          // дубликаты в scene.actions при повторных заходах в ту же сцену.
+          state.pendingActions = clonedChoiceActions.concat(state.pendingActions);
         } else if (choice.goto) {
           gotoScene(choice.goto);
         }

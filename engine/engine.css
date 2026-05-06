@@ -343,6 +343,15 @@ body {
   pointer-events: auto;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .bg-360.is-interactive {
+    cursor: grab;
+  }
+  .bg-360.is-interactive.is-dragging {
+    cursor: grabbing;
+  }
+}
+
 /* Слой меток поверх 360-фона (координаты 0..1 по экрану, не по сфере). */
 .bg360-marks {
   position: absolute;
