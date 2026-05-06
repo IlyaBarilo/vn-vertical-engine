@@ -1091,6 +1091,102 @@
     return text.replace(/\\([\\;|:=])/g, "$1");
   }
 
+  /**
+   * Кодирует строку UTF-8 в стандартный Base64 (безопасный алфавит для атрибутов HTML).
+   */
+  function encodeUtf8Base64(text) {
+    const bytes = new TextEncoder().encode(String(text ?? ""));
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * Декодирует Base64 в строку UTF-8; пробелы в строке игнорируются (переносы из буфера обмена).
+   */
+  function decodeUtf8Base64(b64) {
+    const clean = String(b64 ?? "")
+      .trim()
+      .replace(/\s+/g, "");
+    const binary = atob(clean);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+
+  /**
+   * Возвращает сырое значение поля: либо из «*_b64» (UTF-8 Base64), либо обычное значение ключа.
+   */
+  /**
+   * Побайтовый XOR с повторяющимся ключом UTF-8 (обфускация; ключ в открытом коде рядом с игрой).
+   */
+  function xorBytesWithKey(data, keyBytes) {
+    const out = new Uint8Array(data.length);
+    const kl = keyBytes.length || 1;
+    for (let i = 0; i < data.length; i += 1) {
+      out[i] = data[i] ^ keyBytes[i % kl];
+    }
+    return out;
+  }
+
+  /** Ключ XOR для *_b64 при fmt=wsg-text-b64xor (совпадает с редактором). */
+  const WSG_TEXT_XOR_KEY_BYTES = new TextEncoder().encode("vn12|wsg.obf|k9Qz7mLp2XrT5sYw8_Nv2026");
+
+  /**
+   * UTF-8 → XOR → Base64 (режим b64xor).
+   */
+  function encodeUtf8XorBase64(text) {
+    const utf8 = new TextEncoder().encode(String(text ?? ""));
+    const mixed = xorBytesWithKey(utf8, WSG_TEXT_XOR_KEY_BYTES);
+    let binary = "";
+    for (let i = 0; i < mixed.length; i += 1) {
+      binary += String.fromCharCode(mixed[i]);
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * Base64 → XOR → UTF-8.
+   */
+  function decodeUtf8XorBase64(b64) {
+    const clean = String(b64 ?? "")
+      .trim()
+      .replace(/\s+/g, "");
+    const binary = atob(clean);
+    const mixed = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      mixed[i] = binary.charCodeAt(i);
+    }
+    const plain = xorBytesWithKey(mixed, WSG_TEXT_XOR_KEY_BYTES);
+    return new TextDecoder().decode(plain);
+  }
+
+  function resolveWsgEncodedSegment(fields, plainKey, useXorB64) {
+    const b64Key = `${plainKey}_b64`;
+    if (fields[b64Key] != null && String(fields[b64Key]).trim() !== "") {
+      const raw = String(fields[b64Key]).trim();
+      return useXorB64 ? decodeUtf8XorBase64(raw) : decodeUtf8Base64(raw);
+    }
+    return fields[plainKey];
+  }
+
+  /**
+   * Декодирует текстовое поле: при наличии «*_b64» — UTF-8 из Base64 (или XOR+Base64), иначе литерал с escape-снятием.
+   */
+  function decodeWsgTextField(fields, plainKey, useXorB64) {
+    const b64Key = `${plainKey}_b64`;
+    if (fields[b64Key] != null && String(fields[b64Key]).trim() !== "") {
+      const raw = String(fields[b64Key]).trim();
+      const inner = useXorB64 ? decodeUtf8XorBase64(raw) : decodeUtf8Base64(raw);
+      return decodeTextValue(inner);
+    }
+    return decodeTextValue(fields[plainKey]);
+  }
+
   function splitEscaped(text, separator) {
     const parts = [];
     let current = "";
@@ -1214,26 +1310,28 @@
 
   function parseWsgTextData(text) {
     const fields = parseTextMap(text);
-    if (!fields.fmt || decodeTextValue(fields.fmt) !== "wsg-text") return null;
+    const fmtToken = fields.fmt ? decodeTextValue(fields.fmt) : "";
+    const useXorB64 = fmtToken === "wsg-text-b64xor";
+    if (!fmtToken || (fmtToken !== "wsg-text" && fmtToken !== "wsg-text-b64" && fmtToken !== "wsg-text-b64xor")) return null;
 
     const version = Number(fields.v);
     if (!Number.isFinite(version) || version < 1) return null;
 
     const size = parseSizeValue(fields.size);
-    const grid = parseGridValue(fields.grid);
-    const wordsValue = parseWordsValue(fields.words);
+    const grid = parseGridValue(resolveWsgEncodedSegment(fields, "grid", useXorB64));
+    const wordsValue = parseWordsValue(resolveWsgEncodedSegment(fields, "words", useXorB64));
 
     const parsed = {
-      format: "wsg-text",
+      format: fmtToken,
       version,
-      id: decodeTextValue(fields.id) || undefined,
-      title: decodeTextValue(fields.title) || undefined,
-      theme: decodeTextValue(fields.theme) || undefined,
+      id: decodeWsgTextField(fields, "id", useXorB64) || undefined,
+      title: decodeWsgTextField(fields, "title", useXorB64) || undefined,
+      theme: decodeWsgTextField(fields, "theme", useXorB64) || undefined,
       rows: size ? size.rows : undefined,
       cols: size ? size.cols : undefined,
       grid,
       words: wordsValue,
-      sourceWords: parseSourceWordsValue(fields.sourceWords),
+      sourceWords: parseSourceWordsValue(resolveWsgEncodedSegment(fields, "sourceWords", useXorB64)),
       style: parseStyleFields(fields)
     };
 
