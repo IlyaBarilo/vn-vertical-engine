@@ -888,7 +888,8 @@ function parseActionParamsFromText(rawText) {
 }
 
 // Разбирает команду bg360marks: bgId, набор меток в скобках и опции вроде lines.
-// Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk) (hint1, 0.50, 0.20, text) lines
+// Формат метки: (id, x, y, type[, targetScene]), где targetScene может отсутствовать или быть пустым.
+// Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk, scene_hall) (mark2, 0.50, 0.20, walk, ) lines
 function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("bg360marks".length).trim();
   if (!body) {
@@ -912,13 +913,16 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
     var inner = String(m[1] || "");
     var parts = inner.split(",").map(function (x) { return String(x || "").trim(); });
     if (parts.length < 4) {
-      addParseError(lineNumber, originalLine, 'bg360marks: метка должна быть (id, x, y, type)', true);
+      addParseError(lineNumber, originalLine, 'bg360marks: метка должна быть (id, x, y, type[, targetScene])', true);
       return null;
     }
     var markId = parts[0];
     var x = Number(parts[1]);
     var y = Number(parts[2]);
     var kind = String(parts[3] || "").toLowerCase();
+    // Пустое/отсутствующее значение сцены допустимо: переход будет обработан дальше по сценарию.
+    var targetSceneRaw = String(parts.length >= 5 ? (parts[4] || "") : "").trim();
+    var targetScene = targetSceneRaw || null;
 
     if (!markId) {
       addParseError(lineNumber, originalLine, 'bg360marks: пустой id метки', true);
@@ -928,12 +932,16 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
       addParseError(lineNumber, originalLine, 'bg360marks: x/y должны быть числами 0..1', true);
       return null;
     }
-    if (kind !== "walk" && kind !== "text") {
-      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk или text', true);
+    if (kind !== "walk" && kind !== "walk2" && kind !== "walk3" && kind !== "text") {
+      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk, walk2, walk3 или text', true);
       return null;
     }
+    // Варианты walk2/walk3 считаем алиасами обычного walk, чтобы рантайм обрабатывал их идентично.
+    if (kind === "walk2" || kind === "walk3") {
+      kind = "walk";
+    }
 
-    marks.push({ id: markId, x: x, y: y, kind: kind });
+    marks.push({ id: markId, x: x, y: y, kind: kind, targetScene: targetScene });
   }
 
   // Опции ищем только вне скобок, чтобы id метки случайно не включил режим линий.
@@ -2429,7 +2437,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    // bg360marks bgId (id, x, y, kind) ... lines
+    // bg360marks bgId (id, x, y, kind[, targetScene]) ... lines
     if (cleanLine.startsWith('bg360marks ')) {
       var marksAction = parseBg360MarksCommand(cleanLine, lineNumber, line);
       if (!marksAction) return;
@@ -2535,6 +2543,20 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         const parsedBgQuality = parseBg360QualityOption(bgParams.quality, lineNumber, line);
         if (parsedBgQuality === null) return;
         bgAction.quality = parsedBgQuality;
+      }
+
+      // Локальный override визуального перехода для конкретной команды bg.
+      // Поддерживаем те же значения, что и в [meta]: fade/none/instant/off/black/white.
+      if (bgParams.transition !== undefined) {
+        bgAction.transition = String(bgParams.transition || "").trim();
+      }
+      if (bgParams.transitionMs !== undefined) {
+        const parsedBgTransitionMs = Number(bgParams.transitionMs);
+        if (!isFinite(parsedBgTransitionMs) || parsedBgTransitionMs < 0) {
+          addParseError(lineNumber, line, 'bg transitionMs must be a number >= 0', true);
+          return;
+        }
+        bgAction.transitionMs = parsedBgTransitionMs;
       }
 
       actions.push(bgAction);
@@ -2881,6 +2903,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           }
         }
         
+        // Проверка переходов из bg360marks (если targetScene указан явно).
+        if (action.type === 'bg360marks' && Array.isArray(action.marks)) {
+          action.marks.forEach((mark) => {
+            var targetScene = mark && typeof mark.targetScene === 'string'
+              ? mark.targetScene.trim()
+              : '';
+            if (!targetScene) return;
+            linkCount++;
+            if (!sceneIds.has(targetScene)) {
+              errorCount++;
+              addParseError(
+                0,
+                `Сцена ${sceneId}`,
+                `bg360 метка "${mark.id || 'unknown'}" ведет в несуществующую сцену "${targetScene}"`, true
+              );
+            }
+          });
+        }
+
         // Проверка choice
         if (action.type === 'choice' && action.choices) {
           action.choices.forEach((choice) => {

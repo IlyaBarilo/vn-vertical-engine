@@ -794,6 +794,7 @@ var elNovelWindow = document.getElementById("novelWindow");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
 var elBg360 = document.getElementById("bg360Layer");
+var elBg360Hold = null;
 var elBg360Marks = document.getElementById("bg360MarksLayer");
 var elBgScrollHint = document.getElementById("bgScrollHint");
 var elChar = document.getElementById("charLayer");
@@ -4194,15 +4195,21 @@ function waitVisualTransitionFrame() {
   });
 }
 
-// Читает [meta] transition/transitionMs: fade включает батч-переход, none/instant/off отключают.
-function getVisualTransitionSettings() {
+// Читает transition/transitionMs с учетом [meta] и локального override в команде bg.
+function getVisualTransitionSettings(override) {
   var meta = STORY && STORY.meta ? STORY.meta : {};
-  var rawMode = String(meta.transition === undefined || meta.transition === null ? "fade" : meta.transition).trim().toLowerCase();
+  var modeSource = override && override.transition !== undefined && override.transition !== null
+    ? override.transition
+    : meta.transition;
+  var rawMode = String(modeSource === undefined || modeSource === null ? "fade" : modeSource).trim().toLowerCase();
   var enabled = !(rawMode === "none" || rawMode === "instant" || rawMode === "off" || rawMode === "false" || rawMode === "0");
   var mode = rawMode === "black" || rawMode === "white" ? "cover" : "fade";
   var coverColor = rawMode === "white" ? "#fff" : "#000";
-  var totalMs = typeof meta.transitionMs === "number" && isFinite(meta.transitionMs)
-    ? clamp(meta.transitionMs, 0, 2000)
+  var durationSource = override && override.transitionMs !== undefined && override.transitionMs !== null
+    ? override.transitionMs
+    : meta.transitionMs;
+  var totalMs = typeof durationSource === "number" && isFinite(durationSource)
+    ? clamp(durationSource, 0, 2000)
     : VISUAL_TRANSITION_TOTAL_MS;
   var outRatio = VISUAL_TRANSITION_OUT_MS / VISUAL_TRANSITION_TOTAL_MS;
   var outMs = Math.round(totalMs * outRatio);
@@ -5026,7 +5033,16 @@ function executeVisualBatch(actions) {
   if (!actions || actions.length === 0) return false;
 
   var plan = buildVisualBatchPlan(actions);
-  var transitionSettings = getVisualTransitionSettings();
+  var bgAction = plan && plan.bg && plan.bg.action ? plan.bg.action : null;
+  var hasBgTransitionOverride = !!(bgAction && (bgAction.transition !== undefined || bgAction.transitionMs !== undefined));
+  var transitionSettings = getVisualTransitionSettings(bgAction);
+  // Для переходов с 360 по умолчанию используем резкую смену (none), но не ломаем явный override в bg.
+  var currentIs360 = !!(backgroundScroll && backgroundScroll.backgroundOptions && backgroundScroll.backgroundOptions.is360 === true);
+  var nextIs360 = !!(plan && plan.bg && plan.bg.mediaOptions && plan.bg.mediaOptions.is360 === true);
+  var has360InSwap = currentIs360 || nextIs360;
+  if (has360InSwap && !hasBgTransitionOverride) {
+    transitionSettings.enabled = false;
+  }
   var hasTransition = planHasVisualTransition(plan) && transitionSettings.enabled;
   var hasCharacterShow = !!(plan.char && plan.char.kind === "show");
 
@@ -5451,11 +5467,16 @@ function applyBg360Marks(action) {
   bg360MarksRuntime.bgId = bgId;
   bg360MarksRuntime.lines = !!(action && action.lines);
   bg360MarksRuntime.marks = marks.map(function (m) {
+    var targetSceneRaw = m && m.targetScene !== undefined && m.targetScene !== null
+      ? String(m.targetScene).trim()
+      : "";
     return {
       id: String(m.id || ""),
       x: Number(m.x),
       y: Number(m.y),
-      kind: String(m.kind || "walk")
+      kind: String(m.kind || "walk"),
+      // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
+      targetScene: targetSceneRaw || null
     };
   });
   bg360MarksRuntime.locked = false;
@@ -5962,6 +5983,16 @@ function onWalk360SelectMark(markId) {
   var id = String(markId || "");
   if (!walk360Runtime.active) return;
   if (walk360Runtime.done) return;
+  var selectedMark = null;
+  if (Array.isArray(bg360MarksRuntime.marks)) {
+    for (var i = 0; i < bg360MarksRuntime.marks.length; i++) {
+      var mark = bg360MarksRuntime.marks[i];
+      if (mark && String(mark.id || "") === id) {
+        selectedMark = mark;
+        break;
+      }
+    }
+  }
 
   if (walk360Runtime.resultVar) {
     state.vars[walk360Runtime.resultVar] = id;
@@ -5973,11 +6004,12 @@ function onWalk360SelectMark(markId) {
   bg360MarksRuntime.marks = [];
   renderBg360Marks();
 
-  finishWalk360(id);
+  // Если на метке задан targetScene, завершаем wait и сразу переводим игрока в нужную сцену.
+  finishWalk360(id, selectedMark && selectedMark.targetScene ? String(selectedMark.targetScene) : "");
 }
 
 // Завершает walk360 (и по метке, и по кнопке выхода).
-function finishWalk360(selectedId) {
+function finishWalk360(selectedId, targetScene) {
   if (!walk360Runtime.active) return;
   if (walk360Runtime.done) return;
   walk360Runtime.done = true;
@@ -5993,7 +6025,19 @@ function finishWalk360(selectedId) {
   walk360Runtime.active = false;
   walk360Runtime.bgId = null;
   walk360Runtime.resultVar = "";
-
+  var target = String(targetScene || "").trim();
+  if (target) {
+    if (state.sceneMap && state.sceneMap[target]) {
+      console.log("[walk360] targetScene jump ->", target, "(goto + runCurrent)");
+      gotoScene(target);
+      // gotoScene только меняет состояние, а этот путь вызван из UI-события walk360.
+      // Поэтому явно запускаем обработку новой сцены, иначе переход "зависнет" на actionIndex=0.
+      runCurrent();
+      return;
+    }
+    // Не роняем движок: если сцена не найдена, продолжаем обычный поток и пишем предупреждение.
+    console.warn("[walk360] targetScene not found", { selectedId: selectedId, targetScene: target });
+  }
   runCurrent();
 }
 
@@ -6363,6 +6407,73 @@ function setupBg360Interactions() {
   elBg360.addEventListener("wheel", handleBg360Wheel, { passive: false });
 }
 
+// Создаёт временный слой-«скриншот» для 360, чтобы старый кадр оставался на экране до готовности нового.
+function ensureBg360HoldLayer() {
+  if (elBg360Hold) return elBg360Hold;
+  if (!elNovelWindow) return null;
+  var hold = document.createElement("img");
+  hold.className = "hidden";
+  hold.setAttribute("aria-hidden", "true");
+  hold.alt = "";
+  hold.draggable = false;
+  hold.style.position = "absolute";
+  hold.style.left = "0";
+  hold.style.top = "0";
+  hold.style.width = "100%";
+  hold.style.height = "100%";
+  hold.style.objectFit = "fill";
+  hold.style.pointerEvents = "none";
+  // Держим снимок выше фоновых слоёв (.bg z-index:2), но ниже меток 360 и UI.
+  hold.style.zIndex = "3";
+  elNovelWindow.appendChild(hold);
+  elBg360Hold = hold;
+  console.log("[BG360 HOLD] layer created");
+  return hold;
+}
+
+// Скрывает hold-слой 360; вызывается после успешной загрузки нового кадра или при отмене смены.
+function hideBg360HoldLayer() {
+  if (!elBg360Hold) return;
+  console.log("[BG360 HOLD] hide");
+  elBg360Hold.classList.add("hidden");
+  elBg360Hold.removeAttribute("src");
+}
+
+// Делает снимок текущего 360-canvas, чтобы не показывать «черный» фон между загрузками.
+function showBg360HoldFromCurrentFrame() {
+  if (!elBg360) {
+    console.log("[BG360 HOLD] skip capture: no canvas");
+    return false;
+  }
+  if (!bg360Runtime.active) {
+    console.log("[BG360 HOLD] skip capture: runtime inactive");
+    return false;
+  }
+  var hold = ensureBg360HoldLayer();
+  if (!hold) {
+    console.log("[BG360 HOLD] skip capture: no hold layer");
+    return false;
+  }
+  try {
+    console.log("[BG360 HOLD] capture start", {
+      width: elBg360.width,
+      height: elBg360.height,
+      clientWidth: elBg360.clientWidth,
+      clientHeight: elBg360.clientHeight
+    });
+    hold.src = elBg360.toDataURL("image/png");
+    hold.classList.remove("hidden");
+    console.log("[BG360 HOLD] capture success: hold shown", {
+      srcLength: hold.src ? hold.src.length : 0
+    });
+    return true;
+  } catch (e) {
+    // Если canvas нельзя экспортировать (например, tainted), просто продолжаем без hold-слоя.
+    console.warn("[BG360 HOLD] capture failed", e);
+    return false;
+  }
+}
+
 // Освобождает текущую 360-сцену (текстуры/материалы/геометрию/видео), сохраняя renderer для повторного использования.
 function clearBg360MediaResources() {
   disposeBg360OriginCoverMesh();
@@ -6417,6 +6528,7 @@ function disableBg360Renderer() {
   if (elBg360) {
     elBg360.classList.add("hidden");
   }
+  hideBg360HoldLayer();
 }
 
 // Проверяет, что путь указывает на JS-пакет 360, а не на исходную картинку.
@@ -6590,6 +6702,11 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     return bg360LoadSeq === bg360Runtime.loadSeq;
   }
   var packedDataUrl = "";
+  console.log("[BG360 HOLD] setBackground360 start", {
+    src: normalizedSrc,
+    fallback: normalizedFallback,
+    hadActive360: !!bg360Runtime.active
+  });
   if (!isVideo) {
     if (!isPackScriptSource) {
       console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", normalizedSrc);
@@ -6632,6 +6749,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     return;
   }
 
+  showBg360HoldFromCurrentFrame();
+  console.log("[BG360 HOLD] capture requested before swap");
   disableBackgroundScroll();
   if (elBg) elBg.classList.add("hidden");
   if (elBgVideo) {
@@ -6684,6 +6803,21 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     syncBg360OriginCoverMesh();
     bg360Runtime.active = true;
     if (elBg360) elBg360.classList.remove("hidden");
+    // Важно: сначала рисуем первый кадр нового 360, и только затем убираем hold-слой.
+    // Иначе между "готово" и первым rAF-кадром может мелькнуть чёрный фон.
+    if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
+      bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+      updateBg360MarksProjection();
+    }
+    console.log("[BG360 HOLD] first frame rendered: schedule hold hide after 2 RAF");
+    // На части устройств один кадр после render() ещё может композиться с чёрной подложкой.
+    // Поэтому держим hold ещё два requestAnimationFrame и скрываем только после стабильного показа.
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        console.log("[BG360 HOLD] hide after 2 RAF");
+        hideBg360HoldLayer();
+      });
+    });
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
     if (typeof updateBlurBackground === "function") {
@@ -6694,6 +6828,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   function onLoadError() {
     if (!isCurrentBg360Load()) return;
     console.warn("[BG360] Не удалось загрузить ресурс:", normalizedSrc);
+    console.warn("[BG360 HOLD] texture load error: hide hold and fallback", {
+      src: normalizedSrc,
+      fallback: normalizedFallback
+    });
     disableBg360Renderer();
     var fallbackOptions = buildNonWebgl360FallbackOptions(normalized);
     if (normalizedFallback) {
@@ -6701,6 +6839,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     } else {
       setBackground(normalizedSrc, "", null, fallbackOptions);
     }
+    hideBg360HoldLayer();
   }
 
   if (isVideo) {
@@ -6785,11 +6924,14 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   var isVideo = isVideoAssetPath(normalizedSrc);
 
   if (use360) {
+    console.log("[BG360 HOLD] setBackground route -> 360");
     setBackground360(normalizedSrc, normalizedFallbackSrc, normalizedScrollOptions);
     return;
   }
 
   disableBg360Renderer();
+  console.log("[BG360 HOLD] setBackground route -> non-360, hide hold");
+  hideBg360HoldLayer();
   visualTrace("setBackground:start", {
     src: normalizedSrc,
     fallbackSrc: normalizedFallbackSrc,
