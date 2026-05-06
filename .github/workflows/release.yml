@@ -173,6 +173,11 @@ jobs:
             \) -exec cp {} "build/$APP_NAME/assets/video/" \;
           fi
 
+
+          # Панорамы 360: копируем дерево каталогов целиком (сценарий ссылается на пути вида assets/360/B101/...).
+          if [ -d assets/360 ]; then
+            cp -a assets/360 "build/$APP_NAME/assets/"
+          fi
       - name: Prepare site build
         shell: bash
         run: |
