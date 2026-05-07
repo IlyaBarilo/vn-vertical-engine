@@ -244,7 +244,11 @@
       <div class="row two">
         <button id="newPanoramaBtn" type="button">Новая панорама</button>
         <button id="savePanoramaBtn" class="good" type="button">Сохранить панораму</button>
-      </div>
+      
+
+      <div class="row">
+        <button id="deletePanoramaBtn" type="button" class="danger">Удалить панораму</button>
+      </div></div>
 
       <div class="row">
         <label for="panoramaSelect">Панорамы в текущем файле</label>
@@ -357,6 +361,7 @@
     var story360Input = document.getElementById("story360Input");
     var newPanoramaBtn = document.getElementById("newPanoramaBtn");
     var savePanoramaBtn = document.getElementById("savePanoramaBtn");
+    var deletePanoramaBtn = document.getElementById("deletePanoramaBtn");
     var panoramaSelect = document.getElementById("panoramaSelect");
     var spaceIdInput = document.getElementById("spaceIdInput");
     var panoramaIdInput = document.getElementById("panoramaIdInput");
@@ -774,6 +779,55 @@
     }
 
     /**
+     * Удаляет текущую панораму из story360Data: подтверждение, очистка пустого пространства,
+     * переход к соседней панораме в том же space или к любой оставшейся; при отсутствии данных — сброс редактора.
+     */
+    function deleteCurrentPanorama() {
+      var ids = getCurrentStory360Ids();
+      var sid = ids.spaceId;
+      var pid = ids.panoramaId;
+      if (!window.confirm("Удалить панораму " + sid + "." + pid + "?")) return;
+
+      var space = story360Data.spaces && story360Data.spaces[sid];
+      var panoramas = space && space.panoramas ? space.panoramas : {};
+      var sortedBefore = Object.keys(panoramas).sort();
+      var idxBefore = sortedBefore.indexOf(pid);
+      var nextPid = null;
+      if (sortedBefore.length > 1 && idxBefore >= 0) {
+        if (idxBefore + 1 < sortedBefore.length) nextPid = sortedBefore[idxBefore + 1];
+        else nextPid = sortedBefore[idxBefore - 1];
+      }
+
+      var removed = false;
+      if (idxBefore >= 0) {
+        delete panoramas[pid];
+        removed = true;
+        if (Object.keys(panoramas).length === 0) delete story360Data.spaces[sid];
+      }
+
+      persistEditorDraft();
+      refreshPanoramaSelect();
+
+      if (removed && nextPid && story360Data.spaces[sid] && story360Data.spaces[sid].panoramas[nextPid]) {
+        loadPanoramaFromData(sid, nextPid, "default");
+        setStatus("Панорама удалена.", false);
+        return;
+      }
+
+      var ref = getFirstPanoramaRef();
+      if (ref) {
+        loadPanoramaFromData(ref.spaceId, ref.panoramaId, "default");
+        setStatus(removed ? "Панорама удалена." : "Текущая панорама не была в данных — показана другая.", false);
+        return;
+      }
+
+      resetEditorStateForImport();
+      persistEditorDraft();
+      refreshPanoramaSelect();
+      setStatus("Все панорамы удалены. Загрузите изображение или импортируйте story360.", false);
+    }
+
+    /**
      * Возвращает первую панораму из story360Data для автозагрузки после импорта.
      */
     function getFirstPanoramaRef() {
@@ -884,6 +938,8 @@
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      // Пересчёт позиций кнопок переходов на оверлее после изменения размера canvas.
+      renderOverlayMarks();
     }
 
     /**
@@ -898,6 +954,9 @@
       camera.rotation.order = "YXZ";
       camera.rotation.y = window.THREE.MathUtils.degToRad(yawDeg || 0);
       camera.rotation.x = window.THREE.MathUtils.degToRad(pitchDeg || 0);
+      // Оверлей меток привязан к проекции камеры; без этого вызова здесь кнопки переходов
+      // раньше пересоздавались каждый кадр в renderFrame и клики не успевали срабатывать.
+      renderOverlayMarks();
     }
 
     /**
@@ -1336,6 +1395,7 @@
         empty.className = "hint";
         empty.textContent = "Пока нет меток.";
         pointsList.appendChild(empty);
+        renderOverlayMarks();
         return;
       }
 
@@ -1445,6 +1505,7 @@
         item.appendChild(actions);
         pointsList.appendChild(item);
       });
+      renderOverlayMarks();
     }
 
     /**
@@ -1482,6 +1543,9 @@
 
       exportBox.value = lines.join("\n");
       if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+      // Подписи кнопок на canvas зависят от целей меток; правки в полях без renderPointsList
+      // всё равно проходят через updateExport.
+      renderOverlayMarks();
     }
 
     /**
@@ -1621,13 +1685,13 @@
     }
 
     /**
-     * Основной кадр рендера: рисует сферу и оверлей меток.
+     * Основной кадр рендера: только WebGL-сфера; оверлей меток обновляется отдельно,
+     * чтобы не уничтожать DOM кнопок переходов на каждом кадре (иначе click не срабатывает).
      */
     function renderFrame() {
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
       }
-      renderOverlayMarks();
       requestAnimationFrame(renderFrame);
     }
 
@@ -1835,6 +1899,10 @@
 
       savePanoramaBtn.addEventListener("click", function () {
         saveCurrentPanoramaToData();
+      });
+
+      deletePanoramaBtn.addEventListener("click", function () {
+        deleteCurrentPanorama();
       });
 
       panoramaSelect.addEventListener("change", function () {
