@@ -1566,11 +1566,9 @@ body {
   transform-origin: center center !important;
 }
 
-.graphContainer .mermaid .node img:hover {
-  transform: scale(3) !important;
-  z-index: 1000 !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
-}
+/* Старое общее правило hover удалено:
+   оно конфликтовало с более точной настройкой ниже и вызывало двойной zoom
+   у изображений внутри масштабируемых контейнеров. */
 
 
 .game-card {
@@ -1707,8 +1705,10 @@ body {
 
 
 
-/* Увеличение только при наведении */
-.graphContainer .mermaid .node img:hover,
+/* Увеличение только при наведении.
+   Важно: исключаем специальные миниатюры, чтобы не было двойного масштабирования
+   (когда увеличиваются и контейнер, и изображение одновременно). */
+.graphContainer .mermaid .node img:hover:not(.char-emotion-thumbnail):not(.bg-thumbnail):not(.scene-bg-thumbnail):not(.bgi),
 .graphContainer .mermaid .node img.zoomed {
   transform: scale(3.5) !important;
   z-index: 1000 !important;
