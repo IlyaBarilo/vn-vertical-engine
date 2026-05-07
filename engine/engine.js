@@ -12386,8 +12386,10 @@ function computeStoryStats(story) {
   var videoActions = 0;
   var audioCounts = {};
 
-  for (var s = 0; s < scenes.length; s++) {
-    var actions = scenes[s].actions || [];
+  // Рекурсивно обходит все вложенные ветки (choice/if_block), чтобы статистика по фонам и другим действиям
+  // включала меню и условные подветки, а не только верхний уровень сцен.
+  function collectStatsFromActions(actions) {
+    if (!Array.isArray(actions)) return;
 
     for (var a = 0; a < actions.length; a++) {
       var act = actions[a];
@@ -12421,7 +12423,30 @@ function computeStoryStats(story) {
 
       if (act.type === "say") sayCount++;
       if (act.type === "text") textCount++;
-      if (act.type === "choice") choiceCount++;
+      if (act.type === "choice") {
+        choiceCount++;
+        if (Array.isArray(act.choices)) {
+          for (var c = 0; c < act.choices.length; c++) {
+            var choice = act.choices[c];
+            if (choice && Array.isArray(choice.actions)) {
+              collectStatsFromActions(choice.actions);
+            }
+          }
+        }
+      }
+      if (act.type === "if_block") {
+        if (Array.isArray(act.branches)) {
+          for (var b = 0; b < act.branches.length; b++) {
+            var branch = act.branches[b];
+            if (branch && Array.isArray(branch.actions)) {
+              collectStatsFromActions(branch.actions);
+            }
+          }
+        }
+        if (Array.isArray(act.elseActions)) {
+          collectStatsFromActions(act.elseActions);
+        }
+      }
       if (act.type === "bgm") {
         bgmActions++;
         if (act.src) {
@@ -12434,6 +12459,10 @@ function computeStoryStats(story) {
       if (act.type === "sfx") sfxActions++;
       if (act.type === "video") videoActions++;
     }
+  }
+
+  for (var s = 0; s < scenes.length; s++) {
+    collectStatsFromActions(scenes[s].actions || []);
   }
 
   
