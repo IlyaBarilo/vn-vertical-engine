@@ -2169,6 +2169,12 @@ body {
   cursor: zoom-in !important;
 }
 
+/* Для bg-360 резервируем размер до загрузки src:
+   иначе у <img> с height:auto и пустым src высота = 0, и после гидрации картинка вылезает за узел Mermaid. */
+.graphContainer .mermaid .node .bgw .bg360-graph-thumbnail {
+  aspect-ratio: 2 / 1 !important;
+}
+
 .graphContainer .mermaid .node .cew:hover .char-emotion-thumbnail,
 .graphContainer .mermaid .node .bgw:hover .bgi {
   transform: scale(3.5) !important;

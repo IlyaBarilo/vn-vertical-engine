@@ -11616,8 +11616,9 @@ function buildCharactersGraph(story, options) {
     };
 }
 
-// Функция для создания блока фонов: родитель background → bg_images (только картинки) и
-// bg_video (список id как у games со счётчиком вызовы/сцены), затем связь background → стартовая сцена.
+// Функция для создания блока фонов: родитель background → bg_images (статичные картинки),
+// bg_360 (миниатюры 360-паков со счётчиком использований) и bg_video (список id со счётчиком вызовы/сцены),
+// затем связь background → стартовая сцена.
 function buildBackgroundsGraph(story, options) {
   options = options || {};
   var compact = !!options.compact;
@@ -11705,11 +11706,14 @@ function buildBackgroundsGraph(story, options) {
   var bgIds = Object.keys(allUniqueBgs).sort();
 
   var imageBgIds = [];
+  var bg360Ids = [];
   var videoBgIds = [];
   for (var j = 0; j < bgIds.length; j++) {
     var bid = bgIds[j];
     var primary = allUniqueBgs[bid];
-    if (isVideoAssetPath(primary)) {
+    if (isBg360PackScriptPath(primary)) {
+      bg360Ids.push(bid);
+    } else if (isVideoAssetPath(primary)) {
       videoBgIds.push(bid);
     } else {
       imageBgIds.push(bid);
@@ -11717,8 +11721,9 @@ function buildBackgroundsGraph(story, options) {
   }
 
   var imgCount = imageBgIds.length;
+  var bg360Count = bg360Ids.length;
   var vidCount = videoBgIds.length;
-  var totalCount = imgCount + vidCount;
+  var totalCount = imgCount + bg360Count + vidCount;
 
   var bgImagesHtml = "";
   if (!compact && imgCount > 0) {
@@ -11762,13 +11767,43 @@ function buildBackgroundsGraph(story, options) {
   }
   videoListHtml += "</div>";
 
+  var bg360Html = "";
+  if (!compact && bg360Count > 0) {
+    var bg360CountClass = getImgCountClass(bg360Count);
+    bg360Html = "<div class='bgl " + bg360CountClass + "'>";
+
+    for (var b360 = 0; b360 < bg360Ids.length; b360++) {
+      var bg360Id = bg360Ids[b360];
+      var bg360Src = allUniqueBgs[bg360Id];
+      var safeBg360Id = escapeHtml(bg360Id);
+      var safeBg360Src = escapeHtml(bg360Src || "");
+      var bg360UseCount = backgroundCounts[bg360Id] || 0;
+      var bg360AssetQuality = getBackgroundAssetQuality(backgrounds[bg360Id]) || "auto";
+
+      bg360Html += "<span class='bgw " + bg360CountClass + "'>" +
+        "<img " +
+        "class='bgi bg360-graph-thumbnail " + bg360CountClass + "' " +
+        "data-bg360-src='" + safeBg360Src + "' " +
+        "data-bg360-quality='" + escapeHtml(bg360AssetQuality) + "' " +
+        "title='" + safeBg360Id + "' alt='' />" +
+        "<b class='bgc'>" + bg360UseCount + "</b>" +
+        "</span> ";
+    }
+
+    bg360Html += "</div>";
+  }
+
   var parentLabel = '<b>📷 Backgrounds (' + totalCount + ')</b>';
   var imagesLabel = '<b>🖼️ bg-images (' + imgCount + ')</b>';
+  var bg360Label = '<b>🌐 bg-360 (' + bg360Count + ')</b>';
   var videoLabel = '<b>🎬 bg-video (' + vidCount + ')</b>';
 
   if (!compact) {
     if (bgImagesHtml) {
       imagesLabel += "<br/>" + bgImagesHtml;
+    }
+    if (bg360Html) {
+      bg360Label += "<br/>" + bg360Html;
     }
     videoLabel += "<br/>" + videoListHtml;
   }
@@ -11779,15 +11814,57 @@ function buildBackgroundsGraph(story, options) {
   mermaid += '    bg_images["' + imagesLabel + '"]\n';
   mermaid += '    bg_images:::backgrounds-group\n';
 
+  mermaid += '    bg_360["' + bg360Label + '"]\n';
+  mermaid += '    bg_360:::backgrounds-group\n';
+
   mermaid += '    bg_video["' + videoLabel + '"]\n';
   mermaid += '    bg_video:::games-group\n';
 
-  mermaid += "\n    %% Background group: images + video → background → start scene\n";
+  mermaid += "\n    %% Background group: images + 360 + video → background → start scene\n";
   mermaid += "    bg_images -.-> background;\n";
+  mermaid += "    bg_360 -.-> background;\n";
   mermaid += "    bg_video -.-> background;\n";
   mermaid += "    background -.-> " + attachTo + ";\n";
 
   return mermaid;
+}
+
+// Проставляет миниатюры для bg-360 на уже отрисованном Mermaid-графе, чтобы не раздувать текст диаграммы data-url строками.
+function hydrateBg360GraphThumbnails(root) {
+  var host = root || mermaidGraph;
+  if (!host) return;
+
+  var thumbs = host.querySelectorAll(".bg360-graph-thumbnail[data-bg360-src]");
+  if (!thumbs || !thumbs.length) return;
+
+  function hydrateSingleBg360Thumb(img) {
+    if (!img) return;
+    var sourceUrl = img.getAttribute("data-bg360-src") || "";
+    var quality = img.getAttribute("data-bg360-quality") || "auto";
+    if (!sourceUrl) return;
+
+    var readyDataUrl = resolveBg360PackDataUrl(sourceUrl, quality);
+    if (readyDataUrl) {
+      img.src = readyDataUrl;
+      return;
+    }
+
+    ensureBg360PackLoaded(sourceUrl, quality, function(ok) {
+      // После асинхронной загрузки повторно читаем атрибуты конкретной миниатюры.
+      if (!img || !img.isConnected) return;
+      var cbSourceUrl = img.getAttribute("data-bg360-src") || "";
+      var cbQuality = img.getAttribute("data-bg360-quality") || "auto";
+      if (!cbSourceUrl) return;
+      var cbDataUrl = ok ? resolveBg360PackDataUrl(cbSourceUrl, cbQuality) : "";
+      if (cbDataUrl) {
+        img.src = cbDataUrl;
+      }
+    });
+  }
+
+  for (var i = 0; i < thumbs.length; i++) {
+    hydrateSingleBg360Thumb(thumbs[i]);
+  }
 }
 
 // Узел Audio: сводный список id из [audio] со счётчиком вызовы/сцены для bgm/sfx.
@@ -13544,6 +13621,9 @@ function renderMermaidGraph() {
       }
 
       setTimeout(function() {
+        if (!hasMermaidRenderError()) {
+          hydrateBg360GraphThumbnails(mermaidGraph);
+        }
         if (hasMermaidRenderError() && index + 1 < renderQueue.length) {
           console.warn("[GRAPH] Full render produced Mermaid error, trying compact fallback.");
           tryRenderFromQueue(index + 1);
