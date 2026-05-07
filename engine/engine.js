@@ -952,6 +952,8 @@ var elStage = document.getElementById("stage");
 function isUiClick(target) {
   if (!target || !target.closest) return false;
   if (target.closest(".topbar")) return true;
+  // Панель статистики — отдельный UI-слой; её клики не должны листать сюжет.
+  if (target.closest("#statsPanel")) return true;
   if (target.closest("#dialog")) return true;
   if (target.closest("#choices")) return true;
   if (target.closest("#storyVideoOverlay")) return true;
@@ -3917,6 +3919,11 @@ function onNext(e) {
   }
   if (elGameModal && !elGameModal.classList.contains("hidden")) {
     autosaveDebugLog("onNext:blocked", { reason: "gameModal_visible" });
+    return;
+  }
+  // Пока открыта статистика, любые "next" блокируем: пользователь взаимодействует с UI, а не со сценой.
+  if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
+    autosaveDebugLog("onNext:blocked", { reason: "statsPanel_visible" });
     return;
   }
 
@@ -9410,8 +9417,36 @@ function showStatsPanel() {
   elStatsPanel.classList.remove("hidden");
 }
 
+// Аккуратно восстанавливает поток новеллы после закрытия статистики, если UI оставил движок в подвешенном состоянии.
+function tryResumeNovelAfterStatsClose(reason) {
+  if (!state) return;
+  if (state.inGame || state.inVideo) return;
+  if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) return;
+  if (elChoices && !elChoices.classList.contains("hidden")) return;
+  if (state.waitingNext) return;
+
+  var scene = state.sceneMap ? state.sceneMap[state.sceneId] : null;
+  if (!scene || !Array.isArray(scene.actions)) return;
+
+  var hasPendingActions = Array.isArray(state.pendingActions) && state.pendingActions.length > 0;
+  var hasActionsAhead = state.actionIndex < scene.actions.length;
+  if (!hasPendingActions && !hasActionsAhead) return;
+
+  // Если блокировка "next" осталась после UI-оверлея, снимаем её и продолжаем выполнение сцены.
+  state.nextLocked = false;
+  console.log("[STATS] resume novel flow after close", {
+    reason: reason || "stats_close",
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked
+  });
+  runCurrent();
+}
+
 function hideStatsPanel() {
   elStatsPanel.classList.add("hidden");
+  tryResumeNovelAfterStatsClose("hideStatsPanel");
 }
 
 
