@@ -1557,6 +1557,18 @@ var walk360Runtime = {
   done: false
 };
 
+// Runtime goto360 держит игрока внутри одного 360-пространства, пока метка не выведет в обычную сцену.
+var goto360Runtime = {
+  active: false,
+  spaceId: "",
+  panoramaId: "",
+  entryId: "default",
+  resultVar: "",
+  done: false,
+  titleText: "",
+  buttonText: ""
+};
+
 // Отладка автосейва: в консоли фильтр [AUTOSAVE_DEBUG]. Выключить: window.VN_AUTOSAVE_DEBUG = false
 // Объявлено до startLicensedEngine/pagehide, чтобы не было ReferenceError при синхронном restart().
 if (typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === undefined) {
@@ -3199,6 +3211,9 @@ function buildAutosavePayload(opts) {
     // иначе после F5 сценарий перескочит к следующему действию и может преждевременно открыть menu.
     if (walk360Runtime && walk360Runtime.active && persistActionIndex > 0) {
       persistActionIndex = persistActionIndex - 1;
+    } else if (goto360Runtime && goto360Runtime.active && persistActionIndex > 0) {
+      // goto360 тоже остаётся на одном действии, пока игрок ходит внутри 360-пространства.
+      persistActionIndex = persistActionIndex - 1;
     } else if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
       persistActionIndex = persistActionIndex - 1;
     }
@@ -3221,6 +3236,7 @@ function buildAutosavePayload(opts) {
     waitingNextDisk: flagsForDisk.waitingNext,
     nextLockedDisk: flagsForDisk.nextLocked,
     walk360Active: !!(walk360Runtime && walk360Runtime.active),
+    goto360Active: !!(goto360Runtime && goto360Runtime.active),
     choicesVisible: !!(elChoices && !elChoices.classList.contains("hidden")),
     optsPersistOverride: typeof opts.persistActionIndex === "number",
     stack: autosaveDebugShortStack()
@@ -5401,6 +5417,10 @@ function executeAction(action) {
       // Блокирующая команда: ждём, пока игрок выберет метку или нажмёт кнопку выхода.
       return startWalk360(action);
 
+    case "goto360":
+      // Блокирующая команда: управление переходит к графу 360-пространства из story360.js.
+      return startGoto360(action);
+
     case "char":
       console.log('[ENGINE] ПОЛУЧЕН CHAR ACTION:', JSON.stringify(action));
       console.log('[ENGINE] Текущая сцена:', state.sceneId, 'индекс:', state.actionIndex-1);
@@ -5698,6 +5718,15 @@ function reset360InteractionStateForRestart(reason) {
   walk360Runtime.resultVar = "";
   walk360Runtime.done = false;
 
+  goto360Runtime.active = false;
+  goto360Runtime.spaceId = "";
+  goto360Runtime.panoramaId = "";
+  goto360Runtime.entryId = "default";
+  goto360Runtime.resultVar = "";
+  goto360Runtime.done = false;
+  goto360Runtime.titleText = "";
+  goto360Runtime.buttonText = "";
+
   bg360MarksRuntime.bgId = null;
   bg360MarksRuntime.marks = [];
   bg360MarksRuntime.lines = false;
@@ -5752,13 +5781,242 @@ function applyBg360Marks(action) {
       y: Number(m.y),
       kind: String(m.kind || "walk"),
       // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
-      targetScene: targetSceneRaw || null
+      targetScene: targetSceneRaw || null,
+      target: m && m.target ? m.target : null
     };
   });
   bg360MarksRuntime.locked = false;
   // Интерактивность включится только внутри walk360.
   bg360MarksRuntime.interactive = false;
   renderBg360Marks();
+}
+
+// Возвращает корневой объект story360.js, если он был подключён до движка.
+function getStory360Root() {
+  var root = window.STORY360;
+  return root && typeof root === "object" ? root : null;
+}
+
+// Находит 360-пространство по id; данные хранятся в window.STORY360.spaces.
+function getStory360Space(spaceId) {
+  var root = getStory360Root();
+  var id = String(spaceId || "").trim();
+  if (!root || !id || !root.spaces || typeof root.spaces !== "object") return null;
+  var space = root.spaces[id];
+  return space && typeof space === "object" ? space : null;
+}
+
+// Возвращает словарь панорам пространства, поддерживая несколько понятных имён поля.
+function getStory360Panoramas(space) {
+  if (!space || typeof space !== "object") return null;
+  var panoramas = space.panoramas || space.scenes || space.images;
+  return panoramas && typeof panoramas === "object" ? panoramas : null;
+}
+
+// Находит описание панорамы внутри выбранного 360-пространства.
+function getStory360Panorama(spaceId, panoramaId) {
+  var space = getStory360Space(spaceId);
+  var panoramas = getStory360Panoramas(space);
+  var id = String(panoramaId || "").trim();
+  if (!panoramas || !id) return null;
+  var panorama = panoramas[id];
+  return panorama && typeof panorama === "object" ? panorama : null;
+}
+
+// Читает первое заданное поле из объекта; нужно для мягкой поддержки bgId/bg/backgroundId и похожих алиасов.
+function readStory360Field(source, fieldNames) {
+  if (!source || typeof source !== "object") return undefined;
+  for (var i = 0; i < fieldNames.length; i++) {
+    var key = fieldNames[i];
+    if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+  }
+  return undefined;
+}
+
+// Читает focus.* из entry или панорамы, если значение не задано плоским полем focusX/focusY/focusZ.
+function readStory360FocusField(source, focusKey) {
+  if (!source || typeof source !== "object") return undefined;
+  var focus = source.focus;
+  if (!focus || typeof focus !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(focus, focusKey)) return focus[focusKey];
+  return undefined;
+}
+
+// Выбирает точку входа в панораму: entry задаёт направление камеры в зависимости от того, откуда пришёл игрок.
+function getStory360Entry(panorama, entryId) {
+  if (!panorama || typeof panorama !== "object") return {};
+  var entries = panorama.entries || panorama.entryPoints || panorama.focuses;
+  var id = String(entryId || "default").trim() || "default";
+  if (entries && typeof entries === "object") {
+    var entry = entries[id] || entries.default;
+    if (entry && typeof entry === "object") return entry;
+  }
+  return {};
+}
+
+// Достаёт параметр камеры сначала из entry, потом из панорамы, затем нормализует его штатной функцией.
+function readStory360CameraOption(entry, panorama, fieldNames, focusKey, normalizer, fallback) {
+  var raw = readStory360Field(entry, fieldNames);
+  if (raw === undefined) raw = readStory360FocusField(entry, focusKey);
+  if (raw === undefined) raw = readStory360Field(panorama, fieldNames);
+  if (raw === undefined) raw = readStory360FocusField(panorama, focusKey);
+  return normalizer(raw, fallback);
+}
+
+// Собирает scroll/focus/options для setBackground360 из выбранной точки входа.
+function buildStory360MediaOptions(panorama, entry) {
+  var focusX = readStory360CameraOption(entry, panorama, ["focusX", "focusx", "x"], "x", normalizeMediaFocus, null);
+  var focusY = readStory360CameraOption(entry, panorama, ["focusY", "focusy", "y"], "y", normalizeMediaFocusY, null);
+  var focusZ = readStory360CameraOption(entry, panorama, ["focusZ", "focusz", "z"], "z", normalizeMediaFocusZ, null);
+  var fov = readStory360CameraOption(entry, panorama, ["fov"], "fov", normalizeMediaFov, null);
+  var scaleRaw = readStory360Field(entry, ["scale"]);
+  if (scaleRaw === undefined) scaleRaw = readStory360Field(panorama, ["scale"]);
+  var qualityRaw = readStory360Field(entry, ["quality"]);
+  if (qualityRaw === undefined) qualityRaw = readStory360Field(panorama, ["quality"]);
+
+  return {
+    enabled: true,
+    start: 0.5,
+    focusX: focusX,
+    focusY: focusY,
+    scale: normalizeMediaScale(scaleRaw, 1),
+    is360: true,
+    focusZ: focusZ,
+    fov: fov,
+    quality: normalizeBg360Quality(qualityRaw, "auto"),
+    panorama360Fallback: false
+  };
+}
+
+// Определяет файл/ассет панорамы: story360 может ссылаться на [bg] через bgId или хранить путь прямо у себя.
+function getStory360PanoramaMedia(spaceId, panoramaId, panorama) {
+  var bgId = String(readStory360Field(panorama, ["bgId", "bg", "backgroundId"]) || "").trim();
+  var assetInfo = bgId ? resolveBackgroundAsset("@bg." + bgId) : null;
+  var directFile = String(readStory360Field(panorama, ["file", "src", "path"]) || "").trim();
+  var directFallback = String(readStory360Field(panorama, ["fallback", "poster"]) || "").trim();
+
+  return {
+    bgId: bgId || ("story360:" + String(spaceId || "") + "." + String(panoramaId || "")),
+    file: directFile || (assetInfo && assetInfo.file ? assetInfo.file : ""),
+    fallback: directFallback || (assetInfo && assetInfo.fallback ? assetInfo.fallback : ""),
+    volume: assetInfo ? assetInfo.volume : null,
+    assetInfo: assetInfo
+  };
+}
+
+// Приводит target метки из story360 к единому виду: переход в другую панораму или выход в обычную сцену.
+function normalizeStory360Target(mark, defaultSpaceId) {
+  if (!mark || typeof mark !== "object") return null;
+
+  var rawTarget = mark.target !== undefined ? mark.target : (mark.goto !== undefined ? mark.goto : mark.to);
+  if (rawTarget === undefined || rawTarget === null || rawTarget === "") {
+    var sceneRaw = readStory360Field(mark, ["targetScene", "scene", "storyScene"]);
+    if (sceneRaw !== undefined && sceneRaw !== null && String(sceneRaw).trim() !== "") {
+      return { type: "scene", sceneId: String(sceneRaw).trim() };
+    }
+    var panoRaw = readStory360Field(mark, ["targetPanorama", "panorama", "panoramaId"]);
+    if (panoRaw !== undefined && panoRaw !== null && String(panoRaw).trim() !== "") {
+      return {
+        type: "360",
+        spaceId: String(readStory360Field(mark, ["targetSpace", "space", "spaceId"]) || defaultSpaceId || "").trim(),
+        panoramaId: String(panoRaw).trim(),
+        entryId: String(readStory360Field(mark, ["entry", "targetEntry", "from"]) || "default").trim() || "default"
+      };
+    }
+    return null;
+  }
+
+  if (typeof rawTarget === "object") {
+    var rawType = String(readStory360Field(rawTarget, ["type", "kind"]) || "360").trim().toLowerCase();
+    if (rawType === "scene" || rawType === "story") {
+      var targetScene = String(readStory360Field(rawTarget, ["scene", "sceneId", "id", "targetScene"]) || "").trim();
+      return targetScene ? { type: "scene", sceneId: targetScene } : null;
+    }
+    var targetPanorama = String(readStory360Field(rawTarget, ["panorama", "panoramaId", "scene", "id"]) || "").trim();
+    if (!targetPanorama) return null;
+    return {
+      type: "360",
+      spaceId: String(readStory360Field(rawTarget, ["space", "spaceId"]) || defaultSpaceId || "").trim(),
+      panoramaId: targetPanorama,
+      entryId: String(readStory360Field(rawTarget, ["entry", "entryId", "from"]) || "default").trim() || "default"
+    };
+  }
+
+  var text = String(rawTarget || "").trim();
+  if (!text) return null;
+  if (/^(scene|story):/i.test(text)) {
+    return { type: "scene", sceneId: text.replace(/^(scene|story):/i, "").trim() };
+  }
+  text = text.replace(/^360:/i, "").trim();
+  var entryId = "default";
+  var atIndex = text.indexOf("@");
+  if (atIndex >= 0) {
+    entryId = text.slice(atIndex + 1).trim() || "default";
+    text = text.slice(0, atIndex).trim();
+  }
+  var spaceId = String(defaultSpaceId || "").trim();
+  var panoramaId = text;
+  var dotIndex = text.indexOf(".");
+  if (dotIndex > 0) {
+    spaceId = text.slice(0, dotIndex).trim();
+    panoramaId = text.slice(dotIndex + 1).trim();
+  }
+  return panoramaId ? { type: "360", spaceId: spaceId, panoramaId: panoramaId, entryId: entryId } : null;
+}
+
+// Нормализует метки выбранной панорамы, отбрасывая неполные координаты.
+function normalizeStory360Marks(spaceId, panorama) {
+  var sourceMarks = panorama && (panorama.marks || panorama.hotspots || panorama.points);
+  if (!Array.isArray(sourceMarks)) return [];
+  var result = [];
+  for (var i = 0; i < sourceMarks.length; i++) {
+    var mark = sourceMarks[i] || {};
+    var x = Number(readStory360Field(mark, ["x", "u"]));
+    var y = Number(readStory360Field(mark, ["y", "v"]));
+    if (!isFinite(x) || x < 0 || x > 1 || !isFinite(y) || y < 0 || y > 1) continue;
+    var kind = String(readStory360Field(mark, ["type", "kind"]) || "walk").toLowerCase();
+    if (kind !== "text") kind = "walk";
+    result.push({
+      id: String(mark.id || ("mark" + (result.length + 1))),
+      x: x,
+      y: y,
+      kind: kind,
+      target: normalizeStory360Target(mark, spaceId)
+    });
+  }
+  return result;
+}
+
+// Показывает панораму из story360 и включает кликабельные метки для внутренней навигации goto360.
+function applyGoto360Panorama(spaceId, panoramaId, entryId) {
+  var panorama = getStory360Panorama(spaceId, panoramaId);
+  if (!panorama) {
+    console.warn("[goto360] panorama not found", { spaceId: spaceId, panoramaId: panoramaId });
+    return false;
+  }
+
+  var entry = getStory360Entry(panorama, entryId);
+  var media = getStory360PanoramaMedia(spaceId, panoramaId, panorama);
+  if (!media.file) {
+    console.warn("[goto360] panorama has no file/bgId", { spaceId: spaceId, panoramaId: panoramaId });
+    return false;
+  }
+
+  var options = buildStory360MediaOptions(panorama, entry);
+  state.currentBgId = media.bgId;
+  setBackground(media.file, media.fallback, media.volume, options);
+
+  goto360Runtime.spaceId = String(spaceId || "");
+  goto360Runtime.panoramaId = String(panoramaId || "");
+  goto360Runtime.entryId = String(entryId || "default") || "default";
+
+  bg360MarksRuntime.bgId = state.currentBgId;
+  bg360MarksRuntime.lines = readStory360Field(panorama, ["lines"]) !== false;
+  bg360MarksRuntime.marks = normalizeStory360Marks(spaceId, panorama);
+  bg360MarksRuntime.locked = false;
+  bg360MarksRuntime.interactive = true;
+  renderBg360Marks();
+  return true;
 }
 
 // Перерисовывает DOM-слой меток 360.
@@ -5811,10 +6069,14 @@ function renderBg360Marks() {
     btn.addEventListener("click", function (e) {
       if (e && typeof e.stopPropagation === "function") e.stopPropagation();
       if (e && typeof e.preventDefault === "function") e.preventDefault();
-      if (!walk360Runtime.active) return;
+      if (!walk360Runtime.active && !goto360Runtime.active) return;
       if (bg360MarksRuntime.locked) return;
       if (!bg360MarksRuntime.interactive) return;
-      onWalk360SelectMark(mark.id);
+      if (goto360Runtime.active) {
+        onGoto360SelectMark(mark.id);
+      } else {
+        onWalk360SelectMark(mark.id);
+      }
     });
 
     elBg360Marks.appendChild(btn);
@@ -6317,8 +6579,126 @@ function finishWalk360(selectedId, targetScene) {
   runCurrent();
 }
 
-// Показывает панель walk360 в контейнере choices (чтобы onNext автоматически блокировался).
-function showWalk360Panel(titleText, buttonText) {
+// Запускает навигацию по 360-пространству из story360.js.
+function startGoto360(action) {
+  var spaceId = action && action.spaceId ? String(action.spaceId).trim() : "";
+  var panoramaId = action && action.panoramaId ? String(action.panoramaId).trim() : "";
+  var entryId = action && action.entry ? String(action.entry).trim() : "default";
+  var resultVar = action && action.result ? String(action.result).trim() : "";
+  var titleText = action && action.text ? String(action.text) : "";
+  var buttonText = action && action.button ? String(action.button) : "";
+
+  if (resultVar) {
+    // Новый вход в 360-пространство не должен наследовать прежнюю выбранную метку.
+    state.vars[resultVar] = "";
+  }
+
+  if (!getStory360Root()) {
+    console.warn("[goto360] story360.js is not loaded");
+    return false;
+  }
+
+  goto360Runtime.active = true;
+  goto360Runtime.spaceId = spaceId;
+  goto360Runtime.panoramaId = panoramaId;
+  goto360Runtime.entryId = entryId || "default";
+  goto360Runtime.resultVar = resultVar;
+  goto360Runtime.done = false;
+  goto360Runtime.titleText = titleText;
+  goto360Runtime.buttonText = buttonText;
+
+  if (!applyGoto360Panorama(spaceId, panoramaId, goto360Runtime.entryId)) {
+    goto360Runtime.active = false;
+    goto360Runtime.done = false;
+    return false;
+  }
+
+  showWalk360Panel(titleText, buttonText, function () {
+    if (!goto360Runtime.active) return;
+    if (goto360Runtime.resultVar) state.vars[goto360Runtime.resultVar] = "";
+    bg360MarksRuntime.locked = true;
+    bg360MarksRuntime.interactive = false;
+    bg360MarksRuntime.marks = [];
+    renderBg360Marks();
+    finishGoto360("");
+  });
+  return "async";
+}
+
+// Обрабатывает выбор метки внутри goto360: либо меняет панораму, либо выходит в обычную сцену.
+function onGoto360SelectMark(markId) {
+  var id = String(markId || "");
+  if (!goto360Runtime.active || goto360Runtime.done) return;
+
+  var selectedMark = null;
+  if (Array.isArray(bg360MarksRuntime.marks)) {
+    for (var i = 0; i < bg360MarksRuntime.marks.length; i++) {
+      var mark = bg360MarksRuntime.marks[i];
+      if (mark && String(mark.id || "") === id) {
+        selectedMark = mark;
+        break;
+      }
+    }
+  }
+
+  if (goto360Runtime.resultVar) {
+    state.vars[goto360Runtime.resultVar] = id;
+  }
+
+  var target = selectedMark && selectedMark.target ? selectedMark.target : null;
+  if (target && target.type === "360") {
+    var nextSpace = target.spaceId || goto360Runtime.spaceId;
+    var nextEntry = target.entryId || "default";
+    if (applyGoto360Panorama(nextSpace, target.panoramaId, nextEntry)) {
+      return;
+    }
+    console.warn("[goto360] target panorama not found", target);
+    return;
+  }
+
+  bg360MarksRuntime.locked = true;
+  bg360MarksRuntime.interactive = false;
+  bg360MarksRuntime.marks = [];
+  renderBg360Marks();
+
+  finishGoto360(target && target.type === "scene" ? target.sceneId : "");
+}
+
+// Завершает goto360 и либо возвращает выполнение к следующей строке, либо переводит в обычную сцену.
+function finishGoto360(targetScene) {
+  if (!goto360Runtime.active) return;
+  if (goto360Runtime.done) return;
+  goto360Runtime.done = true;
+
+  hideWalk360Panel();
+  state.inGame = false;
+  state.inVideo = false;
+  state.waitingNext = false;
+  state.nextLocked = false;
+
+  goto360Runtime.active = false;
+  goto360Runtime.spaceId = "";
+  goto360Runtime.panoramaId = "";
+  goto360Runtime.entryId = "default";
+  goto360Runtime.resultVar = "";
+  goto360Runtime.titleText = "";
+  goto360Runtime.buttonText = "";
+
+  var target = String(targetScene || "").trim();
+  if (target) {
+    if (state.sceneMap && state.sceneMap[target]) {
+      gotoScene(target);
+      runCurrent();
+      return;
+    }
+    console.warn("[goto360] target scene not found", target);
+  }
+
+  runCurrent();
+}
+
+// Показывает панель 360-ожидания в контейнере choices (чтобы onNext автоматически блокировался).
+function showWalk360Panel(titleText, buttonText, exitHandler) {
   if (!elChoices) return;
 
   var renderedTitle = renderTextVars(String(titleText || "")).trim();
@@ -6359,6 +6739,10 @@ function showWalk360Panel(titleText, buttonText) {
     btn.addEventListener("click", function (e) {
       if (e && typeof e.stopPropagation === "function") e.stopPropagation();
       if (e && typeof e.preventDefault === "function") e.preventDefault();
+      if (typeof exitHandler === "function") {
+        exitHandler();
+        return;
+      }
       if (!walk360Runtime.active) return;
       if (walk360Runtime.resultVar) state.vars[walk360Runtime.resultVar] = "";
       // После выхода метки тоже скрываем, чтобы не оставлять «пустой» UI.

@@ -58,6 +58,30 @@
       pointer-events: none;
     }
 
+    .mark-action {
+      position: absolute;
+      transform: translate(12px, -50%);
+      max-width: min(260px, 42vw);
+      padding: 6px 9px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      background: rgba(12, 16, 28, 0.82);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.25;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+      pointer-events: auto;
+      z-index: 12;
+    }
+
+    .mark-action:hover {
+      background: rgba(28, 38, 64, 0.92);
+      border-color: rgba(255, 255, 255, 0.62);
+    }
+
     .crosshair {
       position: absolute;
       left: 50%;
@@ -213,13 +237,49 @@
       <h1>Редактор 360-меток</h1>
 
       <div class="row">
+        <label for="story360Input">story360.js</label>
+        <input id="story360Input" type="file" accept=".js,text/javascript,text/plain" />
+      </div>
+
+      <div class="row two">
+        <button id="newPanoramaBtn" type="button">Новая панорама</button>
+        <button id="savePanoramaBtn" class="good" type="button">Сохранить панораму</button>
+      </div>
+
+      <div class="row">
+        <label for="panoramaSelect">Панорамы в текущем файле</label>
+        <select id="panoramaSelect"></select>
+      </div>
+
+      <div class="row two">
+        <div>
+          <label for="spaceIdInput">ID пространства</label>
+          <input id="spaceIdInput" type="text" value="main360" />
+        </div>
+        <div>
+          <label for="panoramaIdInput">ID панорамы</label>
+          <input id="panoramaIdInput" type="text" value="start" />
+        </div>
+      </div>
+
+      <div class="row">
         <label for="bgImageInput">360-изображение (2:1 equirect)</label>
         <input id="bgImageInput" type="file" accept="image/*" />
       </div>
 
       <div class="row">
-        <label for="bgIdInput">ID фона из [bg]</label>
-        <input id="bgIdInput" type="text" value="bg360Campus" />
+        <label for="bgIdInput">ID фона (создаётся автоматически)</label>
+        <input id="bgIdInput" type="text" value="" readonly />
+      </div>
+
+      <div class="row">
+        <label for="assetPathInput">Путь JS-пакета для story360</label>
+        <input id="assetPathInput" type="text" value="" placeholder="assets/360/korpusnight/174-360.js" />
+      </div>
+
+      <div class="row two">
+        <button id="loadAssetPathBtn" type="button">Загрузить путь</button>
+        <button id="testTargetBtn" type="button">Перейти по выбранной метке</button>
       </div>
 
       <div class="row two">
@@ -261,7 +321,7 @@
       <div class="points-list" id="pointsList"></div>
       <div class="row two">
         <button id="clearPointsBtn" class="danger" type="button">Очистить метки</button>
-        <button id="copyJsonBtn" type="button">Скопировать JSON</button>
+        <div></div>
       </div>
 
       <h2>Экспорт для сценария</h2>
@@ -270,7 +330,11 @@
       </div>
       <div class="row two">
         <button id="copyScriptBtn" class="good" type="button">Скопировать команды</button>
-        <button id="downloadPointsBtn" type="button">Скачать points.json</button>
+        <button id="downloadStory360JsBtn" class="good" type="button">Скачать story360.js</button>
+      </div>
+      <div class="row two">
+        <button id="copyStory360JsBtn" type="button">Скопировать story360.js</button>
+        <div></div>
       </div>
     </aside>
 
@@ -290,7 +354,16 @@
     /** Родитель canvas — нужен для смещения координат оверлея относительно рамки. */
     var viewerWrap = viewerCanvas && viewerCanvas.parentElement ? viewerCanvas.parentElement : null;
     var bgImageInput = document.getElementById("bgImageInput");
+    var story360Input = document.getElementById("story360Input");
+    var newPanoramaBtn = document.getElementById("newPanoramaBtn");
+    var savePanoramaBtn = document.getElementById("savePanoramaBtn");
+    var panoramaSelect = document.getElementById("panoramaSelect");
+    var spaceIdInput = document.getElementById("spaceIdInput");
+    var panoramaIdInput = document.getElementById("panoramaIdInput");
     var bgIdInput = document.getElementById("bgIdInput");
+    var assetPathInput = document.getElementById("assetPathInput");
+    var loadAssetPathBtn = document.getElementById("loadAssetPathBtn");
+    var testTargetBtn = document.getElementById("testTargetBtn");
     var focusXInput = document.getElementById("focusXInput");
     var focusYInput = document.getElementById("focusYInput");
     var applyFocusBtn = document.getElementById("applyFocusBtn");
@@ -302,8 +375,8 @@
     var clearPointsBtn = document.getElementById("clearPointsBtn");
     var placeMarkBtn = document.getElementById("placeMarkBtn");
     var copyScriptBtn = document.getElementById("copyScriptBtn");
-    var copyJsonBtn = document.getElementById("copyJsonBtn");
-    var downloadPointsBtn = document.getElementById("downloadPointsBtn");
+    var downloadStory360JsBtn = document.getElementById("downloadStory360JsBtn");
+    var copyStory360JsBtn = document.getElementById("copyStory360JsBtn");
 
     var renderer = null;
     var scene = null;
@@ -329,6 +402,10 @@
     var tempCameraDir = null;
     // Зафиксированные значения focus для текста команды.
     var fixedFocus = { x: 0.5, y: 0.5 };
+    var story360Data = createEmptyStory360Data();
+    var loadedPackScripts = {};
+    var editorReady = false;
+    var suppressEditorAutosave = false;
 
     /**
      * Создаёт базовую 360-сцену и переиспользует её при смене изображений.
@@ -369,6 +446,431 @@
       statusBox.style.background = isError ? "rgba(200,70,70,0.15)" : "rgba(90,130,210,0.16)";
       statusBox.style.borderColor = isError ? "rgba(220,90,90,0.45)" : "rgba(90,130,210,0.4)";
       statusBox.style.color = isError ? "#ffd7d7" : "#cfe1ff";
+    }
+
+    /**
+     * Создаёт пустую структуру story360, которую потом можно сохранить как story360.js.
+     */
+    function createEmptyStory360Data() {
+      return {
+        version: 1,
+        spaces: {}
+      };
+    }
+
+    /**
+     * Возвращает безопасный ID для пространства/панорамы, чтобы файл не получил пустой ключ.
+     */
+    function normalizeId(value, fallback) {
+      var text = String(value || "").trim();
+      return text || fallback;
+    }
+
+    /**
+     * Создаёт пространство в story360Data при первом обращении.
+     */
+    function ensureSpace(spaceId) {
+      var sid = normalizeId(spaceId, "main360");
+      if (!story360Data.spaces || typeof story360Data.spaces !== "object") {
+        story360Data.spaces = {};
+      }
+      if (!story360Data.spaces[sid] || typeof story360Data.spaces[sid] !== "object") {
+        story360Data.spaces[sid] = { panoramas: {} };
+      }
+      if (!story360Data.spaces[sid].panoramas || typeof story360Data.spaces[sid].panoramas !== "object") {
+        story360Data.spaces[sid].panoramas = {};
+      }
+      return story360Data.spaces[sid];
+    }
+
+    /**
+     * Берёт текущие ID из формы и возвращает пару space/panorama.
+     */
+    function getCurrentStory360Ids() {
+      return {
+        spaceId: normalizeId(spaceIdInput.value, "main360"),
+        panoramaId: normalizeId(panoramaIdInput.value, "start")
+      };
+    }
+
+    /**
+     * Делает часть служебного ID безопасной для story/export и не зависит от ID из обычного сценария.
+     */
+    function sanitizeGeneratedBgIdPart(value, fallback) {
+      var text = String(value || "").trim().replace(/\.[^.]+$/, "");
+      text = text.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+      return text || fallback;
+    }
+
+    /**
+     * Создаёт стабильный служебный bgId из пространства и панорамы; путь нужен только как запасной источник имени.
+     */
+    function buildGeneratedBgId(spaceId, panoramaId, assetPath) {
+      var sid = sanitizeGeneratedBgIdPart(spaceId, "main360");
+      var pid = sanitizeGeneratedBgIdPart(panoramaId, "");
+      if (!pid) {
+        var fileName = String(assetPath || "").replace(/\\/g, "/").split("/").pop();
+        pid = sanitizeGeneratedBgIdPart(fileName, "pano");
+      }
+      return "bg360_" + sid + "_" + pid;
+    }
+
+    /**
+     * Обновляет поле bgId: редактор сам создаёт ID, а не берёт его из story.js или story360.
+     */
+    function refreshGeneratedBgId() {
+      var ids = getCurrentStory360Ids();
+      var bgId = buildGeneratedBgId(ids.spaceId, ids.panoramaId, assetPathInput.value);
+      bgIdInput.value = bgId;
+      return bgId;
+    }
+
+    /**
+     * Возвращает путь панорамы из story360; пустые строки считаются отсутствующим путём.
+     */
+    function getPanoramaAssetPath(panorama) {
+      if (!panorama || typeof panorama !== "object") return "";
+      return String(panorama.file || panorama.src || panorama.path || "").trim();
+    }
+
+    /**
+     * Строит шаблон из пути вида assets/.../174-360.js, чтобы автоматически находить соседние панорамы.
+     */
+    function buildPanoramaAssetTemplate(path) {
+      var value = String(path || "").trim().replace(/\\/g, "/");
+      var slash = value.lastIndexOf("/");
+      var dir = slash >= 0 ? value.slice(0, slash + 1) : "";
+      var fileName = slash >= 0 ? value.slice(slash + 1) : value;
+      var match = fileName.match(/^(.*?)(\d+)(-360(?:-[a-z0-9_-]+)?\.js(?:\?.*)?)$/i);
+      if (!match) return null;
+      return {
+        dir: dir,
+        prefix: match[1],
+        suffix: match[3]
+      };
+    }
+
+    /**
+     * Возвращает числовую часть ID панорамы, если по ней можно вывести имя JS-пакета.
+     */
+    function getPanoramaAssetNumber(panoramaId) {
+      var match = String(panoramaId || "").match(/(\d+)/);
+      return match ? match[1] : "";
+    }
+
+    /**
+     * Создаёт путь по шаблону соседней панорамы; это убирает ручной ввод для серии 174, 175, 176.
+     */
+    function buildAssetPathFromTemplate(template, panoramaId) {
+      var number = getPanoramaAssetNumber(panoramaId);
+      if (!template || !number) return "";
+      return template.dir + template.prefix + number + template.suffix;
+    }
+
+    /**
+     * Ищет в текущем пространстве уже известный путь и выводит из него путь для другой панорамы.
+     */
+    function inferPanoramaAssetPath(spaceId, panoramaId) {
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      var panoramas = space && space.panoramas ? space.panoramas : {};
+      var ids = Object.keys(panoramas);
+      for (var i = 0; i < ids.length; i++) {
+        var template = buildPanoramaAssetTemplate(getPanoramaAssetPath(panoramas[ids[i]]));
+        var inferred = buildAssetPathFromTemplate(template, panoramaId);
+        if (inferred) return inferred;
+      }
+      return "";
+    }
+
+    /**
+     * Заполняет пустые file у соседних панорам по одному известному пути, не обращаясь к обычному story.js.
+     */
+    function fillMissingPanoramaAssetPaths(spaceId, seedPath) {
+      var template = buildPanoramaAssetTemplate(seedPath);
+      if (!template) return;
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      var panoramas = space && space.panoramas ? space.panoramas : {};
+      Object.keys(panoramas).forEach(function (panoramaId) {
+        var panorama = panoramas[panoramaId];
+        if (getPanoramaAssetPath(panorama)) return;
+        var inferred = buildAssetPathFromTemplate(template, panoramaId);
+        if (inferred) panorama.file = inferred;
+      });
+    }
+
+    /**
+     * Возвращает ключ Local-хранилища для текущего файла редактора, чтобы разные копии проекта не смешивали данные.
+     */
+    function getDraftStorageKey() {
+      return "vn360-editor-local:v2:" + String(window.location.pathname || "bg360-marks-editor");
+    }
+
+    /**
+     * Возвращает старый ключ черновика, чтобы удалить устаревшие данные после перехода на Local-хранилище.
+     */
+    function getLegacyDraftStorageKey() {
+      return "vn360-editor-draft:" + String(window.location.pathname || "bg360-marks-editor");
+    }
+
+    /**
+     * Безопасно получает localStorage: в некоторых режимах браузер может запрещать доступ к хранилищу.
+     */
+    function getEditorStorage() {
+      try {
+        return window.localStorage || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    /**
+     * Сохраняет текущий story360 в Local, чтобы обновление страницы не требовало повторной загрузки файла.
+     */
+    function persistEditorDraft() {
+      var storage = getEditorStorage();
+      if (!storage) return;
+      try {
+        storage.setItem(getDraftStorageKey(), JSON.stringify({
+          version: 1,
+          savedAt: new Date().toISOString(),
+          current: getCurrentStory360Ids(),
+          story360Data: story360Data
+        }));
+      } catch (e) {
+        // Local-хранилище ускоряет работу, но отказ localStorage не должен ломать сам редактор.
+      }
+    }
+
+    /**
+     * Сбрасывает форму перед импортом, чтобы старые значения редактора не смешивались с новым файлом.
+     */
+    function resetEditorStateForImport() {
+      suppressEditorAutosave = true;
+      try {
+        story360Data = createEmptyStory360Data();
+        points = [];
+        fixedFocus = { x: 0.5, y: 0.5 };
+        spaceIdInput.value = "main360";
+        panoramaIdInput.value = "start";
+        assetPathInput.value = "";
+        refreshGeneratedBgId();
+        focusXInput.value = fixedFocus.x.toFixed(4);
+        focusYInput.value = fixedFocus.y.toFixed(4);
+        applyFocusValues(fixedFocus.x, fixedFocus.y);
+        renderPointsList();
+        refreshPanoramaSelect();
+      } finally {
+        suppressEditorAutosave = false;
+      }
+    }
+
+    /**
+     * Возвращает количество панорам в story360, чтобы не принимать случайно пустой файл как рабочую историю.
+     */
+    function countStory360Panoramas(data) {
+      var count = 0;
+      var spaces = data && data.spaces ? data.spaces : {};
+      Object.keys(spaces).forEach(function (spaceId) {
+        var panoramas = spaces[spaceId] && spaces[spaceId].panoramas ? spaces[spaceId].panoramas : {};
+        count += Object.keys(panoramas).length;
+      });
+      return count;
+    }
+
+    /**
+     * Записывает текущую панораму в рабочие данные без обязательного сообщения пользователю.
+     */
+    function storeCurrentPanoramaToData(showStatus, refreshList) {
+      var ids = getCurrentStory360Ids();
+      var space = ensureSpace(ids.spaceId);
+      space.panoramas[ids.panoramaId] = collectCurrentPanorama();
+      fillMissingPanoramaAssetPaths(ids.spaceId, space.panoramas[ids.panoramaId].file);
+      if (refreshList !== false) refreshPanoramaSelect();
+      persistEditorDraft();
+      if (showStatus) {
+        setStatus("Панорама сохранена в Local: " + ids.spaceId + "." + ids.panoramaId, false);
+      }
+    }
+
+    /**
+     * Восстанавливает историю 360 из Local после перезагрузки страницы.
+     */
+    function restoreEditorDraft() {
+      var storage = getEditorStorage();
+      if (!storage) return false;
+      try {
+        var raw = storage.getItem(getDraftStorageKey());
+        if (!raw) return false;
+        var draft = JSON.parse(raw);
+        if (!draft || !draft.story360Data) return false;
+        story360Data = normalizeStory360Data(draft.story360Data);
+        refreshPanoramaSelect();
+        var current = draft.current || getFirstPanoramaRef();
+        if (current && current.spaceId && current.panoramaId) {
+          loadPanoramaFromData(current.spaceId, current.panoramaId);
+          return true;
+        }
+      } catch (e) {
+        // Повреждённый черновик игнорируем: пользователь всё равно может загрузить story360 вручную.
+      }
+      return false;
+    }
+
+    /**
+     * Превращает поля target метки в компактный объект для story360.
+     */
+    function buildPointTarget(point) {
+      var targetType = String(point.targetType || "none").trim().toLowerCase();
+      if (targetType === "scene") {
+        var sceneId = String(point.targetScene || "").trim();
+        return sceneId ? { type: "scene", scene: sceneId } : null;
+      }
+      if (targetType === "360") {
+        var panoramaId = String(point.targetPanorama || "").trim();
+        if (!panoramaId) return null;
+        var entryId = String(point.targetEntry || "").trim() || "default";
+        return { type: "360", panorama: panoramaId, entry: entryId };
+      }
+      return null;
+    }
+
+    /**
+     * Собирает описание текущей панорамы из формы и списка меток.
+     */
+    function collectCurrentPanorama() {
+      var generatedBgId = refreshGeneratedBgId();
+      var assetPath = String(assetPathInput.value || "").trim();
+      var marks = points.map(function (p) {
+        var mark = {
+          id: String(p.id || ""),
+          x: Number(p.x),
+          y: Number(p.y),
+          type: String(p.type || "walk")
+        };
+        var target = buildPointTarget(p);
+        if (target) mark.target = target;
+        return mark;
+      });
+
+      return {
+        bgId: generatedBgId,
+        file: assetPath,
+        lines: true,
+        entries: {
+          default: {
+            focusX: Number(fixedFocus.x.toFixed(4)),
+            focusY: Number(fixedFocus.y.toFixed(4))
+          }
+        },
+        marks: marks
+      };
+    }
+
+    /**
+     * Записывает текущую панораму в story360Data без ручного копирования команд.
+     */
+    function saveCurrentPanoramaToData() {
+      storeCurrentPanoramaToData(true, true);
+    }
+
+    /**
+     * Возвращает первую панораму из story360Data для автозагрузки после импорта.
+     */
+    function getFirstPanoramaRef() {
+      var spaces = story360Data.spaces || {};
+      var spaceIds = Object.keys(spaces);
+      for (var i = 0; i < spaceIds.length; i++) {
+        var sid = spaceIds[i];
+        var panoramas = spaces[sid] && spaces[sid].panoramas ? spaces[sid].panoramas : {};
+        var panoramaIds = Object.keys(panoramas);
+        if (panoramaIds.length > 0) {
+          return { spaceId: sid, panoramaId: panoramaIds[0] };
+        }
+      }
+      return null;
+    }
+
+    /**
+     * Обновляет выпадающий список панорам из текущего story360Data.
+     */
+    function refreshPanoramaSelect() {
+      if (!panoramaSelect) return;
+      var current = getCurrentStory360Ids();
+      panoramaSelect.innerHTML = "";
+      var spaces = story360Data.spaces || {};
+      Object.keys(spaces).forEach(function (sid) {
+        var panoramas = spaces[sid] && spaces[sid].panoramas ? spaces[sid].panoramas : {};
+        Object.keys(panoramas).forEach(function (pid) {
+          var option = document.createElement("option");
+          option.value = sid + "." + pid;
+          option.textContent = sid + "." + pid;
+          if (sid === current.spaceId && pid === current.panoramaId) option.selected = true;
+          panoramaSelect.appendChild(option);
+        });
+      });
+      if (!panoramaSelect.options.length) {
+        var empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "Нет сохранённых панорам";
+        panoramaSelect.appendChild(empty);
+      }
+    }
+
+    /**
+     * Загружает панораму из story360Data в форму редактора.
+     */
+    function loadPanoramaFromData(spaceId, panoramaId, entryId) {
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      var panorama = space && space.panoramas && space.panoramas[panoramaId];
+      if (!panorama) {
+        setStatus("Панорама не найдена: " + spaceId + "." + panoramaId, true);
+        return;
+      }
+
+      spaceIdInput.value = spaceId;
+      panoramaIdInput.value = panoramaId;
+      assetPathInput.value = getPanoramaAssetPath(panorama) || inferPanoramaAssetPath(spaceId, panoramaId);
+      if (assetPathInput.value && !getPanoramaAssetPath(panorama)) panorama.file = assetPathInput.value;
+      refreshGeneratedBgId();
+
+      var requestedEntry = String(entryId || "default").trim() || "default";
+      var entry = panorama.entries && (panorama.entries[requestedEntry] || panorama.entries.default || Object.keys(panorama.entries).map(function (key) {
+        return panorama.entries[key];
+      })[0]);
+      if (!entry) entry = {};
+      fixedFocus.x = clamp(Number(entry.focusX !== undefined ? entry.focusX : (entry.x !== undefined ? entry.x : 0.5)), 0, 1);
+      fixedFocus.y = clamp(Number(entry.focusY !== undefined ? entry.focusY : (entry.y !== undefined ? entry.y : 0.5)), 0, 1);
+      focusXInput.value = fixedFocus.x.toFixed(4);
+      focusYInput.value = fixedFocus.y.toFixed(4);
+      applyFocusValues(fixedFocus.x, fixedFocus.y);
+
+      points = Array.isArray(panorama.marks) ? panorama.marks.map(function (m, index) {
+        var target = m && m.target ? m.target : null;
+        var rawTargetType = target ? String(target.type || "").toLowerCase() : "";
+        var targetType = rawTargetType === "scene" ? "scene" : (rawTargetType === "360" ? "360" : "none");
+        return {
+          id: String((m && m.id) || ("mark" + (index + 1))),
+          x: Number(m && m.x),
+          y: Number(m && m.y),
+          type: String((m && (m.type || m.kind)) || "walk"),
+          targetType: targetType,
+          targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
+          targetEntry: targetType === "360" ? String(target.entry || target.entryId || "default") : "default",
+          targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
+        };
+      }).filter(function (p) {
+        return isFinite(p.x) && isFinite(p.y);
+      }) : [];
+
+      renderPointsList();
+      updateExport();
+      refreshPanoramaSelect();
+      if (assetPathInput.value) {
+        setStatus("Данные панорамы загружены, загружаю изображение: " + spaceId + "." + panoramaId, false);
+        loadAssetPath(assetPathInput.value);
+      } else {
+        setStatus("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь JS-пакета или картинки.", true);
+      }
     }
 
     /**
@@ -473,6 +975,180 @@
     }
 
     /**
+     * Загружает texture из URL или data-url; общий путь для обычных картинок и JS-паков.
+     */
+    function loadTextureUrl(textureUrl, label) {
+      if (!textureUrl || !window.THREE || !sphereMesh) return;
+      var loader = new window.THREE.TextureLoader();
+      loader.load(
+        textureUrl,
+        function (tex) {
+          if (sphereTexture && typeof sphereTexture.dispose === "function") {
+            sphereTexture.dispose();
+          }
+          sphereTexture = tex;
+          sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
+          sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
+          setStatus("Панорама загружена: " + (label || textureUrl), false);
+        },
+        undefined,
+        function () {
+          setStatus("Не удалось загрузить панораму: " + (label || textureUrl), true);
+        }
+      );
+    }
+
+    /**
+     * Переводит путь из story360 (от корня проекта) в путь относительно папки tools.
+     */
+    function toToolRelativeUrl(path) {
+      var value = String(path || "").trim();
+      if (!value) return "";
+      if (/^(data:|blob:|https?:|file:)/i.test(value)) return value;
+      if (value.indexOf("../") === 0) return value;
+      if (value.indexOf("./") === 0) value = value.replace(/^\.\/+/, "");
+      return "../" + value.replace(/^\/+/, "");
+    }
+
+    /**
+     * Динамически подключает JS-пакет 360, чтобы редактор мог показывать сохранённые панорамы.
+     */
+    function ensurePackScriptLoaded(path) {
+      var scriptUrl = toToolRelativeUrl(path);
+      if (!scriptUrl) return Promise.reject(new Error("Пустой путь JS-пакета."));
+      if (loadedPackScripts[scriptUrl]) return loadedPackScripts[scriptUrl];
+
+      loadedPackScripts[scriptUrl] = new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = scriptUrl;
+        script.async = true;
+        script.onload = function () { resolve(scriptUrl); };
+        script.onerror = function () {
+          delete loadedPackScripts[scriptUrl];
+          reject(new Error("Не удалось загрузить " + scriptUrl));
+        };
+        document.body.appendChild(script);
+      });
+      return loadedPackScripts[scriptUrl];
+    }
+
+    /**
+     * Выбирает пригодную картинку из структуры JS-пака: normal, mobile или первый найденный вариант.
+     */
+    function pickPackDataUrl(pack) {
+      if (typeof pack === "string") return pack;
+      if (!pack || typeof pack !== "object") return "";
+      if (pack.normal) return pack.normal;
+      if (pack.mobile) return pack.mobile;
+      var keys = Object.keys(pack);
+      return keys.length ? pack[keys[0]] : "";
+    }
+
+    /**
+     * Приводит URL/путь к виду, удобному для сравнения ключей, которые регистрирует JS-пакет.
+     */
+    function normalizePackLookupText(value) {
+      return decodeURIComponent(String(value || ""))
+        .replace(/\\/g, "/")
+        .replace(/^file:\/+/i, "")
+        .replace(/^\.\/+/, "")
+        .replace(/^(\.\.\/)+/, "")
+        .replace(/^\//, "");
+    }
+
+    /**
+     * Добавляет вариант поиска без дублей, чтобы искать пакет и по проектному пути, и по URL из tools.
+     */
+    function addPackLookupCandidate(list, value) {
+      var text = String(value || "").trim();
+      if (text && list.indexOf(text) < 0) list.push(text);
+    }
+
+    /**
+     * Добавляет соседний normal/mobile путь: редактору достаточно любого варианта текстуры для превью.
+     */
+    function addSiblingPackCandidate(list, value) {
+      var text = String(value || "");
+      if (/-360-mobile\.js(\?.*)?$/i.test(text)) {
+        addPackLookupCandidate(list, text.replace(/-360-mobile\.js(\?.*)?$/i, "-360.js$1"));
+      } else if (/-360\.js(\?.*)?$/i.test(text)) {
+        addPackLookupCandidate(list, text.replace(/-360\.js(\?.*)?$/i, "-360-mobile.js$1"));
+      }
+    }
+
+    /**
+     * Ищет data-url после загрузки JS-пакета; путь в story360 хранится от корня проекта, а редактор открыт из tools.
+     */
+    function resolveLoadedPackDataUrl(path) {
+      var variants = window.VN360_PACKS_VARIANTS || {};
+      var raw = String(path || "").trim();
+      var toolUrl = toToolRelativeUrl(raw);
+      var candidates = [];
+      addPackLookupCandidate(candidates, raw);
+      addPackLookupCandidate(candidates, toolUrl);
+      try {
+        addPackLookupCandidate(candidates, new URL(toolUrl, window.location.href).href);
+      } catch (e) {
+        // URL может быть нестандартным data/blob/file значением; тогда сравниваем только исходные пути.
+      }
+      candidates.slice().forEach(function (candidate) {
+        addSiblingPackCandidate(candidates, candidate);
+      });
+
+      for (var c = 0; c < candidates.length; c++) {
+        var exact = pickPackDataUrl(variants[candidates[c]]);
+        if (exact) return exact;
+      }
+
+      var normalizedCandidates = candidates.map(normalizePackLookupText).filter(Boolean);
+      var baseNames = normalizedCandidates.map(function (candidate) {
+        return candidate.split("/").pop();
+      }).filter(Boolean);
+      var keys = Object.keys(variants);
+      for (var i = 0; i < keys.length; i++) {
+        var key = String(keys[i] || "");
+        var normalizedKey = normalizePackLookupText(key);
+        var matched = normalizedCandidates.some(function (candidate) {
+          return normalizedKey === candidate || normalizedKey.slice(-candidate.length) === candidate || candidate.slice(-normalizedKey.length) === normalizedKey;
+        }) || baseNames.some(function (baseName) {
+          return baseName && normalizedKey.split("/").pop() === baseName;
+        });
+        if (matched) {
+          var dataUrl = pickPackDataUrl(variants[key]);
+          if (dataUrl) return dataUrl;
+        }
+      }
+      return "";
+    }
+
+    /**
+     * Загружает путь из поля story360: JS-пакет -360.js или обычное изображение.
+     */
+    function loadAssetPath(path) {
+      var value = String(path || "").trim();
+      if (!value) {
+        setStatus("Укажите путь к изображению или JS-пакету.", true);
+        return;
+      }
+      refreshGeneratedBgId();
+      if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+      if (/-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(value)) {
+        ensurePackScriptLoaded(value).then(function () {
+          var dataUrl = resolveLoadedPackDataUrl(value);
+          if (!dataUrl) {
+            setStatus("JS-пакет загружен, но data-url не найден: " + value, true);
+            return;
+          }
+          loadTextureUrl(dataUrl, value);
+        }).catch(function (err) {
+          setStatus(err && err.message ? err.message : "Не удалось загрузить JS-пакет.", true);
+        });
+        return;
+      }
+      loadTextureUrl(toToolRelativeUrl(value), value);
+    }
+
+    /**
      * Возвращает UV-координаты точки на сфере по позиции курсора на canvas.
      */
     function pickUvFromPointer(clientX, clientY) {
@@ -518,7 +1194,11 @@
         id: finalId,
         x: Number(uv.u.toFixed(4)),
         y: Number(uv.v.toFixed(4)),
-        type: (type === "text" ? "text" : "walk")
+        type: (type === "text" ? "text" : "walk"),
+        targetType: "none",
+        targetPanorama: "",
+        targetEntry: "default",
+        targetScene: ""
       };
       if (worldPoint && window.THREE) {
         entry.wx = Number(worldPoint.x.toFixed(6));
@@ -561,6 +1241,64 @@
       points.splice(index, 1);
       renderPointsList();
       updateExport();
+    }
+
+    /**
+     * Переходит в целевую 360-панораму выбранной метки прямо в редакторе.
+     */
+    function goToPointTarget(index) {
+      if (index < 0 || index >= points.length) return;
+      var point = points[index];
+      if (!point || point.targetType !== "360" || !point.targetPanorama) {
+        setStatus("У метки не задан переход в 360-панораму.", true);
+        return;
+      }
+      saveCurrentPanoramaToData();
+      var ids = getCurrentStory360Ids();
+      loadPanoramaFromData(ids.spaceId, point.targetPanorama, point.targetEntry || "default");
+    }
+
+    /**
+     * Обрабатывает нажатие экранной кнопки метки: 360 открывает панораму, scene показывает целевой выход.
+     */
+    function activateOverlayMarkTarget(index) {
+      if (index < 0 || index >= points.length) return;
+      var point = points[index];
+      if (!point) return;
+      if (point.targetType === "360") {
+        goToPointTarget(index);
+        return;
+      }
+      if (point.targetType === "scene" && point.targetScene) {
+        setStatus("Выход в сценарий: " + point.targetScene, false);
+      }
+    }
+
+    /**
+     * Возвращает подпись экранной кнопки для перехода, заданного у метки.
+     */
+    function getOverlayMarkTargetLabel(point) {
+      if (!point) return "";
+      if (point.targetType === "360" && point.targetPanorama) {
+        return "Перейти 360 " + point.targetPanorama;
+      }
+      if (point.targetType === "scene" && point.targetScene) {
+        return "Сценарий " + point.targetScene;
+      }
+      return "";
+    }
+
+    /**
+     * Быстрый тест первого 360-перехода, если пользователь не нажал кнопку в списке.
+     */
+    function goToFirst360Target() {
+      for (var i = 0; i < points.length; i++) {
+        if (points[i] && points[i].targetType === "360" && points[i].targetPanorama) {
+          goToPointTarget(i);
+          return;
+        }
+      }
+      setStatus("Нет метки с переходом в 360-панораму.", true);
     }
 
     /**
@@ -623,6 +1361,77 @@
         info.appendChild(nameInput);
         info.appendChild(meta);
 
+        var targetWrap = document.createElement("div");
+        targetWrap.style.display = "grid";
+        targetWrap.style.gap = "6px";
+        targetWrap.style.marginTop = "6px";
+
+        var targetType = document.createElement("select");
+        [
+          ["none", "Без перехода"],
+          ["360", "В 360-панораму"],
+          ["scene", "В обычную сцену"]
+        ].forEach(function (item) {
+          var option = document.createElement("option");
+          option.value = item[0];
+          option.textContent = item[1];
+          if ((p.targetType || "none") === item[0]) option.selected = true;
+          targetType.appendChild(option);
+        });
+        targetType.addEventListener("change", function () {
+          points[idx].targetType = targetType.value;
+          updateExport();
+          renderPointsList();
+        });
+        targetWrap.appendChild(targetType);
+
+        if ((p.targetType || "none") === "360") {
+          var targetPanorama = document.createElement("input");
+          targetPanorama.type = "text";
+          targetPanorama.placeholder = "target panorama id";
+          targetPanorama.value = p.targetPanorama || "";
+          targetPanorama.addEventListener("input", function () {
+            points[idx].targetPanorama = targetPanorama.value;
+            updateExport();
+          });
+          targetWrap.appendChild(targetPanorama);
+
+          var targetEntry = document.createElement("input");
+          targetEntry.type = "text";
+          targetEntry.placeholder = "entry";
+          targetEntry.value = p.targetEntry || "default";
+          targetEntry.addEventListener("input", function () {
+            points[idx].targetEntry = targetEntry.value;
+            updateExport();
+          });
+          targetWrap.appendChild(targetEntry);
+        }
+
+        if ((p.targetType || "none") === "scene") {
+          var targetScene = document.createElement("input");
+          targetScene.type = "text";
+          targetScene.placeholder = "scene id";
+          targetScene.value = p.targetScene || "";
+          targetScene.addEventListener("input", function () {
+            points[idx].targetScene = targetScene.value;
+            updateExport();
+          });
+          targetWrap.appendChild(targetScene);
+        }
+
+        info.appendChild(targetWrap);
+
+        var actions = document.createElement("div");
+        actions.style.display = "grid";
+        actions.style.gap = "6px";
+
+        var goBtn = document.createElement("button");
+        goBtn.textContent = "Перейти";
+        goBtn.disabled = (p.targetType || "none") !== "360";
+        goBtn.addEventListener("click", function () {
+          goToPointTarget(idx);
+        });
+
         var removeBtn = document.createElement("button");
         removeBtn.className = "danger";
         removeBtn.textContent = "Удалить";
@@ -630,8 +1439,10 @@
           removePoint(idx);
         });
 
+        actions.appendChild(goBtn);
+        actions.appendChild(removeBtn);
         item.appendChild(info);
-        item.appendChild(removeBtn);
+        item.appendChild(actions);
         pointsList.appendChild(item);
       });
     }
@@ -651,12 +1462,17 @@
      * Обновляет поле экспорта: bg c focus и команду bg360marks.
      */
     function updateExport() {
-      var bgId = String(bgIdInput.value || "bg360Campus").trim() || "bg360Campus";
+      var ids = getCurrentStory360Ids();
+      var bgId = refreshGeneratedBgId();
       var marksPart = points.map(function (p) {
-        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + p.type + ")";
+        var sceneTarget = (p.targetType === "scene" && p.targetScene) ? ", " + p.targetScene : "";
+        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + p.type + sceneTarget + ")";
       }).join(" ");
 
       var lines = [];
+      lines.push("goto360 " + ids.spaceId + "." + ids.panoramaId + " entry=default");
+      lines.push("");
+      lines.push("# legacy export:");
       lines.push("bg " + bgId + " 360 focusx=" + fixedFocus.x.toFixed(4) + " focusy=" + fixedFocus.y.toFixed(4));
       if (marksPart) {
         lines.push("bg360marks " + bgId + " " + marksPart);
@@ -665,6 +1481,7 @@
       }
 
       exportBox.value = lines.join("\n");
+      if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
     }
 
     /**
@@ -781,6 +1598,25 @@
         el.style.top = pos.y + "px";
         el.textContent = String(index + 1);
         marksOverlay.appendChild(el);
+
+        var targetLabel = getOverlayMarkTargetLabel(p);
+        if (targetLabel) {
+          var actionBtn = document.createElement("button");
+          actionBtn.type = "button";
+          actionBtn.className = "mark-action";
+          actionBtn.style.left = pos.x + "px";
+          actionBtn.style.top = pos.y + "px";
+          actionBtn.textContent = targetLabel;
+          actionBtn.addEventListener("pointerdown", function (e) {
+            e.stopPropagation();
+          });
+          actionBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            activateOverlayMarkTarget(index);
+          });
+          marksOverlay.appendChild(actionBtn);
+        }
       });
     }
 
@@ -823,21 +1659,144 @@
     }
 
     /**
-     * Отдаёт файл JSON с метками для сохранения рядом с проектом.
+     * Формирует текст объекта STORY360 для вставки в story360.js после сохранения активной панорамы.
      */
-    function downloadJson() {
-      var payload = {
-        bgId: String(bgIdInput.value || "").trim(),
-        focus: cameraToFocus(),
-        points: points
-      };
-      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    function buildStory360DataText() {
+      saveCurrentPanoramaToData();
+      return JSON.stringify(story360Data, null, 2).replace(/\n/g, "\r\n");
+    }
+
+    /**
+     * Формирует story360.js, который движок подключает как обычный офлайн-скрипт.
+     */
+    function buildStory360JsText() {
+      var dataText = buildStory360DataText();
+      return [
+        "(function() {",
+        "  'use strict';",
+        "  // Этот файл создан редактором 360-пространства и читается командой goto360.",
+        "  window.STORY360 = " + dataText.replace(/\r?\n/g, "\r\n  ") + ";",
+        "})();",
+        ""
+      ].join("\r\n");
+    }
+
+    /**
+     * Скачивает текстовый файл; браузер сам спросит место сохранения или положит его в Downloads.
+     */
+    function downloadTextFile(fileName, text, mime) {
+      var blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
       var url = URL.createObjectURL(blob);
       var a = document.createElement("a");
       a.href = url;
-      a.download = "bg360-points.json";
+      a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Отдаёт JS-файл, который надо положить рядом с story.js в корень проекта.
+     */
+    function downloadStory360Js() {
+      downloadTextFile("story360.js", buildStory360JsText(), "application/javascript;charset=utf-8");
+    }
+
+    /**
+     * Извлекает объект из story360.js, созданного этим редактором.
+     */
+    function extractStory360ObjectText(sourceText) {
+      var text = String(sourceText || "");
+      var assignIndex = text.indexOf("window.STORY360");
+      if (assignIndex < 0) return text;
+      var eqIndex = text.indexOf("=", assignIndex);
+      if (eqIndex < 0) return text;
+      var start = text.indexOf("{", eqIndex);
+      if (start < 0) return text;
+
+      var quote = null;
+      var escaped = false;
+      var depth = 0;
+      for (var i = start; i < text.length; i++) {
+        var ch = text.charAt(i);
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (quote) {
+          if (ch === quote) quote = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+          continue;
+        }
+        if (ch === "{") depth += 1;
+        if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) return text.slice(start, i + 1);
+        }
+      }
+      return text;
+    }
+
+    /**
+     * Нормализует импортированный файл: у пространства всегда должен быть объект panoramas.
+     */
+    function normalizeStory360Data(data) {
+      var normalized = data && typeof data === "object" ? data : createEmptyStory360Data();
+      if (!normalized.spaces || typeof normalized.spaces !== "object") {
+        normalized.spaces = {};
+      }
+      Object.keys(normalized.spaces).forEach(function (sid) {
+        var space = normalized.spaces[sid];
+        if (!space || typeof space !== "object") {
+          normalized.spaces[sid] = { panoramas: {} };
+          return;
+        }
+        if (!space.panoramas || typeof space.panoramas !== "object") {
+          space.panoramas = space.scenes && typeof space.scenes === "object" ? space.scenes : {};
+        }
+      });
+      if (!normalized.version) normalized.version = 1;
+      return normalized;
+    }
+
+    /**
+     * Читает story360.js из файла пользователя и открывает первую панораму.
+     */
+    function loadStory360File(file) {
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var objectText = extractStory360ObjectText(String(reader.result || ""));
+          var importedData = normalizeStory360Data(JSON.parse(objectText));
+          if (countStory360Panoramas(importedData) === 0) {
+            setStatus("Файл story360.js прочитан, но панорам в нём нет. Local не изменён.", true);
+            return;
+          }
+          resetEditorStateForImport();
+          story360Data = importedData;
+          persistEditorDraft();
+          refreshPanoramaSelect();
+          var first = getFirstPanoramaRef();
+          if (first) {
+            loadPanoramaFromData(first.spaceId, first.panoramaId);
+          } else {
+            setStatus("story360 загружен, но панорам пока нет.", false);
+          }
+        } catch (err) {
+          setStatus("Не удалось прочитать story360, Local оставлен без изменений: " + (err && err.message ? err.message : err), true);
+        }
+      };
+      reader.onerror = function () {
+        setStatus("Ошибка чтения файла story360. Local оставлен без изменений.", true);
+      };
+      reader.readAsText(file);
     }
 
     /**
@@ -851,6 +1810,47 @@
       bgImageInput.addEventListener("change", function () {
         var file = bgImageInput.files && bgImageInput.files[0];
         if (file) loadImageFile(file);
+      });
+
+      story360Input.addEventListener("change", function () {
+        var file = story360Input.files && story360Input.files[0];
+        if (file) loadStory360File(file);
+      });
+
+      newPanoramaBtn.addEventListener("click", function () {
+        saveCurrentPanoramaToData();
+        var ids = getCurrentStory360Ids();
+        panoramaIdInput.value = "pano" + (Object.keys(ensureSpace(ids.spaceId).panoramas).length + 1);
+        assetPathInput.value = "";
+        refreshGeneratedBgId();
+        points = [];
+        fixedFocus = { x: 0.5, y: 0.5 };
+        focusXInput.value = "0.5000";
+        focusYInput.value = "0.5000";
+        applyFocusValues(0.5, 0.5);
+        renderPointsList();
+        updateExport();
+        refreshPanoramaSelect();
+      });
+
+      savePanoramaBtn.addEventListener("click", function () {
+        saveCurrentPanoramaToData();
+      });
+
+      panoramaSelect.addEventListener("change", function () {
+        var value = String(panoramaSelect.value || "");
+        if (!value || value.indexOf(".") < 0) return;
+        saveCurrentPanoramaToData();
+        var dot = value.indexOf(".");
+        loadPanoramaFromData(value.slice(0, dot), value.slice(dot + 1), "default");
+      });
+
+      loadAssetPathBtn.addEventListener("click", function () {
+        loadAssetPath(assetPathInput.value);
+      });
+
+      testTargetBtn.addEventListener("click", function () {
+        goToFirst360Target();
       });
 
       applyFocusBtn.addEventListener("click", function () {
@@ -876,7 +1876,18 @@
         updateExport();
       });
 
-      bgIdInput.addEventListener("input", updateExport);
+      assetPathInput.addEventListener("input", function () {
+        refreshGeneratedBgId();
+        updateExport();
+      });
+      spaceIdInput.addEventListener("input", function () {
+        refreshGeneratedBgId();
+        updateExport();
+      });
+      panoramaIdInput.addEventListener("input", function () {
+        refreshGeneratedBgId();
+        updateExport();
+      });
 
       clearPointsBtn.addEventListener("click", function () {
         points = [];
@@ -892,11 +1903,10 @@
         copyText(exportBox.value);
       });
 
-      copyJsonBtn.addEventListener("click", function () {
-        copyText(JSON.stringify(points, null, 2));
+      downloadStory360JsBtn.addEventListener("click", downloadStory360Js);
+      copyStory360JsBtn.addEventListener("click", function () {
+        copyText(buildStory360JsText());
       });
-
-      downloadPointsBtn.addEventListener("click", downloadJson);
 
       viewerCanvas.addEventListener("pointerdown", function (e) {
         dragState.active = true;
@@ -964,9 +1974,14 @@
     function bootstrap() {
       initViewer();
       bindEvents();
-      renderPointsList();
-      updateExport();
-      refreshFocusInputsFromCamera();
+      var restored = restoreEditorDraft();
+      if (!restored) {
+        renderPointsList();
+        updateExport();
+        refreshPanoramaSelect();
+        refreshFocusInputsFromCamera();
+      }
+      editorReady = true;
     }
 
     bootstrap();

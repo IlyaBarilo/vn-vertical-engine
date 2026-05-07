@@ -961,6 +961,57 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   return { type: "bg360marks", bgId: bgId, marks: marks, lines: showLines };
 }
 
+// Разбирает команду входа в 360-пространство: goto360 space.panorama entry=fromScene.
+// Поддерживает и раздельную запись "goto360 space panorama", чтобы сценарий было проще читать руками.
+function parseGoto360Command(cleanLine, lineNumber, originalLine) {
+  var body = String(cleanLine || "").substring("goto360".length).trim();
+  if (!body) {
+    addParseError(lineNumber, originalLine, 'goto360 требует ссылку вида space.panorama', true);
+    return null;
+  }
+
+  var params = parseActionParamsFromText(body);
+  var positionalText = body.replace(/([a-zA-Z_][a-zA-Z0-9_-]*)\s*=\s*("([^"]*)"|'([^']*)'|[^\s]+)/g, " ");
+  var positional = positionalText.trim().split(/\s+/).filter(function (token) {
+    return !!token;
+  });
+
+  var spaceId = params.space !== undefined ? String(params.space).trim() : "";
+  var panoramaId = params.panorama !== undefined ? String(params.panorama).trim() : "";
+  if (params.scene !== undefined && !panoramaId) {
+    panoramaId = String(params.scene).trim();
+  }
+
+  if ((!spaceId || !panoramaId) && positional.length > 0) {
+    var ref = String(positional[0] || "").trim();
+    var dotIndex = ref.indexOf(".");
+    if (dotIndex > 0) {
+      if (!spaceId) spaceId = ref.slice(0, dotIndex).trim();
+      if (!panoramaId) panoramaId = ref.slice(dotIndex + 1).trim();
+    } else {
+      if (!spaceId) spaceId = ref;
+      if (!panoramaId && positional.length > 1) panoramaId = String(positional[1] || "").trim();
+    }
+  }
+
+  if (!spaceId || !panoramaId) {
+    addParseError(lineNumber, originalLine, 'goto360: укажите пространство и панораму, например goto360 campus.entrance', true);
+    return null;
+  }
+
+  return {
+    type: "goto360",
+    spaceId: spaceId,
+    panoramaId: panoramaId,
+    entry: params.entry !== undefined
+      ? String(params.entry)
+      : (params.from !== undefined ? String(params.from) : "default"),
+    text: params.text !== undefined ? String(params.text) : "",
+    button: params.button !== undefined ? String(params.button) : "",
+    result: params.result !== undefined ? String(params.result) : ""
+  };
+}
+
 // Разбирает настройку горизонтального скролла для фоновых и видео-медиа из сценария.
 function parseBackgroundScrollOption(rawValue, lineNumber, line) {
   var value = String(rawValue === undefined ? "true" : rawValue).trim().toLowerCase();
@@ -2489,6 +2540,14 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         button: params360.button !== undefined ? String(params360.button) : "",
         result: params360.result !== undefined ? String(params360.result) : ""
       });
+      return;
+    }
+
+    // goto360 space.panorama entry=default text="..." button="..." result=varName
+    if (cleanLine.startsWith('goto360 ')) {
+      var goto360Action = parseGoto360Command(cleanLine, lineNumber, line);
+      if (!goto360Action) return;
+      actions.push(goto360Action);
       return;
     }
     

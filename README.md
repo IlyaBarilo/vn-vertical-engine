@@ -306,10 +306,7 @@ if resultGame == 0 -> bad_end
 
     bg backgroundId
 
-### 360 backgrounds: markers and walk360 (planned)
-
-These design notes describe a **future** scripting feature; the engine may not
-implement all of it yet.
+### 360 backgrounds: markers, walk360 and goto360
 
 - **Command order in a scene:** first show the 360 background with `bg
   <backgroundId>`, then define markers with `bg360marks`, then run `walk360`
@@ -336,6 +333,25 @@ implement all of it yet.
 
 - **Edge-of-screen indicators** for markers outside the current view: deferred
   (not required for the first version).
+
+### 360 spaces: `story360.js` and `goto360`
+
+For larger 360 maps, use `tools/bg360-marks-editor.html` to maintain a separate
+`story360.js` file. Put the exported file next to `story.js`; the launcher loads
+it automatically when present.
+
+```text
+goto360 korpusNight.174 entry=default
+```
+
+Inside `story360.js`, every panorama can define `entries` for different incoming
+directions and `marks` with targets to another panorama or to a normal story
+scene. This keeps camera direction and navigation links out of the handwritten
+story text.
+
+`story360.js` is self-contained for 360 panoramas: store the panorama package in
+the panorama `file` field. The editor generates internal background IDs by
+itself, so 360 spaces do not need matching entries in the story `[bg]` section.
 
 ### Characters
 

@@ -221,6 +221,58 @@ bg campus360 quality=mobile
 
 `quality` принимает `auto`, `normal` или `mobile`. Если `quality` не задан или равен `auto`, используется глобальный `bg360Quality` из `[meta]`; при итоговом `mobile` движок загрузит соседний пакет `campus-360-mobile.js`. Путь к `.jpg/.png/.webp` в 360-фоне считается ошибкой.
 
+### `goto360`
+
+Команда входит в 360-пространство, описанное в `story360.js`.
+
+```text
+goto360 korpusNight.174 entry=default
+goto360 korpusNight 174 entry=fromIntro button="Выйти"
+```
+
+`story360.js` должен находиться рядом с `story.js` и задавать `window.STORY360`.
+Файл сам описывает 360-панорамы через поле `file`; редактор создаёт служебные
+`bgId` автоматически и не требует дублировать эти панорамы в секции `[bg]`
+обычного сценария.
+Минимальный формат:
+
+```js
+window.STORY360 = {
+  version: 1,
+  spaces: {
+    korpusNight: {
+      panoramas: {
+        "174": {
+          file: "assets/360/korpusnight/174-360.js",
+          entries: {
+            default: { focusX: 0.2527, focusY: 0.5628 },
+            from175: { focusX: 0.5080, focusY: 0.5000 }
+          },
+          marks: [
+            {
+              id: "to175",
+              x: 0.5087,
+              y: 0.4387,
+              type: "walk",
+              target: { type: "360", panorama: "175", entry: "from174" }
+            },
+            {
+              id: "exit",
+              x: 0.2000,
+              y: 0.5000,
+              type: "walk",
+              target: { type: "scene", scene: "scIntro01" }
+            }
+          ]
+        }
+      }
+    }
+  }
+};
+```
+
+`entry` выбирает направление камеры при входе в панораму. Это заменяет схемы вида `focusx2/focusx3` и хранит направление движения прямо в переходе.
+
 ---
 
 ## 🎭 Секция `[char]`
