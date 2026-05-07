@@ -2222,6 +2222,11 @@ body {
   box-shadow: none !important;
 }
 
+/* 360-миниатюры сцены резервируют высоту до подстановки src, чтобы не ломать размер узла. */
+.graphContainer .mermaid .node .scene-bg360-thumbnail {
+  aspect-ratio: 2 / 1 !important;
+}
+
 /* Background images: restore subtle thin frame. */
 .graphContainer .mermaid .node .bg-thumbnail,
 .graphContainer .mermaid .node .bgi {

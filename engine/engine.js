@@ -11077,7 +11077,11 @@ function buildMermaidGraph(story, unreachableList, options) {
     var textCount = 0;
     var bgmCount = 0;
     var bgCount = 0;        // СЧЕТЧИК ФОНОВ
+    var sceneBgImageCount = 0; // Счетчик вызовов обычных bg-изображений в сцене
+    var sceneBg360Count = 0;   // Счетчик вызовов 360-фонов в сцене
     var uniqueBgs = {};     // Для подсчета уникальных фонов
+    var uniqueBgImages = {}; // Уникальные обычные bg-изображения
+    var uniqueBg360 = {};    // Уникальные 360-фоны
     var firstBgSrc = null;  // Для первого фона
     var firstBgId = null;   // ID первого фона
     
@@ -11091,65 +11095,112 @@ function buildMermaidGraph(story, unreachableList, options) {
     if (!incomingEdges[scene.id]) incomingEdges[scene.id] = 0;
     if (!outgoingEdges[scene.id]) outgoingEdges[scene.id] = 0;
     
-    for (var a = 0; a < actions.length; a++) {
-      var act = actions[a];
-      if (!act || !act.type) continue;
-      
-      if (act.type === "char" && act.charId) {
-        charSet[act.charId] = true;
-      }
-      
-      if (act.type === "game" && act.gameId) {
-        gameSet[act.gameId] = true;
-      }
+    // Сквозная нумерация нужна, чтобы сохранить порядок первого появления фона
+    // даже когда он найден во вложенных ветках choice/if_block.
+    var bgVisitOrder = 0;
 
-      if (act.type === "say") sayCount++;
-      if (act.type === "text") textCount++;
-      if (act.type === "bgm") bgmCount++;
-      
-      
-      // ПОДСЧЕТ ФОНОВ И СОХРАНЕНИЕ ВСЕХ ИЗОБРАЖЕНИЙ
-      if (act.type === "bg" && act.src) {
-        bgCount++;
-        var bgId = extractAliasId(act.src, "bg");
-        if (bgId) {
-          uniqueBgs[bgId] = true;
-          
-          // Получаем реальный путь к изображению
-          var bgSrc = null;
-          if (story.assets && story.assets.backgrounds) {
-            bgSrc = getBackgroundAssetPrimaryPath(story.assets.backgrounds[bgId]);
-          }
-          
-          // ИСПРАВЛЕНО: проверяем, есть ли уже такой фон в массиве
-          if (bgSrc) {
-            // Проверяем, не добавлен ли уже такой же фон
-            var isDuplicate = false;
-            for (var i = 0; i < allBgImages.length; i++) {
-              if (allBgImages[i].id === bgId) {
-                isDuplicate = true;
-                break;
+    // Рекурсивно собирает статистику сцены по всем вложенным действиям:
+    // основная лента, меню, if-блоки и их подветки.
+    function collectSceneActionStats(nestedActions) {
+      if (!Array.isArray(nestedActions)) return;
+
+      for (var ia = 0; ia < nestedActions.length; ia++) {
+        var act = nestedActions[ia];
+        if (!act || !act.type) continue;
+
+        if (act.type === "char" && act.charId) {
+          charSet[act.charId] = true;
+        }
+
+        if (act.type === "game" && act.gameId) {
+          gameSet[act.gameId] = true;
+        }
+
+        if (act.type === "say") sayCount++;
+        if (act.type === "text") textCount++;
+        if (act.type === "bgm") bgmCount++;
+
+        // Подсчёт фонов и сохранение превью для карточки сцены.
+        if (act.type === "bg" && act.src) {
+          bgCount++;
+          var bgId = extractAliasId(act.src, "bg");
+          if (bgId) {
+            uniqueBgs[bgId] = true;
+
+            // Получаем реальный путь к ассету из [bg].
+            var bgSrc = null;
+            if (story.assets && story.assets.backgrounds) {
+              bgSrc = getBackgroundAssetPrimaryPath(story.assets.backgrounds[bgId]);
+            }
+
+            // Разделяем вызовы по типам, чтобы в сцене были отдельные счетчики 🖼️ и 🌐.
+            if (bgSrc && isBg360PackScriptPath(bgSrc)) {
+              sceneBg360Count++;
+              uniqueBg360[bgId] = true;
+            } else if (bgSrc && !isVideoAssetPath(bgSrc)) {
+              sceneBgImageCount++;
+              uniqueBgImages[bgId] = true;
+            }
+
+            // Для превью сцены добавляем только первое вхождение каждого bgId.
+            if (bgSrc) {
+              var isDuplicate = false;
+              for (var di = 0; di < allBgImages.length; di++) {
+                if (allBgImages[di].id === bgId) {
+                  isDuplicate = true;
+                  break;
+                }
+              }
+
+              if (!isDuplicate) {
+                allBgImages.push({
+                  src: bgSrc,
+                  id: bgId,
+                  order: bgVisitOrder++
+                });
               }
             }
-                    
-            // Если не дубликат, добавляем
-            if (!isDuplicate) {
-              allBgImages.push({
-                src: bgSrc,
-                id: bgId,
-                order: a  // сохраняем порядковый номер для сортировки
-              });
+
+            // Сохраняем первый фон (для обратной совместимости).
+            if (firstBgId === null) {
+              firstBgId = bgId;
+              firstBgSrc = bgSrc;
             }
           }
-                
-          // Сохраняем первый фон (для обратной совместимости)
-          if (firstBgId === null) {
-            firstBgId = bgId;
-            firstBgSrc = bgSrc;
+        }
+
+        if (act.type === "choice" && Array.isArray(act.choices)) {
+          for (var ci = 0; ci < act.choices.length; ci++) {
+            var ch = act.choices[ci];
+            if (ch && Array.isArray(ch.actions)) {
+              collectSceneActionStats(ch.actions);
+            }
+          }
+        }
+
+        if (act.type === "if_block") {
+          if (Array.isArray(act.branches)) {
+            for (var bi = 0; bi < act.branches.length; bi++) {
+              var br = act.branches[bi];
+              if (br && Array.isArray(br.actions)) {
+                collectSceneActionStats(br.actions);
+              }
+            }
+          }
+          if (Array.isArray(act.elseActions)) {
+            collectSceneActionStats(act.elseActions);
           }
         }
       }
+    }
 
+    collectSceneActionStats(actions);
+
+    // Рёбра графа считаем отдельно по верхнему уровню:
+    // forEachOutgoingTarget сам рекурсивно обходит вложенные goto в choice/if_block.
+    for (var a = 0; a < actions.length; a++) {
+      var act = actions[a];
+      if (!act || !act.type) continue;
       forEachOutgoingTarget([act], function (edge) {
         var lbl = String(edge.label || "");
         if (lbl.length > 40) lbl = lbl.substring(0, 40) + "...";
@@ -11185,6 +11236,10 @@ function buildMermaidGraph(story, unreachableList, options) {
       bgmCount: bgmCount,
       bgCount: bgCount, // Общее количество смен фонов
       uniqueBgCount: Object.keys(uniqueBgs).length, // Количество уникальных фонов
+      bgImageCount: sceneBgImageCount, // Количество вызовов обычных bg-изображений
+      uniqueBgImageCount: Object.keys(uniqueBgImages).length, // Уникальные обычные bg-изображения
+      bg360Count: sceneBg360Count, // Количество вызовов 360-фонов
+      uniqueBg360Count: Object.keys(uniqueBg360).length, // Уникальные 360-фоны
       firstBgSrc: firstBgSrc,  // Путь к первому фону
       firstBgId: firstBgId,    // ID первого фона
       allBgImages: allBgImages // добавляем массив всех фонов
@@ -11270,12 +11325,15 @@ function buildMermaidGraph(story, unreachableList, options) {
 
     var sceneVideoBgCount = 0;
     var sceneBgImagesOnly = [];
+    var sceneBg360ImagesOnly = [];
     if (node.allBgImages && node.allBgImages.length > 0) {
       for (var b0 = 0; b0 < node.allBgImages.length; b0++) {
         var bg0 = node.allBgImages[b0];
         if (!bg0) continue;
         if (isVideoAssetPath(bg0.src)) {
           if (bg0.id) sceneVideoBgCount++;
+        } else if (isBg360PackScriptPath(bg0.src)) {
+          sceneBg360ImagesOnly.push(bg0);
         } else {
           sceneBgImagesOnly.push(bg0);
         }
@@ -11307,6 +11365,31 @@ function buildMermaidGraph(story, unreachableList, options) {
 
         label += "</div>";
       }
+
+      if (sceneBg360ImagesOnly.length > 0) {
+        var sceneBg360CountClass = getImgCountClass(sceneBg360ImagesOnly.length || 1);
+        label += "<div class='scene-bg-images-container " + sceneBg360CountClass + "'>";
+
+        for (var b360 = 0; b360 < sceneBg360ImagesOnly.length; b360++) {
+          var bg360 = sceneBg360ImagesOnly[b360];
+          var safeBg360Id = escapeHtml(bg360.id || "");
+          var bgAsset = (story.assets && story.assets.backgrounds && bg360.id) ? story.assets.backgrounds[bg360.id] : null;
+          var bg360AssetQuality = getBackgroundAssetQuality(bgAsset) || "auto";
+
+          label += "<span class='scene-bg-frame " + sceneBg360CountClass + "'>" +
+                  "<img " +
+                  "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + sceneBg360CountClass + "' " +
+                  "data-id='" + safeBg360Id + "' " +
+                  "data-index='" + b360 + "' " +
+                  "data-bg360-src='" + escapeHtml(bg360.src || "") + "' " +
+                  "data-bg360-quality='" + escapeHtml(bg360AssetQuality) + "' " +
+                  "title='" + safeBg360Id + "' " +
+                  "alt='' />" +
+                  "</span> ";
+        }
+
+        label += "</div>";
+      }
     }
 
     // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
@@ -11325,8 +11408,11 @@ function buildMermaidGraph(story, unreachableList, options) {
     if (sceneVideoBgCount > 0) {
       counters.push("🎬" + sceneVideoBgCount);
     }
-    if (node.bgCount != 0) {
-      counters.push("🖼️" + node.uniqueBgCount + (node.bgCount > node.uniqueBgCount ? "(" + node.bgCount + ")" : ""));
+    if (node.bgImageCount != 0) {
+      counters.push("🖼️" + (node.bgImageCount === node.uniqueBgImageCount ? node.uniqueBgImageCount : (node.bgImageCount + "/" + node.uniqueBgImageCount)));
+    }
+    if (node.bg360Count != 0) {
+      counters.push("🌐" + (node.bg360Count === node.uniqueBg360Count ? node.uniqueBg360Count : (node.bg360Count + "/" + node.uniqueBg360Count)));
     }
     if (node.phraseCount != 0) {
       counters.push("💬" + node.phraseCount);
