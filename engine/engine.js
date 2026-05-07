@@ -11953,6 +11953,7 @@ function hydrateBg360GraphThumbnails(root) {
   }
 }
 
+
 // Узел Audio: сводный список id из [audio] со счётчиком вызовы/сцены для bgm/sfx.
 function buildAudioGraph(story, options) {
   options = options || {};

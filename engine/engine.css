@@ -2130,6 +2130,13 @@ body {
   vertical-align: top !important;
 }
 
+/* Поднимаем именно обёртку миниатюры над соседями.
+   Если поднят только img, соседние контейнеры могут всё равно перекрывать увеличенный превью. */
+.graphContainer .mermaid .node .cew:hover,
+.graphContainer .mermaid .node .bgw:hover {
+  z-index: 10000 !important;
+}
+
 .graphContainer .mermaid .node .cew {
   background: transparent !important;
 }
