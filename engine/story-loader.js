@@ -176,6 +176,8 @@
         title: "Без названия",
         start: null,
         lang: 'en',
+        // Режим новеллы: debug/release. Если не задан, используем debug.
+        mode: 'debug',
         blurBackground: true,
         bg360Quality: 'normal'
       },
@@ -341,6 +343,9 @@
     normalizeAssetsAfterParse(story);
     
     window.STORY_LANG = (story.meta && story.meta.lang ? story.meta.lang : 'en');
+
+    // Дублируем режим в vars, чтобы он был доступен в условиях и тексте как обычная переменная.
+    story.vars.mode = story.meta.mode;
 
     // Устанавливаем стартовую сцену, если не задана
     if (!story.meta.start && story.scenes.length > 0) {
@@ -1483,6 +1488,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
       story.meta.lang = lang;
       window.STORY_LANG = lang;
+      return;
+    }
+
+    // Режим исполнения истории: допускаются только debug/release.
+    if (key === 'mode') {
+      var mode = (value || '').trim().toLowerCase();
+      if (!mode) {
+        story.meta.mode = 'debug';
+        return;
+      }
+      if (mode === 'debug' || mode === 'release') {
+        story.meta.mode = mode;
+        return;
+      }
+      addParseError(lineNumber, originalLine, 'Invalid mode "' + value + '". Use debug or release.', false);
+      story.meta.mode = 'debug';
       return;
     }
 

@@ -9,6 +9,7 @@ window.STORY_TEXT = `
 title=Вуз: демо-новелла с выбором
 lang=ru                  # Язык инфтерфейса программы. Возможны значения: en, ru
 startScene=scIntro01
+mode=debug              # Режим: release и debug. По умолчанию debug
 bg360Quality=auto       # auto: mobile только на телефоне; normal/mobile — ручной режим для всех устройств
 # topSpacing=500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
@@ -35,13 +36,13 @@ bgBranchYard file=assets/backgrounds/bg-uni-yard-night.jpg
 bgBranchYardWide file=assets/backgrounds/bg-uni-yard-night-wide.jpg scroll focusx=0.4207
 bgBranchYardTest file=assets/backgrounds/bg-uni-yard-night.jpg
 
-bg360_B101 file=assets/360/B101/b101-360.js scale=1 focusx=0.5 focusy=0.5 360 focusx=0.2503 focusy=0.4344
-bg360_solar file=assets/360/B101/solar-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
-bg360_japan file=assets/360/B101/japan-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
-bg360_artdecoluxury file=assets/360/B101/art-deco-luxury-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
-bg360_arcticcrystallaboratory file=assets/360/B101/arctic-crystal-laboratory-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
-bg360_aquaticfuturism file=assets/360/B101/aquatic-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
-bg360_80ssynthwaveretrofuturism file=assets/360/B101/80s-synthwave-retro-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344
+bg360_B101 file=assets/360/B101/b101-360.js scale=1 focusx=0.5 focusy=0.5 360 focusx=0.2503 focusy=0.4344 focusz=0
+bg360_solar file=assets/360/B101/solar-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
+bg360_japan file=assets/360/B101/japan-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
+bg360_artdecoluxury file=assets/360/B101/art-deco-luxury-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
+bg360_arcticcrystallaboratory file=assets/360/B101/arctic-crystal-laboratory-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
+bg360_aquaticfuturism file=assets/360/B101/aquatic-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
+bg360_80ssynthwaveretrofuturism file=assets/360/B101/80s-synthwave-retro-futurism-360.js scale=1 focusx=0.5 focusy=0.5 360 quality=normal focusx=0.2503 focusy=0.4344 focusz=0
 
 [char]
 # Формат описания для персонажа:

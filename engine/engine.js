@@ -932,13 +932,17 @@ console.log('[Engine] blurBgLayer:', elBlurBgLayer);
 console.log('[Engine] blurBgImage:', elBlurBgImage);
 console.log('[Engine] blurBgVideo:', elBlurBgVideo);
 
-btnStats.addEventListener("click", function () {
-  toggleStatsPanel();
-});
+if (btnStats) {
+  btnStats.addEventListener("click", function () {
+    toggleStatsPanel();
+  });
+}
 
-btnCloseStats.addEventListener("click", function () {
-  hideStatsPanel();
-});
+if (btnCloseStats) {
+  btnCloseStats.addEventListener("click", function () {
+    hideStatsPanel();
+  });
+}
 
 // клик по затемнению (вне карточки) — закрывает
 elStatsPanel.addEventListener("click", function (e) {
@@ -1318,6 +1322,7 @@ if (!window.STORY) {
 
     // Обновляем STORY
     window.STORY = story;
+    updateStatsButtonByStoryMode();
     
     // Перестраиваем карту сцен
     buildSceneMap();
@@ -1347,6 +1352,7 @@ if (!window.STORY) {
 var STORY = window.STORY;
 console.log('[Engine] Script found immediately:', STORY.meta.title);
 profiler.mark('Script found immediately');
+updateStatsButtonByStoryMode();
 
 console.log('[Engine] STORY.assets:', STORY.assets);
 if (STORY.assets) {
@@ -1422,6 +1428,7 @@ var state = {
   // исполняются сразу и не мутируют исходный массив scene.actions.
   pendingActions: []
 };
+applyStoryModeToStateVars(state);
 
 // Допустимый диапазон scale для фона/сюжетного видео (множитель к «базовому» object-fit: cover).
 var BG_MEDIA_SCALE_MIN = 0.05;
@@ -2327,6 +2334,35 @@ function normalizeBg360Quality(value, fallback) {
   if (raw === "normal") return "normal";
   if (raw === "auto") return "auto";
   return fallback;
+}
+
+// Нормализует режим истории: поддерживаются только release/debug, иначе берём fallback.
+function normalizeStoryMode(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var raw = String(value).trim().toLowerCase();
+  if (raw === "release") return "release";
+  if (raw === "debug") return "debug";
+  return fallback;
+}
+
+// Возвращает режим истории из [meta] с дефолтом debug.
+function getStoryMode() {
+  var meta = window.STORY && window.STORY.meta ? window.STORY.meta : {};
+  return normalizeStoryMode(meta.mode, "debug");
+}
+
+// Синхронизирует mode из meta в сценарные переменные state.vars.
+function applyStoryModeToStateVars(targetState) {
+  if (!targetState || !targetState.vars) return;
+  targetState.vars.mode = getStoryMode();
+}
+
+// В release скрываем кнопку статистики, в debug — показываем.
+function updateStatsButtonByStoryMode() {
+  if (!btnStats) return;
+  var isReleaseMode = getStoryMode() === "release";
+  btnStats.classList.toggle("hidden", isReleaseMode);
+  btnStats.setAttribute("aria-hidden", isReleaseMode ? "true" : "false");
 }
 
 // Возвращает глобальный режим 360 из [meta]; если настройка не задана, сохраняет прежнее поведение normal.
@@ -3444,6 +3480,7 @@ function tryApplyAutosave() {
   state.vars = data.vars && typeof data.vars === "object"
     ? JSON.parse(JSON.stringify(data.vars))
     : JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
+  applyStoryModeToStateVars(state);
   applyLicenseStateToStoryVars();
   state.waitingNext = !!data.waitingNext;
   state.nextLocked = !!data.nextLocked;
@@ -3694,6 +3731,7 @@ function restart() {
 
   // Полный сброс без автосейва (или сохранение недействительно).
   state.vars = JSON.parse(JSON.stringify((STORY && STORY.vars) ? STORY.vars : {}));
+  applyStoryModeToStateVars(state);
   applyLicenseStateToStoryVars();
   state.inGame = false;
 
