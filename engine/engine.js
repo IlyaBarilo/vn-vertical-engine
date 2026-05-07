@@ -117,6 +117,7 @@ var elVisualBlurBgVideoCrossfade = null;
 const UI_I18N = {
   en: {
     mute: "Mute",
+    settings: "About app",
     stats: "Stats",
     next: "Next",
     choices: "Choices",
@@ -132,6 +133,8 @@ const UI_I18N = {
     resourcesGraphButtonTitle: "Compact resources graph: start scene only, same full asset blocks as the main graph",
     gamesButtonTitle: "Show games catalog",
     textButtonTitle: "Show text statistics",
+    settingsTitle: "About app",
+    closeSettings: "Close app info",
     closeStats: "Close stats",
     zoomOut: "Zoom Out",
     zoomIn: "Zoom In",
@@ -162,6 +165,7 @@ const UI_I18N = {
   },
   ru: {
     mute: "Звук",
+    settings: "Информация о программе",
     stats: "Статистика",
     next: "Далее",
     choices: "Выбор",
@@ -177,6 +181,8 @@ const UI_I18N = {
     resourcesGraphButtonTitle: "Компактный граф ресурсов: на схеме только стартовая сцена, блоки ассетов — полные, как на основном графе",
     gamesButtonTitle: "Показать каталог игр",
     textButtonTitle: "Показать текстовую статистику",
+    settingsTitle: "Информация о программе",
+    closeSettings: "Закрыть информацию",
     closeStats: "Закрыть статистику",
     zoomOut: "Уменьшить",
     zoomIn: "Увеличить",
@@ -232,6 +238,12 @@ function applyUiLanguage() {
   var btnMute = document.getElementById("btnMute");
   if (btnMute) btnMute.setAttribute("aria-label", t("mute"));
 
+  var btnSettings = document.getElementById("btnSettings");
+  if (btnSettings) {
+    btnSettings.setAttribute("aria-label", t("settings"));
+    btnSettings.title = t("settings");
+  }
+
   var btnStats = document.getElementById("btnStats");
   if (btnStats) btnStats.setAttribute("aria-label", t("stats"));
 
@@ -264,6 +276,8 @@ function applyUiLanguage() {
 
   var statsTitle = document.querySelector(".statsTitle");
   if (statsTitle) statsTitle.textContent = t("statsTitle");
+  var settingsTitle = document.querySelector(".settingsTitle");
+  if (settingsTitle) settingsTitle.textContent = t("settingsTitle");
 
   var btnShowFullGraph = document.getElementById("btnShowFullGraph");
   if (btnShowFullGraph) {
@@ -299,6 +313,8 @@ function applyUiLanguage() {
 
   var btnCloseStats = document.getElementById("btnCloseStats");
   if (btnCloseStats) btnCloseStats.setAttribute("aria-label", t("closeStats"));
+  var btnCloseSettings = document.getElementById("btnCloseSettings");
+  if (btnCloseSettings) btnCloseSettings.setAttribute("aria-label", t("closeSettings"));
 
   var zoomOutBtn = document.getElementById("zoomOutBtn");
   if (zoomOutBtn) zoomOutBtn.title = t("zoomOut");
@@ -901,7 +917,11 @@ function swallowEvent(e) {
   }, true);
 });
 
+var btnSettings = document.getElementById("btnSettings");
 var btnStats = document.getElementById("btnStats");
+var elSettingsPanel = document.getElementById("settingsPanel");
+var btnCloseSettings = document.getElementById("btnCloseSettings");
+var elSettingsBody = document.getElementById("settingsBody");
 var elStatsPanel = document.getElementById("statsPanel");
 var btnCloseStats = document.getElementById("btnCloseStats");
 var elStatsBody = document.getElementById("statsBody");
@@ -932,15 +952,34 @@ console.log('[Engine] blurBgLayer:', elBlurBgLayer);
 console.log('[Engine] blurBgImage:', elBlurBgImage);
 console.log('[Engine] blurBgVideo:', elBlurBgVideo);
 
+if (btnSettings) {
+  btnSettings.addEventListener("click", function () {
+    toggleSettingsPanel();
+  });
+}
+
 if (btnStats) {
   btnStats.addEventListener("click", function () {
     toggleStatsPanel();
   });
 }
 
+if (btnCloseSettings) {
+  btnCloseSettings.addEventListener("click", function () {
+    hideSettingsPanel();
+  });
+}
+
 if (btnCloseStats) {
   btnCloseStats.addEventListener("click", function () {
     hideStatsPanel();
+  });
+}
+
+if (elSettingsPanel) {
+  // Клик по затемнению окна настроек (вне карточки) — закрывает окно.
+  elSettingsPanel.addEventListener("click", function (e) {
+    if (e.target === elSettingsPanel) hideSettingsPanel();
   });
 }
 
@@ -956,6 +995,7 @@ var elStage = document.getElementById("stage");
 function isUiClick(target) {
   if (!target || !target.closest) return false;
   if (target.closest(".topbar")) return true;
+  if (target.closest("#settingsPanel")) return true;
   // Панель статистики — отдельный UI-слой; её клики не должны листать сюжет.
   if (target.closest("#statsPanel")) return true;
   if (target.closest("#dialog")) return true;
@@ -3957,6 +3997,11 @@ function onNext(e) {
   }
   if (elGameModal && !elGameModal.classList.contains("hidden")) {
     autosaveDebugLog("onNext:blocked", { reason: "gameModal_visible" });
+    return;
+  }
+  // Пока открыты настройки, любые "next" блокируем: пользователь работает с интерфейсом настроек.
+  if (elSettingsPanel && !elSettingsPanel.classList.contains("hidden")) {
+    autosaveDebugLog("onNext:blocked", { reason: "settingsPanel_visible" });
     return;
   }
   // Пока открыта статистика, любые "next" блокируем: пользователь взаимодействует с UI, а не со сценой.
@@ -9445,7 +9490,43 @@ function toggleStatsPanel() {
   else hideStatsPanel();
 }
 
+// Формирует содержимое окна настроек: версия сборки и текущий статус лицензии.
+function renderSettingsPanel() {
+  if (!elSettingsBody) return;
+  var text = "";
+  text += "Software version: " + window.APP_VERSION + "\n\n";
+  text += formatLicenseStatsText();
+  text += "\n";
+  text += "Site of project: https://github.com/IlyaBarilo/vn-vertical-engine\n\n";
+  text += "Developer: Ilya Barilo (www.barilo.ru)\n\n";
+  elSettingsBody.value = text;
+}
+
+function toggleSettingsPanel() {
+  if (!elSettingsPanel) return;
+  if (elSettingsPanel.classList.contains("hidden")) showSettingsPanel();
+  else hideSettingsPanel();
+}
+
+function showSettingsPanel() {
+  if (!elSettingsPanel) return;
+  if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
+    elStatsPanel.classList.add("hidden");
+  }
+  renderSettingsPanel();
+  elSettingsPanel.classList.remove("hidden");
+}
+
+function hideSettingsPanel() {
+  if (!elSettingsPanel) return;
+  elSettingsPanel.classList.add("hidden");
+  tryResumeNovelAfterStatsClose("hideSettingsPanel");
+}
+
 function showStatsPanel() {
+  if (elSettingsPanel && !elSettingsPanel.classList.contains("hidden")) {
+    elSettingsPanel.classList.add("hidden");
+  }
   setStatsView("text");
 
   // Принудительно сбрасываем panzoom состояние
@@ -9459,6 +9540,7 @@ function showStatsPanel() {
 function tryResumeNovelAfterStatsClose(reason) {
   if (!state) return;
   if (state.inGame || state.inVideo) return;
+  if (elSettingsPanel && !elSettingsPanel.classList.contains("hidden")) return;
   if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) return;
   if (elChoices && !elChoices.classList.contains("hidden")) return;
   if (state.waitingNext) return;
@@ -13628,6 +13710,28 @@ if (statsPanel) {
 if (statsCard) {
   statsCard.setAttribute('draggable', 'false');
   statsCard.addEventListener('dragstart', function(e) {
+    e.preventDefault();
+    return false;
+  });
+}
+
+// Запрет перетаскивания на фоне и карточке окна настроек
+var settingsPanel = document.getElementById('settingsPanel');
+var settingsCard = document.querySelector('.settingsCard');
+
+if (settingsPanel) {
+  settingsPanel.setAttribute('draggable', 'false');
+  settingsPanel.addEventListener('dragstart', function(e) {
+    if (e.target === settingsPanel || e.target === settingsCard || e.target.closest('.settingsCard') === settingsCard) {
+      e.preventDefault();
+      return false;
+    }
+  });
+}
+
+if (settingsCard) {
+  settingsCard.setAttribute('draggable', 'false');
+  settingsCard.addEventListener('dragstart', function(e) {
     e.preventDefault();
     return false;
   });

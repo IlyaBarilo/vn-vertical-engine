@@ -1017,6 +1017,11 @@ body {
   font-family: Consolas, monospace;
 }
 
+/* Поле настроек в модалке делаем не редактируемым и со стандартным курсором. */
+.settingsBody {
+  cursor: default;
+}
+
 /* небольшая “табличная” разметка строк */
 .statsLine {
   padding: 0.5rem 0;

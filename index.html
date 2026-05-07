@@ -75,6 +75,20 @@
       </div>
     </div>
 
+    <div id="settingsPanel" class="statsPanel hidden" aria-label="Информация о программе">
+      <div class="statsCard settingsCard">
+        <div class="statsHeader">
+          <div class="statsTitle settingsTitle">Информация о программе</div>
+          <div class="statsHeaderActions">
+            <button id="btnCloseSettings" class="btn" type="button" aria-label="Закрыть информацию">✕</button>
+          </div>
+        </div>
+        <div class="statsViewContainer">
+          <textarea id="settingsBody" class="statsBody settingsBody" readonly></textarea>
+        </div>
+      </div>
+    </div>
+
     <!-- Контейнер standalone-игры из вкладки "Игры" -->
     <div id="statsGameModal" class="gameModal hidden" aria-label="Game">
       <div id="statsGameFrameWrap" class="gameFrameWrap statsGameFrameWrap">
@@ -122,6 +136,7 @@
             <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
 
             <!-- НОВОЕ: статистика/настройки -->
+            <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация о программе"><span class="btn-icon">ℹ️</span></button>
             <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
 
             <!-- Restart -->
