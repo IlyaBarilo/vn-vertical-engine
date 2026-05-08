@@ -67,6 +67,8 @@
     #marksOverlay {
       position: absolute; inset: 0;
       pointer-events: none;
+      /* Стрелки рисуются по полной экранной геометрии; видим только фрагмент в кадре — без пересчёта длины из-за клиппинга. */
+      overflow: visible;
     }
 
     /* Включаем hit-test только у перетаскиваемых элементов; во время drag курсор grabbing. */
@@ -923,18 +925,29 @@
      * Меняйте поля здесь; цвет задаётся RGB, прозрачность отдельно (0..1).
      */
     var mark360ArrowStyle = {
-      okRgb: [255, 214, 120],
+      okRgb: [220, 220, 220],
       okOpacity: 0.5,
       badRgb: [255, 140, 120],
       badOpacity: 0.85,
       lineWidth: 40,
+      /** Форма концов линии: "butt" убирает скругление и выглядит чище при прозрачности. */
+      lineCap: "butt",
       /** Ширина и высота маркера-наконечника (треугольник в px при markerUnits=userSpaceOnUse). */
       headSize: 80,
+      /** Положение стыка линии и треугольника (0 = по основанию треугольника, без наложения). */
+      headRefXRatio: 0,
       /** Якорь на панораме (0..1): как доли UV у метки; например оба 0 — один полюс в формулах pano→сферы (надир в этой модели превью). */
       sphereAnchorU: 0,
       sphereAnchorV: 0,
-      startInset: 18,
-      endInset: 44,
+      /** Отступ начала линии от экранной проекции якоря на сфере (px по направлению к метке). */
+      startInset: 0,
+      /**
+       * Насколько короче заканчивать линию до центра метки (экран, px): «не доходить до» номера метки и треугольника.
+       * В коде при отсутствии поля учитывается устаревшее имя endInset.
+       */
+      markGapPx: 80,
+      /** Итераций бинарного поиска точки на хорде якорь→метка, когда якорь из-за камеры ещё не проецируется */
+      arrowChordBinarySteps: 22,
       minLength: 28,
       badDashArray: "16 12"
     };
@@ -2512,6 +2525,12 @@
     }
 
     /**
+     * Нижняя граница dot(направление_к_точке, взгляд_камеры) для принятия проекции в оверлей.
+     * Почти параллельный взгляду луч всё ещё рисуется; отсекается в основном полушарие «за спиной».
+     */
+    var OVERLAY_PROJECTION_DOT_MIN = 0.00001;
+
+    /**
      * Проецирует мировую точку на сфере в координаты внутри marksOverlay (родитель viewer-wrap).
      */
     function projectWorldToOverlayPx(wx, wy, wz) {
@@ -2525,7 +2544,7 @@
       var camPos = camera.getWorldPosition(new window.THREE.Vector3());
       var toPoint = tempProjectVec.clone().sub(camPos).normalize();
       camera.getWorldDirection(tempCameraDir);
-      if (toPoint.dot(tempCameraDir) < 0.02) return null;
+      if (toPoint.dot(tempCameraDir) < OVERLAY_PROJECTION_DOT_MIN) return null;
 
       tempProjectVec.set(wx, wy, wz);
       tempProjectVec.project(camera);
@@ -2535,6 +2554,47 @@
       var x = (tempProjectVec.x * 0.5 + 0.5) * canvasRect.width + (canvasRect.left - wrapRect.left);
       var y = (-tempProjectVec.y * 0.5 + 0.5) * canvasRect.height + (canvasRect.top - wrapRect.top);
       return { x: x, y: y };
+    }
+
+    /**
+     * Мировые координаты точки метки на сфере превью (те же источники, что getPointOverlayPos).
+     */
+    function getMarkPointPanoramaWorld(p) {
+      if (!p) return null;
+      if (p.wx != null && p.wy != null && p.wz != null && isFinite(p.wx) && isFinite(p.wy) && isFinite(p.wz)) {
+        return { wx: Number(p.wx), wy: Number(p.wy), wz: Number(p.wz) };
+      }
+      return worldPointOnSphereFromPanoramaUv(p.x, p.y);
+    }
+
+    /**
+     * Экранный старт стрелки: якорь на сфере или ближайшая точка по хорде к метке при выглянутом назад якоря (первая точка перед камерой — как у OVERLAY_PROJECTION_DOT_MIN в projectWorldToOverlayPx).
+     */
+    function arrowChordScreenStartOrNull(wxA, wyA, wzA, wxB, wyB, wzB, binarySteps) {
+      var projA = projectWorldToOverlayPx(wxA, wyA, wzA);
+      if (projA) return projA;
+
+      if (!projectWorldToOverlayPx(wxB, wyB, wzB)) return null;
+
+      var lo = 0;
+      var hi = 1;
+      var steps = Math.max(4, Math.min(28, Number(binarySteps) || 22));
+      for (var k = 0; k < steps; k++) {
+        var mid = (lo + hi) * 0.5;
+        var mx = wxA + mid * (wxB - wxA);
+        var my = wyA + mid * (wyB - wyA);
+        var mz = wzA + mid * (wzB - wzA);
+        if (projectWorldToOverlayPx(mx, my, mz)) {
+          hi = mid;
+        } else {
+          lo = mid;
+        }
+      }
+
+      var tx = wxA + hi * (wxB - wxA);
+      var ty = wyA + hi * (wyB - wyA);
+      var tz = wzA + hi * (wzB - wzA);
+      return projectWorldToOverlayPx(tx, ty, tz);
     }
 
     /**
@@ -2559,7 +2619,7 @@
       tempProjectVec.set(-x0, y0, z0);
 
       camera.getWorldDirection(tempCameraDir);
-      if (tempProjectVec.clone().normalize().dot(tempCameraDir) < 0.02) return null;
+      if (tempProjectVec.clone().normalize().dot(tempCameraDir) < OVERLAY_PROJECTION_DOT_MIN) return null;
 
       tempProjectVec.project(camera);
       return {
@@ -2989,19 +3049,6 @@
     }
 
     /**
-     * Проекция на оверлей якоря стрелок: один и тот же (u,v) на развёртке сферы в мир → экран при текущей камере.
-     * Если направление сзади камеры или нет контекста — возвращает null (стрелки тогда скрыты).
-     */
-    function getMarkArrowBaseOverlayPos(width, height, rect) {
-      var cfg = mark360ArrowStyle || {};
-      var u = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
-      var v = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
-      var wp = worldPointOnSphereFromPanoramaUv(u, v);
-      if (!wp) return null;
-      return projectWorldToOverlayPx(wp.wx, wp.wy, wp.wz);
-    }
-
-    /**
      * Стрелки от фиксированной точки на сфере (UV-якорь) к меткам с target «360».
      * Слой без pointer-events — внешний вид задаётся объектом mark360ArrowStyle.
      */
@@ -3016,11 +3063,20 @@
       var svg = document.createElementNS(svgNS, "svg");
       svg.setAttribute("class", "mark-transition-arrows");
       svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("overflow", "visible");
 
       var headSize = Math.max(4, Number(cfg.headSize) || 16);
       var lineWidth = Math.max(0.5, Number(cfg.lineWidth) || 6);
+      var lineCap = String(cfg.lineCap || "butt").toLowerCase();
       var startInset = Math.max(0, Number(cfg.startInset) || 0);
-      var endInset = Math.max(0, Number(cfg.endInset) || 0);
+      /** Зазор перед меткой на экране: приоритет markGapPx, иначе endInset для старых настроек. */
+      var markGapPxRaw =
+        cfg.markGapPx !== undefined && cfg.markGapPx !== null
+          ? cfg.markGapPx
+          : cfg.endInset !== undefined && cfg.endInset !== null
+            ? cfg.endInset
+            : 44;
+      var markGapPx = Math.max(0, Number(markGapPxRaw) || 0);
       var minLength = Math.max(0, Number(cfg.minLength) || 0);
       var okRgb = Array.isArray(cfg.okRgb) ? cfg.okRgb : [255, 214, 120];
       var badRgb = Array.isArray(cfg.badRgb) ? cfg.badRgb : [255, 140, 120];
@@ -3028,7 +3084,8 @@
       var badFill = mark360ArrowRgba(badRgb, cfg.badOpacity);
       var okStroke = mark360ArrowRgba(okRgb, cfg.okOpacity);
       var badStroke = mark360ArrowRgba(badRgb, cfg.badOpacity);
-      var refX = Math.min(headSize - 0.5, headSize * 0.88);
+      var refXRatio = clamp(Number(cfg.headRefXRatio != null ? cfg.headRefXRatio : 0), 0, 1);
+      var refX = headSize * refXRatio;
       var refY = headSize / 2;
       var triPath = "M0,0 L" + headSize + "," + refY + " L0," + headSize + " Z";
 
@@ -3053,11 +3110,17 @@
       addMarker("markArrowTipBad", badFill);
       svg.appendChild(defs);
 
-      var basePos = getMarkArrowBaseOverlayPos(width, height, rect);
-      if (!basePos) return;
+      var uA = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
+      var vA = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
+      var wpAnchor = worldPointOnSphereFromPanoramaUv(uA, vA);
+      if (!wpAnchor) return;
 
-      var bx = basePos.x;
-      var by = basePos.y;
+      var chordCfg = cfg.arrowChordBinarySteps;
+      var chordSteps =
+        chordCfg !== undefined && chordCfg !== null && chordCfg !== ""
+          ? clamp(Number(chordCfg), 4, 32)
+          : 22;
+      if (!isFinite(chordSteps)) chordSteps = 22;
       var lineCount = 0;
 
       points.forEach(function (p) {
@@ -3066,16 +3129,33 @@
         if (!pos) return;
         var mx = pos.x;
         var my = pos.y;
-        var dx = mx - bx;
-        var dy = my - by;
+
+        var wMark = getMarkPointPanoramaWorld(p);
+        if (!wMark) return;
+        var chordStart = arrowChordScreenStartOrNull(
+          wpAnchor.wx,
+          wpAnchor.wy,
+          wpAnchor.wz,
+          wMark.wx,
+          wMark.wy,
+          wMark.wz,
+          chordSteps
+        );
+        if (!chordStart) return;
+
+        // Полная геометрия в координатах оверлея без обрезки по кадру — длина и направление не «прыгают» у края экрана; виден только фрагмент в области превью.
+        var dx = mx - chordStart.x;
+        var dy = my - chordStart.y;
         var len = Math.sqrt(dx * dx + dy * dy);
         if (len < minLength) return;
         var ux = dx / len;
         var uy = dy / len;
-        var sx = bx + ux * startInset;
-        var sy = by + uy * startInset;
-        var ex = mx - ux * endInset;
-        var ey = my - uy * endInset;
+        var sx = chordStart.x + ux * startInset;
+        var sy = chordStart.y + uy * startInset;
+        var ex = mx - ux * markGapPx;
+        var ey = my - uy * markGapPx;
+        var drawnLen = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+        if (drawnLen < minLength) return;
 
         var hasPano = String(p.targetPanorama || "").trim() !== "";
         var ok = hasPano && !isMissingPoint360Target(p);
@@ -3087,7 +3167,8 @@
         line.setAttribute("y2", String(ey));
         line.setAttribute("stroke", ok ? okStroke : badStroke);
         line.setAttribute("stroke-width", String(lineWidth));
-        line.setAttribute("stroke-linecap", "round");
+        // Прямой торец без скругления: исключаем «мягкое» наложение линии на треугольник при прозрачности.
+        line.setAttribute("stroke-linecap", lineCap === "square" ? "square" : (lineCap === "round" ? "round" : "butt"));
         line.setAttribute("marker-end", ok ? "url(#markArrowTipOk)" : "url(#markArrowTipBad)");
         if (!ok && cfg.badDashArray) line.setAttribute("stroke-dasharray", String(cfg.badDashArray));
         svg.appendChild(line);
