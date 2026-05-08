@@ -114,6 +114,18 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(120, 232, 164, 0.45);
     }
 
+    /* Стрелки к меткам 360-перехода: от якорной точки на развёртке (UV сферы, та же модель что x/y меток) к точке метки; стиль — mark360ArrowStyle в скрипте. */
+    .mark-transition-arrows {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+      overflow: visible;
+    }
+
     .crosshair {
       position: absolute;
       left: 50%;
@@ -260,6 +272,27 @@
       color: #7aa6c8;
       cursor: grabbing;
       box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+      z-index: 13;
+    }
+
+    /* Фокус перехода с панорамы, с которой только что перешли: ×2, чтобы отличать при обходе. */
+    .focus-entry-reticle.is-nav-source-highlight {
+      transform: translate(-50%, -50%) scale(2);
+      z-index: 11;
+    }
+    /*
+     * Подпись ×2: origin слева по центру, иначе scale раздувает блок к центру прицела и накладывается на него.
+     * Само смещение translateX задаётся inline (с запасом под диаметр прицела 24×2).
+     */
+    .focus-entry-caption.is-nav-source-highlight {
+      z-index: 12;
+      transform-origin: left center;
+    }
+    .focus-entry-reticle.is-nav-source-highlight.is-active-drag {
+      transform: translate(-50%, -50%) scale(2);
+      z-index: 12;
+    }
+    .focus-entry-caption.is-nav-source-highlight.is-active-drag {
       z-index: 13;
     }
 
@@ -492,7 +525,14 @@
     }
     .batch-open-btn {
       width: 100%;
-      margin-bottom: 10px;
+    }
+    /* Заголовок и кнопка входа в модалку массовых операций — только в левой колонке сайдбара. */
+    .bulk-aside-top {
+      margin-bottom: 14px;
+    }
+    .bulk-aside-top h2 {
+      margin-top: 0;
+      margin-bottom: 8px;
     }
     .mono {
       font-family: Consolas, "Courier New", ui-monospace, monospace;
@@ -503,9 +543,12 @@
   <div class="app">
     <aside class="panel">
       <h1>Редактор 360-меток</h1>
-      <button id="openBulkModalBtn" type="button" class="batch-open-btn">Массовые операции и отчёт…</button>
       <div class="panel-grid">
       <div class="panel-col">
+      <div class="bulk-aside-top">
+        <h2>Массовые операции и отчёт целостности</h2>
+        <button id="openBulkModalBtn" type="button" class="batch-open-btn">Массовые операции и отчёт…</button>
+      </div>
 
       <div class="row">
         <label for="story360Input">story360.js</label>
@@ -866,6 +909,34 @@
       pointerId: null,
       captureEl: null,
       moved: false
+    };
+
+    /**
+     * После перехода на другую панораму в том же space — ключ entries (id только что покинутой панорамы);
+     * его прицел на превью рисуется увеличенным, чтобы быстро настраивать цепочку фокусов.
+     */
+    var editorOverlayHighlightSourceEntryKey = null;
+
+    /**
+     * Внешний вид SVG-стрелок к меткам 360-перехода.
+     * Старт из одной точки на сфере развёртки (sphereAnchorU/V), те же координаты что focusX/focusY в UV-смысле / x,y метки; при повороте камеры её проекция на экране двигается или пропадает.
+     * Меняйте поля здесь; цвет задаётся RGB, прозрачность отдельно (0..1).
+     */
+    var mark360ArrowStyle = {
+      okRgb: [255, 214, 120],
+      okOpacity: 0.5,
+      badRgb: [255, 140, 120],
+      badOpacity: 0.85,
+      lineWidth: 40,
+      /** Ширина и высота маркера-наконечника (треугольник в px при markerUnits=userSpaceOnUse). */
+      headSize: 80,
+      /** Якорь на панораме (0..1): как доли UV у метки; например оба 0 — один полюс в формулах pano→сферы (надир в этой модели превью). */
+      sphereAnchorU: 0,
+      sphereAnchorV: 0,
+      startInset: 18,
+      endInset: 44,
+      minLength: 28,
+      badDashArray: "16 12"
     };
 
     /** Как wx/wy/wz у меток в сессии редактора: мировые координаты с луча для оверлея фокусов после перетаскивания. */
@@ -1254,7 +1325,7 @@
 
     /**
      * Превращает поля target метки в компактный объект для story360.
-     * Поле entry не пишем, если вход «авто»: движок подставит ключ из панорамы «откуда пришли» и смержит с entries.default.
+     * Для 360 entry в target не задаём: движок всегда берёт ключ входа из панорамы «откуда пришли» и мержит с entries.default.
      */
     function buildPointTarget(point) {
       var targetType = String(point.targetType || "none").trim().toLowerCase();
@@ -1265,21 +1336,33 @@
       if (targetType === "360") {
         var panoramaId = String(point.targetPanorama || "").trim();
         if (!panoramaId) return null;
-        var entryTrim = String(point.targetEntry || "").trim();
-        var out = { type: "360", panorama: panoramaId };
-        if (entryTrim !== "") out.entry = entryTrim;
-        return out;
+        return { type: "360", panorama: panoramaId };
       }
       return null;
     }
 
     /**
-     * Читает focusX/focusY из объекта entry (плоские поля или вложенный focus), как в движке.
+     * Читает focusX/focusY из объекта entry: focus* / legacy x,y / вложенный focus — как у entries.default при загрузке панорамы.
+     * Без учёта x,y именованные входы «откуда пришли» отбрасывались бы при collectCurrentPanorama → cloneNonDefaultEntriesFromPanorama.
      */
     function readEntryFocusPair(entry) {
       if (!entry || typeof entry !== "object") return null;
-      var fx = entry.focusX !== undefined ? entry.focusX : (entry.focus && entry.focus.x !== undefined ? entry.focus.x : null);
-      var fy = entry.focusY !== undefined ? entry.focusY : (entry.focus && entry.focus.y !== undefined ? entry.focus.y : null);
+      var fx =
+        entry.focusX !== undefined
+          ? entry.focusX
+          : entry.x !== undefined
+            ? entry.x
+            : entry.focus && entry.focus.x !== undefined
+              ? entry.focus.x
+              : null;
+      var fy =
+        entry.focusY !== undefined
+          ? entry.focusY
+          : entry.y !== undefined
+            ? entry.y
+            : entry.focus && entry.focus.y !== undefined
+              ? entry.focus.y
+              : null;
       var x = Number(fx);
       var y = Number(fy);
       if (!isFinite(x) || !isFinite(y)) return null;
@@ -1295,7 +1378,7 @@
     }
 
     /**
-     * Копирует сохранённые точки входа кроме default — чтобы сохранение панорамы не стирало входы «из …», пока их правят только в JSON.
+     * Копирует сохранённые точки входа кроме default (фокусы прихода с других панорам) в нормализованный вид focusX/focusY.
      */
     function cloneNonDefaultEntriesFromPanorama(pano) {
       var out = {};
@@ -1331,8 +1414,22 @@
       var ref = currentEditingPanoramaRef && currentEditingPanoramaRef.spaceId && currentEditingPanoramaRef.panoramaId
         ? currentEditingPanoramaRef
         : ids;
-      var prevPano = story360Data.spaces && story360Data.spaces[ref.spaceId] && story360Data.spaces[ref.spaceId].panoramas && story360Data.spaces[ref.spaceId].panoramas[ref.panoramaId];
+      var prevPano =
+        story360Data.spaces && story360Data.spaces[ref.spaceId] && story360Data.spaces[ref.spaceId].panoramas
+          ? story360Data.spaces[ref.spaceId].panoramas[ref.panoramaId]
+          : null;
+      // writeFocusEntryLive пишет в узел по полям формы (ids); ref при переименовании id ещё старый — сливаем, чтобы не потерять фокусы «откуда пришли».
+      var prevPanoByForm =
+        story360Data.spaces && story360Data.spaces[ids.spaceId] && story360Data.spaces[ids.spaceId].panoramas
+          ? story360Data.spaces[ids.spaceId].panoramas[ids.panoramaId]
+          : null;
       var entries = cloneNonDefaultEntriesFromPanorama(prevPano);
+      if (prevPanoByForm && prevPanoByForm !== prevPano) {
+        var fromForm = cloneNonDefaultEntriesFromPanorama(prevPanoByForm);
+        Object.keys(fromForm).forEach(function (k) {
+          entries[k] = fromForm[k];
+        });
+      }
       var newDefault = {
         focusX: Number(fixedFocus.x.toFixed(4)),
         focusY: Number(fixedFocus.y.toFixed(4))
@@ -1359,11 +1456,12 @@
 
       entries.default = newDefault;
 
+      var panoForFlags = prevPano || prevPanoByForm;
       return {
         bgId: generatedBgId,
         file: assetPath,
         lines: true,
-        entryFocusAsPanoramaUv: !!(prevPano && prevPano.entryFocusAsPanoramaUv === true),
+        entryFocusAsPanoramaUv: !!(panoForFlags && panoForFlags.entryFocusAsPanoramaUv === true),
         entries: entries,
         marks: marks
       };
@@ -1493,11 +1591,20 @@
      * Загружает панораму из story360Data в форму редактора.
      */
     function loadPanoramaFromData(spaceId, panoramaId, entryId) {
+      var prevSnap = getCurrentStory360Ids();
       var space = story360Data.spaces && story360Data.spaces[spaceId];
       var panorama = space && space.panoramas && space.panoramas[panoramaId];
       if (!panorama) {
         setStatus("Панорама не найдена: " + spaceId + "." + panoramaId, true);
         return;
+      }
+
+      editorOverlayHighlightSourceEntryKey = null;
+      if (
+        String(prevSnap.spaceId) === String(normalizeId(spaceId, "main360")) &&
+        String(prevSnap.panoramaId) !== String(normalizeId(panoramaId, "start"))
+      ) {
+        editorOverlayHighlightSourceEntryKey = String(prevSnap.panoramaId);
       }
 
       spaceIdInput.value = spaceId;
@@ -1562,13 +1669,6 @@
           type: String((m && (m.type || m.kind)) || "walk"),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
-          targetEntry: targetType === "360"
-            ? (function () {
-              var raw = target && (target.entry !== undefined ? target.entry : target.entryId);
-              if (raw === undefined || raw === null) return "";
-              return String(raw).trim();
-            })()
-            : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
         };
       }).filter(function (p) {
@@ -2071,7 +2171,6 @@
         type: (type === "text" ? "text" : "walk"),
         targetType: "none",
         targetPanorama: "",
-        targetEntry: "",
         targetScene: ""
       };
       if (worldPoint && window.THREE) {
@@ -2129,10 +2228,8 @@
       }
       saveCurrentPanoramaToData();
       var ids = getCurrentStory360Ids();
-      var reqEntry = String(point.targetEntry || "").trim();
-      // Как resolveGoto360EntryKey в движке: пустой или явный default у цели метки не отменяют ключ «откуда пришли».
-      var previewArrivalKey =
-        reqEntry === "" || reqEntry.toLowerCase() === "default" ? ids.panoramaId || "default" : reqEntry;
+      // Как в движке при авто-entry: ключ прихода = id текущей панорамы.
+      var previewArrivalKey = ids.panoramaId || "default";
       loadPanoramaFromData(ids.spaceId, point.targetPanorama, previewArrivalKey);
     }
 
@@ -2288,17 +2385,6 @@
             updateExport();
           });
           targetWrap.appendChild(targetPanorama);
-
-          var targetEntry = document.createElement("input");
-          targetEntry.type = "text";
-          targetEntry.placeholder = "entry (пусто = авто)";
-          targetEntry.title = "Пусто: точка входа с id текущей панорамы (как в игре). Явный default — ввести default.";
-          targetEntry.value = p.targetEntry !== undefined && p.targetEntry !== null ? String(p.targetEntry) : "";
-          targetEntry.addEventListener("input", function () {
-            points[idx].targetEntry = targetEntry.value;
-            updateExport();
-          });
-          targetWrap.appendChild(targetEntry);
         }
 
         if ((p.targetType || "none") === "scene") {
@@ -2838,7 +2924,13 @@
         cap.className = "focus-entry-caption";
         cap.style.left = ox + "px";
         cap.style.top = captionY + "px";
-        cap.style.transform = "translate(14px, -50%)";
+        var isNavSourceHighlight =
+          !!editorOverlayHighlightSourceEntryKey &&
+          String(editorOverlayHighlightSourceEntryKey) === String(it.entryKey);
+        // Увеличенный прицел ~48px в диаметре: подпись якорим дальше (44px), иначе при scale(2) лезет на круг.
+        cap.style.transform = isNavSourceHighlight
+          ? "translate(44px, -50%) scale(2)"
+          : "translate(14px, -50%)";
         cap.textContent = formatFocusEntryCaptionText(it.entryKey, it.pair);
         cap.setAttribute("data-focus-entry", String(it.entryKey));
         if (idxNear > 0) {
@@ -2853,8 +2945,156 @@
           reticle.classList.add("is-active-drag");
           cap.classList.add("is-active-drag");
         }
+        // Увеличенный прицел для слота «приход с только что покинутой панорамы» (тот же ключ, что в entries).
+        if (isNavSourceHighlight) {
+          reticle.classList.add("is-nav-source-highlight");
+          cap.classList.add("is-nav-source-highlight");
+          reticle.title = (reticle.title ? reticle.title + " " : "") + "Переход с этой панорамы — прицел ×2.";
+          cap.title = reticle.title;
+        }
         marksOverlay.appendChild(cap);
       });
+    }
+
+    /**
+     * Экранные координаты метки в системе marksOverlay (как у .mark-dot): world или UV с поправкой viewerWrap.
+     */
+    function getPointOverlayPos(p, width, height, rect) {
+      var pos = null;
+      if (p.wx != null && p.wy != null && p.wz != null) {
+        pos = projectWorldToOverlayPx(p.wx, p.wy, p.wz);
+      }
+      if (!pos) {
+        pos = projectUvToScreen(p.x, p.y, width, height);
+        if (viewerWrap && pos) {
+          var wrapRect = viewerWrap.getBoundingClientRect();
+          pos = {
+            x: pos.x + (rect.left - wrapRect.left),
+            y: pos.y + (rect.top - wrapRect.top)
+          };
+        }
+      }
+      return pos;
+    }
+
+    /**
+     * Собирает rgba(...) из RGB-массива стиля стрелок и непрозрачности.
+     */
+    function mark360ArrowRgba(rgb, opacity) {
+      var r = rgb && rgb[0] != null ? Number(rgb[0]) : 255;
+      var g = rgb && rgb[1] != null ? Number(rgb[1]) : 255;
+      var b = rgb && rgb[2] != null ? Number(rgb[2]) : 255;
+      var a = opacity == null || !isFinite(Number(opacity)) ? 1 : clamp(Number(opacity), 0, 1);
+      return "rgba(" + r + "," + g + "," + b + "," + a + ")";
+    }
+
+    /**
+     * Проекция на оверлей якоря стрелок: один и тот же (u,v) на развёртке сферы в мир → экран при текущей камере.
+     * Если направление сзади камеры или нет контекста — возвращает null (стрелки тогда скрыты).
+     */
+    function getMarkArrowBaseOverlayPos(width, height, rect) {
+      var cfg = mark360ArrowStyle || {};
+      var u = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
+      var v = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
+      var wp = worldPointOnSphereFromPanoramaUv(u, v);
+      if (!wp) return null;
+      return projectWorldToOverlayPx(wp.wx, wp.wy, wp.wz);
+    }
+
+    /**
+     * Стрелки от фиксированной точки на сфере (UV-якорь) к меткам с target «360».
+     * Слой без pointer-events — внешний вид задаётся объектом mark360ArrowStyle.
+     */
+    function appendMark360TransitionArrows(width, height, rect) {
+      var svgNS = "http://www.w3.org/2000/svg";
+      var cfg = mark360ArrowStyle || {};
+      var has360 = points.some(function (p) {
+        return String(p.targetType || "").trim().toLowerCase() === "360";
+      });
+      if (!has360) return;
+
+      var svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("class", "mark-transition-arrows");
+      svg.setAttribute("aria-hidden", "true");
+
+      var headSize = Math.max(4, Number(cfg.headSize) || 16);
+      var lineWidth = Math.max(0.5, Number(cfg.lineWidth) || 6);
+      var startInset = Math.max(0, Number(cfg.startInset) || 0);
+      var endInset = Math.max(0, Number(cfg.endInset) || 0);
+      var minLength = Math.max(0, Number(cfg.minLength) || 0);
+      var okRgb = Array.isArray(cfg.okRgb) ? cfg.okRgb : [255, 214, 120];
+      var badRgb = Array.isArray(cfg.badRgb) ? cfg.badRgb : [255, 140, 120];
+      var okFill = mark360ArrowRgba(okRgb, cfg.okOpacity);
+      var badFill = mark360ArrowRgba(badRgb, cfg.badOpacity);
+      var okStroke = mark360ArrowRgba(okRgb, cfg.okOpacity);
+      var badStroke = mark360ArrowRgba(badRgb, cfg.badOpacity);
+      var refX = Math.min(headSize - 0.5, headSize * 0.88);
+      var refY = headSize / 2;
+      var triPath = "M0,0 L" + headSize + "," + refY + " L0," + headSize + " Z";
+
+      var defs = document.createElementNS(svgNS, "defs");
+
+      function addMarker(id, fill) {
+        var m = document.createElementNS(svgNS, "marker");
+        m.setAttribute("id", id);
+        m.setAttribute("markerUnits", "userSpaceOnUse");
+        m.setAttribute("markerWidth", String(headSize));
+        m.setAttribute("markerHeight", String(headSize));
+        m.setAttribute("refX", String(refX));
+        m.setAttribute("refY", String(refY));
+        m.setAttribute("orient", "auto");
+        var path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", triPath);
+        path.setAttribute("fill", fill);
+        m.appendChild(path);
+        defs.appendChild(m);
+      }
+      addMarker("markArrowTipOk", okFill);
+      addMarker("markArrowTipBad", badFill);
+      svg.appendChild(defs);
+
+      var basePos = getMarkArrowBaseOverlayPos(width, height, rect);
+      if (!basePos) return;
+
+      var bx = basePos.x;
+      var by = basePos.y;
+      var lineCount = 0;
+
+      points.forEach(function (p) {
+        if (String(p.targetType || "").trim().toLowerCase() !== "360") return;
+        var pos = getPointOverlayPos(p, width, height, rect);
+        if (!pos) return;
+        var mx = pos.x;
+        var my = pos.y;
+        var dx = mx - bx;
+        var dy = my - by;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len < minLength) return;
+        var ux = dx / len;
+        var uy = dy / len;
+        var sx = bx + ux * startInset;
+        var sy = by + uy * startInset;
+        var ex = mx - ux * endInset;
+        var ey = my - uy * endInset;
+
+        var hasPano = String(p.targetPanorama || "").trim() !== "";
+        var ok = hasPano && !isMissingPoint360Target(p);
+
+        var line = document.createElementNS(svgNS, "line");
+        line.setAttribute("x1", String(sx));
+        line.setAttribute("y1", String(sy));
+        line.setAttribute("x2", String(ex));
+        line.setAttribute("y2", String(ey));
+        line.setAttribute("stroke", ok ? okStroke : badStroke);
+        line.setAttribute("stroke-width", String(lineWidth));
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("marker-end", ok ? "url(#markArrowTipOk)" : "url(#markArrowTipBad)");
+        if (!ok && cfg.badDashArray) line.setAttribute("stroke-dasharray", String(cfg.badDashArray));
+        svg.appendChild(line);
+        lineCount += 1;
+      });
+
+      if (lineCount > 0) marksOverlay.appendChild(svg);
     }
 
     /**
@@ -2871,25 +3111,13 @@
         var rect = viewerCanvas.getBoundingClientRect();
         var width = rect.width;
         var height = rect.height;
+        appendMark360TransitionArrows(width, height, rect);
         appendEntryFocusOverlays(width, height, rect);
 
         if (!points.length) return;
 
         points.forEach(function (p, index) {
-          var pos = null;
-          if (p.wx != null && p.wy != null && p.wz != null) {
-            pos = projectWorldToOverlayPx(p.wx, p.wy, p.wz);
-          }
-          if (!pos) {
-            pos = projectUvToScreen(p.x, p.y, width, height);
-            if (viewerWrap && pos) {
-              var wrapRect = viewerWrap.getBoundingClientRect();
-              pos = {
-                x: pos.x + (rect.left - wrapRect.left),
-                y: pos.y + (rect.top - wrapRect.top)
-              };
-            }
-          }
+          var pos = getPointOverlayPos(p, width, height, rect);
           if (!pos) return;
 
           var el = document.createElement("div");
