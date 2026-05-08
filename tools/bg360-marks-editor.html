@@ -242,6 +242,27 @@
       -webkit-user-select: none;
     }
 
+    /* Перетаскиваемая точка входа: визуально темнее прицел и подсказка, чтобы отличать от остальных. */
+    .focus-entry-reticle.is-active-drag {
+      border-color: rgba(38, 72, 98, 0.98);
+      background: rgba(6, 14, 24, 0.88);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 2px 10px rgba(0, 0, 0, 0.55);
+      cursor: grabbing;
+      z-index: 12;
+    }
+    .focus-entry-reticle.is-active-drag::before,
+    .focus-entry-reticle.is-active-drag::after {
+      background: rgba(48, 96, 132, 0.95);
+    }
+    .focus-entry-caption.is-active-drag {
+      border-color: rgba(38, 72, 98, 0.92);
+      background: rgba(4, 10, 20, 0.97);
+      color: #7aa6c8;
+      cursor: grabbing;
+      box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+      z-index: 13;
+    }
+
     h1, h2 {
       margin: 0 0 10px;
       font-size: 16px;
@@ -351,12 +372,138 @@
       .panel { max-height: 48vh; }
       .viewer-wrap { min-height: 52vh; }
     }
+
+    /* Модальное окно массовых операций и отчёта целостности. */
+    .batch-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+    .batch-modal-overlay.is-open {
+      display: flex;
+    }
+    .batch-modal {
+      width: min(920px, 100%);
+      max-height: min(92vh, 900px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+    }
+    .batch-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .batch-modal-header h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .batch-modal-body {
+      padding: 12px 14px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+    .batch-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 14px;
+    }
+    .batch-chip {
+      font-size: 11px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+    }
+    .batch-chip strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .batch-toolbar {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .batch-toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+    }
+    .batch-toolbar-row label {
+      flex: 1;
+      min-width: 140px;
+    }
+    .batch-toolbar-row button {
+      width: auto;
+      flex: 0 0 auto;
+      min-width: 120px;
+    }
+    .batch-section-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 16px 0 8px;
+      color: var(--text);
+    }
+    .batch-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .batch-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .batch-table th,
+    .batch-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .batch-table th {
+      background: var(--panel-2);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .batch-table tr[data-hidden-filter="1"] {
+      display: none;
+    }
+    .batch-open-btn {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    .mono {
+      font-family: Consolas, "Courier New", ui-monospace, monospace;
+    }
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <h1>Редактор 360-меток</h1>
+      <button id="openBulkModalBtn" type="button" class="batch-open-btn">Массовые операции и отчёт…</button>
       <div class="panel-grid">
       <div class="panel-col">
 
@@ -481,6 +628,148 @@
     </section>
   </div>
 
+  <div id="bulkModalOverlay" class="batch-modal-overlay" aria-hidden="true">
+    <div class="batch-modal" role="dialog" aria-labelledby="bulkModalTitle" aria-modal="true">
+      <div class="batch-modal-header">
+        <h2 id="bulkModalTitle">Массовые операции и отчёт целостности</h2>
+        <button id="bulkModalCloseBtn" type="button">Закрыть</button>
+      </div>
+      <div class="batch-modal-body">
+        <div class="batch-toolbar">
+          <div class="batch-toolbar-row">
+            <label>Область
+              <select id="bulkScopeSelect">
+                <option value="current-pano">Текущая панорама</option>
+                <option value="current-space" selected>Текущее пространство</option>
+                <option value="all-spaces">Все пространства</option>
+              </select>
+            </label>
+            <button id="bulkRunReportBtn" type="button" class="good">Сформировать отчёт</button>
+          </div>
+          <div class="batch-chips" id="bulkReportChips" aria-live="polite"></div>
+          <div class="batch-toolbar-row">
+            <label>Поиск в таблицах
+              <input id="bulkFilterInput" type="text" placeholder="space, панорама, ключ…" />
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:18px;">
+              <input id="bulkOnlyProblemsChk" type="checkbox" />
+              Только проблемы (скрыть неиспользуемые ключи)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:18px;">
+              <input id="bulkShowUnusedChk" type="checkbox" />
+              Показывать неиспользуемые ключи entries
+            </label>
+          </div>
+        </div>
+
+        <div class="batch-section-title">Устаревшие ключи entries</div>
+        <p class="hint" style="margin-top:0;">Запись <span class="mono">entries[ключ]</span>, где панорама-источник с таким id больше не существует в том же пространстве.</p>
+        <div class="batch-toolbar-row" style="margin-bottom:8px;">
+          <button id="bulkRemoveOutdatedSelectedBtn" type="button" class="danger">Удалить выбранные ключи</button>
+          <button id="bulkRemoveOutdatedAllBtn" type="button" class="danger">Удалить все устаревшие в области</button>
+        </div>
+        <div class="batch-table-wrap">
+          <table class="batch-table" id="bulkOutdatedTable">
+            <thead>
+              <tr>
+                <th><input id="bulkOutdatedSelectAll" type="checkbox" title="Выбрать все" /></th>
+                <th>Пространство</th>
+                <th>Панорама</th>
+                <th>Ключ</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody id="bulkOutdatedTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="batch-section-title">Метки с ошибками цели (360)</div>
+        <div class="batch-table-wrap">
+          <table class="batch-table" id="bulkMarksTable">
+            <thead>
+              <tr>
+                <th>Пространство</th>
+                <th>Панорама</th>
+                <th>Метка</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody id="bulkMarksTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="batch-section-title" id="bulkUnusedTitle">Неиспользуемые ключи entries</div>
+        <p class="hint" id="bulkUnusedHint">Ключ есть в данных, но ни одна метка в пространстве не приводит к чтению этого слота на данной панораме (эвристика как у движка для auto/default entry).</p>
+        <div class="batch-table-wrap" id="bulkUnusedWrap">
+          <table class="batch-table" id="bulkUnusedTable">
+            <thead>
+              <tr>
+                <th>Пространство</th>
+                <th>Панорама</th>
+                <th>Ключ</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody id="bulkUnusedTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="batch-section-title">Выравнивание focusY</div>
+        <div class="batch-toolbar">
+          <div class="batch-toolbar-row">
+            <label style="display:flex;align-items:center;gap:6px;margin-top:18px;">
+              <input id="bulkTouchDefaultChk" type="checkbox" checked />
+              Трогать <span class="mono">default</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:18px;">
+              <input id="bulkTouchNamedChk" type="checkbox" checked />
+              Трогать именованные записи
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:18px;">
+              <input id="bulkOnlyIfHasFocusYChk" type="checkbox" />
+              Только если focusY уже задан
+            </label>
+          </div>
+          <div class="batch-toolbar-row">
+            <label>Пресет focusY
+              <select id="bulkFocusPresetSelect">
+                <option value="0.5" selected>Центр 0.5</option>
+                <option value="0.35">Верх 0.35</option>
+                <option value="0.65">Низ 0.65</option>
+                <option value="custom">Своё значение…</option>
+              </select>
+            </label>
+            <label>Своё значение (0..1)
+              <input id="bulkFocusCustomInput" type="number" min="0" max="1" step="0.0001" value="0.5" disabled />
+            </label>
+            <label>Порог |ΔfocusY| ≥
+              <input id="bulkFocusThresholdInput" type="number" min="0" max="1" step="0.001" value="0.02" />
+            </label>
+          </div>
+          <div class="batch-toolbar-row">
+            <button id="bulkPreviewFocusBtn" type="button">Показать изменения</button>
+            <button id="bulkApplyFocusBtn" type="button" class="good" disabled>Применить выравнивание</button>
+            <button id="bulkUndoBtn" type="button" disabled>Отменить последнюю массовую правку</button>
+          </div>
+        </div>
+        <div class="batch-table-wrap">
+          <table class="batch-table" id="bulkPreviewTable">
+            <thead>
+              <tr>
+                <th>Пространство</th>
+                <th>Панорама</th>
+                <th>Ключ</th>
+                <th>Было focusY</th>
+                <th>Станет</th>
+              </tr>
+            </thead>
+            <tbody id="bulkPreviewTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="../lib/three.min.js"></script>
   <script>
     "use strict";
@@ -513,6 +802,39 @@
     var placeMarkBtn = document.getElementById("placeMarkBtn");
     var saveStory360LocalBtn = document.getElementById("saveStory360LocalBtn");
     var downloadStory360JsBtn = document.getElementById("downloadStory360JsBtn");
+    var openBulkModalBtn = document.getElementById("openBulkModalBtn");
+    var bulkModalOverlay = document.getElementById("bulkModalOverlay");
+    var bulkModalCloseBtn = document.getElementById("bulkModalCloseBtn");
+    var bulkScopeSelect = document.getElementById("bulkScopeSelect");
+    var bulkRunReportBtn = document.getElementById("bulkRunReportBtn");
+    var bulkReportChips = document.getElementById("bulkReportChips");
+    var bulkFilterInput = document.getElementById("bulkFilterInput");
+    var bulkOnlyProblemsChk = document.getElementById("bulkOnlyProblemsChk");
+    var bulkShowUnusedChk = document.getElementById("bulkShowUnusedChk");
+    var bulkOutdatedTbody = document.getElementById("bulkOutdatedTbody");
+    var bulkOutdatedSelectAll = document.getElementById("bulkOutdatedSelectAll");
+    var bulkRemoveOutdatedSelectedBtn = document.getElementById("bulkRemoveOutdatedSelectedBtn");
+    var bulkRemoveOutdatedAllBtn = document.getElementById("bulkRemoveOutdatedAllBtn");
+    var bulkMarksTbody = document.getElementById("bulkMarksTbody");
+    var bulkUnusedTbody = document.getElementById("bulkUnusedTbody");
+    var bulkUnusedWrap = document.getElementById("bulkUnusedWrap");
+    var bulkUnusedTitle = document.getElementById("bulkUnusedTitle");
+    var bulkUnusedHint = document.getElementById("bulkUnusedHint");
+    var bulkTouchDefaultChk = document.getElementById("bulkTouchDefaultChk");
+    var bulkTouchNamedChk = document.getElementById("bulkTouchNamedChk");
+    var bulkOnlyIfHasFocusYChk = document.getElementById("bulkOnlyIfHasFocusYChk");
+    var bulkFocusPresetSelect = document.getElementById("bulkFocusPresetSelect");
+    var bulkFocusCustomInput = document.getElementById("bulkFocusCustomInput");
+    var bulkFocusThresholdInput = document.getElementById("bulkFocusThresholdInput");
+    var bulkPreviewFocusBtn = document.getElementById("bulkPreviewFocusBtn");
+    var bulkApplyFocusBtn = document.getElementById("bulkApplyFocusBtn");
+    var bulkUndoBtn = document.getElementById("bulkUndoBtn");
+    var bulkPreviewTbody = document.getElementById("bulkPreviewTbody");
+
+    /** Снимок story360 перед разрушающей массовой операцией (один шаг отката). */
+    var lastBatchUndoSnapshot = null;
+    /** Последний предпросмотр выравнивания focusY для кнопки «Применить». */
+    var lastBulkFocusPreviewChanges = null;
 
     var renderer = null;
     var scene = null;
@@ -2484,6 +2806,15 @@
 
       var captionStepY = 22.5;
 
+      /**
+       * Текст подсказки справа от прицела точки входа: имя ключа и актуальный focusY (при перетаскивании обновляется вместе с данными).
+       */
+      function formatFocusEntryCaptionText(entryKey, pair) {
+        var fy = pair && isFinite(pair.focusY) ? Number(pair.focusY).toFixed(4) : "—";
+        var base = entryKey === "default" ? "Сценарий (default)" : ("С «" + entryKey + "»");
+        return base + " · focusY=" + fy;
+      }
+
       items.forEach(function (it) {
         var pos = it.pos;
         var ox = pos.x;
@@ -2508,10 +2839,19 @@
         cap.style.left = ox + "px";
         cap.style.top = captionY + "px";
         cap.style.transform = "translate(14px, -50%)";
-        cap.textContent = it.entryKey === "default" ? "Сценарий (default)" : ("С «" + it.entryKey + "»");
+        cap.textContent = formatFocusEntryCaptionText(it.entryKey, it.pair);
         cap.setAttribute("data-focus-entry", String(it.entryKey));
         if (idxNear > 0) {
           cap.title = reticle.title;
+        }
+        // Подсветка перетаскиваемой точки входа: темнее прицел и подпись, пока активен drag фокуса.
+        if (
+          overlayDragState.active &&
+          overlayDragState.kind === "focus" &&
+          String(overlayDragState.focusEntryKey || "") === String(it.entryKey)
+        ) {
+          reticle.classList.add("is-active-drag");
+          cap.classList.add("is-active-drag");
         }
         marksOverlay.appendChild(cap);
       });
@@ -2857,6 +3197,7 @@
         } catch (err) {}
         e.preventDefault();
         e.stopPropagation();
+        renderOverlayMarks();
       }
     }
 
@@ -3092,6 +3433,7 @@
       });
 
       bindMarksOverlayDragHandlers();
+      bindBulkModalEvents();
     }
 
     /**
@@ -3106,6 +3448,619 @@
       var tip =
         "[Режим file://] Чтобы не было лишних предупреждений в консоли, откройте редактор через локальный сервер из корня репозитория, например: npx serve . — затем в браузере tools/bg360-marks-editor.html";
       statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
+    }
+
+    /**
+     * Глубокая копия объекта story360 для отката (JSON без функций и циклов).
+     */
+    function deepCloneStory360Data(data) {
+      try {
+        return JSON.parse(JSON.stringify(data));
+      } catch (e) {
+        return normalizeStory360Data(data);
+      }
+    }
+
+    /**
+     * Обходит панорамы в выбранной области массовых операций.
+     */
+    function forEachPanoramaInBulkScope(scope, callback) {
+      var cur = getCurrentStory360Ids();
+      var spaces = story360Data.spaces || {};
+      Object.keys(spaces).forEach(function (sid) {
+        if (scope === "current-pano" || scope === "current-space") {
+          if (sid !== cur.spaceId) return;
+        }
+        var panos = spaces[sid].panoramas || {};
+        Object.keys(panos).forEach(function (pid) {
+          if (scope === "current-pano") {
+            if (sid !== cur.spaceId || pid !== cur.panoramaId) return;
+          }
+          callback(sid, pid, panos[pid]);
+        });
+      });
+    }
+
+    /**
+     * Возвращает множество id панорам в пространстве (для проверки ключей entries).
+     */
+    function getPanoramaIdSetForSpace(spaceId) {
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      var p = space && space.panoramas ? space.panoramas : {};
+      var out = {};
+      Object.keys(p).forEach(function (k) {
+        out[k] = true;
+      });
+      return out;
+    }
+
+    /**
+     * Проверяет, существует ли целевая панорама метки 360 в данных.
+     */
+    function bulkMark360TargetExists(spaceId, mark) {
+      var t = mark && mark.target;
+      if (!t || typeof t !== "object") return true;
+      if (String(t.type || "360").toLowerCase() === "scene" || String(t.type || "").toLowerCase() === "story") {
+        return true;
+      }
+      var tPan = String(t.panorama !== undefined ? t.panorama : t.panoramaId || "").trim();
+      var tSpace = String(t.space !== undefined ? t.space : t.spaceId || spaceId || "").trim();
+      if (!tPan) return false;
+      var destSpace = story360Data.spaces && story360Data.spaces[tSpace];
+      var panos = destSpace && destSpace.panoramas ? destSpace.panoramas : null;
+      return !!(panos && panos[tPan]);
+    }
+
+    /**
+     * Собирает строки отчёта: устаревшие ключи entries (панорама-источник удалена из пространства).
+     */
+    function collectBulkOutdatedEntryRows(scope) {
+      var rows = [];
+      forEachPanoramaInBulkScope(scope, function (sid, pid, pano) {
+        if (!pano.entries || typeof pano.entries !== "object") return;
+        var idsSet = getPanoramaIdSetForSpace(sid);
+        Object.keys(pano.entries).forEach(function (key) {
+          if (key === "default") return;
+          if (!idsSet[key]) {
+            rows.push({
+              spaceId: sid,
+              panoramaId: pid,
+              entryKey: key,
+              reason: "Панорама-источник «" + key + "» отсутствует в пространстве."
+            });
+          }
+        });
+      });
+      return rows;
+    }
+
+    /**
+     * Определяет, используется ли entries[entryKey] на панораме назначения при переходах метками (эвристика как у движка).
+     */
+    function isBulkEntryKeyUsedByMarks(spaceId, destPanoramaId, entryKey) {
+      if (entryKey === "default") return true;
+      var used = false;
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      if (!space || !space.panoramas) return false;
+      Object.keys(space.panoramas).forEach(function (srcId) {
+        var pano = space.panoramas[srcId];
+        var marks = Array.isArray(pano.marks) ? pano.marks : [];
+        marks.forEach(function (m) {
+          var t = m && m.target;
+          if (!t || typeof t !== "object") return;
+          var tt = String(t.type || "360").toLowerCase();
+          if (tt === "scene" || tt === "story") return;
+          var tPan = String(t.panorama !== undefined ? t.panorama : t.panoramaId || "").trim();
+          var tSpace = String(t.space !== undefined ? t.space : t.spaceId || spaceId).trim();
+          if (tSpace !== spaceId || tPan !== destPanoramaId) return;
+          var raw = Object.prototype.hasOwnProperty.call(t, "entry") ? t.entry : t.entryId;
+          var trimmed = raw === undefined || raw === null ? "" : String(raw).trim();
+          var low = trimmed.toLowerCase();
+          if (trimmed === "" || low === "default") {
+            if (srcId === entryKey) used = true;
+          } else if (low === String(entryKey).toLowerCase()) {
+            used = true;
+          }
+        });
+      });
+      return used;
+    }
+
+    /**
+     * Собирает неиспользуемые именованные ключи entries (есть панорама-источник, но нет подходящих меток).
+     */
+    function collectBulkUnusedEntryRows(scope) {
+      var rows = [];
+      forEachPanoramaInBulkScope(scope, function (sid, pid, pano) {
+        if (!pano.entries || typeof pano.entries !== "object") return;
+        var idsSet = getPanoramaIdSetForSpace(sid);
+        Object.keys(pano.entries).forEach(function (key) {
+          if (key === "default") return;
+          if (!idsSet[key]) return;
+          if (isBulkEntryKeyUsedByMarks(sid, pid, key)) return;
+          rows.push({
+            spaceId: sid,
+            panoramaId: pid,
+            entryKey: key,
+            reason: "Нет меток, после которых движок читает entries[" + key + "] на этой панораме."
+          });
+        });
+      });
+      return rows;
+    }
+
+    /**
+     * Собирает метки с некорректной целью 360 (пустая панорама или нет в данных).
+     */
+    function collectBulkBrokenMarkRows(scope) {
+      var rows = [];
+      forEachPanoramaInBulkScope(scope, function (sid, pid, pano) {
+        var marks = Array.isArray(pano.marks) ? pano.marks : [];
+        marks.forEach(function (m, idx) {
+          var t = m && m.target;
+          if (!t || typeof t !== "object") return;
+          var tt = String(t.type || "360").toLowerCase();
+          var mid = m.id !== undefined && m.id !== null ? String(m.id) : "#" + idx;
+          if (tt === "scene" || tt === "story") {
+            var sc = String(t.scene !== undefined ? t.scene : t.sceneId || "").trim();
+            if (!sc) {
+              rows.push({
+                spaceId: sid,
+                panoramaId: pid,
+                markId: mid,
+                reason: "Метка scene без id сцены."
+              });
+            }
+            return;
+          }
+          var tPan = String(t.panorama !== undefined ? t.panorama : t.panoramaId || "").trim();
+          if (!tPan) {
+            rows.push({
+              spaceId: sid,
+              panoramaId: pid,
+              markId: mid,
+              reason: "Метка 360 без id панорамы."
+            });
+            return;
+          }
+          if (!bulkMark360TargetExists(sid, m)) {
+            var tSpace = String(t.space !== undefined ? t.space : t.spaceId || sid).trim();
+            rows.push({
+              spaceId: sid,
+              panoramaId: pid,
+              markId: mid,
+              reason: "Панорама «" + tSpace + "." + tPan + "» не найдена в данных."
+            });
+          }
+        });
+      });
+      return rows;
+    }
+
+    /**
+     * Строка для фильтра таблиц массового отчёта.
+     */
+    function bulkRowMatchesFilter(filterText, cells) {
+      var q = String(filterText || "").trim().toLowerCase();
+      if (!q) return true;
+      var blob = cells.join(" ").toLowerCase();
+      return blob.indexOf(q) !== -1;
+    }
+
+    /**
+     * Перерисовывает строки таблиц с учётом поля поиска.
+     */
+    function applyBulkTableFilters() {
+      var q = bulkFilterInput ? bulkFilterInput.value : "";
+      var onlyProblems = bulkOnlyProblemsChk && bulkOnlyProblemsChk.checked;
+      if (bulkUnusedWrap) {
+        var showUnused = bulkShowUnusedChk && bulkShowUnusedChk.checked;
+        bulkUnusedWrap.style.display = onlyProblems || !showUnused ? "none" : "block";
+        if (bulkUnusedTitle) bulkUnusedTitle.style.display = bulkUnusedWrap.style.display;
+        if (bulkUnusedHint) bulkUnusedHint.style.display = bulkUnusedWrap.style.display;
+      }
+      var tables = [
+        { tbody: bulkOutdatedTbody, cols: [1, 2, 3, 4] },
+        { tbody: bulkMarksTbody, cols: [0, 1, 2, 3] },
+        { tbody: bulkUnusedTbody, cols: [0, 1, 2, 3] },
+        { tbody: bulkPreviewTbody, cols: [0, 1, 2, 3, 4] }
+      ];
+      tables.forEach(function (spec) {
+        if (!spec.tbody) return;
+        var rows = spec.tbody.querySelectorAll("tr");
+        for (var i = 0; i < rows.length; i++) {
+          var tr = rows[i];
+          var tds = tr.querySelectorAll("td");
+          var parts = [];
+          spec.cols.forEach(function (ci) {
+            if (tds[ci]) parts.push(tds[ci].textContent || "");
+          });
+          var show = bulkRowMatchesFilter(q, parts);
+          tr.setAttribute("data-hidden-filter", show ? "0" : "1");
+        }
+      });
+    }
+
+    /**
+     * Обновляет чипы-сводку после формирования отчёта.
+     */
+    function renderBulkReportChips(outdated, marks, unused) {
+      if (!bulkReportChips) return;
+      bulkReportChips.innerHTML =
+        "<span class='batch-chip'>Устаревшие ключи: <strong>" + outdated.length + "</strong></span>" +
+        "<span class='batch-chip'>Ошибки меток (360): <strong>" + marks.length + "</strong></span>" +
+        "<span class='batch-chip'>Неиспользуемые ключи: <strong>" + unused.length + "</strong></span>";
+    }
+
+    /**
+     * Заполняет таблицу устаревших ключей и чекбоксы выбора.
+     */
+    function renderBulkOutdatedTable(rows) {
+      if (!bulkOutdatedTbody) return;
+      bulkOutdatedTbody.innerHTML = "";
+      rows.forEach(function (r) {
+        var id = r.spaceId + "|" + r.panoramaId + "|" + r.entryKey;
+        var tr = document.createElement("tr");
+        tr.dataset.rowId = id;
+        var td0 = document.createElement("td");
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "bulk-outdated-cb";
+        cb.dataset.rowId = id;
+        td0.appendChild(cb);
+        tr.appendChild(td0);
+        ["spaceId", "panoramaId", "entryKey", "reason"].forEach(function (k) {
+          var td = document.createElement("td");
+          td.textContent = r[k];
+          tr.appendChild(td);
+        });
+        bulkOutdatedTbody.appendChild(tr);
+      });
+      if (bulkOutdatedSelectAll) bulkOutdatedSelectAll.checked = false;
+    }
+
+    /**
+     * Заполняет таблицу ошибок меток.
+     */
+    function renderBulkMarksTable(rows) {
+      if (!bulkMarksTbody) return;
+      bulkMarksTbody.innerHTML = "";
+      rows.forEach(function (r) {
+        var tr = document.createElement("tr");
+        ["spaceId", "panoramaId", "markId", "reason"].forEach(function (k) {
+          var td = document.createElement("td");
+          td.textContent = r[k];
+          tr.appendChild(td);
+        });
+        bulkMarksTbody.appendChild(tr);
+      });
+    }
+
+    /**
+     * Заполняет таблицу неиспользуемых ключей.
+     */
+    function renderBulkUnusedTable(rows) {
+      if (!bulkUnusedTbody) return;
+      bulkUnusedTbody.innerHTML = "";
+      rows.forEach(function (r) {
+        var tr = document.createElement("tr");
+        ["spaceId", "panoramaId", "entryKey", "reason"].forEach(function (k) {
+          var td = document.createElement("td");
+          td.textContent = r[k];
+          tr.appendChild(td);
+        });
+        bulkUnusedTbody.appendChild(tr);
+      });
+    }
+
+    /**
+     * Запускает полный отчёт целостности по области и обновляет таблицы.
+     */
+    function runBulkIntegrityReport() {
+      var scope = bulkScopeSelect ? bulkScopeSelect.value : "current-space";
+      var outdated = collectBulkOutdatedEntryRows(scope);
+      var marks = collectBulkBrokenMarkRows(scope);
+      var unused = collectBulkUnusedEntryRows(scope);
+      renderBulkReportChips(outdated, marks, unused);
+      renderBulkOutdatedTable(outdated);
+      renderBulkMarksTable(marks);
+      renderBulkUnusedTable(unused);
+      lastBulkFocusPreviewChanges = null;
+      if (bulkPreviewTbody) bulkPreviewTbody.innerHTML = "";
+      if (bulkApplyFocusBtn) bulkApplyFocusBtn.disabled = true;
+      applyBulkTableFilters();
+      setStatus(
+        "Отчёт: устаревших ключей " + outdated.length + ", ошибок меток " + marks.length + ", неиспользуемых " + unused.length + ".",
+        false
+      );
+    }
+
+    /**
+     * Удаляет выбранные устаревшие ключи entries после подтверждения снимка для отката.
+     */
+    function removeBulkOutdatedKeys(rowIds) {
+      if (!rowIds || !rowIds.length) {
+        setStatus("Не выбрано ни одного ключа для удаления.", true);
+        return;
+      }
+      saveCurrentPanoramaToData();
+      lastBatchUndoSnapshot = deepCloneStory360Data(story360Data);
+      rowIds.forEach(function (rid) {
+        var parts = String(rid).split("|");
+        if (parts.length < 3) return;
+        var sid = parts[0];
+        var pid = parts[1];
+        var key = parts.slice(2).join("|");
+        var space = story360Data.spaces && story360Data.spaces[sid];
+        var pano = space && space.panoramas ? space.panoramas[pid] : null;
+        if (pano && pano.entries && Object.prototype.hasOwnProperty.call(pano.entries, key)) {
+          delete pano.entries[key];
+        }
+      });
+      persistEditorDraft();
+      refreshAfterBulkEdit();
+      if (bulkUndoBtn) bulkUndoBtn.disabled = false;
+      runBulkIntegrityReport();
+    }
+
+    /**
+     * Удаляет все устаревшие ключи в текущей области одним действием.
+     */
+    function removeAllBulkOutdatedInScope() {
+      var scope = bulkScopeSelect ? bulkScopeSelect.value : "current-space";
+      var outdated = collectBulkOutdatedEntryRows(scope);
+      if (!outdated.length) {
+        setStatus("Устаревших ключей в выбранной области нет.", false);
+        return;
+      }
+      if (!window.confirm("Удалить все устаревшие ключи entries в области («" + scope + "»), всего " + outdated.length + "?")) return;
+      var ids = outdated.map(function (r) {
+        return r.spaceId + "|" + r.panoramaId + "|" + r.entryKey;
+      });
+      removeBulkOutdatedKeys(ids);
+    }
+
+    /**
+     * Возвращает целевое focusY из пресета и поля «своё значение».
+     */
+    function getBulkFocusTargetY() {
+      var preset = bulkFocusPresetSelect ? bulkFocusPresetSelect.value : "0.5";
+      if (preset === "custom" && bulkFocusCustomInput) {
+        return clamp(Number(bulkFocusCustomInput.value), 0, 1);
+      }
+      return clamp(Number(preset), 0, 1);
+    }
+
+    /**
+     * Строит список изменений focusY для предпросмотра и применения.
+     */
+    function computeBulkFocusYChanges(scope, targetY, threshold, touchDefault, touchNamed, onlyIfHasFocusY) {
+      var changes = [];
+      forEachPanoramaInBulkScope(scope, function (sid, pid, pano) {
+        if (!pano.entries || typeof pano.entries !== "object") return;
+        Object.keys(pano.entries).forEach(function (key) {
+          if (key === "default" && !touchDefault) return;
+          if (key !== "default" && !touchNamed) return;
+          var entry = pano.entries[key];
+          var pair = readEntryFocusPair(entry);
+          if (onlyIfHasFocusY && !pair) return;
+          var fyOld = pair ? pair.focusY : null;
+          var fxKeep = pair ? pair.focusX : 0.5;
+          if (pair && Math.abs(fyOld - targetY) < threshold) return;
+          if (!pair && onlyIfHasFocusY) return;
+          changes.push({
+            spaceId: sid,
+            panoramaId: pid,
+            entryKey: key,
+            beforeY: fyOld,
+            afterY: targetY,
+            focusX: isFinite(fxKeep) ? fxKeep : 0.5
+          });
+        });
+      });
+      return changes;
+    }
+
+    /**
+     * Рисует таблицу предпросмотра выравнивания focusY.
+     */
+    function renderBulkFocusPreview(changes) {
+      if (!bulkPreviewTbody) return;
+      bulkPreviewTbody.innerHTML = "";
+      changes.forEach(function (ch) {
+        var tr = document.createElement("tr");
+        [ch.spaceId, ch.panoramaId, ch.entryKey, ch.beforeY == null ? "—" : String(Number(ch.beforeY).toFixed(4)), String(Number(ch.afterY).toFixed(4))].forEach(function (text) {
+          var td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        bulkPreviewTbody.appendChild(tr);
+      });
+      applyBulkTableFilters();
+    }
+
+    /**
+     * Применяет выравнивание focusY по списку из предпросмотра.
+     */
+    function applyBulkFocusYChanges(changes) {
+      if (!changes || !changes.length) {
+        setStatus("Нет изменений для применения.", true);
+        return;
+      }
+      saveCurrentPanoramaToData();
+      lastBatchUndoSnapshot = deepCloneStory360Data(story360Data);
+      changes.forEach(function (ch) {
+        var space = story360Data.spaces && story360Data.spaces[ch.spaceId];
+        var pano = space && space.panoramas ? space.panoramas[ch.panoramaId] : null;
+        if (!pano) return;
+        if (!pano.entries || typeof pano.entries !== "object") pano.entries = {};
+        var fx = isFinite(ch.focusX) ? ch.focusX : 0.5;
+        pano.entries[ch.entryKey] = {
+          focusX: Number(fx.toFixed(4)),
+          focusY: Number(ch.afterY.toFixed(4))
+        };
+      });
+      persistEditorDraft();
+      refreshAfterBulkEdit();
+      if (bulkUndoBtn) bulkUndoBtn.disabled = false;
+      lastBulkFocusPreviewChanges = null;
+      if (bulkPreviewTbody) bulkPreviewTbody.innerHTML = "";
+      if (bulkApplyFocusBtn) bulkApplyFocusBtn.disabled = true;
+      setStatus("Выравнивание focusY применено к " + changes.length + " записям.", false);
+      runBulkIntegrityReport();
+    }
+
+    /**
+     * Откатывает последнюю массовую правку story360 из снимка.
+     */
+    function undoLastBulkMutation() {
+      if (!lastBatchUndoSnapshot) {
+        setStatus("Нет сохранённого шага для отмены.", true);
+        return;
+      }
+      story360Data = normalizeStory360Data(deepCloneStory360Data(lastBatchUndoSnapshot));
+      lastBatchUndoSnapshot = null;
+      persistEditorDraft();
+      refreshAfterBulkEdit();
+      if (bulkUndoBtn) bulkUndoBtn.disabled = true;
+      lastBulkFocusPreviewChanges = null;
+      if (bulkApplyFocusBtn) bulkApplyFocusBtn.disabled = true;
+      if (bulkPreviewTbody) bulkPreviewTbody.innerHTML = "";
+      setStatus("Последняя массовая правка отменена.", false);
+      runBulkIntegrityReport();
+    }
+
+    /**
+     * Обновляет UI редактора после изменения story360 вне текущей формы (массовые операции).
+     */
+    function refreshAfterBulkEdit() {
+      refreshPanoramaSelect();
+      var cur = getCurrentStory360Ids();
+      loadPanoramaFromData(cur.spaceId, cur.panoramaId, "default");
+      renderFocusEntriesSidebar();
+    }
+
+    /**
+     * Открывает модальное окно массовых операций.
+     */
+    function openBulkModal() {
+      if (!bulkModalOverlay) return;
+      bulkModalOverlay.classList.add("is-open");
+      bulkModalOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    /**
+     * Закрывает модальное окно массовых операций.
+     */
+    function closeBulkModal() {
+      if (!bulkModalOverlay) return;
+      bulkModalOverlay.classList.remove("is-open");
+      bulkModalOverlay.setAttribute("aria-hidden", "true");
+    }
+
+    /**
+     * Привязывает обработчики модалки массовых операций (один раз логично из bindEvents).
+     */
+    function bindBulkModalEvents() {
+      if (openBulkModalBtn) {
+        openBulkModalBtn.addEventListener("click", function () {
+          openBulkModal();
+        });
+      }
+      if (bulkModalCloseBtn) {
+        bulkModalCloseBtn.addEventListener("click", function () {
+          closeBulkModal();
+        });
+      }
+      if (bulkModalOverlay) {
+        bulkModalOverlay.addEventListener("click", function (e) {
+          if (e.target === bulkModalOverlay) closeBulkModal();
+        });
+      }
+      if (bulkRunReportBtn) {
+        bulkRunReportBtn.addEventListener("click", function () {
+          runBulkIntegrityReport();
+        });
+      }
+      if (bulkFilterInput) {
+        bulkFilterInput.addEventListener("input", applyBulkTableFilters);
+      }
+      if (bulkOnlyProblemsChk) {
+        bulkOnlyProblemsChk.addEventListener("change", applyBulkTableFilters);
+      }
+      if (bulkShowUnusedChk) {
+        bulkShowUnusedChk.addEventListener("change", applyBulkTableFilters);
+      }
+      if (bulkOutdatedSelectAll) {
+        bulkOutdatedSelectAll.addEventListener("change", function () {
+          var on = bulkOutdatedSelectAll.checked;
+          var cbs = bulkOutdatedTbody ? bulkOutdatedTbody.querySelectorAll(".bulk-outdated-cb") : [];
+          for (var i = 0; i < cbs.length; i++) cbs[i].checked = on;
+        });
+      }
+      if (bulkRemoveOutdatedSelectedBtn) {
+        bulkRemoveOutdatedSelectedBtn.addEventListener("click", function () {
+          var cbs = bulkOutdatedTbody ? bulkOutdatedTbody.querySelectorAll(".bulk-outdated-cb:checked") : [];
+          var ids = [];
+          for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i].dataset.rowId) ids.push(cbs[i].dataset.rowId);
+          }
+          if (!ids.length) {
+            setStatus("Отметьте строки с устаревшими ключами.", true);
+            return;
+          }
+          if (!window.confirm("Удалить выбранные ключи entries (" + ids.length + ")?")) return;
+          removeBulkOutdatedKeys(ids);
+        });
+      }
+      if (bulkRemoveOutdatedAllBtn) {
+        bulkRemoveOutdatedAllBtn.addEventListener("click", removeAllBulkOutdatedInScope);
+      }
+      if (bulkFocusPresetSelect && bulkFocusCustomInput) {
+        bulkFocusPresetSelect.addEventListener("change", function () {
+          bulkFocusCustomInput.disabled = bulkFocusPresetSelect.value !== "custom";
+        });
+      }
+      if (bulkPreviewFocusBtn) {
+        bulkPreviewFocusBtn.addEventListener("click", function () {
+          var scope = bulkScopeSelect ? bulkScopeSelect.value : "current-space";
+          var targetY = getBulkFocusTargetY();
+          var th = bulkFocusThresholdInput ? Number(bulkFocusThresholdInput.value) : 0.02;
+          if (!isFinite(th) || th < 0) th = 0;
+          var changes = computeBulkFocusYChanges(
+            scope,
+            targetY,
+            th,
+            !!(bulkTouchDefaultChk && bulkTouchDefaultChk.checked),
+            !!(bulkTouchNamedChk && bulkTouchNamedChk.checked),
+            !!(bulkOnlyIfHasFocusYChk && bulkOnlyIfHasFocusYChk.checked)
+          );
+          lastBulkFocusPreviewChanges = changes;
+          renderBulkFocusPreview(changes);
+          if (bulkApplyFocusBtn) bulkApplyFocusBtn.disabled = changes.length === 0;
+          setStatus("Предпросмотр: будет изменено записей — " + changes.length + ".", false);
+        });
+      }
+      if (bulkApplyFocusBtn) {
+        bulkApplyFocusBtn.addEventListener("click", function () {
+          if (!lastBulkFocusPreviewChanges || !lastBulkFocusPreviewChanges.length) {
+            setStatus("Сначала нажмите «Показать изменения».", true);
+            return;
+          }
+          applyBulkFocusYChanges(lastBulkFocusPreviewChanges);
+        });
+      }
+      if (bulkUndoBtn) {
+        bulkUndoBtn.addEventListener("click", function () {
+          undoLastBulkMutation();
+        });
+      }
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        if (bulkModalOverlay && bulkModalOverlay.classList.contains("is-open")) {
+          closeBulkModal();
+        }
+      });
     }
 
     /**
