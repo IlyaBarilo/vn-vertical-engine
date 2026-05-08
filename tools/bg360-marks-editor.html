@@ -2359,7 +2359,7 @@
 
     /**
      * Рисует прицелы фокусов: по одному кругу на каждый ключ (сценарий + каждая ссылающаяся панорама).
-     * Если координаты совпадают, прицелы смещаются ступенькой — чтобы все были видны и доступны для перетаскивания.
+     * Прицел остаётся в точной позиции фокуса, а подписи близких точек раздвигаются по вертикали, чтобы не перекрываться.
      */
     function appendEntryFocusOverlays(width, height, rect) {
       var merged = getMergedEntriesForOverlay();
@@ -2403,21 +2403,49 @@
         items.push({ entryKey: entryKey, pair: pair, pos: pos, fp: fp });
       });
 
-      var groups = {};
+      // Группируем точки, которые стоят очень близко на экране: для них сдвигаем только подписи.
+      var closeDistancePx = 18;
+      var closeGroups = [];
       items.forEach(function (it) {
-        if (!groups[it.fp]) groups[it.fp] = [];
-        groups[it.fp].push(it);
+        var targetGroup = null;
+        for (var gi = 0; gi < closeGroups.length; gi++) {
+          var group = closeGroups[gi];
+          var isClose = group.some(function (member) {
+            var dx = member.pos.x - it.pos.x;
+            var dy = member.pos.y - it.pos.y;
+            return Math.sqrt(dx * dx + dy * dy) <= closeDistancePx;
+          });
+          if (isClose) {
+            targetGroup = group;
+            break;
+          }
+        }
+        if (!targetGroup) {
+          targetGroup = [];
+          closeGroups.push(targetGroup);
+        }
+        targetGroup.push(it);
       });
 
-      var stackDX = 16;
-      var stackDY = 11;
+      var entryLabelOffset = {};
+      closeGroups.forEach(function (group) {
+        group.sort(function (a, b) {
+          if (a.pos.y !== b.pos.y) return a.pos.y - b.pos.y;
+          return a.pos.x - b.pos.x;
+        });
+        for (var i = 0; i < group.length; i++) {
+          entryLabelOffset[group[i].entryKey] = i;
+        }
+      });
+
+      var captionStepY = 22.5;
 
       items.forEach(function (it) {
-        var g = groups[it.fp];
-        var idxInGroup = g.indexOf(it);
         var pos = it.pos;
-        var ox = pos.x + idxInGroup * stackDX;
-        var oy = pos.y + idxInGroup * stackDY;
+        var ox = pos.x;
+        var oy = pos.y;
+        var idxNear = entryLabelOffset[it.entryKey] || 0;
+        var captionY = oy - idxNear * captionStepY;
 
         var reticle = document.createElement("div");
         reticle.className = "focus-entry-reticle";
@@ -2425,20 +2453,20 @@
         reticle.style.top = oy + "px";
         reticle.setAttribute("aria-hidden", "true");
         reticle.setAttribute("data-focus-entry", String(it.entryKey));
-        if (g.length > 1) {
+        if (idxNear > 0) {
           reticle.title =
-            "Несколько фокусов с одинаковыми координатами — прицелы смещены только на экране, чтобы различать и тащить нужный.";
+            "Фокус находится рядом с другими: прицелы остаются в точке, смещаются только подписи.";
         }
         marksOverlay.appendChild(reticle);
 
         var cap = document.createElement("div");
         cap.className = "focus-entry-caption";
         cap.style.left = ox + "px";
-        cap.style.top = oy + "px";
+        cap.style.top = captionY + "px";
         cap.style.transform = "translate(14px, -50%)";
         cap.textContent = it.entryKey === "default" ? "Сценарий (default)" : ("С «" + it.entryKey + "»");
         cap.setAttribute("data-focus-entry", String(it.entryKey));
-        if (g.length > 1) {
+        if (idxNear > 0) {
           cap.title = reticle.title;
         }
         marksOverlay.appendChild(cap);
