@@ -30,7 +30,7 @@
     .app {
       height: 100%;
       display: grid;
-      grid-template-columns: 360px 1fr;
+      grid-template-columns: 740px 1fr;
       gap: 10px;
       padding: 10px;
     }
@@ -41,6 +41,17 @@
       border-radius: 12px;
       padding: 12px;
       overflow: auto;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 42px;
+      align-items: start;
+    }
+
+    .panel-col {
+      min-width: 0;
     }
 
     .viewer-wrap {
@@ -87,6 +98,16 @@
       border-color: rgba(255, 255, 255, 0.62);
     }
 
+    .mark-action.is-missing-target {
+      background: rgba(112, 22, 22, 0.9);
+      border-color: rgba(255, 120, 120, 0.9);
+    }
+
+    .mark-action.is-missing-target:hover {
+      background: rgba(148, 30, 30, 0.94);
+      border-color: rgba(255, 150, 150, 0.98);
+    }
+
     .crosshair {
       position: absolute;
       left: 50%;
@@ -122,8 +143,8 @@
 
     .mark-dot {
       position: absolute;
-      width: 16px;
-      height: 16px;
+      width: 32px;
+      height: 32px;
       transform: translate(-50%, -50%);
       border-radius: 999px;
       border: 2px solid #fff;
@@ -131,7 +152,7 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
       display: grid;
       place-items: center;
-      font-size: 10px;
+      font-size: 20px;
       font-weight: 700;
       color: #fff;
       pointer-events: auto;
@@ -320,6 +341,7 @@
 
     @media (max-width: 980px) {
       .app { grid-template-columns: 1fr; }
+      .panel-grid { grid-template-columns: 1fr; }
       .panel { max-height: 48vh; }
       .viewer-wrap { min-height: 52vh; }
     }
@@ -329,6 +351,8 @@
   <div class="app">
     <aside class="panel">
       <h1>Редактор 360-меток</h1>
+      <div class="panel-grid">
+      <div class="panel-col">
 
       <div class="row">
         <label for="story360Input">story360.js</label>
@@ -396,6 +420,17 @@
         <button id="readFocusBtn" type="button">Считать focus из камеры</button>
       </div>
 
+      <h2>Экспорт для сценария</h2>
+      <div class="row">
+        <textarea id="exportBox" readonly></textarea>
+      </div>
+      <div class="row two">
+        <button id="saveStory360LocalBtn" class="good" type="button">Сохранить</button>
+        <button id="downloadStory360JsBtn" class="good" type="button">Скачать story360.js</button>
+      </div>
+
+      </div>
+      <div class="panel-col">
       <h2>Новая метка</h2>
       <div class="row two">
         <button id="placeMarkBtn" class="good" type="button">Поставить метку</button>
@@ -429,17 +464,7 @@
         <div></div>
       </div>
 
-      <h2>Экспорт для сценария</h2>
-      <div class="row">
-        <textarea id="exportBox" readonly></textarea>
       </div>
-      <div class="row two">
-        <button id="copyScriptBtn" class="good" type="button">Скопировать команды</button>
-        <button id="downloadStory360JsBtn" class="good" type="button">Скачать story360.js</button>
-      </div>
-      <div class="row two">
-        <button id="copyStory360JsBtn" type="button">Скопировать story360.js</button>
-        <div></div>
       </div>
     </aside>
 
@@ -480,9 +505,8 @@
     var exportBox = document.getElementById("exportBox");
     var clearPointsBtn = document.getElementById("clearPointsBtn");
     var placeMarkBtn = document.getElementById("placeMarkBtn");
-    var copyScriptBtn = document.getElementById("copyScriptBtn");
+    var saveStory360LocalBtn = document.getElementById("saveStory360LocalBtn");
     var downloadStory360JsBtn = document.getElementById("downloadStory360JsBtn");
-    var copyStory360JsBtn = document.getElementById("copyStory360JsBtn");
 
     var renderer = null;
     var scene = null;
@@ -1815,6 +1839,20 @@
     }
 
     /**
+     * Проверяет, что целевая 360-панорама метки существует в текущем пространстве редактора.
+     */
+    function isMissingPoint360Target(point) {
+      if (!point) return false;
+      if (String(point.targetType || "").trim().toLowerCase() !== "360") return false;
+      var targetPanoramaId = String(point.targetPanorama || "").trim();
+      if (!targetPanoramaId) return false;
+      var ids = getCurrentStory360Ids();
+      var space = story360Data.spaces && story360Data.spaces[ids.spaceId];
+      var panoramas = space && space.panoramas ? space.panoramas : null;
+      return !(panoramas && Object.prototype.hasOwnProperty.call(panoramas, targetPanoramaId));
+    }
+
+    /**
      * Быстрый тест первого 360-перехода, если пользователь не нажал кнопку в списке.
      */
     function goToFirst360Target() {
@@ -2521,6 +2559,8 @@
             var actionBtn = document.createElement("button");
             actionBtn.type = "button";
             actionBtn.className = "mark-action";
+            // Красная подсказка показывает, что у 360-метки отсутствует целевая панорама в текущем space.
+            if (isMissingPoint360Target(p)) actionBtn.classList.add("is-missing-target");
             actionBtn.style.left = pos.x + "px";
             actionBtn.style.top = pos.y + "px";
             actionBtn.textContent = targetLabel;
@@ -2620,6 +2660,15 @@
      */
     function downloadStory360Js() {
       downloadTextFile("story360.js", buildStory360JsText(), "application/javascript;charset=utf-8");
+    }
+
+    /**
+     * Сохраняет актуальный story360 в localStorage без скачивания файла.
+     */
+    function saveStory360ToLocalOnly() {
+      saveCurrentPanoramaToData();
+      var ids = getCurrentStory360Ids();
+      setStatus("Сохранено в Local: " + ids.spaceId + "." + ids.panoramaId + " (без скачивания файла).", false);
     }
 
     /**
@@ -2973,14 +3022,8 @@
         addPointFromCenterCrosshair();
       });
 
-      copyScriptBtn.addEventListener("click", function () {
-        copyText(exportBox.value);
-      });
-
+      saveStory360LocalBtn.addEventListener("click", saveStory360ToLocalOnly);
       downloadStory360JsBtn.addEventListener("click", downloadStory360Js);
-      copyStory360JsBtn.addEventListener("click", function () {
-        copyText(buildStory360JsText());
-      });
 
       viewerCanvas.addEventListener("pointerdown", function (e) {
         dragState.active = true;
