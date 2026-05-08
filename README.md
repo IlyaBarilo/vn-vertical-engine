@@ -342,7 +342,11 @@ it automatically when present.
 
 ```text
 goto360 korpusNight.174 entry=default
+goto360 main360.175 from360=174
+goto360 main360.175 from360=main360.174
 ```
+
+The optional **`from360`** parameter is an alias for **`entry`**: it selects the same key in `panorama.entries` (for example the panorama id you «returned from» after a normal scene). Use **`entry=`** when both could apply — it wins over **`from360`**. For cross-space sources you can write `from360=campus:174` (normalized to `campus.174`).
 
 Inside `story360.js`, every panorama can define `entries` for different incoming
 directions and `marks` with targets to another panorama or to a normal story

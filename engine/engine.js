@@ -5842,16 +5842,124 @@ function readStory360FocusField(source, focusKey) {
   return undefined;
 }
 
-// Выбирает точку входа в панораму: entry задаёт направление камеры в зависимости от того, откуда пришёл игрок.
-function getStory360Entry(panorama, entryId) {
+// Включает подробные логи цепочки фокуса goto360: в консоли window.STORY360_DEBUG_FOCUS = true или GET ?debug360focus=1.
+function story360DebugFocusLogEnabled() {
+  if (typeof window === "undefined") return false;
+  if (window.STORY360_DEBUG_FOCUS === true) return true;
+  try {
+    var q = window.location && window.location.search;
+    return typeof q === "string" && /(?:^|[?&])debug360focus=1(?:&|$)/.test(q);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Снимок полей фокуса объекта записи entries.* для отладки (без полного дампа панорамы).
+function story360EntryFocusSnapshot(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  return {
+    focusX: readStory360Field(obj, ["focusX", "focusx", "x"]),
+    focusY: readStory360Field(obj, ["focusY", "focusy", "y"]),
+    hasFocusNested: !!(obj.focus && typeof obj.focus === "object")
+  };
+}
+
+// Ключи entries и снимок focus по каждому ключу — для консоли.
+function story360SummarizeEntriesForDebug(entries) {
+  if (!entries || typeof entries !== "object") return { note: "объект записей отсутствует" };
+  var keys = Object.keys(entries).sort();
+  var slots = {};
+  keys.forEach(function (k) {
+    slots[k] = story360EntryFocusSnapshot(entries[k]);
+  });
+  return { keys: keys, slots: slots };
+}
+
+// Собирает настройки прихода на панораму назначения по ключу arrivalKey в panorama.entries.
+//
+// Приоритет для камеры (и прочих полей точки входа):
+// 1) Запись entries[arrivalKey], если есть — её поля перекрывают базу (например приход с панорамы «175» → ключ "175", см. resolveGoto360EntryKey).
+// 2) Иначе используется только сценарный базовый объект entries.default (в данных он часто назван ключом default — это не «режим по умолчанию» в смысле приоритета над источником, а просто общий слой).
+//
+// Имена entryPoints / focuses — допустимые синонимы объекта записей в JSON (как в других местах движка).
+function getStory360Entry(panorama, arrivalKey) {
   if (!panorama || typeof panorama !== "object") return {};
   var entries = panorama.entries || panorama.entryPoints || panorama.focuses;
-  var id = String(entryId || "default").trim() || "default";
-  if (entries && typeof entries === "object") {
-    var entry = entries[id] || entries.default;
-    if (entry && typeof entry === "object") return entry;
+  var key = String(arrivalKey || "default").trim() || "default";
+
+  var scenarioBaseline = {};
+  if (entries && typeof entries === "object" && entries.default != null && typeof entries.default === "object") {
+    scenarioBaseline = entries.default;
   }
-  return {};
+
+  var out;
+  if (!entries || typeof entries !== "object") {
+    out = Object.assign({}, scenarioBaseline);
+  } else {
+    var arrivalOverlay = entries[key];
+    if (arrivalOverlay != null && typeof arrivalOverlay === "object") {
+      out = Object.assign({}, scenarioBaseline, arrivalOverlay);
+    } else {
+      out = Object.assign({}, scenarioBaseline);
+    }
+  }
+
+  if (story360DebugFocusLogEnabled()) {
+    console.info("[goto360-focus] getStory360Entry", {
+      arrivalKey: key,
+      entryObjectKeys: entries && typeof entries === "object" ? Object.keys(entries).sort() : [],
+      hasBaselineDefault: !!(entries && entries.default && typeof entries.default === "object"),
+      baselineFocus: story360EntryFocusSnapshot(scenarioBaseline),
+      overlayKey: key,
+      overlayPresent: !!(entries && entries[key] && typeof entries[key] === "object"),
+      overlayFocus: entries && entries[key] ? story360EntryFocusSnapshot(entries[key]) : null,
+      mergedFocus: story360EntryFocusSnapshot(out)
+    });
+  }
+
+  return out;
+}
+
+// Возвращает ключ arrivalKey для getStory360Entry на панораме назначения.
+//
+// Важно: ключ default в команде goto360 и у метки — это имя записи «сценарный базис» (entries.default), а не автоматический выбор вместо фокуса по источнику.
+//
+// — Первый вход из линейного сценария (sourcePanoramaId пуст): ключ берётся из команды goto360 / метки (часто это именно default — только baseline).
+// — Переход меткой уже внутри goto360 (sourcePanoramaId задан — например «175»): если у метки не указано своё имя записи или указано имя default,
+//   ключом прихода считается id панорамы источника ("175"), чтобы подтянуть entries["175"] поверх baseline. Так приоритет у фокуса «пришли с 175», если он задан в данных.
+// — Если задано другое непустое имя (не default) — используется оно (именованная точка входа).
+function resolveGoto360EntryKey(panorama, requestedEntryId, sourcePanoramaId) {
+  var src = String(sourcePanoramaId || "").trim();
+  var req =
+    requestedEntryId !== null && requestedEntryId !== undefined ? String(requestedEntryId).trim() : "";
+
+  var branchDescription = "";
+  var resultKey = "";
+
+  if (!src) {
+    branchDescription =
+      "первый_вход_из_сценария_или_apply без источника: ключ только из метки/команды (или default)";
+    resultKey = req || "default";
+  } else if (req === "" || req.toLowerCase() === "default") {
+    branchDescription =
+      "переход_меткой_внутри_goto360: у метки пустой entry или default → ключ = id панорамы откуда (источник)";
+    resultKey = src;
+  } else {
+    branchDescription = "переход_меткой_внутри_goto360: у метки явное имя записи (не default)";
+    resultKey = req || "default";
+  }
+
+  if (story360DebugFocusLogEnabled()) {
+    console.info("[goto360-focus] resolveGoto360EntryKey", {
+      branch: branchDescription,
+      requestedEntryRaw: requestedEntryId,
+      requestedTrimmed: req,
+      sourcePanoramaId: src || "(пусто)",
+      resolvedArrivalKey: resultKey
+    });
+  }
+
+  return resultKey;
 }
 
 // Достаёт параметр камеры сначала из entry, потом из панорамы, затем нормализует его штатной функцией.
@@ -5863,10 +5971,62 @@ function readStory360CameraOption(entry, panorama, fieldNames, focusKey, normali
   return normalizer(raw, fallback);
 }
 
+// Переводит мировое направление «куда смотреть из центра сферы» в доли focusX/focusY BG360 (как updateBg360Camera).
+// Нельзя использовать Object3D.lookAt на «пустышке»: у PerspectiveCamera вперёд — локальный −Z, а lookAt для обычного Object3D ориентирует +Z на цель — получался разворот на 180° по yaw относительно меток и реальной камеры.
+function story360ViewDirectionToBgFocusFractions(dir) {
+  if (!window.THREE || !dir) return null;
+  if (dir.lengthSq() < 1e-12) return null;
+  var targetDir = dir.clone();
+  targetDir.normalize();
+  var forwardCam = new window.THREE.Vector3(0, 0, -1);
+  var q = new window.THREE.Quaternion().setFromUnitVectors(forwardCam, targetDir);
+  var euler = new window.THREE.Euler().setFromQuaternion(q, "YXZ");
+  var yawDeg = window.THREE.MathUtils.radToDeg(euler.y);
+  var pitchDeg = clamp(window.THREE.MathUtils.radToDeg(euler.x), -85, 85);
+  yawDeg = ((yawDeg % 360) + 360) % 360;
+  return { focusX: yawDeg / 360, focusY: (pitchDeg + 85) / 170 };
+}
+
+// Переводит focus точки входа, сохранённый редактором как UV панорамы (entryFocusAsPanoramaUv), в доли yaw/pitch BG360.
+function story360PanoramaUvEntryToBgFocusFractions(u, v) {
+  if (!window.THREE) return null;
+  var U = clamp(Number(u), 0, 1);
+  var V = clamp(Number(v), 0, 1);
+  var thetaPolar = (1 - V) * Math.PI;
+  var phiAz = U * Math.PI * 2;
+  var sinPolar = Math.sin(thetaPolar);
+  var x0 = -Math.cos(phiAz) * sinPolar;
+  var y0 = Math.cos(thetaPolar);
+  var z0 = Math.sin(phiAz) * sinPolar;
+  var dir = new window.THREE.Vector3(-x0, y0, z0);
+  return story360ViewDirectionToBgFocusFractions(dir);
+}
+
 // Собирает scroll/focus/options для setBackground360 из выбранной точки входа.
 function buildStory360MediaOptions(panorama, entry) {
+  var rawFxEntry = readStory360Field(entry, ["focusX", "focusx", "x"]);
+  var rawFyEntry = readStory360Field(entry, ["focusY", "focusy", "y"]);
+  var rawFxPano = readStory360Field(panorama, ["focusX", "focusx", "x"]);
+  var rawFyPano = readStory360Field(panorama, ["focusY", "focusy", "y"]);
+
   var focusX = readStory360CameraOption(entry, panorama, ["focusX", "focusx", "x"], "x", normalizeMediaFocus, null);
   var focusY = readStory360CameraOption(entry, panorama, ["focusY", "focusy", "y"], "y", normalizeMediaFocusY, null);
+  var usedUvConversion = false;
+  if (
+    panorama &&
+    panorama.entryFocusAsPanoramaUv === true &&
+    focusX !== null &&
+    focusX !== undefined &&
+    focusY !== null &&
+    focusY !== undefined
+  ) {
+    var convUv = story360PanoramaUvEntryToBgFocusFractions(focusX, focusY);
+    if (convUv) {
+      focusX = convUv.focusX;
+      focusY = convUv.focusY;
+      usedUvConversion = true;
+    }
+  }
   var focusZ = readStory360CameraOption(entry, panorama, ["focusZ", "focusz", "z"], "z", normalizeMediaFocusZ, null);
   var fov = readStory360CameraOption(entry, panorama, ["fov"], "fov", normalizeMediaFov, null);
   var scaleRaw = readStory360Field(entry, ["scale"]);
@@ -5874,7 +6034,7 @@ function buildStory360MediaOptions(panorama, entry) {
   var qualityRaw = readStory360Field(entry, ["quality"]);
   if (qualityRaw === undefined) qualityRaw = readStory360Field(panorama, ["quality"]);
 
-  return {
+  var options = {
     enabled: true,
     start: 0.5,
     focusX: focusX,
@@ -5886,6 +6046,23 @@ function buildStory360MediaOptions(panorama, entry) {
     quality: normalizeBg360Quality(qualityRaw, "auto"),
     panorama360Fallback: false
   };
+
+  if (story360DebugFocusLogEnabled()) {
+    console.info("[goto360-focus] buildStory360MediaOptions", {
+      entryFocusAsPanoramaUv: !!(panorama && panorama.entryFocusAsPanoramaUv),
+      usedUvConversion: usedUvConversion,
+      rawFlatOnEntry: { focusX: rawFxEntry, focusY: rawFyEntry },
+      rawFlatOnPanoramaFallback: { focusX: rawFxPano, focusY: rawFyPano },
+      note:
+        "Итоговые focusX/Y после readStory360CameraOption (entry затем panorama); UV-режим конвертирует в доли yaw/pitch.",
+      resultFocusX: options.focusX,
+      resultFocusY: options.focusY,
+      resultFocusZ: options.focusZ,
+      resultFov: options.fov
+    });
+  }
+
+  return options;
 }
 
 // Определяет файл/ассет панорамы: story360 может ссылаться на [bg] через bgId или хранить путь прямо у себя.
@@ -5904,6 +6081,13 @@ function getStory360PanoramaMedia(spaceId, panoramaId, panorama) {
   };
 }
 
+// Достаёт id точки входа у метки: null если поле отсутствует или пусто — тогда движок подставит панораму «откуда пришли».
+function story360MarkEntryIdFromRaw(rawEntry) {
+  if (rawEntry === undefined || rawEntry === null) return null;
+  var s = String(rawEntry).trim();
+  return s === "" ? null : s;
+}
+
 // Приводит target метки из story360 к единому виду: переход в другую панораму или выход в обычную сцену.
 function normalizeStory360Target(mark, defaultSpaceId) {
   if (!mark || typeof mark !== "object") return null;
@@ -5920,13 +6104,13 @@ function normalizeStory360Target(mark, defaultSpaceId) {
         type: "360",
         spaceId: String(readStory360Field(mark, ["targetSpace", "space", "spaceId"]) || defaultSpaceId || "").trim(),
         panoramaId: String(panoRaw).trim(),
-        entryId: String(readStory360Field(mark, ["entry", "targetEntry", "from"]) || "default").trim() || "default"
+        entryId: story360MarkEntryIdFromRaw(readStory360Field(mark, ["entry", "targetEntry", "from"]))
       };
     }
     return null;
   }
 
-  if (typeof rawTarget === "object") {
+  if (typeof rawTarget === "object" && rawTarget !== null) {
     var rawType = String(readStory360Field(rawTarget, ["type", "kind"]) || "360").trim().toLowerCase();
     if (rawType === "scene" || rawType === "story") {
       var targetScene = String(readStory360Field(rawTarget, ["scene", "sceneId", "id", "targetScene"]) || "").trim();
@@ -5938,7 +6122,7 @@ function normalizeStory360Target(mark, defaultSpaceId) {
       type: "360",
       spaceId: String(readStory360Field(rawTarget, ["space", "spaceId"]) || defaultSpaceId || "").trim(),
       panoramaId: targetPanorama,
-      entryId: String(readStory360Field(rawTarget, ["entry", "entryId", "from"]) || "default").trim() || "default"
+      entryId: story360MarkEntryIdFromRaw(readStory360Field(rawTarget, ["entry", "entryId", "from"]))
     };
   }
 
@@ -5948,10 +6132,11 @@ function normalizeStory360Target(mark, defaultSpaceId) {
     return { type: "scene", sceneId: text.replace(/^(scene|story):/i, "").trim() };
   }
   text = text.replace(/^360:/i, "").trim();
-  var entryId = "default";
+  var entryFromStr = null;
   var atIndex = text.indexOf("@");
   if (atIndex >= 0) {
-    entryId = text.slice(atIndex + 1).trim() || "default";
+    var tail = text.slice(atIndex + 1).trim();
+    entryFromStr = tail === "" ? "default" : tail;
     text = text.slice(0, atIndex).trim();
   }
   var spaceId = String(defaultSpaceId || "").trim();
@@ -5961,7 +6146,7 @@ function normalizeStory360Target(mark, defaultSpaceId) {
     spaceId = text.slice(0, dotIndex).trim();
     panoramaId = text.slice(dotIndex + 1).trim();
   }
-  return panoramaId ? { type: "360", spaceId: spaceId, panoramaId: panoramaId, entryId: entryId } : null;
+  return panoramaId ? { type: "360", spaceId: spaceId, panoramaId: panoramaId, entryId: entryFromStr } : null;
 }
 
 // Нормализует метки выбранной панорамы, отбрасывая неполные координаты.
@@ -5988,14 +6173,16 @@ function normalizeStory360Marks(spaceId, panorama) {
 }
 
 // Показывает панораму из story360 и включает кликабельные метки для внутренней навигации goto360.
-function applyGoto360Panorama(spaceId, panoramaId, entryId) {
+// sourcePanoramaIdForEntryResolve — id панорамы «откуда» при переходе меткой (непусто только внутри goto360); смотри resolveGoto360EntryKey / getStory360Entry.
+function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForEntryResolve) {
   var panorama = getStory360Panorama(spaceId, panoramaId);
   if (!panorama) {
     console.warn("[goto360] panorama not found", { spaceId: spaceId, panoramaId: panoramaId });
     return false;
   }
 
-  var entry = getStory360Entry(panorama, entryId);
+  var resolvedEntryKey = resolveGoto360EntryKey(panorama, entryId, sourcePanoramaIdForEntryResolve);
+  var entry = getStory360Entry(panorama, resolvedEntryKey);
   var media = getStory360PanoramaMedia(spaceId, panoramaId, panorama);
   if (!media.file) {
     console.warn("[goto360] panorama has no file/bgId", { spaceId: spaceId, panoramaId: panoramaId });
@@ -6008,14 +6195,60 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId) {
 
   goto360Runtime.spaceId = String(spaceId || "");
   goto360Runtime.panoramaId = String(panoramaId || "");
-  goto360Runtime.entryId = String(entryId || "default") || "default";
+  goto360Runtime.entryId = String(resolvedEntryKey || "default") || "default";
 
   bg360MarksRuntime.bgId = state.currentBgId;
   bg360MarksRuntime.lines = readStory360Field(panorama, ["lines"]) !== false;
-  bg360MarksRuntime.marks = normalizeStory360Marks(spaceId, panorama);
+  var marksNormalized = normalizeStory360Marks(spaceId, panorama);
+  bg360MarksRuntime.marks = marksNormalized;
   bg360MarksRuntime.locked = false;
   bg360MarksRuntime.interactive = true;
   renderBg360Marks();
+
+  if (story360DebugFocusLogEnabled()) {
+    var entriesRoot = panorama.entries || panorama.entryPoints || panorama.focuses;
+    console.groupCollapsed("[goto360-focus] applyGoto360Panorama → " + spaceId + "." + panoramaId);
+    console.info("режим входа", {
+      тип:
+        String(sourcePanoramaIdForEntryResolve || "").trim() === ""
+          ? "из_сценария_или_без_источника — ключ только из entryId переданного сюда"
+          : "из_метки_внутри_goto360 — ключ обычно = id панорамы-источника «" +
+            String(sourcePanoramaIdForEntryResolve).trim() +
+            "» если у метки нет своего entry"
+    });
+    console.info("аргументы вызова", {
+      rawEntryIdFromCaller: entryId,
+      sourcePanoramaIdForEntryResolve: sourcePanoramaIdForEntryResolve || "(пусто)",
+      resolvedArrivalKey: resolvedEntryKey,
+      goto360RuntimeПослеСохранения: {
+        spaceId: goto360Runtime.spaceId,
+        panoramaId: goto360Runtime.panoramaId,
+        entryId: goto360Runtime.entryId
+      }
+    });
+    console.info("entries на панораме назначения", story360SummarizeEntriesForDebug(entriesRoot));
+    console.info("итог камеры setBackground360", {
+      focusX: options.focusX,
+      focusY: options.focusY,
+      focusZ: options.focusZ,
+      fov: options.fov,
+      entryFocusAsPanoramaUv: !!panorama.entryFocusAsPanoramaUv
+    });
+    console.info(
+      "метки на новой панораме (id / uv / target)",
+      marksNormalized.map(function (m) {
+        return {
+          id: m.id,
+          uv: [m.x, m.y],
+          targetType: m.target ? m.target.type : null,
+          targetPanorama: m.target && m.target.type === "360" ? m.target.panoramaId : null,
+          targetEntryId: m.target && m.target.type === "360" ? m.target.entryId : null
+        };
+      })
+    );
+    console.groupEnd();
+  }
+
   return true;
 }
 
@@ -6607,7 +6840,24 @@ function startGoto360(action) {
   goto360Runtime.titleText = titleText;
   goto360Runtime.buttonText = buttonText;
 
-  if (!applyGoto360Panorama(spaceId, panoramaId, goto360Runtime.entryId)) {
+  if (story360DebugFocusLogEnabled()) {
+    console.groupCollapsed("[goto360-focus] startGoto360 — вход из линейной сцены (не из другой панорамы 360)");
+    console.info("сколько передано в applyGoto360Panorama", {
+      spaceId: spaceId,
+      panoramaId: panoramaId,
+      entryIdИзДействияСценария: entryId || "default",
+      sourcePanoramaIdForApply: "(пустая строка — движок не знает story360-панораму «откуда», только сценарий)"
+    });
+    console.info(
+      "почему фокус может отличаться от перехода меткой",
+      "При клике метки с панорамы A передаётся sourcePanoramaId=A → ключ часто становится «A» и читается entries[A]. " +
+        "При первом goto360 из сценария источника нет → ключ только из команды (часто default = записи entries.default). " +
+        "Чтобы из сцены открыть тот же фокус, что для прихода с панорамы 175, укажите в сценарии goto360 параметр entry=175 или from360=175 (или полный ref по синтаксису парсера)."
+    );
+    console.groupEnd();
+  }
+
+  if (!applyGoto360Panorama(spaceId, panoramaId, goto360Runtime.entryId, "")) {
     goto360Runtime.active = false;
     goto360Runtime.done = false;
     return false;
@@ -6646,10 +6896,51 @@ function onGoto360SelectMark(markId) {
   }
 
   var target = selectedMark && selectedMark.target ? selectedMark.target : null;
+
+  if (story360DebugFocusLogEnabled()) {
+    var allMarkSummaries = Array.isArray(bg360MarksRuntime.marks)
+      ? bg360MarksRuntime.marks.map(function (m, idx) {
+          return {
+            index: idx,
+            id: m && m.id,
+            uv: m ? [m.x, m.y] : null,
+            targetPanorama: m && m.target && m.target.type === "360" ? m.target.panoramaId : null
+          };
+        })
+      : [];
+    console.groupCollapsed("[goto360-focus] onGoto360SelectMark — клик по метке id=" + id);
+    console.info("текущая панорама до перехода (станет source для resolve)", {
+      goto360RuntimePanoramaId: goto360Runtime.panoramaId,
+      goto360RuntimeSpaceId: goto360Runtime.spaceId,
+      clickedMarkId: id,
+      найденаВыбраннаяМетка: !!selectedMark,
+      всегоМетокНаЭкране: allMarkSummaries.length,
+      сводкаМетокПоId: allMarkSummaries
+    });
+    if (!selectedMark) {
+      console.warn(
+        "метка не найдена по id среди bg360MarksRuntime.marks — проверьте совпадение dataset.markId и mark.id в DOM."
+      );
+    } else if (target && target.type === "360") {
+      console.info("цель перехода (передаётся в applyGoto360Panorama)", {
+        nextSpace: target.spaceId || goto360Runtime.spaceId,
+        nextPanoramaId: target.panoramaId,
+        targetEntryIdУМетки: target.entryId,
+        sourcePanoramaIdБудет: goto360Runtime.panoramaId,
+        note:
+          "Если target.entryId null или default → resolve вернёт ключ = sourcePanoramaId (панорама «откуда»). Иначе — явное имя записи."
+      });
+    } else {
+      console.info("цель не 360 (или нет target)", { target: target });
+    }
+    console.groupEnd();
+  }
+
   if (target && target.type === "360") {
     var nextSpace = target.spaceId || goto360Runtime.spaceId;
-    var nextEntry = target.entryId || "default";
-    if (applyGoto360Panorama(nextSpace, target.panoramaId, nextEntry)) {
+    var sourcePanoramaId = goto360Runtime.panoramaId;
+    var nextEntry = target.entryId;
+    if (applyGoto360Panorama(nextSpace, target.panoramaId, nextEntry, sourcePanoramaId)) {
       return;
     }
     console.warn("[goto360] target panorama not found", target);

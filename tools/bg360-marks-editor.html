@@ -58,6 +58,11 @@
       pointer-events: none;
     }
 
+    /* Включаем hit-test только у перетаскиваемых элементов; во время drag курсор grabbing. */
+    #marksOverlay.is-dragging-marker {
+      cursor: grabbing;
+    }
+
     .mark-action {
       position: absolute;
       transform: translate(12px, -50%);
@@ -74,7 +79,7 @@
       overflow-wrap: anywhere;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
       pointer-events: auto;
-      z-index: 12;
+      z-index: 14;
     }
 
     .mark-action:hover {
@@ -129,12 +134,85 @@
       font-size: 10px;
       font-weight: 700;
       color: #fff;
-      pointer-events: none;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 10;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .mark-dot:active {
+      cursor: grabbing;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .mark-dot.text {
       border-style: dashed;
       background: rgba(30, 30, 30, 0.65);
+    }
+
+    /* Точки входа (entries): превью направления фокуса; положение правится перетаскиванием прицела/подписи. */
+    .focus-entry-reticle {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 8;
+      border: 2px solid rgba(119, 234, 188, 0.95);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.45);
+      background: rgba(34, 58, 50, 0.35);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .focus-entry-reticle::before,
+    .focus-entry-reticle::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(119, 234, 188, 0.95);
+      pointer-events: none;
+    }
+
+    .focus-entry-reticle::before {
+      width: 2px;
+      height: 14px;
+    }
+
+    .focus-entry-reticle::after {
+      width: 14px;
+      height: 2px;
+    }
+
+    .focus-entry-caption {
+      position: absolute;
+      transform: translate(14px, -50%);
+      max-width: min(220px, 40vw);
+      padding: 4px 7px;
+      border-radius: 5px;
+      border: 1px solid rgba(119, 234, 188, 0.45);
+      background: rgba(12, 28, 22, 0.88);
+      color: #c8f5df;
+      font-size: 11px;
+      line-height: 1.25;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 9;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     h1, h2 {
@@ -143,6 +221,22 @@
       font-weight: 700;
     }
     h2 { margin-top: 14px; font-size: 14px; }
+
+    /* Сводка entries: видно все ключи даже когда прицелы на превью совпали по координатам. */
+    .focus-entries-panel {
+      font-size: 11px;
+      line-height: 1.45;
+      color: #cfe9dc;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(119, 234, 188, 0.35);
+      background: rgba(12, 28, 22, 0.65);
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
+    }
 
     .row {
       display: grid;
@@ -244,11 +338,11 @@
       <div class="row two">
         <button id="newPanoramaBtn" type="button">Новая панорама</button>
         <button id="savePanoramaBtn" class="good" type="button">Сохранить панораму</button>
-      
+      </div>
 
       <div class="row">
         <button id="deletePanoramaBtn" type="button" class="danger">Удалить панораму</button>
-      </div></div>
+      </div>
 
       <div class="row">
         <label for="panoramaSelect">Панорамы в текущем файле</label>
@@ -316,10 +410,20 @@
       </div>
       <div class="hint">
         Наведите перекрестье в центре на нужную точку и нажмите «Поставить метку».
-        Камера: ЛКМ/drag — поворот, колесо — zoom.
+        Номера меток и прицелы фокуса на превью можно перетаскивать — координаты сразу пишутся в данные.
+        Камера: ЛКМ/drag по пустому canvas — поворот, колесо — zoom.
+      </div>
+      <div class="hint">
+        Несколько точек входа с одинаковыми focusX/focusY (или пустой вход = как у default) дают один общий зелёный прицел — список ключей см. ниже «Точки входа».
       </div>
 
       <div class="status" id="statusBox">Загрузите 360-изображение.</div>
+
+      <h2>Точки входа (фокусы)</h2>
+      <div id="focusEntriesList" class="focus-entries-panel">Обновляется после загрузки скриптов…</div>
+
+      <h2>Фокусы при переходах на эту панораму</h2>
+      <div id="incomingLinksPanel" class="focus-entries-panel">—</div>
 
       <h2>Список меток</h2>
       <div class="points-list" id="pointsList"></div>
@@ -401,10 +505,35 @@
       lastY: 0
     };
 
+    /**
+     * Перетаскивание метки или прицела фокуса на оверлее: захват указателя держим на viewerWrap,
+     * иначе полная перерисовка marksOverlay (innerHTML) снимает capture с потомков и обрывает drag.
+     */
+    var overlayDragState = {
+      active: false,
+      kind: null,
+      markIndex: -1,
+      focusEntryKey: null,
+      pointerId: null,
+      captureEl: null,
+      moved: false
+    };
+
+    /** Как wx/wy/wz у меток в сессии редактора: мировые координаты с луча для оверлея фокусов после перетаскивания. */
+    var editorEntryFocusWorld = {};
+
     var points = [];
     var pointCounter = 1;
     var tempProjectVec = null;
     var tempCameraDir = null;
+    /** Временные объекты для перевода попадания луча в доли focusX/focusY без лишних аллокаций. */
+    var scratchCamPos = null;
+    var scratchFocusEuler = null;
+    /** Временный кватернион: UV → yaw/pitch с тем же «вперёд = −Z», что у PerspectiveCamera BG360 в движке (не Object3D.lookAt). */
+    var scratchUvFocusQuat = null;
+    /** Для legacy режима focus как yaw/pitch → точка на сфере (до UV-редактора). */
+    var scratchFocusOrient = null;
+    var scratchEulerForward = null;
     // Зафиксированные значения focus для текста команды.
     var fixedFocus = { x: 0.5, y: 0.5 };
     var story360Data = createEmptyStory360Data();
@@ -723,6 +852,7 @@
 
     /**
      * Превращает поля target метки в компактный объект для story360.
+     * Поле entry не пишем, если вход «авто»: движок подставит ключ из панорамы «откуда пришли» и смержит с entries.default.
      */
     function buildPointTarget(point) {
       var targetType = String(point.targetType || "none").trim().toLowerCase();
@@ -733,10 +863,48 @@
       if (targetType === "360") {
         var panoramaId = String(point.targetPanorama || "").trim();
         if (!panoramaId) return null;
-        var entryId = String(point.targetEntry || "").trim() || "default";
-        return { type: "360", panorama: panoramaId, entry: entryId };
+        var entryTrim = String(point.targetEntry || "").trim();
+        var out = { type: "360", panorama: panoramaId };
+        if (entryTrim !== "") out.entry = entryTrim;
+        return out;
       }
       return null;
+    }
+
+    /**
+     * Читает focusX/focusY из объекта entry (плоские поля или вложенный focus), как в движке.
+     */
+    function readEntryFocusPair(entry) {
+      if (!entry || typeof entry !== "object") return null;
+      var fx = entry.focusX !== undefined ? entry.focusX : (entry.focus && entry.focus.x !== undefined ? entry.focus.x : null);
+      var fy = entry.focusY !== undefined ? entry.focusY : (entry.focus && entry.focus.y !== undefined ? entry.focus.y : null);
+      var x = Number(fx);
+      var y = Number(fy);
+      if (!isFinite(x) || !isFinite(y)) return null;
+      return { focusX: clamp(x, 0, 1), focusY: clamp(y, 0, 1) };
+    }
+
+    /**
+     * Сравнивает две пары фокуса с допуском от округления в UI (4 знака).
+     */
+    function focusPairsNearlyEqual(a, b) {
+      if (!a || !b) return false;
+      return Math.abs(a.focusX - b.focusX) < 0.0002 && Math.abs(a.focusY - b.focusY) < 0.0002;
+    }
+
+    /**
+     * Копирует сохранённые точки входа кроме default — чтобы сохранение панорамы не стирало входы «из …», пока их правят только в JSON.
+     */
+    function cloneNonDefaultEntriesFromPanorama(pano) {
+      var out = {};
+      if (!pano || !pano.entries || typeof pano.entries !== "object") return out;
+      Object.keys(pano.entries).forEach(function (key) {
+        if (key === "default") return;
+        var pair = readEntryFocusPair(pano.entries[key]);
+        if (!pair) return;
+        out[key] = { focusX: pair.focusX, focusY: pair.focusY };
+      });
+      return out;
     }
 
     /**
@@ -757,16 +925,41 @@
         return mark;
       });
 
+      var ids = getCurrentStory360Ids();
+      var prevPano = story360Data.spaces && story360Data.spaces[ids.spaceId] && story360Data.spaces[ids.spaceId].panoramas && story360Data.spaces[ids.spaceId].panoramas[ids.panoramaId];
+      var entries = cloneNonDefaultEntriesFromPanorama(prevPano);
+      var newDefault = {
+        focusX: Number(fixedFocus.x.toFixed(4)),
+        focusY: Number(fixedFocus.y.toFixed(4))
+      };
+
+      // Отладка перезаписи default: видно, не «уезжает» ли сценарный фокус при загрузке.
+      try {
+        var prevDef = prevPano && prevPano.entries && prevPano.entries.default;
+        var prevFx = prevDef && prevDef.focusX !== undefined ? prevDef.focusX : (prevDef && prevDef.x !== undefined ? prevDef.x : null);
+        var prevFy = prevDef && prevDef.focusY !== undefined ? prevDef.focusY : (prevDef && prevDef.y !== undefined ? prevDef.y : null);
+        var changedDefault =
+          prevFx === null || prevFy === null ||
+          Math.abs(Number(prevFx) - newDefault.focusX) > 0.0002 ||
+          Math.abs(Number(prevFy) - newDefault.focusY) > 0.0002;
+        if (changedDefault) {
+          console.warn("[bg360-editor] collectCurrentPanorama → entries.default ИЗМЕНЁН", {
+            панорама: ids.spaceId + "." + ids.panoramaId,
+            былоDefault: prevDef ? { focusX: prevFx, focusY: prevFy } : "(не было)",
+            сталоDefault: newDefault,
+            fixedFocusТекущий: { x: fixedFocus.x, y: fixedFocus.y }
+          });
+        }
+      } catch (e) {}
+
+      entries.default = newDefault;
+
       return {
         bgId: generatedBgId,
         file: assetPath,
         lines: true,
-        entries: {
-          default: {
-            focusX: Number(fixedFocus.x.toFixed(4)),
-            focusY: Number(fixedFocus.y.toFixed(4))
-          }
-        },
+        entryFocusAsPanoramaUv: !!(prevPano && prevPano.entryFocusAsPanoramaUv === true),
+        entries: entries,
         marks: marks
       };
     }
@@ -871,6 +1064,27 @@
     }
 
     /**
+     * Тот же merge entries.default + entries[arrivalKey], что getStory360Entry в engine.js:
+     * превью камеры при переходе меткой в редакторе совпадает с игрой.
+     */
+    function editorMergedEntryForArrival(panorama, arrivalKey) {
+      var entries = panorama && (panorama.entries || panorama.entryPoints || panorama.focuses);
+      var key = String(arrivalKey || "default").trim() || "default";
+      var scenarioBaseline = {};
+      if (entries && typeof entries === "object" && entries.default != null && typeof entries.default === "object") {
+        scenarioBaseline = entries.default;
+      }
+      if (!entries || typeof entries !== "object") {
+        return Object.assign({}, scenarioBaseline);
+      }
+      var arrivalOverlay = entries[key];
+      if (arrivalOverlay != null && typeof arrivalOverlay === "object") {
+        return Object.assign({}, scenarioBaseline, arrivalOverlay);
+      }
+      return Object.assign({}, scenarioBaseline);
+    }
+
+    /**
      * Загружает панораму из story360Data в форму редактора.
      */
     function loadPanoramaFromData(spaceId, panoramaId, entryId) {
@@ -887,16 +1101,49 @@
       if (assetPathInput.value && !getPanoramaAssetPath(panorama)) panorama.file = assetPathInput.value;
       refreshGeneratedBgId();
 
+      editorEntryFocusWorld = {};
+
       var requestedEntry = String(entryId || "default").trim() || "default";
-      var entry = panorama.entries && (panorama.entries[requestedEntry] || panorama.entries.default || Object.keys(panorama.entries).map(function (key) {
-        return panorama.entries[key];
-      })[0]);
-      if (!entry) entry = {};
-      fixedFocus.x = clamp(Number(entry.focusX !== undefined ? entry.focusX : (entry.x !== undefined ? entry.x : 0.5)), 0, 1);
-      fixedFocus.y = clamp(Number(entry.focusY !== undefined ? entry.focusY : (entry.y !== undefined ? entry.y : 0.5)), 0, 1);
+      var entries = panorama && (panorama.entries || panorama.entryPoints || panorama.focuses);
+      var defaultEntryRaw = entries && typeof entries === "object" && entries.default && typeof entries.default === "object"
+        ? entries.default
+        : null;
+      var arrivalEntryRaw = entries && typeof entries === "object" && requestedEntry !== "default" && entries[requestedEntry] && typeof entries[requestedEntry] === "object"
+        ? entries[requestedEntry]
+        : null;
+
+      // fixedFocus всегда = entries.default (фокус сценария): значение в полях,
+      // default-прицел и экспорт. Иначе collectCurrentPanorama при автосохранении
+      // перезапишет default фокусом прихода и сценарный фокус «уезжает» при каждом переходе.
+      var defFx = defaultEntryRaw && defaultEntryRaw.focusX !== undefined ? defaultEntryRaw.focusX : (defaultEntryRaw && defaultEntryRaw.x !== undefined ? defaultEntryRaw.x : 0.5);
+      var defFy = defaultEntryRaw && defaultEntryRaw.focusY !== undefined ? defaultEntryRaw.focusY : (defaultEntryRaw && defaultEntryRaw.y !== undefined ? defaultEntryRaw.y : 0.5);
+      fixedFocus.x = clamp(Number(defFx), 0, 1);
+      fixedFocus.y = clamp(Number(defFy), 0, 1);
       focusXInput.value = fixedFocus.x.toFixed(4);
       focusYInput.value = fixedFocus.y.toFixed(4);
-      applyFocusValues(fixedFocus.x, fixedFocus.y);
+
+      // Для камеры превью используем фокус прихода (arrival overlay поверх default — как getStory360Entry в движке).
+      // Если arrivalKey == default, или arrival нет — камера встаёт в default.
+      var camFx = arrivalEntryRaw && arrivalEntryRaw.focusX !== undefined ? arrivalEntryRaw.focusX : (arrivalEntryRaw && arrivalEntryRaw.x !== undefined ? arrivalEntryRaw.x : fixedFocus.x);
+      var camFy = arrivalEntryRaw && arrivalEntryRaw.focusY !== undefined ? arrivalEntryRaw.focusY : (arrivalEntryRaw && arrivalEntryRaw.y !== undefined ? arrivalEntryRaw.y : fixedFocus.y);
+      camFx = clamp(Number(camFx), 0, 1);
+      camFy = clamp(Number(camFy), 0, 1);
+      var useUvEntryFocus = panorama.entryFocusAsPanoramaUv === true;
+      if (useUvEntryFocus) {
+        syncPreviewCameraFromPanoramaUv(camFx, camFy);
+      } else {
+        applyFocusValues(camFx, camFy);
+      }
+
+      try {
+        console.info("[bg360-editor] loadPanoramaFromData", {
+          целеваяПанорама: spaceId + "." + panoramaId,
+          arrivalKey: requestedEntry,
+          ключиВEntries: entries && typeof entries === "object" ? Object.keys(entries) : [],
+          фокусСценария_default: { focusX: fixedFocus.x, focusY: fixedFocus.y, источник: defaultEntryRaw ? "entries.default" : "fallback 0.5/0.5" },
+          фокусКамерыПревью_arrival: { focusX: camFx, focusY: camFy, источник: arrivalEntryRaw ? ("entries[" + requestedEntry + "]") : "default (нет своего слота)" }
+        });
+      } catch (e) {}
 
       points = Array.isArray(panorama.marks) ? panorama.marks.map(function (m, index) {
         var target = m && m.target ? m.target : null;
@@ -909,7 +1156,13 @@
           type: String((m && (m.type || m.kind)) || "walk"),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
-          targetEntry: targetType === "360" ? String(target.entry || target.entryId || "default") : "default",
+          targetEntry: targetType === "360"
+            ? (function () {
+              var raw = target && (target.entry !== undefined ? target.entry : target.entryId);
+              if (raw === undefined || raw === null) return "";
+              return String(raw).trim();
+            })()
+            : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
         };
       }).filter(function (p) {
@@ -1208,9 +1461,9 @@
     }
 
     /**
-     * Возвращает UV-координаты точки на сфере по позиции курсора на canvas.
+     * Луч из экранной точки в сферу: UV, мировые координаты попадания (для меток wx/wy/wz и фокуса).
      */
-    function pickUvFromPointer(clientX, clientY) {
+    function pickHitFromPointer(clientX, clientY) {
       if (!renderer || !camera || !sphereMesh || !raycaster || !window.THREE) return null;
       var rect = viewerCanvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
@@ -1228,7 +1481,163 @@
       var hits = raycaster.intersectObject(sphereMesh, false);
       if (!hits || hits.length === 0 || !hits[0].uv) return null;
 
-      return { u: clamp(hits[0].uv.x, 0, 1), v: clamp(hits[0].uv.y, 0, 1) };
+      var p = hits[0].point;
+      return {
+        u: clamp(hits[0].uv.x, 0, 1),
+        v: clamp(hits[0].uv.y, 0, 1),
+        wx: p.x,
+        wy: p.y,
+        wz: p.z
+      };
+    }
+
+    /**
+     * Пара focusX/focusY для записи в entries: что сейчас в центре экрана превью.
+     * В UV-режиме панорамы — UV попадания луча из центра (как «метка по прицелу»); иначе доли yaw/pitch камеры, как у BG360 в движке.
+     */
+    function readFocusPairFromCurrentCameraForEntryWrite() {
+      if (!camera || !window.THREE) return null;
+      if (currentPanoramaUsesEntryUvFocus()) {
+        if (!renderer || !sphereMesh || !raycaster) return null;
+        camera.updateMatrixWorld(true);
+        sphereMesh.updateMatrixWorld(true);
+        raycaster.setFromCamera(new window.THREE.Vector2(0, 0), camera);
+        var hits = raycaster.intersectObject(sphereMesh, false);
+        if (!hits || hits.length === 0 || !hits[0].uv) return null;
+        return {
+          focusX: clamp(hits[0].uv.x, 0, 1),
+          focusY: clamp(hits[0].uv.y, 0, 1)
+        };
+      }
+      var cf = cameraToFocus();
+      return { focusX: cf.focusX, focusY: cf.focusY };
+    }
+
+    /**
+     * Текущая панорама сохраняет focus точек входа как UV развёртки (как x/y меток); иначе legacy — доли yaw/pitch камеры.
+     */
+    function currentPanoramaUsesEntryUvFocus() {
+      var ids = getCurrentStory360Ids();
+      var pano =
+        story360Data.spaces &&
+        story360Data.spaces[ids.spaceId] &&
+        story360Data.spaces[ids.spaceId].panoramas &&
+        story360Data.spaces[ids.spaceId].panoramas[ids.panoramaId];
+      return !!(pano && pano.entryFocusAsPanoramaUv === true);
+    }
+
+    /**
+     * Единичный вектор направления в мир из UV эквидистанты — те же формулы, что у projectUvToScreen до project().
+     */
+    function panoramaUvToUnitDirection(u, v, outVec) {
+      if (!window.THREE || !outVec) return false;
+      var U = clamp(Number(u), 0, 1);
+      var V = clamp(Number(v), 0, 1);
+      var thetaPolar = (1 - V) * Math.PI;
+      var phiAz = U * Math.PI * 2;
+      var sinPolar = Math.sin(thetaPolar);
+      var x0 = -Math.cos(phiAz) * sinPolar;
+      var y0 = Math.cos(thetaPolar);
+      var z0 = Math.sin(phiAz) * sinPolar;
+      outVec.set(-x0, y0, z0);
+      if (outVec.lengthSq() < 1e-12) return false;
+      outVec.normalize();
+      return true;
+    }
+
+    /**
+     * UV панорамы → yaw/pitch превью-камеры и доли focus для legacy bg / движка после конвертации.
+     */
+    function cameraFractionsFromPanoramaUv(u, v) {
+      if (!window.THREE) return null;
+      if (!scratchEulerForward) scratchEulerForward = new window.THREE.Vector3();
+      if (!scratchFocusEuler) scratchFocusEuler = new window.THREE.Euler();
+      if (!scratchUvFocusQuat) scratchUvFocusQuat = new window.THREE.Quaternion();
+      if (!panoramaUvToUnitDirection(u, v, scratchEulerForward)) return null;
+      var forwardCam = new window.THREE.Vector3(0, 0, -1);
+      scratchUvFocusQuat.setFromUnitVectors(forwardCam, scratchEulerForward);
+      scratchFocusEuler.setFromQuaternion(scratchUvFocusQuat, "YXZ");
+      var yawDeg = window.THREE.MathUtils.radToDeg(scratchFocusEuler.y);
+      var pitchDeg = clamp(window.THREE.MathUtils.radToDeg(scratchFocusEuler.x), -85, 85);
+      var yawNorm = ((yawDeg % 360) + 360) % 360;
+      return {
+        yawDeg: yawNorm,
+        pitchDeg: pitchDeg,
+        focusX: yawNorm / 360,
+        focusY: (pitchDeg + 85) / 170
+      };
+    }
+
+    /**
+     * Выставляет yawDeg/pitchDeg превью по UV точки на панораме (после загрузки или «Применить фокус» в UV-режиме).
+     */
+    function syncPreviewCameraFromPanoramaUv(u, v) {
+      var o = cameraFractionsFromPanoramaUv(u, v);
+      if (!o) return;
+      yawDeg = o.yawDeg;
+      pitchDeg = o.pitchDeg;
+      applyCameraAngles();
+    }
+
+    /**
+     * Точка на сфере превью из UV — как wx/wy/wz у метки после луча (радиус совпадает со SphereGeometry).
+     */
+    function worldPointOnSphereFromPanoramaUv(u, v) {
+      if (!camera || !window.THREE) return null;
+      if (!scratchEulerForward) scratchEulerForward = new window.THREE.Vector3();
+      if (!scratchCamPos) scratchCamPos = new window.THREE.Vector3();
+      if (!panoramaUvToUnitDirection(u, v, scratchEulerForward)) return null;
+      var sphereRadius = 500;
+      camera.getWorldPosition(scratchCamPos);
+      return {
+        wx: scratchCamPos.x + scratchEulerForward.x * sphereRadius,
+        wy: scratchCamPos.y + scratchEulerForward.y * sphereRadius,
+        wz: scratchCamPos.z + scratchEulerForward.z * sphereRadius
+      };
+    }
+
+    /**
+     * Строка legacy export bg: при UV-режиме подставляем конвертированные доли yaw/pitch, иначе fixedFocus как раньше.
+     */
+    function getLegacyBgFocusPairForExport() {
+      if (currentPanoramaUsesEntryUvFocus()) {
+        var conv = cameraFractionsFromPanoramaUv(fixedFocus.x, fixedFocus.y);
+        if (conv) return { x: conv.focusX, y: conv.focusY };
+      }
+      return { x: fixedFocus.x, y: fixedFocus.y };
+    }
+
+    /**
+     * Гарантирует узел панорамы в story360 перед записью точки входа «из …» (не default).
+     */
+    function ensurePanoramaBucketForFocusWrite() {
+      var ids = getCurrentStory360Ids();
+      var space = ensureSpace(ids.spaceId);
+      if (!space.panoramas[ids.panoramaId]) {
+        space.panoramas[ids.panoramaId] = collectCurrentPanorama();
+      }
+      var pano = space.panoramas[ids.panoramaId];
+      if (!pano.entries || typeof pano.entries !== "object") pano.entries = {};
+      return pano;
+    }
+
+    /**
+     * Обновляет фокус точки входа в памяти без поворота превью-камеры (в отличие от applyFocusValues).
+     */
+    function writeFocusEntryLive(entryKey, focusX, focusY) {
+      var fx = clamp(Number(focusX), 0, 1);
+      var fy = clamp(Number(focusY), 0, 1);
+      var fxn = Number(fx.toFixed(4));
+      var fyn = Number(fy.toFixed(4));
+      if (entryKey === "default") {
+        fixedFocus.x = fxn;
+        fixedFocus.y = fyn;
+        focusXInput.value = fxn.toFixed(4);
+        focusYInput.value = fyn.toFixed(4);
+      } else {
+        var pano = ensurePanoramaBucketForFocusWrite();
+        pano.entries[entryKey] = { focusX: fxn, focusY: fyn };
+      }
     }
 
     /**
@@ -1256,7 +1665,7 @@
         type: (type === "text" ? "text" : "walk"),
         targetType: "none",
         targetPanorama: "",
-        targetEntry: "default",
+        targetEntry: "",
         targetScene: ""
       };
       if (worldPoint && window.THREE) {
@@ -1314,7 +1723,11 @@
       }
       saveCurrentPanoramaToData();
       var ids = getCurrentStory360Ids();
-      loadPanoramaFromData(ids.spaceId, point.targetPanorama, point.targetEntry || "default");
+      var reqEntry = String(point.targetEntry || "").trim();
+      // Как resolveGoto360EntryKey в движке: пустой или явный default у цели метки не отменяют ключ «откуда пришли».
+      var previewArrivalKey =
+        reqEntry === "" || reqEntry.toLowerCase() === "default" ? ids.panoramaId || "default" : reqEntry;
+      loadPanoramaFromData(ids.spaceId, point.targetPanorama, previewArrivalKey);
     }
 
     /**
@@ -1458,8 +1871,9 @@
 
           var targetEntry = document.createElement("input");
           targetEntry.type = "text";
-          targetEntry.placeholder = "entry";
-          targetEntry.value = p.targetEntry || "default";
+          targetEntry.placeholder = "entry (пусто = авто)";
+          targetEntry.title = "Пусто: точка входа с id текущей панорамы (как в игре). Явный default — ввести default.";
+          targetEntry.value = p.targetEntry !== undefined && p.targetEntry !== null ? String(p.targetEntry) : "";
           targetEntry.addEventListener("input", function () {
             points[idx].targetEntry = targetEntry.value;
             updateExport();
@@ -1523,6 +1937,9 @@
      * Обновляет поле экспорта: bg c focus и команду bg360marks.
      */
     function updateExport() {
+      if (ensureReferrerFocusSlotsForCurrentPanorama()) {
+        persistEditorDraft();
+      }
       var ids = getCurrentStory360Ids();
       var bgId = refreshGeneratedBgId();
       var marksPart = points.map(function (p) {
@@ -1534,7 +1951,8 @@
       lines.push("goto360 " + ids.spaceId + "." + ids.panoramaId + " entry=default");
       lines.push("");
       lines.push("# legacy export:");
-      lines.push("bg " + bgId + " 360 focusx=" + fixedFocus.x.toFixed(4) + " focusy=" + fixedFocus.y.toFixed(4));
+      var legacyFx = getLegacyBgFocusPairForExport();
+      lines.push("bg " + bgId + " 360 focusx=" + legacyFx.x.toFixed(4) + " focusy=" + legacyFx.y.toFixed(4));
       if (marksPart) {
         lines.push("bg360marks " + bgId + " " + marksPart);
       } else {
@@ -1553,6 +1971,7 @@
      * не меняя зафиксированные значения в тексте команды.
      */
     function refreshFocusInputsFromCamera() {
+      if (currentPanoramaUsesEntryUvFocus()) return;
       var focus = cameraToFocus();
       focusXInput.value = focus.focusX.toFixed(4);
       focusYInput.value = focus.focusY.toFixed(4);
@@ -1599,7 +2018,8 @@
     }
 
     /**
-     * Запасной путь для старых меток без wx/wy/wz: UV→экран (может быть менее точным).
+     * Запасной путь для старых меток без wx/wy/wz: UV текстуры панорамы → экран (эквидистанта).
+     * Для прицелов фокуса также используется как последний fallback (как у меток в renderOverlayMarks).
      */
     function projectUvToScreen(u, v, width, height) {
       if (!window.THREE || !camera) return null;
@@ -1629,23 +2049,404 @@
     }
 
     /**
-     * Рисует визуальные маркеры поверх canvas в текущем положении камеры.
+     * Сводка entries для оверлея: default — текущий fixedFocus в форме; ключи с id панорам-источников — из сохранённой панорамы (фокусы при переходах с них на эту).
      */
-    function renderOverlayMarks() {
-      marksOverlay.innerHTML = "";
-      if (!points.length) return;
+    function getMergedEntriesForOverlay() {
+      var ids = getCurrentStory360Ids();
+      var pano = story360Data.spaces && story360Data.spaces[ids.spaceId] && story360Data.spaces[ids.spaceId].panoramas && story360Data.spaces[ids.spaceId].panoramas[ids.panoramaId];
+      var merged = cloneNonDefaultEntriesFromPanorama(pano);
+      merged.default = { focusX: fixedFocus.x, focusY: fixedFocus.y };
+      return merged;
+    }
 
-      var rect = viewerCanvas.getBoundingClientRect();
-      var width = rect.width;
-      var height = rect.height;
+    /**
+     * Мировая точка на сфере превью (радиус как SphereGeometry) для долей фокуса в семантике yaw/pitch как applyFocusValues / BG360 в движке.
+     */
+    function worldPointOnSphereFromFocusFractions(fx, fy) {
+      if (!camera || !window.THREE) return null;
+      if (!scratchFocusOrient) scratchFocusOrient = new window.THREE.Object3D();
+      if (!scratchEulerForward) scratchEulerForward = new window.THREE.Vector3();
+      if (!scratchCamPos) scratchCamPos = new window.THREE.Vector3();
 
-      points.forEach(function (p, index) {
+      var sphereRadius = 500;
+      var fxc = clamp(Number(fx), 0, 1);
+      var fyc = clamp(Number(fy), 0, 1);
+
+      scratchFocusOrient.position.set(0, 0, 0);
+      scratchFocusOrient.rotation.order = "YXZ";
+      scratchFocusOrient.rotation.y = window.THREE.MathUtils.degToRad(fxc * 360);
+      scratchFocusOrient.rotation.x = window.THREE.MathUtils.degToRad(-85 + fyc * 170);
+      scratchFocusOrient.rotation.z = 0;
+      scratchFocusOrient.updateMatrixWorld(true);
+
+      scratchEulerForward.set(0, 0, -1).applyQuaternion(scratchFocusOrient.quaternion);
+      camera.getWorldPosition(scratchCamPos);
+      return {
+        wx: scratchCamPos.x + scratchEulerForward.x * sphereRadius,
+        wy: scratchCamPos.y + scratchEulerForward.y * sphereRadius,
+        wz: scratchCamPos.z + scratchEulerForward.z * sphereRadius
+      };
+    }
+
+    /**
+     * ID целевой панорамы у метки с переходом 360 (как в экспорте story360).
+     */
+    function getMark360TargetPanoramaId(mark) {
+      var t = mark && mark.target;
+      if (!t || typeof t !== "object") return "";
+      if (String(t.type || "").trim().toLowerCase() !== "360") return "";
+      return String(t.panorama !== undefined ? t.panorama : t.panoramaId || "").trim();
+    }
+
+    /**
+     * Пространство цели метки 360; если в target не задано — считаем текущее пространство редактора.
+     */
+    function getMark360TargetSpaceId(mark, defaultSpaceId) {
+      var t = mark && mark.target;
+      if (!t || typeof t !== "object") return String(defaultSpaceId || "").trim();
+      var raw = t.spaceId !== undefined ? t.spaceId : t.space;
+      if (raw !== undefined && raw !== null && String(raw).trim() !== "") return String(raw).trim();
+      return String(defaultSpaceId || "").trim();
+    }
+
+    /**
+     * Сырое поле entry у цели 360: undefined/null означает режим «авто» (ключ входа = панорама-источник).
+     */
+    function getMark360TargetEntryRaw(mark) {
+      var t = mark && mark.target;
+      if (!t || typeof t !== "object") return undefined;
+      if (String(t.type || "").trim().toLowerCase() !== "360") return undefined;
+      if (Object.prototype.hasOwnProperty.call(t, "entry")) return t.entry;
+      if (Object.prototype.hasOwnProperty.call(t, "entryId")) return t.entryId;
+      return undefined;
+    }
+
+    /**
+     * Выясняет id панорам в том же space, откуда в сохранённых данных есть переход 360 на targetPanoramaId.
+     * Агрегация только для списка «откуда приходят»: без привязки UI к редактированию меток на текущей панораме.
+     */
+    function collectIncomingPanoramaSources(spaceId, targetPanoramaId) {
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      if (!space || !space.panoramas || typeof space.panoramas !== "object") return [];
+      var bucket = {};
+      Object.keys(space.panoramas).forEach(function (srcPid) {
+        if (srcPid === targetPanoramaId) return;
+        var pano = space.panoramas[srcPid];
+        var marks = Array.isArray(pano.marks) ? pano.marks : [];
+        marks.forEach(function (m) {
+          if (getMark360TargetSpaceId(m, spaceId) !== spaceId) return;
+          if (getMark360TargetPanoramaId(m) !== targetPanoramaId) return;
+          var entryRaw = getMark360TargetEntryRaw(m);
+          var trimmed = entryRaw === undefined || entryRaw === null ? "" : String(entryRaw).trim();
+          var usesAutoEntry = trimmed === "";
+          var explicitDefault = trimmed !== "" && trimmed.toLowerCase() === "default";
+          if (!bucket[srcPid]) {
+            bucket[srcPid] = { sourcePanoramaId: srcPid, anyAutoEntry: false, anyExplicitDefault: false };
+          }
+          if (usesAutoEntry) bucket[srcPid].anyAutoEntry = true;
+          if (explicitDefault) bucket[srcPid].anyExplicitDefault = true;
+        });
+      });
+      return Object.keys(bucket)
+        .sort(function (a, b) {
+          return String(a).localeCompare(String(b));
+        })
+        .map(function (k) {
+          return bucket[k];
+        });
+    }
+
+    /**
+     * Проверяет, есть ли у панорамы назначения сохранённый фокус для перехода с указанной панорамы-источника (ключ в entries совпадает с id источника).
+     */
+    function destinationHasEntryForSource(destPano, sourcePanoramaId) {
+      if (!destPano || !destPano.entries || typeof destPano.entries !== "object") return false;
+      return !!readEntryFocusPair(destPano.entries[sourcePanoramaId]);
+    }
+
+    /**
+     * Для текущей панорамы (назначения): под каждую другую панораму пространства, у которой в данных есть переход сюда,
+     * заводит в памяти слот фокуса (в JSON это всё ещё entries[<id источника>]), если его ещё не было.
+     * Значение копируется из entries.default этой панорамы (фокус сценария); если default нет — из (0.5, 0.5).
+     * Так на превью всегда можно показать полный набор: сценарий + все источники со ссылкой на эту панораму.
+     */
+    function ensureReferrerFocusSlotsForCurrentPanorama() {
+      var ids = getCurrentStory360Ids();
+      var space = story360Data.spaces && story360Data.spaces[ids.spaceId];
+      if (!space || !space.panoramas) return false;
+      var pano = space.panoramas[ids.panoramaId];
+      if (!pano) return false;
+
+      var incoming = collectIncomingPanoramaSources(ids.spaceId, ids.panoramaId);
+      if (!incoming.length) return false;
+
+      if (!pano.entries || typeof pano.entries !== "object") pano.entries = {};
+
+      var basePair = readEntryFocusPair(pano.entries.default);
+      if (!basePair) {
+        basePair = { focusX: clamp(Number(fixedFocus.x), 0, 1), focusY: clamp(Number(fixedFocus.y), 0, 1) };
+      }
+
+      var changed = false;
+      incoming.forEach(function (info) {
+        var src = info.sourcePanoramaId;
+        if (destinationHasEntryForSource(pano, src)) return;
+        pano.entries[src] = {
+          focusX: Number(basePair.focusX.toFixed(4)),
+          focusY: Number(basePair.focusY.toFixed(4))
+        };
+        editorEntryFocusWorld[src] = null;
+        changed = true;
+      });
+      return changed;
+    }
+
+    /**
+     * Записывает фокус перехода с панорамы-источника (хранится как entries[id источника]) из текущего вида камеры (центр экрана).
+     */
+    function writeIncomingEntryFromCameraView(spaceId, destPanoramaId, sourcePanoramaId) {
+      var pair = readFocusPairFromCurrentCameraForEntryWrite();
+      if (!pair) {
+        setStatus(
+          "Не удалось снять фокус: нет пересечения луча из центра экрана с панорамой (загрузите текстуру или включите UV-режим только после загрузки сферы).",
+          true
+        );
+        return;
+      }
+      var space = ensureSpace(spaceId);
+      if (!space.panoramas[destPanoramaId]) {
+        storeCurrentPanoramaToData(false, false);
+      }
+      var pano = space.panoramas[destPanoramaId];
+      if (!pano) {
+        setStatus("Не удалось записать панораму в данные — сохраните её кнопкой «Сохранить в Local».", true);
+        return;
+      }
+      if (!pano.entries || typeof pano.entries !== "object") pano.entries = {};
+      var had = destinationHasEntryForSource(pano, sourcePanoramaId);
+      var fx = clamp(Number(pair.focusX), 0, 1);
+      var fy = clamp(Number(pair.focusY), 0, 1);
+      pano.entries[sourcePanoramaId] = {
+        focusX: Number(fx.toFixed(4)),
+        focusY: Number(fy.toFixed(4))
+      };
+      persistEditorDraft();
+      editorEntryFocusWorld[sourcePanoramaId] = null;
+      updateExport();
+      setStatus(
+        (had ? "Обновлён" : "Записан") +
+          " фокус перехода с панорамы «" +
+          sourcePanoramaId +
+          "» на «" +
+          spaceId +
+          "." +
+          destPanoramaId +
+          "» (текущий центр экрана).",
+        false
+      );
+    }
+
+    /**
+     * Список панорам, с которых в данных есть переход на текущую: для каждой на этой панораме задаётся свой фокус (в файле — отдельное поле рядом с default).
+     */
+    function renderIncomingLinksSidebar() {
+      var panel = document.getElementById("incomingLinksPanel");
+      if (!panel) return;
+      var ids = getCurrentStory360Ids();
+      var spaceId = ids.spaceId;
+      var pid = ids.panoramaId;
+      var space = story360Data.spaces && story360Data.spaces[spaceId];
+      var destPano = space && space.panoramas && space.panoramas[pid];
+      var incoming = collectIncomingPanoramaSources(spaceId, pid);
+
+      panel.innerHTML = "";
+
+      if (!incoming.length) {
+        panel.textContent =
+          "Нет ссылок на эту панораму: в пространстве «" +
+          spaceId +
+          "» ни одна другая панорама не ведёт переходом на «" +
+          pid +
+          "». Когда переходы появятся — здесь появятся строки с отдельными фокусами; на превью останется только фокус сценария (default).";
+        return;
+      }
+
+      var intro = document.createElement("div");
+      intro.className = "hint";
+      intro.style.marginBottom = "10px";
+      intro.style.lineHeight = "1.45";
+      intro.textContent =
+        "На этой панораме хранится набор фокусов: один для сценария (default / поля «Фокус» выше) и по одному для каждой панорамы ниже, с которой есть переход сюда. Новый источник получает те же числа, что и фокус сценария, пока вы не сместите его кнопкой или прицелом на превью. Все они показываются зелёными прицелами.";
+      panel.appendChild(intro);
+
+      var checklist = document.createElement("div");
+      checklist.className = "hint";
+      checklist.style.marginBottom = "12px";
+      checklist.style.padding = "8px 10px";
+      checklist.style.borderRadius = "6px";
+      checklist.style.background = "rgba(30, 40, 55, 0.35)";
+      checklist.style.lineHeight = "1.45";
+      checklist.style.whiteSpace = "pre-line";
+      var autoSources = incoming.filter(function (s) {
+        return s.anyAutoEntry;
+      });
+      var checklistLines = [];
+      checklistLines.push("• Сценарий: поля «Фокус» и «Применить focus» — это default на превью.");
+      checklistLines.push(
+        "• Переход с панорамы «X»: свой прицел на превью; кнопка в строке записывает туда текущий центр экрана."
+      );
+      if (autoSources.length) {
+        checklistLines.push(
+          "Переходов, где движок сам подставляет ключ по id панорамы-источника: " +
+            autoSources.length +
+            " — под них слоты создаются автоматически (изначально как копия фокуса сценария)."
+        );
+      }
+      checklist.textContent = checklistLines.join("\n");
+      panel.appendChild(checklist);
+
+      var foot = document.createElement("div");
+      foot.className = "hint";
+      foot.style.marginTop = "12px";
+      foot.style.fontSize = "11px";
+      foot.style.lineHeight = "1.45";
+      foot.textContent =
+        "Технически в JSON это объект entries: ключ default и ключи с id панорам-источников. Если на исходной панораме у перехода принудительно указан только сценарий (явный default), движок не использует отдельный фокус под эту панораму — поправьте цель перехода там.";
+
+      incoming.forEach(function (srcInfo) {
+        var src = srcInfo.sourcePanoramaId;
+        var anyAuto = srcInfo.anyAutoEntry;
+        var anyDef = srcInfo.anyExplicitDefault;
+
+        var row = document.createElement("div");
+        row.style.marginBottom = "10px";
+        row.style.padding = "8px 10px";
+        row.style.borderRadius = "6px";
+        row.style.border = "1px solid rgba(119, 234, 188, 0.28)";
+        row.style.background = "rgba(12, 28, 22, 0.45)";
+
+        var title = document.createElement("div");
+        title.style.fontWeight = "700";
+        title.style.marginBottom = "6px";
+        title.textContent = "Переход с панорамы «" + src + "»";
+
+        var detail = document.createElement("div");
+        detail.style.fontSize = "11px";
+        detail.style.lineHeight = "1.45";
+
+        var pairSrc = destPano && destPano.entries ? readEntryFocusPair(destPano.entries[src]) : null;
+        var pairDef = destPano && destPano.entries ? readEntryFocusPair(destPano.entries.default) : null;
+
+        var statusParts = [];
+        statusParts.push("Отдельный прицел на превью для перехода с панорамы «" + src + "».");
+        if (pairSrc && pairDef && focusPairsNearlyEqual(pairSrc, pairDef)) {
+          statusParts.push("Координаты совпадают с фокусом сценария — сместите прицел или камеру + кнопку, если нужен другой вид при этом переходе.");
+        }
+        if (anyAuto) {
+          statusParts.push("Движок подставит ключ «" + src + "» и смержит с default.");
+        }
+        if (anyDef) {
+          statusParts.push(
+            "На панораме «" +
+              src +
+              "» есть переход(ы) с принудительным сценарием — они не используют отдельный фокус «с этой панорамы»."
+          );
+        }
+        if (!anyAuto && anyDef) {
+          statusParts.push("Все переходы из «" + src + "» только через сценарий — строка ниже для вида в редакторе, в рантайме важен только default.");
+        }
+
+        detail.textContent = statusParts.join(" ");
+
+        row.appendChild(title);
+        row.appendChild(detail);
+
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Записать сюда текущий вид для перехода с «" + src + "»";
+        btn.style.marginTop = "8px";
+        (function (srcCapture, sid, destPid) {
+          btn.addEventListener("click", function () {
+            writeIncomingEntryFromCameraView(sid, destPid, srcCapture);
+          });
+        })(src, spaceId, pid);
+        row.appendChild(btn);
+
+        panel.appendChild(row);
+      });
+
+      panel.appendChild(foot);
+    }
+
+    /**
+     * Текстовый список фокусов в сайдбаре: default и по ключу для каждой ссылающейся панорамы.
+     */
+    function renderFocusEntriesSidebar() {
+      var el = document.getElementById("focusEntriesList");
+      if (!el) return;
+      var merged = getMergedEntriesForOverlay();
+      var keys = Object.keys(merged).sort(function (a, b) {
+        if (a === "default") return -1;
+        if (b === "default") return 1;
+        return String(a).localeCompare(String(b));
+      });
+      var uvNote = currentPanoramaUsesEntryUvFocus() ? "Семантика чисел: UV развёртки." : "Семантика чисел: доли yaw/pitch камеры.";
+      var fpCount = {};
+      var lines = [];
+      keys.forEach(function (entryKey) {
+        var pair = readEntryFocusPair(merged[entryKey]);
+        if (!pair) {
+          lines.push(entryKey + ": нет focusX/focusY");
+          return;
+        }
+        var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
+        fpCount[fp] = (fpCount[fp] || 0) + 1;
+        var label = entryKey === "default" ? "default (сценарий)" : entryKey;
+        lines.push(label + " → focusX=" + pair.focusX.toFixed(4) + " focusY=" + pair.focusY.toFixed(4));
+      });
+      var hasOverlap = Object.keys(fpCount).some(function (k) {
+        return fpCount[k] > 1;
+      });
+      var tail = "\n\n" + uvNote;
+      if (hasOverlap) {
+        tail +=
+          "\nСовпадающие координаты: на превью несколько прицелов рядом (смещение только для отображения).";
+      }
+      el.textContent = lines.join("\n") + tail;
+    }
+
+    /**
+     * Рисует прицелы фокусов: по одному кругу на каждый ключ (сценарий + каждая ссылающаяся панорама).
+     * Если координаты совпадают, прицелы смещаются ступенькой — чтобы все были видны и доступны для перетаскивания.
+     */
+    function appendEntryFocusOverlays(width, height, rect) {
+      var merged = getMergedEntriesForOverlay();
+      var keys = Object.keys(merged).sort(function (a, b) {
+        if (a === "default") return -1;
+        if (b === "default") return 1;
+        return String(a).localeCompare(String(b));
+      });
+
+      var items = [];
+      keys.forEach(function (entryKey) {
+        var pair = readEntryFocusPair(merged[entryKey]);
+        if (!pair) return;
+
         var pos = null;
-        if (p.wx != null && p.wy != null && p.wz != null) {
-          pos = projectWorldToOverlayPx(p.wx, p.wy, p.wz);
+        var wMem = editorEntryFocusWorld[entryKey];
+        if (wMem && wMem.wx != null && wMem.wy != null && wMem.wz != null && isFinite(wMem.wx)) {
+          pos = projectWorldToOverlayPx(wMem.wx, wMem.wy, wMem.wz);
+        }
+        if (!pos && currentPanoramaUsesEntryUvFocus()) {
+          var wpUv = worldPointOnSphereFromPanoramaUv(pair.focusX, pair.focusY);
+          if (wpUv) pos = projectWorldToOverlayPx(wpUv.wx, wpUv.wy, wpUv.wz);
+        }
+        if (!pos && !currentPanoramaUsesEntryUvFocus()) {
+          var wpLegacy = worldPointOnSphereFromFocusFractions(pair.focusX, pair.focusY);
+          if (wpLegacy) pos = projectWorldToOverlayPx(wpLegacy.wx, wpLegacy.wy, wpLegacy.wz);
         }
         if (!pos) {
-          pos = projectUvToScreen(p.x, p.y, width, height);
+          pos = projectUvToScreen(pair.focusX, pair.focusY, width, height);
           if (viewerWrap && pos) {
             var wrapRect = viewerWrap.getBoundingClientRect();
             pos = {
@@ -1656,32 +2457,119 @@
         }
         if (!pos) return;
 
-        var el = document.createElement("div");
-        el.className = "mark-dot" + (p.type === "text" ? " text" : "");
-        el.style.left = pos.x + "px";
-        el.style.top = pos.y + "px";
-        el.textContent = String(index + 1);
-        marksOverlay.appendChild(el);
-
-        var targetLabel = getOverlayMarkTargetLabel(p);
-        if (targetLabel) {
-          var actionBtn = document.createElement("button");
-          actionBtn.type = "button";
-          actionBtn.className = "mark-action";
-          actionBtn.style.left = pos.x + "px";
-          actionBtn.style.top = pos.y + "px";
-          actionBtn.textContent = targetLabel;
-          actionBtn.addEventListener("pointerdown", function (e) {
-            e.stopPropagation();
-          });
-          actionBtn.addEventListener("click", function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            activateOverlayMarkTarget(index);
-          });
-          marksOverlay.appendChild(actionBtn);
-        }
+        var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
+        items.push({ entryKey: entryKey, pair: pair, pos: pos, fp: fp });
       });
+
+      var groups = {};
+      items.forEach(function (it) {
+        if (!groups[it.fp]) groups[it.fp] = [];
+        groups[it.fp].push(it);
+      });
+
+      var stackDX = 16;
+      var stackDY = 11;
+
+      items.forEach(function (it) {
+        var g = groups[it.fp];
+        var idxInGroup = g.indexOf(it);
+        var pos = it.pos;
+        var ox = pos.x + idxInGroup * stackDX;
+        var oy = pos.y + idxInGroup * stackDY;
+
+        var reticle = document.createElement("div");
+        reticle.className = "focus-entry-reticle";
+        reticle.style.left = ox + "px";
+        reticle.style.top = oy + "px";
+        reticle.setAttribute("aria-hidden", "true");
+        reticle.setAttribute("data-focus-entry", String(it.entryKey));
+        if (g.length > 1) {
+          reticle.title =
+            "Несколько фокусов с одинаковыми координатами — прицелы смещены только на экране, чтобы различать и тащить нужный.";
+        }
+        marksOverlay.appendChild(reticle);
+
+        var cap = document.createElement("div");
+        cap.className = "focus-entry-caption";
+        cap.style.left = ox + "px";
+        cap.style.top = oy + "px";
+        cap.style.transform = "translate(14px, -50%)";
+        cap.textContent = it.entryKey === "default" ? "Сценарий (default)" : ("С «" + it.entryKey + "»");
+        cap.setAttribute("data-focus-entry", String(it.entryKey));
+        if (g.length > 1) {
+          cap.title = reticle.title;
+        }
+        marksOverlay.appendChild(cap);
+      });
+    }
+
+    /**
+     * Рисует визуальные маркеры поверх canvas в текущем положении камеры.
+     */
+    function renderOverlayMarks() {
+      try {
+        if (!marksOverlay || !viewerCanvas) return;
+        if (ensureReferrerFocusSlotsForCurrentPanorama()) {
+          persistEditorDraft();
+        }
+        marksOverlay.innerHTML = "";
+
+        var rect = viewerCanvas.getBoundingClientRect();
+        var width = rect.width;
+        var height = rect.height;
+        appendEntryFocusOverlays(width, height, rect);
+
+        if (!points.length) return;
+
+        points.forEach(function (p, index) {
+          var pos = null;
+          if (p.wx != null && p.wy != null && p.wz != null) {
+            pos = projectWorldToOverlayPx(p.wx, p.wy, p.wz);
+          }
+          if (!pos) {
+            pos = projectUvToScreen(p.x, p.y, width, height);
+            if (viewerWrap && pos) {
+              var wrapRect = viewerWrap.getBoundingClientRect();
+              pos = {
+                x: pos.x + (rect.left - wrapRect.left),
+                y: pos.y + (rect.top - wrapRect.top)
+              };
+            }
+          }
+          if (!pos) return;
+
+          var el = document.createElement("div");
+          el.className = "mark-dot" + (p.type === "text" ? " text" : "");
+          el.style.left = pos.x + "px";
+          el.style.top = pos.y + "px";
+          el.textContent = String(index + 1);
+          el.dataset.markIndex = String(index);
+          marksOverlay.appendChild(el);
+
+          var targetLabel = getOverlayMarkTargetLabel(p);
+          if (targetLabel) {
+            var actionBtn = document.createElement("button");
+            actionBtn.type = "button";
+            actionBtn.className = "mark-action";
+            actionBtn.style.left = pos.x + "px";
+            actionBtn.style.top = pos.y + "px";
+            actionBtn.textContent = targetLabel;
+            actionBtn.addEventListener("pointerdown", function (e) {
+              e.stopPropagation();
+            });
+            actionBtn.addEventListener("click", function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              activateOverlayMarkTarget(index);
+            });
+            marksOverlay.appendChild(actionBtn);
+          }
+        });
+      } finally {
+        // Список точек входа не зависит от WebGL; обязательно обновляем даже при ошибке/раннем выходе выше.
+        renderFocusEntriesSidebar();
+        renderIncomingLinksSidebar();
+      }
     }
 
     /**
@@ -1864,6 +2752,148 @@
     }
 
     /**
+     * Завершает перетаскивание метки или фокуса на оверлее: снимает pointer capture и синхронизирует экспорт.
+     */
+    function finishOverlayDragInteraction(e) {
+      if (!overlayDragState.active) return;
+      if (overlayDragState.pointerId != null && e.pointerId !== overlayDragState.pointerId) return;
+      var dragKind = overlayDragState.kind;
+      var dragMoved = overlayDragState.moved;
+      var pid = overlayDragState.pointerId;
+      var cap = overlayDragState.captureEl;
+      overlayDragState.active = false;
+      overlayDragState.kind = null;
+      overlayDragState.markIndex = -1;
+      overlayDragState.focusEntryKey = null;
+      overlayDragState.pointerId = null;
+      overlayDragState.moved = false;
+      marksOverlay.classList.remove("is-dragging-marker");
+      if (dragKind === "focus" && dragMoved) {
+        var ids = getCurrentStory360Ids();
+        var space = ensureSpace(ids.spaceId);
+        var panoDone = space.panoramas && space.panoramas[ids.panoramaId];
+        if (panoDone) panoDone.entryFocusAsPanoramaUv = true;
+      }
+      if (cap && pid != null && cap.releasePointerCapture) {
+        try {
+          cap.releasePointerCapture(pid);
+        } catch (err) {
+          // Игнорируем повторный release или смену браузерного контекста.
+        }
+      }
+      overlayDragState.captureEl = null;
+      updateExport();
+    }
+
+    /**
+     * Начало перетаскивания: метка по индексу или точка входа по data-focus-entry; захват на viewerWrap.
+     */
+    function onMarksOverlayPointerDown(e) {
+      if (e.button !== 0 || !viewerWrap) return;
+      var target = e.target;
+      if (!target || typeof target.closest !== "function") return;
+
+      var markEl = target.closest(".mark-dot");
+      if (markEl && markEl.dataset.markIndex !== undefined && markEl.dataset.markIndex !== "") {
+        var idx = Number(markEl.dataset.markIndex);
+        if (!isFinite(idx) || idx < 0 || idx >= points.length) return;
+        overlayDragState.active = true;
+        overlayDragState.kind = "mark";
+        overlayDragState.markIndex = idx;
+        overlayDragState.focusEntryKey = null;
+        overlayDragState.pointerId = e.pointerId;
+        overlayDragState.moved = false;
+        overlayDragState.captureEl = viewerWrap;
+        marksOverlay.classList.add("is-dragging-marker");
+        try {
+          viewerWrap.setPointerCapture(e.pointerId);
+        } catch (err) {
+          // Без capture drag может оборваться при пересборке DOM — редкий случай.
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      var focusEl = target.closest("[data-focus-entry]");
+      if (focusEl) {
+        var key = focusEl.getAttribute("data-focus-entry");
+        if (!key) return;
+        overlayDragState.active = true;
+        overlayDragState.kind = "focus";
+        overlayDragState.markIndex = -1;
+        overlayDragState.focusEntryKey = key;
+        overlayDragState.pointerId = e.pointerId;
+        overlayDragState.moved = false;
+        overlayDragState.captureEl = viewerWrap;
+        marksOverlay.classList.add("is-dragging-marker");
+        try {
+          viewerWrap.setPointerCapture(e.pointerId);
+        } catch (err) {}
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+
+    /**
+     * Обновляет координаты метки или фокуса по лучу в курсор; черновик story360 пишется без полного refresh экспорта до отпускания.
+     */
+    function onViewerWrapOverlayPointerMove(e) {
+      if (!overlayDragState.active || e.pointerId !== overlayDragState.pointerId) return;
+      var hit = pickHitFromPointer(e.clientX, e.clientY);
+      if (!hit) return;
+      overlayDragState.moved = true;
+
+      if (overlayDragState.kind === "mark") {
+        var idx = overlayDragState.markIndex;
+        if (idx < 0 || idx >= points.length) return;
+        var pt = points[idx];
+        pt.x = Number(hit.u.toFixed(4));
+        pt.y = Number(hit.v.toFixed(4));
+        pt.wx = Number(hit.wx.toFixed(6));
+        pt.wy = Number(hit.wy.toFixed(6));
+        pt.wz = Number(hit.wz.toFixed(6));
+        renderOverlayMarks();
+        renderPointsList();
+        if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+        e.preventDefault();
+        return;
+      }
+
+      if (overlayDragState.kind === "focus") {
+        var entryKeyMove = overlayDragState.focusEntryKey;
+        writeFocusEntryLive(entryKeyMove, Number(hit.u.toFixed(4)), Number(hit.v.toFixed(4)));
+        editorEntryFocusWorld[entryKeyMove] = {
+          wx: Number(hit.wx.toFixed(6)),
+          wy: Number(hit.wy.toFixed(6)),
+          wz: Number(hit.wz.toFixed(6))
+        };
+        renderOverlayMarks();
+        if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+        e.preventDefault();
+      }
+    }
+
+    /**
+     * Pointer up / cancel после перетаскивания на оверлее.
+     */
+    function onViewerWrapOverlayPointerUp(e) {
+      if (!overlayDragState.active || e.pointerId !== overlayDragState.pointerId) return;
+      finishOverlayDragInteraction(e);
+    }
+
+    /**
+     * Регистрирует перетаскивание номеров меток и прицелов точек входа на превью.
+     */
+    function bindMarksOverlayDragHandlers() {
+      marksOverlay.addEventListener("pointerdown", onMarksOverlayPointerDown);
+      if (!viewerWrap) return;
+      viewerWrap.addEventListener("pointermove", onViewerWrapOverlayPointerMove);
+      viewerWrap.addEventListener("pointerup", onViewerWrapOverlayPointerUp);
+      viewerWrap.addEventListener("pointercancel", onViewerWrapOverlayPointerUp);
+    }
+
+    /**
      * Привязывает обработчики UI и мыши для камеры/добавления точек.
      */
     function bindEvents() {
@@ -1926,7 +2956,12 @@
         fixedFocus.y = clamp(Number(focusYInput.value), 0, 1);
         focusXInput.value = fixedFocus.x.toFixed(4);
         focusYInput.value = fixedFocus.y.toFixed(4);
-        applyFocusValues(fixedFocus.x, fixedFocus.y);
+        delete editorEntryFocusWorld.default;
+        if (currentPanoramaUsesEntryUvFocus()) {
+          syncPreviewCameraFromPanoramaUv(fixedFocus.x, fixedFocus.y);
+        } else {
+          applyFocusValues(fixedFocus.x, fixedFocus.y);
+        }
         updateExport();
       });
 
@@ -1940,6 +2975,10 @@
         fixedFocus.y = focus.y;
         focusXInput.value = fixedFocus.x.toFixed(4);
         focusYInput.value = fixedFocus.y.toFixed(4);
+        delete editorEntryFocusWorld.default;
+        var ids = getCurrentStory360Ids();
+        var panoRead = story360Data.spaces && story360Data.spaces[ids.spaceId] && story360Data.spaces[ids.spaceId].panoramas && story360Data.spaces[ids.spaceId].panoramas[ids.panoramaId];
+        if (panoRead) panoRead.entryFocusAsPanoramaUv = false;
         applyFocusValues(fixedFocus.x, fixedFocus.y);
         updateExport();
       });
@@ -2034,6 +3073,22 @@
         var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
         if (file) loadImageFile(file);
       });
+
+      bindMarksOverlayDragHandlers();
+    }
+
+    /**
+     * При открытии страницы через file:// часть браузеров пишет в консоль про «opaque origins»;
+     * локальный HTTP-сервер убирает эти ограничения для превью и скриптов.
+     */
+    function appendFileProtocolTipIfNeeded() {
+      if (String(window.location.protocol || "").toLowerCase() !== "file:") return;
+      if (!statusBox) return;
+      var needle = "npx serve";
+      if (String(statusBox.textContent || "").indexOf(needle) !== -1) return;
+      var tip =
+        "[Режим file://] Чтобы не было лишних предупреждений в консоли, откройте редактор через локальный сервер из корня репозитория, например: npx serve . — затем в браузере tools/bg360-marks-editor.html";
+      statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
     }
 
     /**
@@ -2050,6 +3105,9 @@
         refreshFocusInputsFromCamera();
       }
       editorReady = true;
+      renderFocusEntriesSidebar();
+      renderIncomingLinksSidebar();
+      appendFileProtocolTipIfNeeded();
     }
 
     bootstrap();
