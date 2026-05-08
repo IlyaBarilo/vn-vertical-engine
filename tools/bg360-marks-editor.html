@@ -422,9 +422,6 @@
       <h2>Точки входа (фокусы)</h2>
       <div id="focusEntriesList" class="focus-entries-panel">Обновляется после загрузки скриптов…</div>
 
-      <h2>Фокусы при переходах на эту панораму</h2>
-      <div id="incomingLinksPanel" class="focus-entries-panel">—</div>
-
       <h2>Список меток</h2>
       <div class="points-list" id="pointsList"></div>
       <div class="row two">
@@ -2247,136 +2244,10 @@
     }
 
     /**
-     * Список панорам, с которых в данных есть переход на текущую: для каждой на этой панораме задаётся свой фокус (в файле — отдельное поле рядом с default).
+     * Старый второй блок фокусов удален из интерфейса как дублирующий.
+     * Функция оставлена пустой для безопасной совместимости старых вызовов.
      */
-    function renderIncomingLinksSidebar() {
-      var panel = document.getElementById("incomingLinksPanel");
-      if (!panel) return;
-      var ids = getCurrentStory360Ids();
-      var spaceId = ids.spaceId;
-      var pid = ids.panoramaId;
-      var space = story360Data.spaces && story360Data.spaces[spaceId];
-      var destPano = space && space.panoramas && space.panoramas[pid];
-      var incoming = collectIncomingPanoramaSources(spaceId, pid);
-
-      panel.innerHTML = "";
-
-      if (!incoming.length) {
-        panel.textContent =
-          "Нет ссылок на эту панораму: в пространстве «" +
-          spaceId +
-          "» ни одна другая панорама не ведёт переходом на «" +
-          pid +
-          "». Когда переходы появятся — здесь появятся строки с отдельными фокусами; на превью останется только фокус сценария (default).";
-        return;
-      }
-
-      var intro = document.createElement("div");
-      intro.className = "hint";
-      intro.style.marginBottom = "10px";
-      intro.style.lineHeight = "1.45";
-      intro.textContent =
-        "На этой панораме хранится набор фокусов: один для сценария (default / поля «Фокус» выше) и по одному для каждой панорамы ниже, с которой есть переход сюда. Новый источник получает те же числа, что и фокус сценария, пока вы не сместите его кнопкой или прицелом на превью. Все они показываются зелёными прицелами.";
-      panel.appendChild(intro);
-
-      var checklist = document.createElement("div");
-      checklist.className = "hint";
-      checklist.style.marginBottom = "12px";
-      checklist.style.padding = "8px 10px";
-      checklist.style.borderRadius = "6px";
-      checklist.style.background = "rgba(30, 40, 55, 0.35)";
-      checklist.style.lineHeight = "1.45";
-      checklist.style.whiteSpace = "pre-line";
-      var autoSources = incoming.filter(function (s) {
-        return s.anyAutoEntry;
-      });
-      var checklistLines = [];
-      checklistLines.push("• Сценарий: поля «Фокус» и «Применить focus» — это default на превью.");
-      checklistLines.push(
-        "• Переход с панорамы «X»: свой прицел на превью; кнопка в строке записывает туда текущий центр экрана."
-      );
-      if (autoSources.length) {
-        checklistLines.push(
-          "Переходов, где движок сам подставляет ключ по id панорамы-источника: " +
-            autoSources.length +
-            " — под них слоты создаются автоматически (изначально как копия фокуса сценария)."
-        );
-      }
-      checklist.textContent = checklistLines.join("\n");
-      panel.appendChild(checklist);
-
-      var foot = document.createElement("div");
-      foot.className = "hint";
-      foot.style.marginTop = "12px";
-      foot.style.fontSize = "11px";
-      foot.style.lineHeight = "1.45";
-      foot.textContent =
-        "Технически в JSON это объект entries: ключ default и ключи с id панорам-источников. Если на исходной панораме у перехода принудительно указан только сценарий (явный default), движок не использует отдельный фокус под эту панораму — поправьте цель перехода там.";
-
-      incoming.forEach(function (srcInfo) {
-        var src = srcInfo.sourcePanoramaId;
-        var anyAuto = srcInfo.anyAutoEntry;
-        var anyDef = srcInfo.anyExplicitDefault;
-
-        var row = document.createElement("div");
-        row.style.marginBottom = "10px";
-        row.style.padding = "8px 10px";
-        row.style.borderRadius = "6px";
-        row.style.border = "1px solid rgba(119, 234, 188, 0.28)";
-        row.style.background = "rgba(12, 28, 22, 0.45)";
-
-        var title = document.createElement("div");
-        title.style.fontWeight = "700";
-        title.style.marginBottom = "6px";
-        title.textContent = "Переход с панорамы «" + src + "»";
-
-        var detail = document.createElement("div");
-        detail.style.fontSize = "11px";
-        detail.style.lineHeight = "1.45";
-
-        var pairSrc = destPano && destPano.entries ? readEntryFocusPair(destPano.entries[src]) : null;
-        var pairDef = destPano && destPano.entries ? readEntryFocusPair(destPano.entries.default) : null;
-
-        var statusParts = [];
-        statusParts.push("Отдельный прицел на превью для перехода с панорамы «" + src + "».");
-        if (pairSrc && pairDef && focusPairsNearlyEqual(pairSrc, pairDef)) {
-          statusParts.push("Координаты совпадают с фокусом сценария — сместите прицел или камеру + кнопку, если нужен другой вид при этом переходе.");
-        }
-        if (anyAuto) {
-          statusParts.push("Движок подставит ключ «" + src + "» и смержит с default.");
-        }
-        if (anyDef) {
-          statusParts.push(
-            "На панораме «" +
-              src +
-              "» есть переход(ы) с принудительным сценарием — они не используют отдельный фокус «с этой панорамы»."
-          );
-        }
-        if (!anyAuto && anyDef) {
-          statusParts.push("Все переходы из «" + src + "» только через сценарий — строка ниже для вида в редакторе, в рантайме важен только default.");
-        }
-
-        detail.textContent = statusParts.join(" ");
-
-        row.appendChild(title);
-        row.appendChild(detail);
-
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = "Записать сюда текущий вид для перехода с «" + src + "»";
-        btn.style.marginTop = "8px";
-        (function (srcCapture, sid, destPid) {
-          btn.addEventListener("click", function () {
-            writeIncomingEntryFromCameraView(sid, destPid, srcCapture);
-          });
-        })(src, spaceId, pid);
-        row.appendChild(btn);
-
-        panel.appendChild(row);
-      });
-
-      panel.appendChild(foot);
-    }
+    function renderIncomingLinksSidebar() {}
 
     /**
      * Текстовый список фокусов в сайдбаре: default и по ключу для каждой ссылающейся панорамы.
@@ -2568,7 +2439,6 @@
       } finally {
         // Список точек входа не зависит от WebGL; обязательно обновляем даже при ошибке/раннем выходе выше.
         renderFocusEntriesSidebar();
-        renderIncomingLinksSidebar();
       }
     }
 
@@ -3106,7 +2976,6 @@
       }
       editorReady = true;
       renderFocusEntriesSidebar();
-      renderIncomingLinksSidebar();
       appendFileProtocolTipIfNeeded();
     }
 
