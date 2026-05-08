@@ -76,7 +76,7 @@
 
     .mark-action {
       position: absolute;
-      transform: translate(12px, -50%);
+      transform: translate(19px, -50%);
       max-width: min(260px, 42vw);
       padding: 6px 9px;
       border: 1px solid rgba(255, 255, 255, 0.35);
@@ -106,6 +106,12 @@
     .mark-action.is-missing-target:hover {
       background: rgba(148, 30, 30, 0.94);
       border-color: rgba(255, 150, 150, 0.98);
+    }
+
+    .mark-dot.scene-target {
+      border-color: rgba(120, 232, 164, 0.95);
+      background: rgba(24, 96, 48, 0.75);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(120, 232, 164, 0.45);
     }
 
     .crosshair {
@@ -184,10 +190,10 @@
       pointer-events: auto;
       cursor: grab;
       z-index: 8;
-      border: 2px solid rgba(119, 234, 188, 0.95);
+      border: 2px solid rgba(82, 166, 214, 0.98);
       border-radius: 50%;
       box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.45);
-      background: rgba(34, 58, 50, 0.35);
+      background: rgba(16, 36, 56, 0.48);
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
@@ -200,7 +206,7 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      background: rgba(119, 234, 188, 0.95);
+      background: rgba(82, 166, 214, 0.98);
       pointer-events: none;
     }
 
@@ -220,9 +226,9 @@
       max-width: min(220px, 40vw);
       padding: 4px 7px;
       border-radius: 5px;
-      border: 1px solid rgba(119, 234, 188, 0.45);
-      background: rgba(12, 28, 22, 0.88);
-      color: #c8f5df;
+      border: 1px solid rgba(82, 166, 214, 0.66);
+      background: rgba(10, 22, 36, 0.94);
+      color: #bbdcf3;
       font-size: 11px;
       line-height: 1.25;
       pointer-events: auto;
@@ -247,11 +253,11 @@
     .focus-entries-panel {
       font-size: 11px;
       line-height: 1.45;
-      color: #cfe9dc;
+      color: #bdd8ef;
       padding: 8px 10px;
       border-radius: 6px;
-      border: 1px solid rgba(119, 234, 188, 0.35);
-      background: rgba(12, 28, 22, 0.65);
+      border: 1px solid rgba(82, 166, 214, 0.5);
+      background: rgba(10, 22, 36, 0.8);
       max-height: 220px;
       overflow-y: auto;
       white-space: pre-wrap;
@@ -1830,10 +1836,10 @@
     function getOverlayMarkTargetLabel(point) {
       if (!point) return "";
       if (point.targetType === "360" && point.targetPanorama) {
-        return "Перейти 360 " + point.targetPanorama;
+        return "Перейти 360: " + point.targetPanorama;
       }
       if (point.targetType === "scene" && point.targetScene) {
-        return "Сценарий " + point.targetScene;
+        return "Сценарий: " + point.targetScene;
       }
       return "";
     }
@@ -2548,6 +2554,7 @@
 
           var el = document.createElement("div");
           el.className = "mark-dot" + (p.type === "text" ? " text" : "");
+          if (String(p.targetType || "").trim().toLowerCase() === "scene") el.classList.add("scene-target");
           el.style.left = pos.x + "px";
           el.style.top = pos.y + "px";
           el.textContent = String(index + 1);
