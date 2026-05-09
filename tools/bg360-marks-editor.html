@@ -54,6 +54,11 @@
       min-width: 0;
     }
 
+    /* Первая колонка: заголовок в .bulk-aside-top без верхнего margin; вторая — прямой h2, иначе «Новая метка» визуально ниже левого блока. */
+    .panel-col > h2:first-child {
+      margin-top: 0;
+    }
+
     .viewer-wrap {
       position: relative;
       background: #0d0f14;
@@ -640,14 +645,6 @@
           <option value="walk">walk</option>
           <option value="text">text</option>
         </select>
-      </div>
-      <div class="hint">
-        Наведите перекрестье в центре на нужную точку и нажмите «Поставить метку».
-        Номера меток и прицелы фокуса на превью можно перетаскивать — координаты сразу пишутся в данные.
-        Камера: ЛКМ/drag по пустому canvas — поворот, колесо — zoom.
-      </div>
-      <div class="hint">
-        Несколько точек входа с одинаковыми focusX/focusY (или пустой вход = как у default) дают один общий зелёный прицел — список ключей см. ниже «Точки входа».
       </div>
 
       <div class="status" id="statusBox">Загрузите 360-изображение.</div>
