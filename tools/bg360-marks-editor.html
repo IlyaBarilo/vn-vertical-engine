@@ -121,7 +121,7 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(120, 232, 164, 0.45);
     }
 
-    /* Стрелки к меткам 360-перехода: от якорной точки на развёртке (UV сферы, та же модель что x/y меток) к точке метки; стиль — mark360ArrowStyle в скрипте. */
+    /* Резерв: раньше SVG-стрелки; сейчас стрелки в WebGL (группа editorNav3dGroup). */
     .mark-transition-arrows {
       position: absolute;
       left: 0;
@@ -917,9 +917,10 @@
     var editorOverlayHighlightSourceEntryKey = null;
 
     /**
-     * Внешний вид SVG-стрелок к меткам 360-перехода.
-     * Старт из одной точки на сфере развёртки (sphereAnchorU/V), те же координаты что focusX/focusY в UV-смысле / x,y метки; при повороте камеры её проекция на экране двигается или пропадает.
-     * Меняйте поля здесь; цвет задаётся RGB, прозрачность отдельно (0..1).
+     * Стрелки к меткам 360: геометрия в WebGL (billboard-лента + треугольник), капа надира как в движке.
+     * На капе — декоративная серая стрелка азимута взгляда (nadirViewArrow*).
+     * Якорь — sphereAnchorU/V (как focusX/focusY в UV). Клик: hitBandPx вокруг проекции хорды и сектор «вверх экрана» от якоря (hitUpWedgeEnabled).
+     * Меняйте поля здесь; цвет — RGB + opacity.
      */
     var mark360ArrowStyle = {
       okRgb: [220, 220, 220],
@@ -946,8 +947,79 @@
       /** Итераций бинарного поиска точки на хорде якорь→метка, когда якорь из-за камеры ещё не проецируется */
       arrowChordBinarySteps: 22,
       minLength: 28,
-      badDashArray: "16 12"
+      badDashArray: "16 12",
+      /** 3D-хорда: отступы вдоль хорды в мире (радиус сферы 500), чтобы не упираться в якорь/метку. */
+      chordStartWorldMargin: 12,
+      chordEndWorldMargin: 18,
+      /**
+       * Стержень — лента из двух треугольников, каждый кадр поворачивается к камере (толщина в мире).
+       * Наконечник — треугольник в плоскости, перпендикулярной лучу камера→вершина (не «кренится» при отводе взгляда).
+       */
+      lineRibbonHalfWidthWorld: 14,
+      lineHeadDepthWorld: 36,
+      lineHeadHalfWidthWorld: 36,
+      /** Непрозрачность только линии и треугольника (1 = без наложений полупрозрачных мешей). */
+      arrow3dLineOpacity: 0.5,
+      /** Заглушка штатива: угловой радиус капа (рад), как в движке ~диск у надира. */
+      nadirCapAngularRad: 0.250,
+      nadirRingExtraRad: 0.018,
+      /**
+       * Радиус построения меша капы/кольца (мир). Сфера панорамы 500; чуть больше 499 — капа ближе к камере, меньше z-fight со стрелками.
+       * Тонкая настройка: вместе с nadirCapYLiftWorld.
+       */
+      nadirCapMeshRadius: 500.35,
+      /**
+       * Сдвиг капы и кольца по +Y (мир): «поднять» диск от полюса, чтобы стрелки не прорезали капу при полупрозрачности.
+       */
+      nadirCapYLiftWorld: 5,
+      /** Непрозрачность заливки круга, закрывающего штатив (0 = невидимо, 1 = непрозрачно). */
+      nadirCapOpacity: 1, //0.92,
+      /** Непрозрачность внешнего полупрозрачного кольца по краю капы. */
+      nadirRingOpacity: 1, //0.22,
+      /** Стрелка на диске надира: показывает азимут взгляда (проекция на горизонталь XZ); false — не создавать. */
+      nadirViewArrowEnabled: true,
+      /** Цвет стрелки на капе (серый). */
+      nadirViewArrowRgb: [150, 152, 158],
+      nadirViewArrowOpacity: 0.72,
+      /** Длина хвоста от центра диска назад (мир). */
+      nadirViewArrowTailHalfWorld: 84,
+      /** Длина стержня от центра до основания наконечника вперёд (мир). */
+      nadirViewArrowFwdHalfWorld: 44,
+      nadirViewArrowHeadDepthWorld: 44,
+      nadirViewArrowHeadHalfWidthWorld: 45,
+      nadirViewArrowRibbonHalfW: 22.4,
+      /** Сдвиг центра стрелки по +Y от «дна» капы — чуть ближе к камере, без z-fight. */
+      nadirViewArrowCenterLiftWorld: 23,
+      /** Клик: половина ширины полосы вокруг проекции хорды (px, координаты viewer-wrap). */
+      hitBandPx: 38,
+      /** Клик: учитывать сектор «вверх по экрану» от якоря стрелки (между лучом к метке и осью вверх). */
+      hitUpWedgeEnabled: true
     };
+
+    /** Группа 3D: заглушка надира + стрелки по хорде (не DOM/SVG). */
+    var editorNav3dGroup = null;
+    /** Кэш экранных зон для клика по стрелкам: координаты в системе viewer-wrap (как projectWorldToOverlayPx). */
+    var editorNavArrowHitCache = [];
+    var scratchNavVecA = null;
+    var scratchNavVecB = null;
+    var scratchNavVecDir = null;
+    var scratchNavMid = null;
+    var scratchNavQuat = null;
+    /** Временные векторы для billboard-ленты и наконечника (обновление геометрии каждый кадр). */
+    var scratchBillCam = null;
+    var scratchBillAlong = null;
+    var scratchBillMid = null;
+    var scratchBillView = null;
+    var scratchBillRight = null;
+    var scratchBillTmp = null;
+    var scratchBillN = null;
+    var scratchBillDpl = null;
+    var scratchBillFwd = null;
+    var scratchBillBase = null;
+    var scratchBillP0a = null;
+    var scratchBillP0b = null;
+    var scratchBillP1a = null;
+    var scratchBillP1b = null;
 
     /** Как wx/wy/wz у меток в сессии редактора: мировые координаты с луча для оверлея фокусов после перетаскивания. */
     var editorEntryFocusWorld = {};
@@ -998,6 +1070,10 @@
       var material = new window.THREE.MeshBasicMaterial({ color: 0x222222, wireframe: true });
       sphereMesh = new window.THREE.Mesh(geometry, material);
       scene.add(sphereMesh);
+
+      editorNav3dGroup = new window.THREE.Group();
+      editorNav3dGroup.name = "editorNav3dOverlays";
+      scene.add(editorNav3dGroup);
 
       applyCameraAngles();
       resizeViewer();
@@ -3046,27 +3122,672 @@
     }
 
     /**
-     * Стрелки от фиксированной точки на сфере (UV-якорь) к меткам с target «360».
-     * Слой без pointer-events — внешний вид задаётся объектом mark360ArrowStyle.
+     * Удаляет дочерние меши из группы навигации и освобождает геометрию/материалы.
      */
-    function appendMark360TransitionArrows(width, height, rect) {
-      var svgNS = "http://www.w3.org/2000/svg";
+    function disposeEditorNav3dChildren(group) {
+      if (!group) return;
+      while (group.children.length) {
+        var ch = group.children[0];
+        group.remove(ch);
+        ch.traverse(function (obj) {
+          if (obj.geometry && typeof obj.geometry.dispose === "function") obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(function (m) {
+                if (m && typeof m.dispose === "function") m.dispose();
+              });
+            } else if (typeof obj.material.dispose === "function") {
+              obj.material.dispose();
+            }
+          }
+        });
+      }
+    }
+
+    /**
+     * Сферическая капа у надира (как createBg360NadirCapGeometry в движке): закрывает штатив под ногами.
+     */
+    function createEditorNadirCapGeometry(radius, angularRadius, radialSegments, angularSegments) {
+      var geometry = new window.THREE.BufferGeometry();
+      var rings = Math.max(2, radialSegments || 16);
+      var segments = Math.max(32, angularSegments || 192);
+      var positions = [];
+      var indices = [];
+
+      for (var r = 0; r <= rings; r++) {
+        var theta = angularRadius * r / rings;
+        var sinTheta = Math.sin(theta);
+        var y = -Math.cos(theta) * radius;
+        for (var s = 0; s <= segments; s++) {
+          var phi = Math.PI * 2 * s / segments;
+          positions.push(Math.cos(phi) * sinTheta * radius, y, Math.sin(phi) * sinTheta * radius);
+        }
+      }
+
+      var row = segments + 1;
+      for (var rr = 0; rr < rings; rr++) {
+        for (var ss = 0; ss < segments; ss++) {
+          var a = rr * row + ss;
+          var b = a + 1;
+          var c = (rr + 1) * row + ss;
+          var d = c + 1;
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+
+      geometry.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    /**
+     * Тонкое кольцо по краю капы (обводка как в движке).
+     */
+    function createEditorNadirRingGeometry(radius, innerAngularRadius, outerAngularRadius, angularSegments) {
+      var geometry = new window.THREE.BufferGeometry();
+      var segments = Math.max(32, angularSegments || 192);
+      var positions = [];
+      var indices = [];
+
+      for (var ring = 0; ring < 2; ring++) {
+        var theta = ring === 0 ? innerAngularRadius : outerAngularRadius;
+        var sinTheta = Math.sin(theta);
+        var y = -Math.cos(theta) * radius;
+        for (var s = 0; s <= segments; s++) {
+          var phi = Math.PI * 2 * s / segments;
+          positions.push(Math.cos(phi) * sinTheta * radius, y, Math.sin(phi) * sinTheta * radius);
+        }
+      }
+
+      var row = segments + 1;
+      for (var i = 0; i < segments; i++) {
+        var a = i;
+        var b = i + 1;
+        var c = row + i;
+        var d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+
+      geometry.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    /**
+     * Цвет MeshBasicMaterial из RGB-массива стиля стрелок.
+     */
+    function mark360StyleToMeshMaterial(rgb, opacity, options) {
+      var r = rgb && rgb[0] != null ? Number(rgb[0]) : 255;
+      var g = rgb && rgb[1] != null ? Number(rgb[1]) : 255;
+      var b = rgb && rgb[2] != null ? Number(rgb[2]) : 255;
+      var a = opacity == null || !isFinite(Number(opacity)) ? 1 : clamp(Number(opacity), 0, 1);
+      var opt = options || {};
+      /** В очереди прозрачных объектов renderOrder гарантирует порядок поверх других overlay (капа над стрелками). */
+      var transparent = !!opt.forceTransparent || a < 1;
+      return new window.THREE.MeshBasicMaterial({
+        color: (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b),
+        opacity: a,
+        transparent: transparent,
+        side: window.THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: opt.depthWrite !== undefined ? opt.depthWrite : a >= 0.99,
+        polygonOffset: !!opt.polygonOffset,
+        polygonOffsetFactor: opt.polygonOffsetFactor != null ? opt.polygonOffsetFactor : 1,
+        polygonOffsetUnits: opt.polygonOffsetUnits != null ? opt.polygonOffsetUnits : 1
+      });
+    }
+
+    /**
+     * Ленивая инициализация векторов для billboard (без аллокаций в горячем цикле).
+     */
+    function ensureEditorBillboardScratch() {
+      if (!window.THREE) return;
+      if (scratchBillCam) return;
+      scratchBillCam = new window.THREE.Vector3();
+      scratchBillAlong = new window.THREE.Vector3();
+      scratchBillMid = new window.THREE.Vector3();
+      scratchBillView = new window.THREE.Vector3();
+      scratchBillRight = new window.THREE.Vector3();
+      scratchBillTmp = new window.THREE.Vector3();
+      scratchBillN = new window.THREE.Vector3();
+      scratchBillDpl = new window.THREE.Vector3();
+      scratchBillFwd = new window.THREE.Vector3();
+      scratchBillBase = new window.THREE.Vector3();
+      scratchBillP0a = new window.THREE.Vector3();
+      scratchBillP0b = new window.THREE.Vector3();
+      scratchBillP1a = new window.THREE.Vector3();
+      scratchBillP1b = new window.THREE.Vector3();
+    }
+
+    /**
+     * Центр основания наконечника в billboard-плоскости (вершина→камера): та же ось, что у треугольника головы.
+     * Результат в scratchBillBase; при успехе scratchBillFwd и scratchBillN тоже актуальны для дальнейших cross.
+     */
+    function editorNavBillboardHeadBaseWorld(tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, camPosX, camPosY, camPosZ) {
+      if (!window.THREE) return false;
+      ensureEditorBillboardScratch();
+      scratchBillN.set(camPosX, camPosY, camPosZ).sub(scratchBillTmp.set(tipX, tipY, tipZ));
+      if (scratchBillN.lengthSq() < 1e-10) return false;
+      scratchBillN.normalize();
+      scratchBillFwd.set(dirX, dirY, dirZ);
+      if (scratchBillFwd.lengthSq() < 1e-10) return false;
+      scratchBillFwd.normalize();
+      var dn = scratchBillFwd.dot(scratchBillN);
+      scratchBillDpl.copy(scratchBillFwd).addScaledVector(scratchBillN, -dn);
+      if (scratchBillDpl.lengthSq() < 1e-10) {
+        scratchBillDpl.copy(scratchBillN).cross(scratchBillTmp.set(0, 1, 0));
+      }
+      if (scratchBillDpl.lengthSq() < 1e-10) {
+        scratchBillDpl.set(1, 0, 0);
+      }
+      scratchBillDpl.normalize();
+      scratchBillFwd.copy(scratchBillDpl);
+      scratchBillBase.copy(scratchBillTmp.set(tipX, tipY, tipZ)).addScaledVector(scratchBillFwd, -headDepth);
+      return true;
+    }
+
+    /**
+     * Обновляет четырёхугольник ленты стержня: плоскость содержит хорду и смотрит на камеру (толщина = 2*halfW).
+     */
+    function updateEditorNavRibbonGeometry(geom, p0x, p0y, p0z, p1x, p1y, p1z, halfW, camPosX, camPosY, camPosZ) {
+      if (!geom || !window.THREE) return;
+      ensureEditorBillboardScratch();
+      scratchBillAlong.set(p1x - p0x, p1y - p0y, p1z - p0z);
+      var segLen = scratchBillAlong.length();
+      if (segLen < 1e-6) return;
+      scratchBillAlong.multiplyScalar(1 / segLen);
+      scratchBillMid.set(p0x + p1x, p0y + p1y, p0z + p1z).multiplyScalar(0.5);
+      scratchBillView.set(camPosX, camPosY, camPosZ).sub(scratchBillMid);
+      if (scratchBillView.lengthSq() < 1e-10) return;
+      scratchBillView.normalize();
+      scratchBillRight.crossVectors(scratchBillAlong, scratchBillView);
+      if (scratchBillRight.lengthSq() < 1e-10) {
+        scratchBillRight.set(0, 1, 0).cross(scratchBillAlong);
+      }
+      if (scratchBillRight.lengthSq() < 1e-10) {
+        scratchBillRight.set(1, 0, 0).cross(scratchBillAlong);
+      }
+      scratchBillRight.normalize().multiplyScalar(halfW);
+      scratchBillP0a.set(p0x, p0y, p0z).add(scratchBillRight);
+      scratchBillP0b.set(p0x, p0y, p0z).sub(scratchBillRight);
+      scratchBillP1a.set(p1x, p1y, p1z).add(scratchBillRight);
+      scratchBillP1b.set(p1x, p1y, p1z).sub(scratchBillRight);
+
+      var posAttr = geom.getAttribute("position");
+      if (!posAttr || !posAttr.array || posAttr.array.length < 18) {
+        geom.setAttribute("position", new window.THREE.BufferAttribute(new Float32Array(18), 3));
+        posAttr = geom.getAttribute("position");
+      }
+      var arr = posAttr.array;
+      var i = 0;
+      arr[i++] = scratchBillP0a.x; arr[i++] = scratchBillP0a.y; arr[i++] = scratchBillP0a.z;
+      arr[i++] = scratchBillP0b.x; arr[i++] = scratchBillP0b.y; arr[i++] = scratchBillP0b.z;
+      arr[i++] = scratchBillP1a.x; arr[i++] = scratchBillP1a.y; arr[i++] = scratchBillP1a.z;
+      arr[i++] = scratchBillP0b.x; arr[i++] = scratchBillP0b.y; arr[i++] = scratchBillP0b.z;
+      arr[i++] = scratchBillP1b.x; arr[i++] = scratchBillP1b.y; arr[i++] = scratchBillP1b.z;
+      arr[i++] = scratchBillP1a.x; arr[i++] = scratchBillP1a.y; arr[i++] = scratchBillP1a.z;
+      posAttr.needsUpdate = true;
+      geom.computeBoundingSphere();
+    }
+
+    /**
+     * Наконечник в плоскости, перпендикулярной лучу камера→вершина: при повороте камеры не «кренится» в мировой плоскости хорды.
+     */
+    function updateEditorNavHeadBillboardGeometry(geom, tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, halfWidth, camPosX, camPosY, camPosZ) {
+      if (!geom || !window.THREE) return;
+      if (!editorNavBillboardHeadBaseWorld(tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, camPosX, camPosY, camPosZ)) return;
+      ensureEditorBillboardScratch();
+      scratchBillRight.crossVectors(scratchBillFwd, scratchBillN);
+      if (scratchBillRight.lengthSq() < 1e-10) return;
+      scratchBillRight.normalize().multiplyScalar(halfWidth);
+      scratchBillP0a.copy(scratchBillBase).add(scratchBillRight);
+      scratchBillP0b.copy(scratchBillBase).sub(scratchBillRight);
+
+      var posAttr = geom.getAttribute("position");
+      if (!posAttr || !posAttr.array || posAttr.array.length < 9) {
+        geom.setAttribute("position", new window.THREE.BufferAttribute(new Float32Array(9), 3));
+        posAttr = geom.getAttribute("position");
+      }
+      var arr = posAttr.array;
+      arr[0] = tipX; arr[1] = tipY; arr[2] = tipZ;
+      arr[3] = scratchBillP0a.x; arr[4] = scratchBillP0a.y; arr[5] = scratchBillP0a.z;
+      arr[6] = scratchBillP0b.x; arr[7] = scratchBillP0b.y; arr[8] = scratchBillP0b.z;
+      posAttr.needsUpdate = true;
+      geom.computeBoundingSphere();
+    }
+
+    /**
+     * Единичный вектор на плоскости XZ: азимут «куда смотрит камера», для стрелки на капе надира.
+     */
+    function editorNavCameraHorizViewDirUnitXZ(out3) {
+      if (!camera || !window.THREE) return false;
+      if (!tempCameraDir) tempCameraDir = new window.THREE.Vector3();
+      camera.getWorldDirection(tempCameraDir);
+      out3.set(tempCameraDir.x, 0, tempCameraDir.z);
+      if (out3.lengthSq() < 1e-10) {
+        out3.set(0, 0, 1);
+      } else {
+        out3.normalize();
+      }
+      return true;
+    }
+
+    /**
+     * Перед рендером: ленты и наконечники смотрят на камеру (userData.editorBillboard).
+     */
+    function updateEditorNavBillboardMeshes() {
+      if (!editorNav3dGroup || !camera || !window.THREE) return;
+      ensureEditorBillboardScratch();
+      camera.getWorldPosition(scratchBillCam);
+      var cx = scratchBillCam.x;
+      var cy = scratchBillCam.y;
+      var cz = scratchBillCam.z;
+      for (var i = 0; i < editorNav3dGroup.children.length; i++) {
+        var ch = editorNav3dGroup.children[i];
+        var bd = ch.userData && ch.userData.editorBillboard;
+        if (!bd || !ch.geometry) continue;
+        if (bd.kind === "ribbon") {
+          var p1rx = bd.p1.x;
+          var p1ry = bd.p1.y;
+          var p1rz = bd.p1.z;
+          var jn = bd.join;
+          if (jn && jn.tip && jn.dir && jn.depth != null) {
+            if (
+              editorNavBillboardHeadBaseWorld(
+                jn.tip.x,
+                jn.tip.y,
+                jn.tip.z,
+                jn.dir.x,
+                jn.dir.y,
+                jn.dir.z,
+                jn.depth,
+                cx,
+                cy,
+                cz
+              )
+            ) {
+              p1rx = scratchBillBase.x;
+              p1ry = scratchBillBase.y;
+              p1rz = scratchBillBase.z;
+            }
+          }
+          updateEditorNavRibbonGeometry(
+            ch.geometry,
+            bd.p0.x,
+            bd.p0.y,
+            bd.p0.z,
+            p1rx,
+            p1ry,
+            p1rz,
+            bd.halfW,
+            cx,
+            cy,
+            cz
+          );
+        } else if (bd.kind === "head") {
+          updateEditorNavHeadBillboardGeometry(
+            ch.geometry,
+            bd.tip.x,
+            bd.tip.y,
+            bd.tip.z,
+            bd.dir.x,
+            bd.dir.y,
+            bd.dir.z,
+            bd.depth,
+            bd.halfW,
+            cx,
+            cy,
+            cz
+          );
+        } else if (bd.kind === "nadirViewRibbon") {
+          ensureEditorBillboardScratch();
+          if (!editorNavCameraHorizViewDirUnitXZ(scratchBillTmp)) continue;
+          var ux = scratchBillTmp.x;
+          var uz = scratchBillTmp.z;
+          var oy = bd.centerY;
+          var p0x = -ux * bd.tailLen;
+          var p0z = -uz * bd.tailLen;
+          var tipX = ux * (bd.fwdLen + bd.headDepth);
+          var tipZ = uz * (bd.fwdLen + bd.headDepth);
+          var p1rx = ux * bd.fwdLen;
+          var p1ry = oy;
+          var p1rz = uz * bd.fwdLen;
+          if (
+            editorNavBillboardHeadBaseWorld(
+              tipX,
+              oy,
+              tipZ,
+              ux,
+              0,
+              uz,
+              bd.headDepth,
+              cx,
+              cy,
+              cz
+            )
+          ) {
+            p1rx = scratchBillBase.x;
+            p1ry = scratchBillBase.y;
+            p1rz = scratchBillBase.z;
+          }
+          updateEditorNavRibbonGeometry(
+            ch.geometry,
+            p0x,
+            oy,
+            p0z,
+            p1rx,
+            p1ry,
+            p1rz,
+            bd.halfW,
+            cx,
+            cy,
+            cz
+          );
+        } else if (bd.kind === "nadirViewHead") {
+          ensureEditorBillboardScratch();
+          if (!editorNavCameraHorizViewDirUnitXZ(scratchBillTmp)) continue;
+          var ux2 = scratchBillTmp.x;
+          var uz2 = scratchBillTmp.z;
+          var oy2 = bd.centerY;
+          var tipX2 = ux2 * (bd.fwdLen + bd.headDepth);
+          var tipZ2 = uz2 * (bd.fwdLen + bd.headDepth);
+          updateEditorNavHeadBillboardGeometry(
+            ch.geometry,
+            tipX2,
+            oy2,
+            tipZ2,
+            ux2,
+            0,
+            uz2,
+            bd.headDepth,
+            bd.halfW,
+            cx,
+            cy,
+            cz
+          );
+        }
+      }
+    }
+
+    /**
+     * Пересобирает 3D: капа надира + стрелки по хорде к меткам 360 (меш-лента и наконечник с ежекадровым billboard в той же сцене, что панорама).
+     */
+    function syncEditorNav3dArrowsAndNadir() {
+      if (!editorNav3dGroup || !window.THREE || !camera) return;
+
+      disposeEditorNav3dChildren(editorNav3dGroup);
+      editorNavArrowHitCache = [];
+
+      var has360 = points.some(function (p) {
+        return String(p.targetType || "").trim().toLowerCase() === "360";
+      });
+      if (!has360) return;
+
+      var cfg = mark360ArrowStyle || {};
+      var nadirMeshR =
+        cfg.nadirCapMeshRadius != null && cfg.nadirCapMeshRadius !== "" && isFinite(Number(cfg.nadirCapMeshRadius))
+          ? clamp(Number(cfg.nadirCapMeshRadius), 480, 520)
+          : 499;
+      var nadirLift =
+        cfg.nadirCapYLiftWorld != null && cfg.nadirCapYLiftWorld !== "" && isFinite(Number(cfg.nadirCapYLiftWorld))
+          ? clamp(Number(cfg.nadirCapYLiftWorld), -120, 120)
+          : 0;
+      var ang = clamp(Number(cfg.nadirCapAngularRad) || 0.085, 0.01, 0.35);
+      var ringExtra = clamp(Number(cfg.nadirRingExtraRad) || 0.018, 0, 0.1);
+      var capOp = clamp(Number(cfg.nadirCapOpacity != null ? cfg.nadirCapOpacity : 0.92), 0, 1);
+      var ringOp = clamp(Number(cfg.nadirRingOpacity != null ? cfg.nadirRingOpacity : 0.22), 0, 1);
+
+      var capGeom = createEditorNadirCapGeometry(nadirMeshR, ang, 18, 256);
+      var capMat = mark360StyleToMeshMaterial([255, 255, 255], capOp, {
+        depthWrite: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        forceTransparent: true
+      });
+      var capMesh = new window.THREE.Mesh(capGeom, capMat);
+      capMesh.position.set(0, nadirLift, 0);
+      // Выше стрелок (4–5): тот же проход, что у полупрозрачных лент, и больший renderOrder — капа рисуется последней и закрывает линии.
+      capMesh.renderOrder = 20;
+      editorNav3dGroup.add(capMesh);
+
+      var ringGeom = createEditorNadirRingGeometry(nadirMeshR - 0.2, ang, ang + ringExtra, 256);
+      var ringMat = mark360StyleToMeshMaterial([255, 255, 255], ringOp, {
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        forceTransparent: true
+      });
+      var ringMesh = new window.THREE.Mesh(ringGeom, ringMat);
+      ringMesh.position.set(0, nadirLift, 0);
+      ringMesh.renderOrder = 21;
+      editorNav3dGroup.add(ringMesh);
+
+      if (cfg.nadirViewArrowEnabled !== false) {
+        var nvRgb = Array.isArray(cfg.nadirViewArrowRgb) ? cfg.nadirViewArrowRgb : [150, 152, 158];
+        var nvOp = clamp(Number(cfg.nadirViewArrowOpacity != null ? cfg.nadirViewArrowOpacity : 0.72), 0.05, 1);
+        var nvTail = Math.max(0.5, Number(cfg.nadirViewArrowTailHalfWorld) != null ? Number(cfg.nadirViewArrowTailHalfWorld) : 14);
+        var nvFwd = Math.max(0.5, Number(cfg.nadirViewArrowFwdHalfWorld) != null ? Number(cfg.nadirViewArrowFwdHalfWorld) : 14);
+        var nvHD = Math.max(1, Number(cfg.nadirViewArrowHeadDepthWorld) != null ? Number(cfg.nadirViewArrowHeadDepthWorld) : 7);
+        var nvHH = Math.max(0.5, Number(cfg.nadirViewArrowHeadHalfWidthWorld) != null ? Number(cfg.nadirViewArrowHeadHalfWidthWorld) : 5);
+        var nvRw = Math.max(0.25, Number(cfg.nadirViewArrowRibbonHalfW) != null ? Number(cfg.nadirViewArrowRibbonHalfW) : 2.4);
+        var nvLift =
+          cfg.nadirViewArrowCenterLiftWorld != null &&
+          cfg.nadirViewArrowCenterLiftWorld !== "" &&
+          isFinite(Number(cfg.nadirViewArrowCenterLiftWorld))
+            ? Number(cfg.nadirViewArrowCenterLiftWorld)
+            : 3;
+        var nvCenterY = -nadirMeshR + nadirLift + nvLift;
+
+        var nvMat = mark360StyleToMeshMaterial(nvRgb, nvOp, {
+          depthWrite: false,
+          forceTransparent: true,
+          polygonOffset: true,
+          polygonOffsetFactor: -1.5,
+          polygonOffsetUnits: -1.5
+        });
+
+        var nvRibbonGeom = new window.THREE.BufferGeometry();
+        var nvRibbonMesh = new window.THREE.Mesh(nvRibbonGeom, nvMat);
+        nvRibbonMesh.renderOrder = 22;
+        nvRibbonMesh.userData.editorBillboard = {
+          kind: "nadirViewRibbon",
+          centerY: nvCenterY,
+          tailLen: nvTail,
+          fwdLen: nvFwd,
+          headDepth: nvHD,
+          halfW: nvRw
+        };
+        editorNav3dGroup.add(nvRibbonMesh);
+
+        var nvHeadGeom = new window.THREE.BufferGeometry();
+        var nvHeadMesh = new window.THREE.Mesh(nvHeadGeom, nvMat);
+        nvHeadMesh.renderOrder = 23;
+        nvHeadMesh.userData.editorBillboard = {
+          kind: "nadirViewHead",
+          centerY: nvCenterY,
+          fwdLen: nvFwd,
+          headDepth: nvHD,
+          halfW: nvHH
+        };
+        editorNav3dGroup.add(nvHeadMesh);
+      }
+
+      if (!scratchNavVecA) scratchNavVecA = new window.THREE.Vector3();
+      if (!scratchNavVecB) scratchNavVecB = new window.THREE.Vector3();
+      if (!scratchNavVecDir) scratchNavVecDir = new window.THREE.Vector3();
+      if (!scratchNavMid) scratchNavMid = new window.THREE.Vector3();
+      if (!scratchNavQuat) scratchNavQuat = new window.THREE.Quaternion();
+
+      var uA = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
+      var vA = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
+      var wpAnchor = worldPointOnSphereFromPanoramaUv(uA, vA);
+      if (!wpAnchor) return;
+
+      camera.updateMatrixWorld(true);
+
+      var chordSteps =
+        cfg.arrowChordBinarySteps !== undefined && cfg.arrowChordBinarySteps !== null && cfg.arrowChordBinarySteps !== ""
+          ? clamp(Number(cfg.arrowChordBinarySteps), 4, 32)
+          : 22;
+      if (!isFinite(chordSteps)) chordSteps = 22;
+
+      var headDepth = Math.max(2, Number(cfg.lineHeadDepthWorld) != null ? Number(cfg.lineHeadDepthWorld) : 14);
+      var headHalfW = Math.max(1, Number(cfg.lineHeadHalfWidthWorld) != null ? Number(cfg.lineHeadHalfWidthWorld) : 8);
+      var lineSolidOp = clamp(Number(cfg.arrow3dLineOpacity) != null ? Number(cfg.arrow3dLineOpacity) : 1, 0.15, 1);
+      var startMargin = Math.max(0, Number(cfg.chordStartWorldMargin) || 12);
+      var endMargin = Math.max(0, Number(cfg.chordEndWorldMargin) || 18);
+
+      var okRgb = Array.isArray(cfg.okRgb) ? cfg.okRgb : [220, 220, 220];
+      var badRgb = Array.isArray(cfg.badRgb) ? cfg.badRgb : [255, 140, 120];
+
+      points.forEach(function (p, pointIndex) {
+        if (String(p.targetType || "").trim().toLowerCase() !== "360") return;
+        var wMark = getMarkPointPanoramaWorld(p);
+        if (!wMark) return;
+
+        scratchNavVecA.set(wpAnchor.wx, wpAnchor.wy, wpAnchor.wz);
+        scratchNavVecB.set(wMark.wx, wMark.wy, wMark.wz);
+        scratchNavVecDir.subVectors(scratchNavVecB, scratchNavVecA);
+        var chordLen = scratchNavVecDir.length();
+        if (chordLen < 1e-3) return;
+        scratchNavVecDir.multiplyScalar(1 / chordLen);
+
+        var sm = Math.min(startMargin, chordLen * 0.4);
+        var em = Math.min(endMargin, chordLen * 0.4);
+        var start3 = scratchNavVecA.clone().addScaledVector(scratchNavVecDir, sm);
+        var end3 = scratchNavVecB.clone().addScaledVector(scratchNavVecDir, -em);
+        var segLen = start3.distanceTo(end3);
+        if (segLen < headDepth + 1) return;
+
+        var shaftEnd = end3.clone().addScaledVector(scratchNavVecDir, -headDepth);
+        var shaftLen = start3.distanceTo(shaftEnd);
+        if (shaftLen < 1) return;
+
+        var hasPano = String(p.targetPanorama || "").trim() !== "";
+        var ok = hasPano && !isMissingPoint360Target(p);
+        var arrowMat = mark360StyleToMeshMaterial(ok ? okRgb : badRgb, lineSolidOp, {
+          /** Не пишем глубину: иначе при opacity≈1 стрелки отсекают капу надира по depth test. */
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -0.5,
+          polygonOffsetUnits: -0.5
+        });
+
+        var ribbonHalfW = Math.max(1, Number(cfg.lineRibbonHalfWidthWorld) != null ? Number(cfg.lineRibbonHalfWidthWorld) : 14);
+        var ribbonGeom = new window.THREE.BufferGeometry();
+        var ribbonMesh = new window.THREE.Mesh(ribbonGeom, arrowMat);
+        ribbonMesh.renderOrder = 4;
+        ribbonMesh.userData.editorBillboard = {
+          kind: "ribbon",
+          p0: { x: start3.x, y: start3.y, z: start3.z },
+          /** Запасной конец, если join не сработал (длина по мировой хорде). */
+          p1: { x: shaftEnd.x, y: shaftEnd.y, z: shaftEnd.z },
+          halfW: ribbonHalfW,
+          /** Конец ленты каждый кадр совмещается с центром основания наконечника (та же billboard-ось). */
+          join: {
+            tip: { x: end3.x, y: end3.y, z: end3.z },
+            dir: { x: scratchNavVecDir.x, y: scratchNavVecDir.y, z: scratchNavVecDir.z },
+            depth: headDepth
+          }
+        };
+        editorNav3dGroup.add(ribbonMesh);
+
+        var headGeom = new window.THREE.BufferGeometry();
+        var headMesh = new window.THREE.Mesh(headGeom, arrowMat);
+        headMesh.renderOrder = 5;
+        headMesh.userData.editorBillboard = {
+          kind: "head",
+          tip: { x: end3.x, y: end3.y, z: end3.z },
+          dir: { x: scratchNavVecDir.x, y: scratchNavVecDir.y, z: scratchNavVecDir.z },
+          depth: headDepth,
+          halfW: headHalfW
+        };
+        editorNav3dGroup.add(headMesh);
+      });
+    }
+
+    /**
+     * Расстояние от точки до отрезка в 2D.
+     */
+    function editorDistPointToSegment2d(px, py, x1, y1, x2, y2) {
+      var vx = x2 - x1;
+      var vy = y2 - y1;
+      var wx = px - x1;
+      var wy = py - y1;
+      var c1 = vx * wx + vy * wy;
+      if (c1 <= 0) return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+      var c2 = vx * vx + vy * vy;
+      if (c2 <= c1) return Math.sqrt((px - x2) * (px - x2) + (py - y2) * (py - y2));
+      var t = c1 / c2;
+      var projx = x1 + t * vx;
+      var projy = y1 + t * vy;
+      return Math.sqrt((px - projx) * (px - projx) + (py - projy) * (py - projy));
+    }
+
+    /**
+     * Сектор от якоря: между лучом к метке на экране и направлением «вверх» (отрицательный Y в координатах wrap).
+     */
+    function editorNavHitTestUpWedge(px, py, ax, ay, bx, by) {
+      var vx = bx - ax;
+      var vy = by - ay;
+      var al = Math.sqrt(vx * vx + vy * vy);
+      if (al < 1e-6) return false;
+      vx /= al;
+      vy /= al;
+      var ux = 0;
+      var uy = -1;
+      var wx = px - ax;
+      var wy = py - ay;
+      var cRef = ux * vy - uy * vx;
+      var cP = ux * wy - uy * wx;
+      var cP2 = vx * wy - vy * wx;
+      if (cRef >= 0) return cP >= -1e-6 && cP2 <= 1e-6;
+      return cP <= 1e-6 && cP2 >= -1e-6;
+    }
+
+    /**
+     * Координаты клика в системе viewer-wrap (как projectWorldToOverlayPx).
+     */
+    function editorClientToWrapLocal(clientX, clientY) {
+      if (!viewerWrap) return { x: 0, y: 0 };
+      var r = viewerWrap.getBoundingClientRect();
+      return { x: clientX - r.left, y: clientY - r.top };
+    }
+
+    /**
+     * Обновляет кэш экранных отрезков для клика (после движения камеры вызывается каждый кадр).
+     */
+    function updateEditorNavArrowHitCache() {
+      editorNavArrowHitCache = [];
+      if (!viewerCanvas || !viewerWrap || !camera || !points.length) return;
+
       var cfg = mark360ArrowStyle || {};
       var has360 = points.some(function (p) {
         return String(p.targetType || "").trim().toLowerCase() === "360";
       });
       if (!has360) return;
 
-      var svg = document.createElementNS(svgNS, "svg");
-      svg.setAttribute("class", "mark-transition-arrows");
-      svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("overflow", "visible");
+      var rect = viewerCanvas.getBoundingClientRect();
+      var width = rect.width;
+      var height = rect.height;
+      if (width <= 0 || height <= 0) return;
 
-      var headSize = Math.max(4, Number(cfg.headSize) || 16);
-      var lineWidth = Math.max(0.5, Number(cfg.lineWidth) || 6);
-      var lineCap = String(cfg.lineCap || "butt").toLowerCase();
+      var uA = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
+      var vA = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
+      var wpAnchor = worldPointOnSphereFromPanoramaUv(uA, vA);
+      if (!wpAnchor) return;
+
+      var chordSteps =
+        cfg.arrowChordBinarySteps !== undefined && cfg.arrowChordBinarySteps !== null && cfg.arrowChordBinarySteps !== ""
+          ? clamp(Number(cfg.arrowChordBinarySteps), 4, 32)
+          : 22;
+      if (!isFinite(chordSteps)) chordSteps = 22;
+
       var startInset = Math.max(0, Number(cfg.startInset) || 0);
-      /** Зазор перед меткой на экране: приоритет markGapPx, иначе endInset для старых настроек. */
       var markGapPxRaw =
         cfg.markGapPx !== undefined && cfg.markGapPx !== null
           ? cfg.markGapPx
@@ -3075,58 +3796,13 @@
             : 44;
       var markGapPx = Math.max(0, Number(markGapPxRaw) || 0);
       var minLength = Math.max(0, Number(cfg.minLength) || 0);
-      var okRgb = Array.isArray(cfg.okRgb) ? cfg.okRgb : [255, 214, 120];
-      var badRgb = Array.isArray(cfg.badRgb) ? cfg.badRgb : [255, 140, 120];
-      var okFill = mark360ArrowRgba(okRgb, cfg.okOpacity);
-      var badFill = mark360ArrowRgba(badRgb, cfg.badOpacity);
-      var okStroke = mark360ArrowRgba(okRgb, cfg.okOpacity);
-      var badStroke = mark360ArrowRgba(badRgb, cfg.badOpacity);
-      var refXRatio = clamp(Number(cfg.headRefXRatio != null ? cfg.headRefXRatio : 0), 0, 1);
-      var refX = headSize * refXRatio;
-      var refY = headSize / 2;
-      var triPath = "M0,0 L" + headSize + "," + refY + " L0," + headSize + " Z";
 
-      var defs = document.createElementNS(svgNS, "defs");
-
-      function addMarker(id, fill) {
-        var m = document.createElementNS(svgNS, "marker");
-        m.setAttribute("id", id);
-        m.setAttribute("markerUnits", "userSpaceOnUse");
-        m.setAttribute("markerWidth", String(headSize));
-        m.setAttribute("markerHeight", String(headSize));
-        m.setAttribute("refX", String(refX));
-        m.setAttribute("refY", String(refY));
-        m.setAttribute("orient", "auto");
-        var path = document.createElementNS(svgNS, "path");
-        path.setAttribute("d", triPath);
-        path.setAttribute("fill", fill);
-        m.appendChild(path);
-        defs.appendChild(m);
-      }
-      addMarker("markArrowTipOk", okFill);
-      addMarker("markArrowTipBad", badFill);
-      svg.appendChild(defs);
-
-      var uA = clamp(Number(cfg.sphereAnchorU != null ? cfg.sphereAnchorU : 0), 0, 1);
-      var vA = clamp(Number(cfg.sphereAnchorV != null ? cfg.sphereAnchorV : 0), 0, 1);
-      var wpAnchor = worldPointOnSphereFromPanoramaUv(uA, vA);
-      if (!wpAnchor) return;
-
-      var chordCfg = cfg.arrowChordBinarySteps;
-      var chordSteps =
-        chordCfg !== undefined && chordCfg !== null && chordCfg !== ""
-          ? clamp(Number(chordCfg), 4, 32)
-          : 22;
-      if (!isFinite(chordSteps)) chordSteps = 22;
-      var lineCount = 0;
-
-      points.forEach(function (p) {
+      points.forEach(function (p, pointIndex) {
         if (String(p.targetType || "").trim().toLowerCase() !== "360") return;
         var pos = getPointOverlayPos(p, width, height, rect);
         if (!pos) return;
         var mx = pos.x;
         var my = pos.y;
-
         var wMark = getMarkPointPanoramaWorld(p);
         if (!wMark) return;
         var chordStart = arrowChordScreenStartOrNull(
@@ -3139,8 +3815,6 @@
           chordSteps
         );
         if (!chordStart) return;
-
-        // Полная геометрия в координатах оверлея без обрезки по кадру — длина и направление не «прыгают» у края экрана; виден только фрагмент в области превью.
         var dx = mx - chordStart.x;
         var dy = my - chordStart.y;
         var len = Math.sqrt(dx * dx + dy * dy);
@@ -3154,25 +3828,53 @@
         var drawnLen = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
         if (drawnLen < minLength) return;
 
-        var hasPano = String(p.targetPanorama || "").trim() !== "";
-        var ok = hasPano && !isMissingPoint360Target(p);
-
-        var line = document.createElementNS(svgNS, "line");
-        line.setAttribute("x1", String(sx));
-        line.setAttribute("y1", String(sy));
-        line.setAttribute("x2", String(ex));
-        line.setAttribute("y2", String(ey));
-        line.setAttribute("stroke", ok ? okStroke : badStroke);
-        line.setAttribute("stroke-width", String(lineWidth));
-        // Прямой торец без скругления: исключаем «мягкое» наложение линии на треугольник при прозрачности.
-        line.setAttribute("stroke-linecap", lineCap === "square" ? "square" : (lineCap === "round" ? "round" : "butt"));
-        line.setAttribute("marker-end", ok ? "url(#markArrowTipOk)" : "url(#markArrowTipBad)");
-        if (!ok && cfg.badDashArray) line.setAttribute("stroke-dasharray", String(cfg.badDashArray));
-        svg.appendChild(line);
-        lineCount += 1;
+        editorNavArrowHitCache.push({
+          pointIndex: pointIndex,
+          ax: sx,
+          ay: sy,
+          bx: ex,
+          by: ey
+        });
       });
+    }
 
-      if (lineCount > 0) marksOverlay.appendChild(svg);
+    /**
+     * Индекс метки 360 при клике по стрелке: полоса вокруг проекции хорды и сектор «вверх» от якоря.
+     */
+    function pickEditorNavArrowMarkIndex(clientX, clientY) {
+      var cfg = mark360ArrowStyle || {};
+      var band = Math.max(8, Number(cfg.hitBandPx) || 38);
+      var wedgeOn = cfg.hitUpWedgeEnabled !== false;
+      if (!editorNavArrowHitCache.length) return -1;
+
+      var loc = editorClientToWrapLocal(clientX, clientY);
+      var px = loc.x;
+      var py = loc.y;
+
+      var bestIdx = -1;
+      var bestScore = Infinity;
+      for (var i = 0; i < editorNavArrowHitCache.length; i++) {
+        var e = editorNavArrowHitCache[i];
+        var dSeg = editorDistPointToSegment2d(px, py, e.ax, e.ay, e.bx, e.by);
+        var inBand = dSeg <= band;
+        var inWedge = wedgeOn && editorNavHitTestUpWedge(px, py, e.ax, e.ay, e.bx, e.by);
+        if (inBand || inWedge) {
+          var distA = Math.sqrt((px - e.ax) * (px - e.ax) + (py - e.ay) * (py - e.ay));
+          var score = inBand ? dSeg : band + distA * 0.02;
+          if (score < bestScore) {
+            bestScore = score;
+            bestIdx = e.pointIndex;
+          }
+        }
+      }
+      return bestIdx;
+    }
+
+    /**
+     * Раньше: SVG-стрелки в оверлее. Теперь стрелки и капа надира только в WebGL (syncEditorNav3dArrowsAndNadir).
+     */
+    function appendMark360TransitionArrows(width, height, rect) {
+      syncEditorNav3dArrowsAndNadir();
     }
 
     /**
@@ -3240,8 +3942,10 @@
      */
     function renderFrame() {
       if (renderer && scene && camera) {
+        updateEditorNavBillboardMeshes();
         renderer.render(scene, camera);
       }
+      updateEditorNavArrowHitCache();
       requestAnimationFrame(renderFrame);
     }
 
@@ -3708,11 +4412,22 @@
 
       function pointerUpLike(e) {
         if (!dragState.active) return;
+        var wasClick = !dragState.moved;
         dragState.active = false;
         if (viewerCanvas.releasePointerCapture) {
           try { viewerCanvas.releasePointerCapture(e.pointerId); } catch (err) {}
         }
 
+        if (wasClick && e) {
+          var hitIdx = pickEditorNavArrowMarkIndex(e.clientX, e.clientY);
+          if (hitIdx >= 0) {
+            var pt = points[hitIdx];
+            if (pt && String(pt.targetType || "").trim().toLowerCase() === "360") {
+              e.preventDefault();
+              activateOverlayMarkTarget(hitIdx);
+            }
+          }
+        }
       }
 
       viewerCanvas.addEventListener("pointerup", pointerUpLike);
