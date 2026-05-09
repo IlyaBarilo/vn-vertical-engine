@@ -161,8 +161,11 @@ body {
   --bg360-mark-line-shadow-blur-base: 7px;
   --bg360-origin-cover-size-base: 600px;
   --bg360-origin-cover-stroke-width-base: 2px;
+  /* Заливка WebGL-диска «под ногами»: цвет и прозрачность в rgba / rgb(a). Читает syncBg360OriginCoverMesh() через parseBg360CssColor("--bg360-origin-cover-fill", …). */
   --bg360-origin-cover-fill: rgba(255,255,255,1);
+  /* Ободок вокруг диска: цвет и непрозрачность кольца (при opacity 0 кольцо не создаётся). */
   --bg360-origin-cover-stroke: rgba(255,255,255,0.20);
+  /* Опорный FOV для масштаба углового радиуса капы на экране (не цвет). */
   --bg360-origin-cover-reference-fov: 70;
   --bg360-under-camera-depth: 3;
   --bg360-mark-size: calc(var(--bg360-mark-size-base) * var(--visualScale));
@@ -176,6 +179,55 @@ body {
   --bg360-mark-line-shadow-blur: calc(var(--bg360-mark-line-shadow-blur-base) * var(--visualScale));
   --bg360-origin-cover-size: calc(var(--bg360-origin-cover-size-base) * var(--visualScale));
   --bg360-origin-cover-stroke-width: calc(var(--bg360-origin-cover-stroke-width-base) * var(--visualScale));
+
+  /* WebGL-стрелки навигации 360 (как в bg360-marks-editor): клик по полосе вокруг проекции хорды. Читает движок в readBg360NavConfig(). */
+  /* Якорь начала стрелок на панораме, доли UV 0..1 (как focusX/focusY). */
+  --bg360-nav-anchor-u: 0;
+  --bg360-nav-anchor-v: 0;
+  /* Отступы вдоль хорды от якоря и от точки метки (мир. ед.): короче/длиннее видимая лента. */
+  --bg360-nav-chord-margin-start: 12;
+  --bg360-nav-chord-margin-end: 18;
+  /* Шаги бинарного поиска точки старта хорды на экране (если якорь за спиной). */
+  --bg360-nav-arrow-steps: 22;
+  /* Сдвиг начала линии hit-теста от экранной проекции якоря, px. */
+  --bg360-nav-start-inset-px: 0;
+  /* Не дотягивать hit-отрезок до центра метки, px (не доходить до номера/круга). */
+  --bg360-nav-mark-gap-px: 80;
+  /* Минимальная длина хорды на экране для отрисовки hit-полосы, px. */
+  --bg360-nav-min-chord-px: 28;
+  /* Базовая половина ширины полосы клика вокруг хорды, px; итог × hit-band-width-mul. */
+  --bg360-nav-hit-band-px: 38;
+  --bg360-nav-hit-band-width-mul: 2;
+  /* Удлинение конца hit-отрезка вдоль хорды (только для клика, не для 3D). */
+  --bg360-nav-hit-chord-length-mul: 2;
+  /* Половина ширины ленты стрелки к метке (мир. ед. сцены). */
+  --bg360-nav-ribbon-half-w: 24;
+  /* Глубина (длина) наконечника у метки, мир. ед. */
+  --bg360-nav-head-depth: 64;
+  /* Половина ширины основания наконечника у метки, мир. ед. */
+  --bg360-nav-head-half-w: 60;
+  /* Прозрачность серой ленты/наконечника к меткам, 0..1. */
+  --bg360-nav-line-opacity: 0.55;
+  /* Сдвиг капы надира по Y, мир. ед. */
+  --bg360-nav-cap-y-lift: 5;
+  /* Добавка к радиусу меша капы относительно 499, мир. ед. */
+  --bg360-nav-cap-radius-bias: 1.35;
+  /* 1 — стрелка азимута на круге под ногами, 0 — выкл. */
+  --bg360-nav-nadir-arrow-enabled: 1;
+  /* Прозрачность стрелки на круге, 0..1. */
+  --bg360-nav-nadir-arrow-opacity: 0.72;
+  /* Длина хвоста стрелки на круге назад от центра, мир. ед. */
+  --bg360-nav-nadir-tail-half: 100;
+  /* Длина «тела» стрелки на круге вперёд до наконечника, мир. ед. */
+  --bg360-nav-nadir-fwd-half: 64;
+  /* Глубина наконечника стрелки на круге, мир. ед. */
+  --bg360-nav-nadir-head-depth: 62;
+  /* Половина ширины наконечника на круге, мир. ед. */
+  --bg360-nav-nadir-head-half-w: 42;
+  /* Половина толщины ленты стрелки на круге, мир. ед. */
+  --bg360-nav-nadir-ribbon-half-w: 18;
+  /* Подъём центра стрелки на круге относительно (-R + cap-lift), мир. ед. */
+  --bg360-nav-nadir-center-lift: 3;
 
   /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА
@@ -350,9 +402,13 @@ body {
   .bg-360.is-interactive.is-dragging {
     cursor: grabbing;
   }
+  .bg-360.is-interactive.is-nav-arrow-hover:not(.is-dragging) {
+    cursor: pointer;
+  }
 }
 
-/* Слой меток поверх 360-фона (координаты 0..1 по экрану, не по сфере). */
+/* Слой меток поверх 360-фона (координаты 0..1 по экрану, не по сфере).
+   Класс is-webgl-nav-only: нет DOM-меток 360 — пунктир и кружки отключены, переходы только WebGL-стрелками и тапом по canvas. */
 .bg360-marks {
   position: absolute;
   inset: 0;

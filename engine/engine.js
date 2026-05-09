@@ -1537,7 +1537,13 @@ var bg360Runtime = {
   pinchDistance: null,
   dragPointerId: null,
   dragLastX: 0,
-  dragLastY: 0
+  dragLastY: 0,
+  /** Группа WebGL-стрелок к меткам 360 и стрелки азимута на капе надира. */
+  navArrowsGroup: null,
+  /** Подпись набора меток/настроек; при совпадении группа не пересобирается каждый кадр. */
+  navArrowsSignature: "",
+  /** Сумма |dx|+|dy| при перетаскивании одним указателем — отличает тап от вращения. */
+  pointerTravelSum: 0
 };
 
 // Runtime меток 360: хранит список меток и управляет интерактивностью до следующего bg.
@@ -6252,6 +6258,24 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
   return true;
 }
 
+// Проверяет, что метка участвует в навигации: это не текстовая подпись и у неё есть корректные UV.
+function bg360IsDirectionalMark(mark) {
+  if (!mark || typeof mark !== "object") return false;
+  if (String(mark.kind || "").toLowerCase() === "text") return false;
+  var x = Number(mark.x);
+  var y = Number(mark.y);
+  return isFinite(x) && isFinite(y);
+}
+
+// Проверяет, есть ли среди меток хотя бы одна навигационная метка для WebGL-стрелок.
+function bg360MarksHasAnyDirectional(marks) {
+  if (!Array.isArray(marks)) return false;
+  for (var i = 0; i < marks.length; i++) {
+    if (bg360IsDirectionalMark(marks[i])) return true;
+  }
+  return false;
+}
+
 // Перерисовывает DOM-слой меток 360.
 function renderBg360Marks() {
   if (!elBg360Marks) return;
@@ -6262,10 +6286,17 @@ function renderBg360Marks() {
   elBg360Marks.classList.toggle("is-interactive", !!(hasMarks && bg360MarksRuntime.interactive && !bg360MarksRuntime.locked));
 
   while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
-  if (!hasMarks) return;
+  if (!hasMarks) {
+    elBg360Marks.classList.remove("is-webgl-nav-only");
+    return;
+  }
+
+  // Если есть навигационные метки, отключаем пунктир и DOM-кружки направлений: переходы идут по WebGL-стрелкам.
+  var useWebglNavArrows = bg360MarksHasAnyDirectional(bg360MarksRuntime.marks);
+  var domMarksAdded = 0;
 
   var linesLayer = null;
-  if (bg360MarksRuntime.lines) {
+  if (bg360MarksRuntime.lines && !useWebglNavArrows) {
     linesLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     linesLayer.classList.add("bg360-mark-lines");
     linesLayer.setAttribute("aria-hidden", "true");
@@ -6274,12 +6305,16 @@ function renderBg360Marks() {
   }
 
   bg360MarksRuntime.marks.forEach(function (mark, index) {
-    if (bg360MarksRuntime.lines) {
+    if (bg360MarksRuntime.lines && !useWebglNavArrows) {
       var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.classList.add("bg360-mark-line");
       line.dataset.markId = mark.id;
       line.dataset.markLineIndex = String(index);
       linesLayer.appendChild(line);
+    }
+
+    if (useWebglNavArrows && bg360IsDirectionalMark(mark)) {
+      return;
     }
 
     var btn = document.createElement("div");
@@ -6313,10 +6348,15 @@ function renderBg360Marks() {
     });
 
     elBg360Marks.appendChild(btn);
+    domMarksAdded++;
   });
+
+  // Пустой оверлей: клики проходят на canvas (выбор по полосе WebGL-стрелки).
+  elBg360Marks.classList.toggle("is-webgl-nav-only", useWebglNavArrows && domMarksAdded === 0);
 
   // После построения DOM сразу считаем экранные позиции.
   syncBg360OriginCoverMesh();
+  syncBg360NavArrowsFromMarks();
   updateBg360MarksProjection();
 }
 
@@ -6581,19 +6621,28 @@ function disposeBg360OriginCoverMesh() {
 // Создаёт/обновляет круг-заглушку как 3D-диск в нижней точке 360-сферы, чтобы он не съезжал при наклоне камеры.
 function syncBg360OriginCoverMesh() {
   if (!window.THREE || !bg360Runtime.scene || !bg360Runtime.camera) return;
-  var hasCover = bg360MarksRuntime.lines && Array.isArray(bg360MarksRuntime.marks) && bg360MarksRuntime.marks.length > 0;
+  var marks = bg360MarksRuntime.marks;
+  var hasDirectional = bg360MarksHasAnyDirectional(marks);
+  var hasCover =
+    Array.isArray(marks) &&
+    marks.length > 0 &&
+    (bg360MarksRuntime.lines || hasDirectional);
   if (!hasCover) {
     disposeBg360OriginCoverMesh();
     return;
   }
 
   var viewHeight = elNovelWindow ? elNovelWindow.clientHeight : (elBg360Marks ? elBg360Marks.clientHeight : window.innerHeight);
-  var sphereRadius = 499;
+  var capBias = getBg360CssNumber("--bg360-nav-cap-radius-bias", 1.35);
+  var capLiftY = getBg360CssNumber("--bg360-nav-cap-y-lift", 5);
+  var sphereRadius = 499 + (isFinite(capBias) ? capBias : 0);
   var angularRadius = getBg360OriginCoverAngularRadius(viewHeight);
   var strokeAngularWidth = getBg360OriginCoverStrokeAngularWidth(viewHeight);
   var fill = parseBg360CssColor("--bg360-origin-cover-fill", 0xffffff, 1);
   var stroke = parseBg360CssColor("--bg360-origin-cover-stroke", 0xffffff, 0.2);
   var signature = [
+    sphereRadius.toFixed(5),
+    capLiftY.toFixed(5),
     angularRadius.toFixed(5),
     strokeAngularWidth.toFixed(5),
     fill.color,
@@ -6606,16 +6655,19 @@ function syncBg360OriginCoverMesh() {
   disposeBg360OriginCoverMesh();
 
   var geometry = createBg360NadirCapGeometry(sphereRadius, angularRadius, 18, 256);
+  /* Капа всегда в transparent-проходе (transparent: true), иначе при opacity=1 она уходит в opaque и рисуется ДО лент с depthTest:false — стрелки оказываются поверх круга. Порядок относительно лент задаём renderOrder. */
   var material = new window.THREE.MeshBasicMaterial({
     color: fill.color,
     opacity: fill.opacity,
-    transparent: fill.opacity < 1,
+    transparent: true,
     side: window.THREE.DoubleSide,
-    depthTest: true,
-    depthWrite: fill.opacity >= 1
+    depthTest: false,
+    depthWrite: false
   });
   var mesh = new window.THREE.Mesh(geometry, material);
-  mesh.renderOrder = 2;
+  /* Панорама (0) → ленты к меткам (10–11) → капа/ободок (200–201) → стрелка азимута на капе (210–211). */
+  mesh.renderOrder = 200;
+  mesh.position.y = isFinite(capLiftY) ? capLiftY : 0;
   bg360Runtime.scene.add(mesh);
 
   bg360Runtime.originCoverMesh = mesh;
@@ -6627,13 +6679,14 @@ function syncBg360OriginCoverMesh() {
     var ringMaterial = new window.THREE.MeshBasicMaterial({
       color: stroke.color,
       opacity: stroke.opacity,
-      transparent: stroke.opacity < 1,
+      transparent: true,
       side: window.THREE.DoubleSide,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false
     });
     var ringMesh = new window.THREE.Mesh(ringGeometry, ringMaterial);
-    ringMesh.renderOrder = 3;
+    ringMesh.renderOrder = 201;
+    ringMesh.position.y = isFinite(capLiftY) ? capLiftY : 0;
     bg360Runtime.scene.add(ringMesh);
     bg360Runtime.originCoverStrokeMesh = ringMesh;
     bg360Runtime.originCoverStrokeMaterial = ringMaterial;
@@ -6712,6 +6765,769 @@ function updateBg360MarkLine(markNode, screenX, screenY, visible) {
   line.setAttribute("y1", originY);
   line.setAttribute("x2", targetX);
   line.setAttribute("y2", targetY);
+}
+
+// --- WebGL-стрелки навигации 360 (хорда от якоря UV к метке, billboard-лента + наконечник, клик по полосе в px) ---
+
+/** Минимальный dot(луч_к_точке, взгляд) для попадания точки в оверлей меток (как в редакторе). */
+var BG360_OVERLAY_DOT_MIN = 0.00001;
+
+/** Кэш отрезков hit-test в координатах слоя bg360MarksLayer. */
+var bg360NavArrowHitCache = [];
+
+/** Скретч для проекции мировой точки в слой меток (не путать с bg360MarkProjPoint из UV). */
+var bg360NavWorldProjScratch = null;
+
+/** Скретч для экранной позиции метки по UV. */
+var bg360NavMarkProjScratch = null;
+
+/** Векторы billboard-обновления стрелок. */
+var bg360BillCam = null;
+var bg360BillBase = null;
+var bg360BillFwd = null;
+var bg360BillN = null;
+var bg360BillDpl = null;
+var bg360BillAlong = null;
+var bg360BillMid = null;
+var bg360BillView = null;
+var bg360BillRight = null;
+var bg360BillP0a = null;
+var bg360BillP0b = null;
+var bg360BillP1a = null;
+var bg360BillP1b = null;
+var bg360BillTmp = null;
+var bg360BillHorizDir = null;
+
+/** Векторы расчёта хорды при сборке мешей. */
+var bg360NavScratchA = null;
+var bg360NavScratchB = null;
+var bg360NavScratchDir = null;
+var bg360NavScratchStart = null;
+var bg360NavScratchEnd = null;
+var bg360NavScratchShaftEnd = null;
+
+// Читает настройки стрелок из CSS (корневые переменные --bg360-nav-*).
+function readBg360NavConfig() {
+  return {
+    anchorU: clamp(getBg360CssNumber("--bg360-nav-anchor-u", 0), 0, 1),
+    anchorV: clamp(getBg360CssNumber("--bg360-nav-anchor-v", 0), 0, 1),
+    chordMarginStart: Math.max(0, getBg360CssNumber("--bg360-nav-chord-margin-start", 12)),
+    chordMarginEnd: Math.max(0, getBg360CssNumber("--bg360-nav-chord-margin-end", 18)),
+    arrowSteps: Math.max(4, Math.min(32, Math.round(getBg360CssNumber("--bg360-nav-arrow-steps", 22)))),
+    startInsetPx: Math.max(0, getBg360CssNumber("--bg360-nav-start-inset-px", 0)),
+    markGapPx: Math.max(0, getBg360CssNumber("--bg360-nav-mark-gap-px", 80)),
+    minChordPx: Math.max(0, getBg360CssNumber("--bg360-nav-min-chord-px", 28)),
+    hitBandPx: Math.max(8, getBg360CssNumber("--bg360-nav-hit-band-px", 38)),
+    hitBandMul: clamp(getBg360CssNumber("--bg360-nav-hit-band-width-mul", 2), 0.25, 8),
+    hitChordLenMul: clamp(getBg360CssNumber("--bg360-nav-hit-chord-length-mul", 2), 1, 6),
+    ribbonHalfW: Math.max(1, getBg360CssNumber("--bg360-nav-ribbon-half-w", 14)),
+    headDepth: Math.max(2, getBg360CssNumber("--bg360-nav-head-depth", 28)),
+    headHalfW: Math.max(1, getBg360CssNumber("--bg360-nav-head-half-w", 10)),
+    lineOpacity: clamp(getBg360CssNumber("--bg360-nav-line-opacity", 0.55), 0.15, 1),
+    nadirArrowEnabled: getBg360CssNumber("--bg360-nav-nadir-arrow-enabled", 1) !== 0,
+    nadirArrowOpacity: clamp(getBg360CssNumber("--bg360-nav-nadir-arrow-opacity", 0.72), 0.05, 1),
+    nadirTailHalf: Math.max(0.5, getBg360CssNumber("--bg360-nav-nadir-tail-half", 14)),
+    nadirFwdHalf: Math.max(0.5, getBg360CssNumber("--bg360-nav-nadir-fwd-half", 14)),
+    nadirHeadDepth: Math.max(1, getBg360CssNumber("--bg360-nav-nadir-head-depth", 7)),
+    nadirHeadHalfW: Math.max(0.5, getBg360CssNumber("--bg360-nav-nadir-head-half-w", 5)),
+    nadirRibbonHalfW: Math.max(0.25, getBg360CssNumber("--bg360-nav-nadir-ribbon-half-w", 2.4)),
+    nadirCenterLift: getBg360CssNumber("--bg360-nav-nadir-center-lift", 3)
+  };
+}
+
+// Собирает подпись текущего набора меток и ключевых параметров, чтобы не пересоздавать меши без необходимости.
+function buildBg360NavArrowsSignature() {
+  var cfg = readBg360NavConfig();
+  var sphereRBias = getBg360CssNumber("--bg360-nav-cap-radius-bias", 1.35);
+  var capLiftY = getBg360CssNumber("--bg360-nav-cap-y-lift", 5);
+  var parts = [
+    bg360MarksRuntime.lines ? "L1" : "L0",
+    (isFinite(sphereRBias) ? sphereRBias : 0).toFixed(3),
+    (isFinite(capLiftY) ? capLiftY : 0).toFixed(3),
+    cfg.anchorU.toFixed(4),
+    cfg.anchorV.toFixed(4),
+    cfg.chordMarginStart.toFixed(2),
+    cfg.chordMarginEnd.toFixed(2),
+    cfg.arrowSteps,
+    cfg.ribbonHalfW.toFixed(2),
+    cfg.headDepth.toFixed(2),
+    cfg.headHalfW.toFixed(2),
+    cfg.lineOpacity.toFixed(3),
+    cfg.nadirArrowEnabled ? "N1" : "N0",
+    cfg.nadirArrowOpacity.toFixed(3),
+    cfg.nadirTailHalf.toFixed(2),
+    cfg.nadirFwdHalf.toFixed(2),
+    cfg.nadirHeadDepth.toFixed(2),
+    cfg.nadirHeadHalfW.toFixed(2),
+    cfg.nadirRibbonHalfW.toFixed(2),
+    cfg.nadirCenterLift.toFixed(2)
+  ];
+  if (!Array.isArray(bg360MarksRuntime.marks)) return parts.join("|");
+  for (var i = 0; i < bg360MarksRuntime.marks.length; i++) {
+    var m = bg360MarksRuntime.marks[i];
+    if (bg360IsDirectionalMark(m)) {
+      parts.push(String(i), String(m.id || ""), String(m.x), String(m.y));
+    }
+  }
+  return parts.join("|");
+}
+
+// Точка на сфере радиуса r в мировых координатах по UV панорамы (согласовано с bg360UvToDirection).
+function bg360UvToWorldPointOnSphere(u, v, radius) {
+  var d = bg360UvToDirection(u, v);
+  if (!d) return null;
+  var r = Number(radius);
+  if (!isFinite(r) || r <= 0) r = 500;
+  return { x: d.x * r, y: d.y * r, z: d.z * r };
+}
+
+// Проецирует мировую точку на сфере в пиксели слоя меток (как линии SVG); null если за спиной камеры.
+function bg360ProjectWorldToMarksPx(wx, wy, wz) {
+  if (!elBg360Marks || !bg360Runtime.camera || !window.THREE) return null;
+  if (!bg360NavWorldProjScratch) bg360NavWorldProjScratch = new window.THREE.Vector3();
+  if (!bg360MarkProjCameraDir) bg360MarkProjCameraDir = new window.THREE.Vector3();
+
+  var w = elBg360Marks.clientWidth || 0;
+  var h = elBg360Marks.clientHeight || 0;
+  if (w <= 0 || h <= 0) return null;
+
+  bg360Runtime.camera.updateMatrixWorld(true);
+  bg360Runtime.camera.getWorldPosition(bg360NavWorldProjScratch);
+  var camX = bg360NavWorldProjScratch.x;
+  var camY = bg360NavWorldProjScratch.y;
+  var camZ = bg360NavWorldProjScratch.z;
+
+  bg360NavWorldProjScratch.set(wx - camX, wy - camY, wz - camZ);
+  var toLen = bg360NavWorldProjScratch.length();
+  if (toLen < 1e-10) return null;
+  bg360NavWorldProjScratch.multiplyScalar(1 / toLen);
+
+  bg360Runtime.camera.getWorldDirection(bg360MarkProjCameraDir);
+  if (bg360NavWorldProjScratch.dot(bg360MarkProjCameraDir) < BG360_OVERLAY_DOT_MIN) return null;
+
+  bg360NavWorldProjScratch.set(wx, wy, wz);
+  bg360NavWorldProjScratch.project(bg360Runtime.camera);
+  return {
+    x: (bg360NavWorldProjScratch.x * 0.5 + 0.5) * w,
+    y: (-bg360NavWorldProjScratch.y * 0.5 + 0.5) * h
+  };
+}
+
+// Экранная позиция центра метки по UV; null если точка вне обзора.
+function bg360MarkUvToMarksPx(u, v) {
+  if (!elBg360Marks || !bg360Runtime.camera || !window.THREE) return null;
+  if (!bg360NavMarkProjScratch) bg360NavMarkProjScratch = new window.THREE.Vector3();
+  if (!bg360MarkProjCameraDir) bg360MarkProjCameraDir = new window.THREE.Vector3();
+
+  var dir = bg360UvToDirection(u, v);
+  if (!dir) return null;
+  bg360Runtime.camera.getWorldDirection(bg360MarkProjCameraDir);
+  if (dir.dot(bg360MarkProjCameraDir) <= 0) return null;
+
+  var w = elBg360Marks.clientWidth || 0;
+  var h = elBg360Marks.clientHeight || 0;
+  if (w <= 0 || h <= 0) return null;
+
+  bg360NavMarkProjScratch.copy(dir);
+  bg360NavMarkProjScratch.project(bg360Runtime.camera);
+  return {
+    x: (bg360NavMarkProjScratch.x * 0.5 + 0.5) * w,
+    y: (-bg360NavMarkProjScratch.y * 0.5 + 0.5) * h
+  };
+}
+
+// Ближайшая к якорю точка хорды, видимая на экране (бинарный поиск), если сам якорь за спиной.
+function bg360ArrowChordScreenStartOrNull(wxA, wyA, wzA, wxB, wyB, wzB, binarySteps) {
+  var projA = bg360ProjectWorldToMarksPx(wxA, wyA, wzA);
+  if (projA) return projA;
+  if (!bg360ProjectWorldToMarksPx(wxB, wyB, wzB)) return null;
+
+  var lo = 0;
+  var hi = 1;
+  var steps = Math.max(4, Math.min(28, Number(binarySteps) || 22));
+  for (var k = 0; k < steps; k++) {
+    var mid = (lo + hi) * 0.5;
+    var mx = wxA + mid * (wxB - wxA);
+    var my = wyA + mid * (wyB - wyA);
+    var mz = wzA + mid * (wzB - wzA);
+    if (bg360ProjectWorldToMarksPx(mx, my, mz)) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+
+  var tx = wxA + hi * (wxB - wxA);
+  var ty = wyA + hi * (wyB - wyA);
+  var tz = wzA + hi * (wzB - wzA);
+  return bg360ProjectWorldToMarksPx(tx, ty, tz);
+}
+
+// Расстояние от точки до отрезка в 2D (полоса hit-test вокруг хорды).
+function bg360DistPointToSegment2d(px, py, x1, y1, x2, y2) {
+  var vx = x2 - x1;
+  var vy = y2 - y1;
+  var wx = px - x1;
+  var wy = py - y1;
+  var c1 = vx * wx + vy * wy;
+  if (c1 <= 0) return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+  var c2 = vx * vx + vy * vy;
+  if (c2 <= c1) return Math.sqrt((px - x2) * (px - x2) + (py - y2) * (py - y2));
+  var t = c1 / c2;
+  var projx = x1 + t * vx;
+  var projy = y1 + t * vy;
+  return Math.sqrt((px - projx) * (px - projx) + (py - projy) * (py - projy));
+}
+
+// Пересчитывает отрезки для pick по стрелке каждый кадр (после вращения камеры).
+function updateBg360NavArrowHitCache() {
+  bg360NavArrowHitCache = [];
+  if (!elBg360Marks || !bg360Runtime.active || !bg360Runtime.camera || !window.THREE) return;
+  if (!bg360MarksHasAnyDirectional(bg360MarksRuntime.marks)) return;
+  var marks = bg360MarksRuntime.marks;
+  if (!Array.isArray(marks) || !marks.length) return;
+
+  var cfg = readBg360NavConfig();
+  var w = elBg360Marks.clientWidth || 0;
+  var h = elBg360Marks.clientHeight || 0;
+  if (w <= 0 || h <= 0) return;
+
+  var wpAnchor = bg360UvToWorldPointOnSphere(cfg.anchorU, cfg.anchorV, 500);
+  if (!wpAnchor) return;
+
+  var hasDirectional = false;
+  for (var h0 = 0; h0 < marks.length; h0++) {
+    if (bg360IsDirectionalMark(marks[h0])) {
+      hasDirectional = true;
+      break;
+    }
+  }
+  if (!hasDirectional) return;
+
+  bg360Runtime.camera.updateMatrixWorld(true);
+
+  for (var index = 0; index < marks.length; index++) {
+    var mark = marks[index];
+    if (!bg360IsDirectionalMark(mark)) continue;
+
+    var pos = bg360MarkUvToMarksPx(mark.x, mark.y);
+    if (!pos) continue;
+    var wMark = bg360UvToWorldPointOnSphere(mark.x, mark.y, 500);
+    if (!wMark) continue;
+
+    var chordStart = bg360ArrowChordScreenStartOrNull(
+      wpAnchor.x,
+      wpAnchor.y,
+      wpAnchor.z,
+      wMark.x,
+      wMark.y,
+      wMark.z,
+      cfg.arrowSteps
+    );
+    if (!chordStart) continue;
+
+    var dx = pos.x - chordStart.x;
+    var dy = pos.y - chordStart.y;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    if (len < cfg.minChordPx) continue;
+    var ux = dx / len;
+    var uy = dy / len;
+    var sx = chordStart.x + ux * cfg.startInsetPx;
+    var sy = chordStart.y + uy * cfg.startInsetPx;
+    var ex = pos.x - ux * cfg.markGapPx;
+    var ey = pos.y - uy * cfg.markGapPx;
+    var drawnLen = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+    if (drawnLen < cfg.minChordPx) continue;
+
+    var chordLenMul = cfg.hitChordLenMul;
+    if (chordLenMul > 1.0005 && drawnLen > 1e-6) {
+      var eux = (ex - sx) / drawnLen;
+      var euy = (ey - sy) / drawnLen;
+      var extraChord = drawnLen * (chordLenMul - 1);
+      ex += eux * extraChord;
+      ey += euy * extraChord;
+    }
+
+    bg360NavArrowHitCache.push({
+      markIndex: index,
+      ax: sx,
+      ay: sy,
+      bx: ex,
+      by: ey
+    });
+  }
+}
+
+// Возвращает id метки при попадании в расширенную полосу вокруг проекции хорды (сектор «вверх» не используется).
+function pickBg360NavArrowMarkId(clientX, clientY) {
+  if (!elBg360Marks || !bg360NavArrowHitCache.length) return "";
+  var cfg = readBg360NavConfig();
+  var band = cfg.hitBandPx * cfg.hitBandMul;
+  var locX = clientX;
+  var locY = clientY;
+  try {
+    var r = elBg360Marks.getBoundingClientRect();
+    locX = clientX - r.left;
+    locY = clientY - r.top;
+  } catch (e) {}
+
+  var bestIdx = -1;
+  var bestScore = Infinity;
+  for (var i = 0; i < bg360NavArrowHitCache.length; i++) {
+    var e = bg360NavArrowHitCache[i];
+    var dSeg = bg360DistPointToSegment2d(locX, locY, e.ax, e.ay, e.bx, e.by);
+    if (dSeg <= band) {
+      if (dSeg < bestScore) {
+        bestScore = dSeg;
+        bestIdx = e.markIndex;
+      }
+    }
+  }
+  if (bestIdx < 0 || !Array.isArray(bg360MarksRuntime.marks)) return "";
+  var mk = bg360MarksRuntime.marks[bestIdx];
+  return mk && mk.id != null ? String(mk.id) : "";
+}
+
+function bg360EnsureBillboardScratch() {
+  if (!window.THREE) return;
+  if (!bg360BillCam) bg360BillCam = new window.THREE.Vector3();
+  if (!bg360BillBase) bg360BillBase = new window.THREE.Vector3();
+  if (!bg360BillFwd) bg360BillFwd = new window.THREE.Vector3();
+  if (!bg360BillN) bg360BillN = new window.THREE.Vector3();
+  if (!bg360BillDpl) bg360BillDpl = new window.THREE.Vector3();
+  if (!bg360BillAlong) bg360BillAlong = new window.THREE.Vector3();
+  if (!bg360BillMid) bg360BillMid = new window.THREE.Vector3();
+  if (!bg360BillView) bg360BillView = new window.THREE.Vector3();
+  if (!bg360BillRight) bg360BillRight = new window.THREE.Vector3();
+  if (!bg360BillP0a) bg360BillP0a = new window.THREE.Vector3();
+  if (!bg360BillP0b) bg360BillP0b = new window.THREE.Vector3();
+  if (!bg360BillP1a) bg360BillP1a = new window.THREE.Vector3();
+  if (!bg360BillP1b) bg360BillP1b = new window.THREE.Vector3();
+  if (!bg360BillTmp) bg360BillTmp = new window.THREE.Vector3();
+  if (!bg360BillHorizDir) bg360BillHorizDir = new window.THREE.Vector3();
+}
+
+// Центр основания наконечника в плоскости billboard (как в bg360-marks-editor).
+function bg360NavBillboardHeadBaseWorld(tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, camPosX, camPosY, camPosZ) {
+  if (!window.THREE) return false;
+  bg360EnsureBillboardScratch();
+  bg360BillN.set(camPosX, camPosY, camPosZ).sub(bg360BillTmp.set(tipX, tipY, tipZ));
+  if (bg360BillN.lengthSq() < 1e-10) return false;
+  bg360BillN.normalize();
+  bg360BillFwd.set(dirX, dirY, dirZ);
+  if (bg360BillFwd.lengthSq() < 1e-10) return false;
+  bg360BillFwd.normalize();
+  var dn = bg360BillFwd.dot(bg360BillN);
+  bg360BillDpl.copy(bg360BillFwd).addScaledVector(bg360BillN, -dn);
+  if (bg360BillDpl.lengthSq() < 1e-10) {
+    bg360BillDpl.copy(bg360BillN).cross(bg360BillTmp.set(0, 1, 0));
+  }
+  if (bg360BillDpl.lengthSq() < 1e-10) {
+    bg360BillDpl.set(1, 0, 0);
+  }
+  bg360BillDpl.normalize();
+  bg360BillFwd.copy(bg360BillDpl);
+  bg360BillBase.copy(bg360BillTmp.set(tipX, tipY, tipZ)).addScaledVector(bg360BillFwd, -headDepth);
+  return true;
+}
+
+// Четырёхугольник ленты стрелки между p0 и p1, толщина 2*halfW, плоскость обращена к камере.
+function bg360NavUpdateRibbonGeometry(geom, p0x, p0y, p0z, p1x, p1y, p1z, halfW, camPosX, camPosY, camPosZ) {
+  if (!geom || !window.THREE) return;
+  bg360EnsureBillboardScratch();
+  bg360BillAlong.set(p1x - p0x, p1y - p0y, p1z - p0z);
+  var segLen = bg360BillAlong.length();
+  if (segLen < 1e-6) return;
+  bg360BillAlong.multiplyScalar(1 / segLen);
+  bg360BillMid.set(p0x + p1x, p0y + p1y, p0z + p1z).multiplyScalar(0.5);
+  bg360BillView.set(camPosX, camPosY, camPosZ).sub(bg360BillMid);
+  if (bg360BillView.lengthSq() < 1e-10) return;
+  bg360BillView.normalize();
+  bg360BillRight.crossVectors(bg360BillAlong, bg360BillView);
+  if (bg360BillRight.lengthSq() < 1e-10) {
+    bg360BillRight.set(0, 1, 0).cross(bg360BillAlong);
+  }
+  if (bg360BillRight.lengthSq() < 1e-10) {
+    bg360BillRight.set(1, 0, 0).cross(bg360BillAlong);
+  }
+  bg360BillRight.normalize().multiplyScalar(halfW);
+  bg360BillP0a.set(p0x, p0y, p0z).add(bg360BillRight);
+  bg360BillP0b.set(p0x, p0y, p0z).sub(bg360BillRight);
+  bg360BillP1a.set(p1x, p1y, p1z).add(bg360BillRight);
+  bg360BillP1b.set(p1x, p1y, p1z).sub(bg360BillRight);
+
+  var posAttr = geom.getAttribute("position");
+  if (!posAttr || !posAttr.array || posAttr.array.length < 18) {
+    geom.setAttribute("position", new window.THREE.BufferAttribute(new Float32Array(18), 3));
+    posAttr = geom.getAttribute("position");
+  }
+  var arr = posAttr.array;
+  var i = 0;
+  arr[i++] = bg360BillP0a.x; arr[i++] = bg360BillP0a.y; arr[i++] = bg360BillP0a.z;
+  arr[i++] = bg360BillP0b.x; arr[i++] = bg360BillP0b.y; arr[i++] = bg360BillP0b.z;
+  arr[i++] = bg360BillP1a.x; arr[i++] = bg360BillP1a.y; arr[i++] = bg360BillP1a.z;
+  arr[i++] = bg360BillP0b.x; arr[i++] = bg360BillP0b.y; arr[i++] = bg360BillP0b.z;
+  arr[i++] = bg360BillP1b.x; arr[i++] = bg360BillP1b.y; arr[i++] = bg360BillP1b.z;
+  arr[i++] = bg360BillP1a.x; arr[i++] = bg360BillP1a.y; arr[i++] = bg360BillP1a.z;
+  posAttr.needsUpdate = true;
+  geom.computeBoundingSphere();
+}
+
+// Треугольный наконечник в плоскости «камера — вершина».
+function bg360NavUpdateHeadGeometry(geom, tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, halfWidth, camPosX, camPosY, camPosZ) {
+  if (!geom || !window.THREE) return;
+  if (!bg360NavBillboardHeadBaseWorld(tipX, tipY, tipZ, dirX, dirY, dirZ, headDepth, camPosX, camPosY, camPosZ)) return;
+  bg360EnsureBillboardScratch();
+  bg360BillRight.crossVectors(bg360BillFwd, bg360BillN);
+  if (bg360BillRight.lengthSq() < 1e-10) return;
+  bg360BillRight.normalize().multiplyScalar(halfWidth);
+  bg360BillP0a.copy(bg360BillBase).add(bg360BillRight);
+  bg360BillP0b.copy(bg360BillBase).sub(bg360BillRight);
+
+  var posAttr = geom.getAttribute("position");
+  if (!posAttr || !posAttr.array || posAttr.array.length < 9) {
+    geom.setAttribute("position", new window.THREE.BufferAttribute(new Float32Array(9), 3));
+    posAttr = geom.getAttribute("position");
+  }
+  var arr = posAttr.array;
+  arr[0] = tipX; arr[1] = tipY; arr[2] = tipZ;
+  arr[3] = bg360BillP0a.x; arr[4] = bg360BillP0a.y; arr[5] = bg360BillP0a.z;
+  arr[6] = bg360BillP0b.x; arr[7] = bg360BillP0b.y; arr[8] = bg360BillP0b.z;
+  posAttr.needsUpdate = true;
+  geom.computeBoundingSphere();
+}
+
+// Горизонтальный единичный вектор направления взгляда (XZ) для стрелки на капе.
+function bg360NavCameraHorizDirXZ(out3) {
+  if (!bg360Runtime.camera || !window.THREE) return false;
+  if (!bg360MarkProjCameraDir) bg360MarkProjCameraDir = new window.THREE.Vector3();
+  bg360Runtime.camera.getWorldDirection(bg360MarkProjCameraDir);
+  out3.set(bg360MarkProjCameraDir.x, 0, bg360MarkProjCameraDir.z);
+  if (out3.lengthSq() < 1e-10) {
+    out3.set(0, 0, 1);
+  } else {
+    out3.normalize();
+  }
+  return true;
+}
+
+// Перед рендером: обновляет геометрию billboard у дочерних мешей группы навигации.
+function updateBg360NavBillboardMeshes() {
+  if (!bg360Runtime.navArrowsGroup || !bg360Runtime.camera || !window.THREE) return;
+  bg360EnsureBillboardScratch();
+  bg360Runtime.camera.getWorldPosition(bg360BillCam);
+  var cx = bg360BillCam.x;
+  var cy = bg360BillCam.y;
+  var cz = bg360BillCam.z;
+  var grp = bg360Runtime.navArrowsGroup;
+  for (var i = 0; i < grp.children.length; i++) {
+    var ch = grp.children[i];
+    var bd = ch.userData && ch.userData.bg360Billboard;
+    if (!bd || !ch.geometry) continue;
+    if (bd.kind === "ribbon") {
+      var p1rx = bd.p1.x;
+      var p1ry = bd.p1.y;
+      var p1rz = bd.p1.z;
+      var jn = bd.join;
+      if (jn && jn.tip && jn.dir && jn.depth != null) {
+        if (
+          bg360NavBillboardHeadBaseWorld(
+            jn.tip.x,
+            jn.tip.y,
+            jn.tip.z,
+            jn.dir.x,
+            jn.dir.y,
+            jn.dir.z,
+            jn.depth,
+            cx,
+            cy,
+            cz
+          )
+        ) {
+          p1rx = bg360BillBase.x;
+          p1ry = bg360BillBase.y;
+          p1rz = bg360BillBase.z;
+        }
+      }
+      bg360NavUpdateRibbonGeometry(
+        ch.geometry,
+        bd.p0.x,
+        bd.p0.y,
+        bd.p0.z,
+        p1rx,
+        p1ry,
+        p1rz,
+        bd.halfW,
+        cx,
+        cy,
+        cz
+      );
+    } else if (bd.kind === "head") {
+      bg360NavUpdateHeadGeometry(
+        ch.geometry,
+        bd.tip.x,
+        bd.tip.y,
+        bd.tip.z,
+        bd.dir.x,
+        bd.dir.y,
+        bd.dir.z,
+        bd.depth,
+        bd.halfW,
+        cx,
+        cy,
+        cz
+      );
+    } else if (bd.kind === "nadirViewRibbon") {
+      if (!bg360NavCameraHorizDirXZ(bg360BillTmp)) continue;
+      var ux = bg360BillTmp.x;
+      var uz = bg360BillTmp.z;
+      var oy = bd.centerY;
+      var p0x = -ux * bd.tailLen;
+      var p0z = -uz * bd.tailLen;
+      var tipX = ux * (bd.fwdLen + bd.headDepth);
+      var tipZ = uz * (bd.fwdLen + bd.headDepth);
+      var p1rx = ux * bd.fwdLen;
+      var p1ry = oy;
+      var p1rz = uz * bd.fwdLen;
+      if (
+        bg360NavBillboardHeadBaseWorld(
+          tipX,
+          oy,
+          tipZ,
+          ux,
+          0,
+          uz,
+          bd.headDepth,
+          cx,
+          cy,
+          cz
+        )
+      ) {
+        p1rx = bg360BillBase.x;
+        p1ry = bg360BillBase.y;
+        p1rz = bg360BillBase.z;
+      }
+      bg360NavUpdateRibbonGeometry(
+        ch.geometry,
+        p0x,
+        oy,
+        p0z,
+        p1rx,
+        p1ry,
+        p1rz,
+        bd.halfW,
+        cx,
+        cy,
+        cz
+      );
+    } else if (bd.kind === "nadirViewHead") {
+      if (!bg360NavCameraHorizDirXZ(bg360BillTmp)) continue;
+      var ux2 = bg360BillTmp.x;
+      var uz2 = bg360BillTmp.z;
+      var oy2 = bd.centerY;
+      var tipX2 = ux2 * (bd.fwdLen + bd.headDepth);
+      var tipZ2 = uz2 * (bd.fwdLen + bd.headDepth);
+      bg360NavUpdateHeadGeometry(
+        ch.geometry,
+        tipX2,
+        oy2,
+        tipZ2,
+        ux2,
+        0,
+        uz2,
+        bd.headDepth,
+        bd.halfW,
+        cx,
+        cy,
+        cz
+      );
+    }
+  }
+}
+
+// Удаляет группу стрелок и освобождает геометрию/материалы.
+function disposeBg360NavArrowsGroup() {
+  if (bg360Runtime.navArrowsGroup && bg360Runtime.scene) {
+    bg360Runtime.scene.remove(bg360Runtime.navArrowsGroup);
+  }
+  var grp = bg360Runtime.navArrowsGroup;
+  if (grp) {
+    while (grp.children.length) {
+      var ch = grp.children[0];
+      grp.remove(ch);
+      if (ch.geometry && typeof ch.geometry.dispose === "function") ch.geometry.dispose();
+      if (ch.material && typeof ch.material.dispose === "function") ch.material.dispose();
+    }
+  }
+  bg360Runtime.navArrowsGroup = null;
+  bg360Runtime.navArrowsSignature = "";
+}
+
+// Создаёт/обновляет меши стрелок к навигационным меткам и стрелку азимута на капе (вызывается при смене меток).
+function syncBg360NavArrowsFromMarks() {
+  if (!window.THREE || !bg360Runtime.scene || !bg360Runtime.camera) return;
+
+  var shouldShow =
+    Array.isArray(bg360MarksRuntime.marks) &&
+    bg360MarksRuntime.marks.some(function (m) {
+      return bg360IsDirectionalMark(m);
+    });
+
+  if (!shouldShow) {
+    disposeBg360NavArrowsGroup();
+    return;
+  }
+
+  var sig = buildBg360NavArrowsSignature();
+  if (bg360Runtime.navArrowsSignature === sig && bg360Runtime.navArrowsGroup) return;
+
+  disposeBg360NavArrowsGroup();
+
+  var cfg = readBg360NavConfig();
+  var wpAnchor = bg360UvToWorldPointOnSphere(cfg.anchorU, cfg.anchorV, 500);
+  if (!wpAnchor) {
+    bg360Runtime.navArrowsSignature = sig;
+    return;
+  }
+
+  var sphereR = 499 + getBg360CssNumber("--bg360-nav-cap-radius-bias", 1.35);
+  var capLift = getBg360CssNumber("--bg360-nav-cap-y-lift", 5);
+  var navGroup = new window.THREE.Group();
+  navGroup.name = "bg360NavArrows";
+  bg360Runtime.scene.add(navGroup);
+  bg360Runtime.navArrowsGroup = navGroup;
+  bg360Runtime.navArrowsSignature = sig;
+
+  if (!bg360NavScratchA) bg360NavScratchA = new window.THREE.Vector3();
+  if (!bg360NavScratchB) bg360NavScratchB = new window.THREE.Vector3();
+  if (!bg360NavScratchDir) bg360NavScratchDir = new window.THREE.Vector3();
+  if (!bg360NavScratchStart) bg360NavScratchStart = new window.THREE.Vector3();
+  if (!bg360NavScratchEnd) bg360NavScratchEnd = new window.THREE.Vector3();
+  if (!bg360NavScratchShaftEnd) bg360NavScratchShaftEnd = new window.THREE.Vector3();
+
+  var arrowMatCommon = {
+    color: 0xdcdcdc,
+    opacity: cfg.lineOpacity,
+    // Всегда transparent: навигационные стрелки рисуются как оверлей; без transparent они не попадают в transparent-проход и могут не видеться при depthTest:false.
+    transparent: true,
+    side: window.THREE.DoubleSide,
+    // Стрелки — оверлей внутри сферы: без depthTest, чтобы их не съедала глубина панорамы.
+    depthTest: false,
+    depthWrite: false
+  };
+
+  bg360MarksRuntime.marks.forEach(function (mark) {
+    if (!bg360IsDirectionalMark(mark)) return;
+    var wMark = bg360UvToWorldPointOnSphere(mark.x, mark.y, 500);
+    if (!wMark) return;
+
+    bg360NavScratchA.set(wpAnchor.x, wpAnchor.y, wpAnchor.z);
+    bg360NavScratchB.set(wMark.x, wMark.y, wMark.z);
+    bg360NavScratchDir.subVectors(bg360NavScratchB, bg360NavScratchA);
+    var chordLen = bg360NavScratchDir.length();
+    if (chordLen < 1e-3) return;
+    bg360NavScratchDir.multiplyScalar(1 / chordLen);
+
+    var sm = Math.min(cfg.chordMarginStart, chordLen * 0.4);
+    var em = Math.min(cfg.chordMarginEnd, chordLen * 0.4);
+    bg360NavScratchStart.copy(bg360NavScratchA).addScaledVector(bg360NavScratchDir, sm);
+    bg360NavScratchEnd.copy(bg360NavScratchB).addScaledVector(bg360NavScratchDir, -em);
+    var segLen = bg360NavScratchStart.distanceTo(bg360NavScratchEnd);
+    if (segLen < cfg.headDepth + 1) return;
+
+    bg360NavScratchShaftEnd.copy(bg360NavScratchEnd).addScaledVector(bg360NavScratchDir, -cfg.headDepth);
+    var shaftLen = bg360NavScratchStart.distanceTo(bg360NavScratchShaftEnd);
+    if (shaftLen < 1) return;
+
+    var arrowMatRibbon = new window.THREE.MeshBasicMaterial(arrowMatCommon);
+    var arrowMatHead = new window.THREE.MeshBasicMaterial(arrowMatCommon);
+    arrowMatRibbon.color = new window.THREE.Color(0xdcdcdc);
+    arrowMatHead.color = new window.THREE.Color(0xdcdcdc);
+
+    var ribbonGeom = new window.THREE.BufferGeometry();
+    var ribbonMesh = new window.THREE.Mesh(ribbonGeom, arrowMatRibbon);
+    /* Ниже капы надира (renderOrder капы 200+): одна ветка transparent, меньший порядок — раньше. */
+    ribbonMesh.renderOrder = 10;
+    // Без позиций в геометрии bounding sphere некорректен и frustum culling может скрыть меш до первого billboard-обновления.
+    ribbonMesh.frustumCulled = false;
+    ribbonMesh.userData.bg360Billboard = {
+      kind: "ribbon",
+      p0: { x: bg360NavScratchStart.x, y: bg360NavScratchStart.y, z: bg360NavScratchStart.z },
+      p1: {
+        x: bg360NavScratchShaftEnd.x,
+        y: bg360NavScratchShaftEnd.y,
+        z: bg360NavScratchShaftEnd.z
+      },
+      halfW: cfg.ribbonHalfW,
+      join: {
+        tip: { x: bg360NavScratchEnd.x, y: bg360NavScratchEnd.y, z: bg360NavScratchEnd.z },
+        dir: { x: bg360NavScratchDir.x, y: bg360NavScratchDir.y, z: bg360NavScratchDir.z },
+        depth: cfg.headDepth
+      }
+    };
+    navGroup.add(ribbonMesh);
+
+    var headGeom = new window.THREE.BufferGeometry();
+    var headMesh = new window.THREE.Mesh(headGeom, arrowMatHead);
+    headMesh.renderOrder = 11;
+    headMesh.frustumCulled = false;
+    headMesh.userData.bg360Billboard = {
+      kind: "head",
+      tip: { x: bg360NavScratchEnd.x, y: bg360NavScratchEnd.y, z: bg360NavScratchEnd.z },
+      dir: { x: bg360NavScratchDir.x, y: bg360NavScratchDir.y, z: bg360NavScratchDir.z },
+      depth: cfg.headDepth,
+      halfW: cfg.headHalfW
+    };
+    navGroup.add(headMesh);
+  });
+
+  if (cfg.nadirArrowEnabled) {
+    var nvMatOpts = {
+      color: 0x96989e,
+      opacity: cfg.nadirArrowOpacity,
+      transparent: true,
+      side: window.THREE.DoubleSide,
+      // Стрелка на круге должна быть видна поверх капы и текстуры панорамы.
+      depthTest: false,
+      depthWrite: false
+    };
+    var nvMatRibbon = new window.THREE.MeshBasicMaterial(nvMatOpts);
+    var nvMatHead = new window.THREE.MeshBasicMaterial(nvMatOpts);
+    nvMatRibbon.color = new window.THREE.Color(0x96989e);
+    nvMatHead.color = new window.THREE.Color(0x96989e);
+    var nvCenterY = -sphereR + capLift + cfg.nadirCenterLift;
+    var nvRibbonGeom = new window.THREE.BufferGeometry();
+    var nvRibbonMesh = new window.THREE.Mesh(nvRibbonGeom, nvMatRibbon);
+    nvRibbonMesh.renderOrder = 210;
+    nvRibbonMesh.frustumCulled = false;
+    nvRibbonMesh.userData.bg360Billboard = {
+      kind: "nadirViewRibbon",
+      centerY: nvCenterY,
+      tailLen: cfg.nadirTailHalf,
+      fwdLen: cfg.nadirFwdHalf,
+      headDepth: cfg.nadirHeadDepth,
+      halfW: cfg.nadirRibbonHalfW
+    };
+    navGroup.add(nvRibbonMesh);
+
+    var nvHeadGeom = new window.THREE.BufferGeometry();
+    var nvHeadMesh = new window.THREE.Mesh(nvHeadGeom, nvMatHead);
+    nvHeadMesh.renderOrder = 211;
+    nvHeadMesh.frustumCulled = false;
+    nvHeadMesh.userData.bg360Billboard = {
+      kind: "nadirViewHead",
+      centerY: nvCenterY,
+      fwdLen: cfg.nadirFwdHalf,
+      headDepth: cfg.nadirHeadDepth,
+      halfW: cfg.nadirHeadHalfW
+    };
+    navGroup.add(nvHeadMesh);
+  }
+
+  console.log("[bg360-nav] arrows rebuilt: meshes=" + navGroup.children.length +
+    " marks=" + (Array.isArray(bg360MarksRuntime.marks) ? bg360MarksRuntime.marks.length : 0) +
+    " anchorUV=" + cfg.anchorU.toFixed(3) + "," + cfg.anchorV.toFixed(3) +
+    " nadirArrow=" + (cfg.nadirArrowEnabled ? "on" : "off"));
 }
 
 // Запускает walk360: показывает панель, включает hit-test меток и блокирует обычный next.
@@ -7282,11 +8098,13 @@ function getBg360PinchDistance() {
 function handleBg360PointerDown(e) {
   if (!bg360Runtime.active || !elBg360) return;
   if (!bg360Runtime.interactive) return;
+  if (elBg360) elBg360.classList.remove("is-nav-arrow-hover");
   bg360Runtime.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
   if (getBg360PointerCount() === 1) {
     bg360Runtime.dragPointerId = e.pointerId;
     bg360Runtime.dragLastX = e.clientX;
     bg360Runtime.dragLastY = e.clientY;
+    bg360Runtime.pointerTravelSum = 0;
   } else if (getBg360PointerCount() >= 2) {
     bg360Runtime.pinchDistance = getBg360PinchDistance();
     bg360Runtime.dragPointerId = null;
@@ -7316,6 +8134,7 @@ function handleBg360PointerMove(e) {
   } else if (bg360Runtime.dragPointerId === e.pointerId) {
     var dx = e.clientX - bg360Runtime.dragLastX;
     var dy = e.clientY - bg360Runtime.dragLastY;
+    bg360Runtime.pointerTravelSum += Math.abs(dx) + Math.abs(dy);
     bg360Runtime.dragLastX = e.clientX;
     bg360Runtime.dragLastY = e.clientY;
     // Инвертируем оси: движение воспринимается как «тяну сцену».
@@ -7331,6 +8150,7 @@ function handleBg360PointerUpLike(e) {
   if (elBg360 && elBg360.releasePointerCapture) {
     try { elBg360.releasePointerCapture(e.pointerId); } catch (err) {}
   }
+  var travel = bg360Runtime.pointerTravelSum || 0;
   delete bg360Runtime.pointers[e.pointerId];
   if (bg360Runtime.dragPointerId === e.pointerId) {
     bg360Runtime.dragPointerId = null;
@@ -7338,6 +8158,27 @@ function handleBg360PointerUpLike(e) {
   if (getBg360PointerCount() < 2) {
     bg360Runtime.pinchDistance = null;
   }
+  // Короткий тап без заметного перетаскивания: выбор метки по полосе вокруг WebGL-стрелки.
+  if (
+    getBg360PointerCount() === 0 &&
+    travel < 18 &&
+    bg360Runtime.active &&
+    bg360Runtime.interactive &&
+    !bg360MarksRuntime.locked &&
+    bg360MarksRuntime.interactive &&
+    elBg360Marks &&
+    !elBg360Marks.classList.contains("hidden")
+  ) {
+    var pickId = pickBg360NavArrowMarkId(e.clientX, e.clientY);
+    if (pickId) {
+      if (goto360Runtime.active && !goto360Runtime.done) {
+        onGoto360SelectMark(pickId);
+      } else if (walk360Runtime.active && !walk360Runtime.done) {
+        onWalk360SelectMark(pickId);
+      }
+    }
+  }
+  bg360Runtime.pointerTravelSum = 0;
   updateBg360CursorClasses();
 }
 
@@ -7358,6 +8199,27 @@ function setupBg360Interactions() {
   elBg360.addEventListener("pointerup", handleBg360PointerUpLike);
   elBg360.addEventListener("pointercancel", handleBg360PointerUpLike);
   elBg360.addEventListener("wheel", handleBg360Wheel, { passive: false });
+  elBg360.addEventListener("mousemove", handleBg360NavHoverMove);
+  elBg360.addEventListener("mouseleave", handleBg360NavHoverLeave);
+}
+
+// Наведение мыши: курсор pointer над зоной стрелки, если не тянем обзор.
+function handleBg360NavHoverMove(e) {
+  if (!elBg360 || !bg360Runtime.active || !bg360Runtime.interactive) {
+    if (elBg360) elBg360.classList.remove("is-nav-arrow-hover");
+    return;
+  }
+  if (bg360MarksRuntime.locked || !bg360MarksRuntime.interactive) {
+    elBg360.classList.remove("is-nav-arrow-hover");
+    return;
+  }
+  if (bg360Runtime.dragPointerId !== null || getBg360PointerCount() > 0) return;
+  var pickId = pickBg360NavArrowMarkId(e.clientX, e.clientY);
+  elBg360.classList.toggle("is-nav-arrow-hover", !!pickId);
+}
+
+function handleBg360NavHoverLeave() {
+  if (elBg360) elBg360.classList.remove("is-nav-arrow-hover");
 }
 
 // Обновляет классы курсора у 360-canvas: на ПК показываем "руку", когда обзор можно тянуть.
@@ -7438,6 +8300,7 @@ function showBg360HoldFromCurrentFrame() {
 // Освобождает текущую 360-сцену (текстуры/материалы/геометрию/видео), сохраняя renderer для повторного использования.
 function clearBg360MediaResources() {
   disposeBg360OriginCoverMesh();
+  disposeBg360NavArrowsGroup();
   if (bg360Runtime.mesh && bg360Runtime.scene) {
     bg360Runtime.scene.remove(bg360Runtime.mesh);
   }
@@ -7466,8 +8329,10 @@ function clearBg360MediaResources() {
 // Рисует 360-сцену кадрами requestAnimationFrame, пока слой активен.
 function renderBg360Frame() {
   if (!bg360Runtime.active || !bg360Runtime.renderer || !bg360Runtime.scene || !bg360Runtime.camera) return;
+  updateBg360NavBillboardMeshes();
   bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
-  // Привязываем метки к текущему углу обзора: пересчёт на каждом кадре.
+  // Кэш hit-test стрелок и DOM-метки синхронизируем после актуальной матрицы камеры.
+  updateBg360NavArrowHitCache();
   updateBg360MarksProjection();
   bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
 }
@@ -7489,8 +8354,10 @@ function disableBg360Renderer() {
   bg360Runtime.pointers = {};
   bg360Runtime.pinchDistance = null;
   bg360Runtime.dragPointerId = null;
+  bg360Runtime.pointerTravelSum = 0;
   if (elBg360) {
     elBg360.classList.add("hidden");
+    elBg360.classList.remove("is-nav-arrow-hover");
   }
   updateBg360CursorClasses();
   hideBg360HoldLayer();
@@ -7772,6 +8639,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.mesh = mesh;
     bg360Runtime.scene.add(mesh);
     syncBg360OriginCoverMesh();
+    // Стрелки навигации могли быть удалены в clearBg360MediaResources до загрузки текстуры — пересобираем.
+    syncBg360NavArrowsFromMarks();
     bg360Runtime.active = true;
     if (elBg360) elBg360.classList.remove("hidden");
     if (bg360Runtime.interactive) showBg360NavigationHint();
@@ -7779,7 +8648,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     // Важно: сначала рисуем первый кадр нового 360, и только затем убираем hold-слой.
     // Иначе между "готово" и первым rAF-кадром может мелькнуть чёрный фон.
     if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
+      // Обновляем billboard-геометрию ДО первого рендера, чтобы меши не были пустыми на первом кадре.
+      updateBg360NavBillboardMeshes();
       bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+      updateBg360NavArrowHitCache();
       updateBg360MarksProjection();
     }
     console.log("[BG360 HOLD] first frame rendered: schedule hold hide after 2 RAF");
