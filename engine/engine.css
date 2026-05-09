@@ -162,9 +162,9 @@ body {
   --bg360-origin-cover-size-base: 600px;
   --bg360-origin-cover-stroke-width-base: 2px;
   /* Заливка WebGL-диска «под ногами»: цвет и прозрачность в rgba / rgb(a). Читает syncBg360OriginCoverMesh() через parseBg360CssColor("--bg360-origin-cover-fill", …). */
-  --bg360-origin-cover-fill: rgba(255,255,255,1);
+  --bg360-origin-cover-fill: rgba(150,150,150,1);
   /* Ободок вокруг диска: цвет и непрозрачность кольца (при opacity 0 кольцо не создаётся). */
-  --bg360-origin-cover-stroke: rgba(255,255,255,0.20);
+  --bg360-origin-cover-stroke: rgba(150,150,150,0.20);
   /* Опорный FOV для масштаба углового радиуса капы на экране (не цвет). */
   --bg360-origin-cover-reference-fov: 70;
   --bg360-under-camera-depth: 3;
@@ -214,7 +214,9 @@ body {
   --bg360-nav-cap-radius-bias: 1.35;
   /* 1 — стрелка азимута на круге под ногами, 0 — выкл. */
   --bg360-nav-nadir-arrow-enabled: 1;
-  /* Прозрачность стрелки на круге, 0..1. */
+  /* Цвет стрелки на круге: rgb(), rgba() или #hex (parseBg360CssColor в readBg360NavConfig). Альфа из rgba умножается на --bg360-nav-nadir-arrow-opacity. */
+  --bg360-nav-nadir-arrow-color: rgb(100, 100, 100);
+  /* Общий множитель непрозрачности стрелки на круге, 0..1. */
   --bg360-nav-nadir-arrow-opacity: 0.72;
   /* Длина хвоста стрелки на круге назад от центра, мир. ед. */
   --bg360-nav-nadir-tail-half: 100;

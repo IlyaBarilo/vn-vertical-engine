@@ -6808,6 +6808,7 @@ var bg360NavScratchShaftEnd = null;
 
 // Читает настройки стрелок из CSS (корневые переменные --bg360-nav-*).
 function readBg360NavConfig() {
+  var nadirArrowPaint = parseBg360CssColor("--bg360-nav-nadir-arrow-color", 0x96989e, 1);
   return {
     anchorU: clamp(getBg360CssNumber("--bg360-nav-anchor-u", 0), 0, 1),
     anchorV: clamp(getBg360CssNumber("--bg360-nav-anchor-v", 0), 0, 1),
@@ -6825,6 +6826,8 @@ function readBg360NavConfig() {
     headHalfW: Math.max(1, getBg360CssNumber("--bg360-nav-head-half-w", 10)),
     lineOpacity: clamp(getBg360CssNumber("--bg360-nav-line-opacity", 0.55), 0.15, 1),
     nadirArrowEnabled: getBg360CssNumber("--bg360-nav-nadir-arrow-enabled", 1) !== 0,
+    /* Цвет стрелки на круге: rgb/rgba/#hex; альфа из rgba дополнительно умножается на nadirArrowOpacity. */
+    nadirArrowPaint: nadirArrowPaint,
     nadirArrowOpacity: clamp(getBg360CssNumber("--bg360-nav-nadir-arrow-opacity", 0.72), 0.05, 1),
     nadirTailHalf: Math.max(0.5, getBg360CssNumber("--bg360-nav-nadir-tail-half", 14)),
     nadirFwdHalf: Math.max(0.5, getBg360CssNumber("--bg360-nav-nadir-fwd-half", 14)),
@@ -6854,6 +6857,8 @@ function buildBg360NavArrowsSignature() {
     cfg.headHalfW.toFixed(2),
     cfg.lineOpacity.toFixed(3),
     cfg.nadirArrowEnabled ? "N1" : "N0",
+    String(cfg.nadirArrowPaint.color),
+    cfg.nadirArrowPaint.opacity.toFixed(3),
     cfg.nadirArrowOpacity.toFixed(3),
     cfg.nadirTailHalf.toFixed(2),
     cfg.nadirFwdHalf.toFixed(2),
@@ -7482,9 +7487,11 @@ function syncBg360NavArrowsFromMarks() {
   });
 
   if (cfg.nadirArrowEnabled) {
+    var nvPaint = cfg.nadirArrowPaint || { color: 0x96989e, opacity: 1 };
+    var nvOpacityCombined = clamp(cfg.nadirArrowOpacity * nvPaint.opacity, 0.05, 1);
     var nvMatOpts = {
-      color: 0x96989e,
-      opacity: cfg.nadirArrowOpacity,
+      color: nvPaint.color,
+      opacity: nvOpacityCombined,
       transparent: true,
       side: window.THREE.DoubleSide,
       // Стрелка на круге должна быть видна поверх капы и текстуры панорамы.
@@ -7493,8 +7500,8 @@ function syncBg360NavArrowsFromMarks() {
     };
     var nvMatRibbon = new window.THREE.MeshBasicMaterial(nvMatOpts);
     var nvMatHead = new window.THREE.MeshBasicMaterial(nvMatOpts);
-    nvMatRibbon.color = new window.THREE.Color(0x96989e);
-    nvMatHead.color = new window.THREE.Color(0x96989e);
+    nvMatRibbon.color = new window.THREE.Color(nvPaint.color);
+    nvMatHead.color = new window.THREE.Color(nvPaint.color);
     var nvCenterY = -sphereR + capLift + cfg.nadirCenterLift;
     var nvRibbonGeom = new window.THREE.BufferGeometry();
     var nvRibbonMesh = new window.THREE.Mesh(nvRibbonGeom, nvMatRibbon);
