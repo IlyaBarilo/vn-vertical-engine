@@ -8259,8 +8259,9 @@ function gotoScene(sceneId) {
 // =========================================================
 
 // Преобразует focusZ 0..1 в FOV: меньший FOV визуально приближает картинку внутри 360-сферы.
+// Если focusZ в данных не задан (null), подставляется 0 — максимальный FOV (BG_360_FOV_MAX), т.е. максимальное отдаление.
 function mapFocusZToFov(focusZ) {
-  var z = normalizeMediaFocusZ(focusZ, 0.5);
+  var z = normalizeMediaFocusZ(focusZ, 0);
   return BG_360_FOV_MAX - (BG_360_FOV_MAX - BG_360_FOV_MIN) * z;
 }
 
