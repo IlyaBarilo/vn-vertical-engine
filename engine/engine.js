@@ -6304,6 +6304,15 @@ function renderBg360Marks() {
     elBg360Marks.appendChild(linesLayer);
   }
 
+  // Треугольные подсказки по краю экрана, если WebGL-стрелка к метке выходит за кадр.
+  if (useWebglNavArrows) {
+    var edgeHintsSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    edgeHintsSvg.classList.add("bg360-nav-edge-hints");
+    edgeHintsSvg.setAttribute("aria-hidden", "true");
+    edgeHintsSvg.setAttribute("preserveAspectRatio", "none");
+    elBg360Marks.appendChild(edgeHintsSvg);
+  }
+
   bg360MarksRuntime.marks.forEach(function (mark, index) {
     if (bg360MarksRuntime.lines && !useWebglNavArrows) {
       var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -6358,6 +6367,7 @@ function renderBg360Marks() {
   syncBg360OriginCoverMesh();
   syncBg360NavArrowsFromMarks();
   updateBg360MarksProjection();
+  updateBg360NavEdgeHints();
 }
 
 // Служебные векторы для проекции меток 360 (создаются лениво, чтобы не плодить объекты каждый кадр).
@@ -6781,6 +6791,13 @@ var bg360NavWorldProjScratch = null;
 /** Скретч для экранной позиции метки по UV. */
 var bg360NavMarkProjScratch = null;
 
+/** Скретчи для маркеров «стрелка за кадром» (подсказка по краю экрана). */
+var bg360HintWorldScratch = null;
+var bg360HintRight = null;
+var bg360HintUp = null;
+/** Точка на прямой хорде якорь→метка для позиции маркера (не на поверхности сферы). */
+var bg360HintChordP = null;
+
 /** Векторы billboard-обновления стрелок. */
 var bg360BillCam = null;
 var bg360BillBase = null;
@@ -6982,6 +6999,227 @@ function bg360DistPointToSegment2d(px, py, x1, y1, x2, y2) {
   var projx = x1 + t * vx;
   var projy = y1 + t * vy;
   return Math.sqrt((px - projx) * (px - projx) + (py - projy) * (py - projy));
+}
+
+// Читает настройки SVG-маркеров «стрелка за кадром» из CSS (--bg360-nav-edge-hint-*).
+function readBg360NavEdgeHintConfig() {
+  return {
+    enabled: getBg360CssNumber("--bg360-nav-edge-hint-enabled", 1) !== 0,
+    insetPx: Math.max(0, getBg360CssNumber("--bg360-nav-edge-hint-inset-px", 28)),
+    depthPx: Math.max(4, getBg360CssNumber("--bg360-nav-edge-hint-depth-px", 16)),
+    halfBasePx: Math.max(3, getBg360CssNumber("--bg360-nav-edge-hint-half-base-px", 12)),
+    maxCount: Math.max(1, Math.round(getBg360CssNumber("--bg360-nav-edge-hint-max", 8))),
+    fillPaint: parseBg360CssColor("--bg360-nav-edge-hint-fill", 0xffffff, 0.55),
+    strokePaint: parseBg360CssColor("--bg360-nav-edge-hint-stroke", 0x000000, 0.35),
+    strokeWidth: Math.max(0.25, getBg360CssNumber("--bg360-nav-edge-hint-stroke-width", 1.25)),
+    chordT: clamp(getBg360CssNumber("--bg360-nav-edge-hint-chord-t", 0.22), 0, 1)
+  };
+}
+
+// Преобразует результат parseBg360CssColor в rgb + opacity для SVG-атрибутов.
+function bg360PaintToSvgColorOpacity(paint) {
+  var hex = paint && typeof paint.color === "number" ? paint.color : 0xffffff;
+  var a = paint && isFinite(paint.opacity) ? clamp(paint.opacity, 0, 1) : 1;
+  var r = (hex >> 16) & 255;
+  var g = (hex >> 8) & 255;
+  var b = hex & 255;
+  return { rgb: "rgb(" + r + "," + g + "," + b + ")", opacity: a };
+}
+
+/**
+ * Цель для маркера «за кадром»: экранные px точки метки на сфере.
+ * Если метка в поле зрения — обычная проекция; если за спиной — вынос за край по базису камеры.
+ */
+function bg360NavHintTargetPxForMark(mark, width, height) {
+  if (!mark || !bg360Runtime.camera || !window.THREE) return null;
+  var dir = bg360UvToDirection(mark.x, mark.y);
+  if (!dir) return null;
+  if (!bg360MarkProjCameraDir) bg360MarkProjCameraDir = new window.THREE.Vector3();
+  if (!bg360HintWorldScratch) bg360HintWorldScratch = new window.THREE.Vector3();
+  if (!bg360HintRight) bg360HintRight = new window.THREE.Vector3();
+  if (!bg360HintUp) bg360HintUp = new window.THREE.Vector3();
+
+  bg360Runtime.camera.updateMatrixWorld(true);
+  bg360Runtime.camera.getWorldDirection(bg360MarkProjCameraDir);
+  var dot = dir.dot(bg360MarkProjCameraDir);
+  var w = Number(width);
+  var h = Number(height);
+  var cx = w * 0.5;
+  var cy = h * 0.5;
+
+  if (dot > BG360_OVERLAY_DOT_MIN) {
+    bg360HintWorldScratch.copy(dir).multiplyScalar(500);
+    bg360HintWorldScratch.project(bg360Runtime.camera);
+    return {
+      x: (bg360HintWorldScratch.x * 0.5 + 0.5) * w,
+      y: (-bg360HintWorldScratch.y * 0.5 + 0.5) * h
+    };
+  }
+
+  bg360HintRight.crossVectors(bg360MarkProjCameraDir, bg360Runtime.camera.up);
+  if (bg360HintRight.lengthSq() < 1e-10) {
+    bg360HintRight.set(1, 0, 0);
+  } else {
+    bg360HintRight.normalize();
+  }
+  bg360HintUp.crossVectors(bg360HintRight, bg360MarkProjCameraDir).normalize();
+  var sx = dir.dot(bg360HintRight);
+  var sy = dir.dot(bg360HintUp);
+  var len = Math.sqrt(sx * sx + sy * sy);
+  if (len < 1e-6) return null;
+  sx /= len;
+  sy /= len;
+  var mag = Math.max(w, h) * 2;
+  return { x: cx + sx * mag, y: cy - sy * mag };
+}
+
+/**
+ * Экранные px точки на прямой хорде между якорем и меткой (та же геометрия, что у WebGL-ленты).
+ * Смещение к якорю даёт подсказку у «ног», а не у проекции метки при подъёме камеры.
+ * Если точка при предпочтительном t за камерой — бинарный поиск ближайшей видимой на участке [t, 1].
+ */
+function bg360NavHintChordTargetPx(anchorU, anchorV, markU, markV, width, height, tPrefer) {
+  var A = bg360UvToWorldPointOnSphere(anchorU, anchorV, 500);
+  var B = bg360UvToWorldPointOnSphere(markU, markV, 500);
+  if (!A || !B || !bg360Runtime.camera || !window.THREE) return null;
+  if (!bg360HintChordP) bg360HintChordP = new window.THREE.Vector3();
+
+  function projAt(t) {
+    var u = clamp(Number(t), 0, 1);
+    bg360HintChordP.set(
+      A.x + (B.x - A.x) * u,
+      A.y + (B.y - A.y) * u,
+      A.z + (B.z - A.z) * u
+    );
+    return bg360ProjectWorldToMarksPx(bg360HintChordP.x, bg360HintChordP.y, bg360HintChordP.z);
+  }
+
+  var t0 = clamp(Number(tPrefer), 0, 1);
+  var p0 = projAt(t0);
+  if (p0) return p0;
+
+  var p1 = projAt(1);
+  if (!p1) return null;
+
+  var lo = t0;
+  var hi = 1;
+  for (var k = 0; k < 16; k++) {
+    var mid = (lo + hi) * 0.5;
+    if (projAt(mid)) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return projAt(hi);
+}
+
+// Обновляет SVG-треугольники у края экрана для меток, чья цель вне «мягкого» кадра.
+function updateBg360NavEdgeHints() {
+  if (!elBg360Marks || !bg360Runtime.active || !bg360Runtime.camera || !window.THREE) return;
+  var svg = elBg360Marks.querySelector(".bg360-nav-edge-hints");
+  if (!svg) return;
+
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  if (bg360MarksRuntime.locked || !bg360MarksHasAnyDirectional(bg360MarksRuntime.marks)) return;
+
+  var cfg = readBg360NavEdgeHintConfig();
+  if (!cfg.enabled) return;
+
+  var w = elBg360Marks.clientWidth || 0;
+  var h = elBg360Marks.clientHeight || 0;
+  if (w <= 0 || h <= 0) return;
+
+  svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+
+  var inset = cfg.insetPx;
+  var minX = inset;
+  var minY = inset;
+  var maxX = w - inset;
+  var maxY = h - inset;
+  if (maxX <= minX || maxY <= minY) return;
+
+  var navCfg = readBg360NavConfig();
+  var marks = bg360MarksRuntime.marks;
+  var items = [];
+  for (var i = 0; i < marks.length; i++) {
+    var mark = marks[i];
+    if (!bg360IsDirectionalMark(mark)) continue;
+    var tpMark = bg360NavHintTargetPxForMark(mark, w, h);
+    if (!tpMark || !isFinite(tpMark.x) || !isFinite(tpMark.y)) continue;
+    if (tpMark.x >= minX && tpMark.x <= maxX && tpMark.y >= minY && tpMark.y <= maxY) continue;
+
+    var tpChord = bg360NavHintChordTargetPx(
+      navCfg.anchorU,
+      navCfg.anchorV,
+      mark.x,
+      mark.y,
+      w,
+      h,
+      cfg.chordT
+    );
+    /* Положение у края — по хорде (стабильно при наклоне камеры); остриё треугольника — к проекции метки (куда указывает стрелка). */
+    var tpEdge = tpChord && isFinite(tpChord.x) && isFinite(tpChord.y) ? tpChord : tpMark;
+
+    var ex = clamp(tpEdge.x, minX, maxX);
+    var ey = clamp(tpEdge.y, minY, maxY);
+    var vx = tpMark.x - ex;
+    var vy = tpMark.y - ey;
+    var vlen = Math.sqrt(vx * vx + vy * vy);
+    if (vlen < 1e-6) {
+      vx = tpEdge.x - ex;
+      vy = tpEdge.y - ey;
+      vlen = Math.sqrt(vx * vx + vy * vy);
+    }
+    if (vlen < 1e-6) continue;
+    var nx = vx / vlen;
+    var ny = vy / vlen;
+    var px = -ny;
+    var py = nx;
+    var d = cfg.depthPx;
+    var hb = cfg.halfBasePx;
+    var x0 = ex;
+    var y0 = ey;
+    var x1 = ex - nx * d + px * hb;
+    var y1 = ey - ny * d + py * hb;
+    var x2 = ex - nx * d - px * hb;
+    var y2 = ey - ny * d - py * hb;
+    var ox = 0;
+    if (tpMark.x < minX) ox = minX - tpMark.x;
+    else if (tpMark.x > maxX) ox = tpMark.x - maxX;
+    var oy = 0;
+    if (tpMark.y < minY) oy = minY - tpMark.y;
+    else if (tpMark.y > maxY) oy = tpMark.y - maxY;
+    var priority = ox + oy;
+    items.push({
+      markId: String(mark.id || ""),
+      points: x0 + "," + y0 + " " + x1 + "," + y1 + " " + x2 + "," + y2,
+      priority: priority
+    });
+  }
+
+  items.sort(function (a, b) {
+    return b.priority - a.priority;
+  });
+  var limit = Math.min(cfg.maxCount, items.length);
+  var fo = bg360PaintToSvgColorOpacity(cfg.fillPaint);
+  var so = bg360PaintToSvgColorOpacity(cfg.strokePaint);
+
+  for (var j = 0; j < limit; j++) {
+    var it = items[j];
+    var poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.classList.add("bg360-nav-edge-hint-triangle");
+    poly.setAttribute("points", it.points);
+    if (it.markId) poly.dataset.markId = it.markId;
+    poly.setAttribute("fill", fo.rgb);
+    poly.setAttribute("fill-opacity", String(fo.opacity));
+    poly.setAttribute("stroke", so.rgb);
+    poly.setAttribute("stroke-opacity", String(so.opacity));
+    poly.setAttribute("stroke-width", String(cfg.strokeWidth));
+    poly.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(poly);
+  }
 }
 
 // Пересчитывает отрезки для pick по стрелке каждый кадр (после вращения камеры).
@@ -8340,6 +8578,7 @@ function renderBg360Frame() {
   bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
   // Кэш hit-test стрелок и DOM-метки синхронизируем после актуальной матрицы камеры.
   updateBg360NavArrowHitCache();
+  updateBg360NavEdgeHints();
   updateBg360MarksProjection();
   bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
 }

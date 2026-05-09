@@ -231,6 +231,21 @@ body {
   /* Подъём центра стрелки на круге относительно (-R + cap-lift), мир. ед. */
   --bg360-nav-nadir-center-lift: 3;
 
+  /* SVG-маркеры «стрелка за кадром»: треугольник у ближайшего края, вершиной к метке (readBg360NavEdgeHintConfig). */
+  --bg360-nav-edge-hint-enabled: 1;
+  /* Поля «мягкого» кадра в px: если проекция метки внутри — маркер скрыт. */
+  --bg360-nav-edge-hint-inset-px: 18;
+  /* Доля хорды якорь→метка (как WebGL-стрелка): 0 = у якоря, 1 = у метки. Меньше — маркер ближе к направлению выхода стрелки у «ног», а не к метке на горизонте. */
+  --bg360-nav-edge-hint-chord-t: 0.22;
+  /* Длина треугольника от края внутрь экрана и половина ширины основания, px. */
+  --bg360-nav-edge-hint-depth-px: 26;
+  --bg360-nav-edge-hint-half-base-px: 8;
+  /* Максимум одновременных маркеров (остальные по приоритету «дальше от кадра»). */
+  --bg360-nav-edge-hint-max: 8;
+  --bg360-nav-edge-hint-fill: rgba(255, 255, 255, 0.30);
+  --bg360-nav-edge-hint-stroke: rgba(255, 255, 255, 0.30);
+  --bg360-nav-edge-hint-stroke-width: 1.25;
+
   /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА
      Править здесь, если полноэкранные панели выглядят слишком
@@ -454,6 +469,21 @@ body {
   fill: none;
   filter: drop-shadow(0 var(--bg360-mark-line-shadow-y) var(--bg360-mark-line-shadow-blur) rgba(0,0,0,0.45));
   pointer-events: none;
+}
+
+/* Подсказки поворота: треугольники у края, когда цель WebGL-стрелки вне мягкого кадра. */
+.bg360-nav-edge-hints {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.bg360-nav-edge-hint-triangle {
+  vector-effect: non-scaling-stroke;
 }
 
 .bg360-mark::after {
