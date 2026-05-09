@@ -919,7 +919,7 @@
     /**
      * Стрелки к меткам 360: геометрия в WebGL (billboard-лента + треугольник), капа надира как в движке.
      * На капе — декоративная серая стрелка азимута взгляда (nadirViewArrow*).
-     * Якорь — sphereAnchorU/V (как focusX/focusY в UV). Клик: hitBandPx вокруг проекции хорды и сектор «вверх экрана» от якоря (hitUpWedgeEnabled).
+     * Якорь — sphereAnchorU/V (как focusX/focusY в UV). Клик: полоса вдоль хорды; сектор «вверх» — опционально (hitUpWedgeEnabled).
      * Меняйте поля здесь; цвет — RGB + opacity.
      */
     var mark360ArrowStyle = {
@@ -990,10 +990,25 @@
       nadirViewArrowRibbonHalfW: 22.4,
       /** Сдвиг центра стрелки по +Y от «дна» капы — чуть ближе к камере, без z-fight. */
       nadirViewArrowCenterLiftWorld: 23,
-      /** Клик: половина ширины полосы вокруг проекции хорды (px, координаты viewer-wrap). */
+      /** Клик: базовая половина ширины полосы вокруг проекции хорды (px); итог = × hitPickBandWidthMul. */
       hitBandPx: 38,
-      /** Клик: учитывать сектор «вверх по экрану» от якоря стрелки (между лучом к метке и осью вверх). */
-      hitUpWedgeEnabled: true
+      /**
+       * Множитель ширины невидимой зоны клика к hitBandPx (только hit и курсор; 3D-стрелка не меняется).
+       * Ограничение в коде: 0.25…8.
+       */
+      hitPickBandWidthMul: 2,
+      /**
+       * Множитель длины экранного отрезка зоны клика вдоль стрелки (≥1). Конец продлевается к метке по той же линии.
+       * 2 ≈ вдвое длиннее, удобнее попасть и ближе к номеру. Ограничение: 1…6.
+       */
+      hitPickChordLengthMul: 2,
+      /** Клик: сектор «вверх» от якоря (широкая зона); по умолчанию выкл. — только полоса вдоль стрелки. */
+      hitUpWedgeEnabled: false,
+      /**
+       * Предел расстояния от якоря для сектора «вверх»: chordLen×множитель + band (chordLen — длина отрезка в кэше).
+       * Без ограничения сектор бесконечен в углу и даёт ложные срабатывания между стрелками. Ограничение в коде: 0.5…4.
+       */
+      hitUpWedgeMaxRadiusChordMul: 1.15
     };
 
     /** Группа 3D: заглушка надира + стрелки по хорде (не DOM/SVG). */
@@ -3730,6 +3745,7 @@
 
     /**
      * Сектор от якоря: между лучом к метке на экране и направлением «вверх» (отрицательный Y в координатах wrap).
+     * Сам по себе сектор бесконечен по радиусу — в pickEditorNavArrowMarkIndex добавлен предел по расстоянию от якоря.
      */
     function editorNavHitTestUpWedge(px, py, ax, ay, bx, by) {
       var vx = bx - ax;
@@ -3760,6 +3776,7 @@
 
     /**
      * Обновляет кэш экранных отрезков для клика (после движения камеры вызывается каждый кадр).
+     * Конец отрезка может быть продлён к метке по hitPickChordLengthMul — только для hit, не для 3D-стрелки.
      */
     function updateEditorNavArrowHitCache() {
       editorNavArrowHitCache = [];
@@ -3828,6 +3845,17 @@
         var drawnLen = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
         if (drawnLen < minLength) return;
 
+        var chordLenMul = Number(cfg.hitPickChordLengthMul != null ? cfg.hitPickChordLengthMul : 1);
+        if (!isFinite(chordLenMul)) chordLenMul = 1;
+        chordLenMul = clamp(chordLenMul, 1, 6);
+        if (chordLenMul > 1.0005 && drawnLen > 1e-6) {
+          var eux = (ex - sx) / drawnLen;
+          var euy = (ey - sy) / drawnLen;
+          var extraChord = drawnLen * (chordLenMul - 1);
+          ex += eux * extraChord;
+          ey += euy * extraChord;
+        }
+
         editorNavArrowHitCache.push({
           pointIndex: pointIndex,
           ax: sx,
@@ -3839,12 +3867,19 @@
     }
 
     /**
-     * Индекс метки 360 при клике по стрелке: полоса вокруг проекции хорды и сектор «вверх» от якоря.
+     * Индекс метки 360 при клике по стрелке: полоса (hitBandPx×hitPickBandWidthMul) и сектор «вверх» от якоря.
      */
     function pickEditorNavArrowMarkIndex(clientX, clientY) {
       var cfg = mark360ArrowStyle || {};
-      var band = Math.max(8, Number(cfg.hitBandPx) || 38);
+      var bandBase = Math.max(8, Number(cfg.hitBandPx) || 38);
+      var bandMul = Number(cfg.hitPickBandWidthMul != null ? cfg.hitPickBandWidthMul : 1);
+      if (!isFinite(bandMul)) bandMul = 1;
+      bandMul = clamp(bandMul, 0.25, 8);
+      var band = bandBase * bandMul;
       var wedgeOn = cfg.hitUpWedgeEnabled !== false;
+      var wedgeRadMul = Number(cfg.hitUpWedgeMaxRadiusChordMul != null ? cfg.hitUpWedgeMaxRadiusChordMul : 1.15);
+      if (!isFinite(wedgeRadMul)) wedgeRadMul = 1.15;
+      wedgeRadMul = clamp(wedgeRadMul, 0.5, 4);
       if (!editorNavArrowHitCache.length) return -1;
 
       var loc = editorClientToWrapLocal(clientX, clientY);
@@ -3857,7 +3892,13 @@
         var e = editorNavArrowHitCache[i];
         var dSeg = editorDistPointToSegment2d(px, py, e.ax, e.ay, e.bx, e.by);
         var inBand = dSeg <= band;
-        var inWedge = wedgeOn && editorNavHitTestUpWedge(px, py, e.ax, e.ay, e.bx, e.by);
+        var chordLen = Math.sqrt((e.bx - e.ax) * (e.bx - e.ax) + (e.by - e.ay) * (e.by - e.ay));
+        var wedgeMaxR = chordLen * wedgeRadMul + band;
+        var distAnch = Math.sqrt((px - e.ax) * (px - e.ax) + (py - e.ay) * (py - e.ay));
+        var inWedge =
+          wedgeOn &&
+          distAnch <= wedgeMaxR &&
+          editorNavHitTestUpWedge(px, py, e.ax, e.ay, e.bx, e.by);
         if (inBand || inWedge) {
           var distA = Math.sqrt((px - e.ax) * (px - e.ax) + (py - e.ay) * (py - e.ay));
           var score = inBand ? dSeg : band + distA * 0.02;
@@ -4158,6 +4199,7 @@
       }
       overlayDragState.captureEl = null;
       updateExport();
+      if (e && viewerWrap) onViewerWrapPointerMoveForNavCursor(e);
     }
 
     /**
@@ -4259,12 +4301,51 @@
     }
 
     /**
+     * Над зоной клика по стрелке перехода 360 — курсор pointer; иначе сбрасываем inline-стиль у обёртки.
+     * Не трогаем курсор при перетаскивании камеры/метки/фокуса и над интерактивными элементами оверлея.
+     */
+    function onViewerWrapPointerMoveForNavCursor(e) {
+      if (!viewerWrap) return;
+      if (overlayDragState.active) return;
+      if (dragState.active) return;
+      var t = e.target;
+      if (t && typeof t.closest === "function") {
+        if (
+          t.closest(".mark-dot") ||
+          t.closest(".mark-action") ||
+          t.closest("[data-focus-entry]")
+        ) {
+          viewerWrap.style.cursor = "";
+          return;
+        }
+      }
+      var has360 = points.some(function (p) {
+        return String(p.targetType || "").trim().toLowerCase() === "360";
+      });
+      if (!has360) {
+        viewerWrap.style.cursor = "";
+        return;
+      }
+      var idx = pickEditorNavArrowMarkIndex(e.clientX, e.clientY);
+      viewerWrap.style.cursor = idx >= 0 ? "pointer" : "";
+    }
+
+    /**
+     * Убираем курсор «ссылки» при выходе курсора с превью.
+     */
+    function onViewerWrapPointerLeaveClearNavCursor() {
+      if (viewerWrap) viewerWrap.style.cursor = "";
+    }
+
+    /**
      * Регистрирует перетаскивание номеров меток и прицелов точек входа на превью.
      */
     function bindMarksOverlayDragHandlers() {
       marksOverlay.addEventListener("pointerdown", onMarksOverlayPointerDown);
       if (!viewerWrap) return;
       viewerWrap.addEventListener("pointermove", onViewerWrapOverlayPointerMove);
+      viewerWrap.addEventListener("pointermove", onViewerWrapPointerMoveForNavCursor);
+      viewerWrap.addEventListener("pointerleave", onViewerWrapPointerLeaveClearNavCursor);
       viewerWrap.addEventListener("pointerup", onViewerWrapOverlayPointerUp);
       viewerWrap.addEventListener("pointercancel", onViewerWrapOverlayPointerUp);
     }
@@ -4428,11 +4509,13 @@
             }
           }
         }
+        if (e && viewerWrap) onViewerWrapPointerMoveForNavCursor(e);
       }
 
       viewerCanvas.addEventListener("pointerup", pointerUpLike);
       viewerCanvas.addEventListener("pointercancel", function () {
         dragState.active = false;
+        onViewerWrapPointerLeaveClearNavCursor();
       });
 
       viewerCanvas.addEventListener("wheel", function (e) {
