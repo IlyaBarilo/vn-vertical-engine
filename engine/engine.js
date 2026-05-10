@@ -1543,7 +1543,12 @@ var bg360Runtime = {
   /** Подпись набора меток/настроек; при совпадении группа не пересобирается каждый кадр. */
   navArrowsSignature: "",
   /** Сумма |dx|+|dy| при перетаскивании одним указателем — отличает тап от вращения. */
-  pointerTravelSum: 0
+  pointerTravelSum: 0,
+  /**
+   * Номер поколения loadSeq, на котором последний раз была применена текстура к сфере (успешный onLoadTexture).
+   * Пока не совпадает с текущим loadSeq, навигационный оверлей к новой панораме не строим — иначе стрелки опережают фон.
+   */
+  textureReadyLoadSeq: 0
 };
 
 // Runtime меток 360: хранит список меток и управляет интерактивностью до следующего bg.
@@ -5794,6 +5799,10 @@ function applyBg360Marks(action) {
   bg360MarksRuntime.locked = false;
   // Интерактивность включится только внутри walk360.
   bg360MarksRuntime.interactive = false;
+  if (bg360ShouldDeferMarksUntilTextureReady()) {
+    stripBg360NavigationOverlayPendingLoad();
+    return;
+  }
   renderBg360Marks();
 }
 
@@ -6195,6 +6204,8 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
     return false;
   }
 
+  stripBg360NavigationOverlayPendingLoad();
+
   var options = buildStory360MediaOptions(panorama, entry);
   state.currentBgId = media.bgId;
   setBackground(media.file, media.fallback, media.volume, options);
@@ -6209,7 +6220,6 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
   bg360MarksRuntime.marks = marksNormalized;
   bg360MarksRuntime.locked = false;
   bg360MarksRuntime.interactive = true;
-  renderBg360Marks();
 
   if (story360DebugFocusLogEnabled()) {
     var entriesRoot = panorama.entries || panorama.entryPoints || panorama.focuses;
@@ -7606,6 +7616,24 @@ function disposeBg360NavArrowsGroup() {
   bg360Runtime.navArrowsSignature = "";
 }
 
+// Снимает DOM-оверлей меток и WebGL-стрелки на время смены панорамы, чтобы не показывать направления новой сцены поверх старого фона или hold-слоя.
+function stripBg360NavigationOverlayPendingLoad() {
+  disposeBg360NavArrowsGroup();
+  if (!elBg360Marks) return;
+  while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
+  elBg360Marks.classList.add("hidden");
+  elBg360Marks.classList.remove("is-interactive", "is-webgl-nav-only");
+}
+
+// Возвращает true, пока для текущего loadSeq ещё не применена текстура к сфере (асинхронная загрузка или догрузка *-360.js).
+function bg360ShouldDeferMarksUntilTextureReady() {
+  if (!ensureBg360Renderer()) return false;
+  var src = String(bg360Runtime.sourceSrc || "");
+  if (!src) return false;
+  if (!isBg360PackScriptPath(src) && !bg360Runtime.isVideoSource) return false;
+  return bg360Runtime.textureReadyLoadSeq !== bg360Runtime.loadSeq;
+}
+
 // Создаёт/обновляет меши стрелок к навигационным меткам и стрелку азимута на капе (вызывается при смене меток).
 function syncBg360NavArrowsFromMarks() {
   if (!window.THREE || !bg360Runtime.scene || !bg360Runtime.camera) return;
@@ -8547,6 +8575,11 @@ function showBg360HoldFromCurrentFrame() {
 function clearBg360MediaResources() {
   disposeBg360OriginCoverMesh();
   disposeBg360NavArrowsGroup();
+  if (elBg360Marks) {
+    while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
+    elBg360Marks.classList.add("hidden");
+    elBg360Marks.classList.remove("is-interactive", "is-webgl-nav-only");
+  }
   if (bg360Runtime.mesh && bg360Runtime.scene) {
     bg360Runtime.scene.remove(bg360Runtime.mesh);
   }
@@ -8588,6 +8621,7 @@ function renderBg360Frame() {
 function disableBg360Renderer() {
   // Каждое отключение инвалидирует старые async onload, чтобы они не вернули уже сброшенный фон.
   bg360Runtime.loadSeq++;
+  bg360Runtime.textureReadyLoadSeq = 0;
   bg360Runtime.active = false;
   bg360Runtime.interactive = false;
   bg360Runtime.sourceSrc = "";
@@ -8885,10 +8919,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.material = material;
     bg360Runtime.mesh = mesh;
     bg360Runtime.scene.add(mesh);
-    syncBg360OriginCoverMesh();
-    // Стрелки навигации могли быть удалены в clearBg360MediaResources до загрузки текстуры — пересобираем.
-    syncBg360NavArrowsFromMarks();
+    bg360Runtime.textureReadyLoadSeq = bg360LoadSeq;
     bg360Runtime.active = true;
+    // Метки и стрелки привязаны к UV новой сферы: пересобираем оверлей только после готовности текстуры.
+    renderBg360Marks();
     if (elBg360) elBg360.classList.remove("hidden");
     if (bg360Runtime.interactive) showBg360NavigationHint();
     else hideBackgroundScrollHint();
