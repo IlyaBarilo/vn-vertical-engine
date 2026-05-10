@@ -2903,6 +2903,7 @@ var VN_AUTOSAVE_PAYLOAD_VERSION = 2;
 var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
 var vnAutosaveTimer = null;
 var vnAutosaveBgScrollRestorePending = null;
+var vnAutosaveStory360RestorePending = null;
 // Последний успешно показанный фон/видео для восстановления «унаследованного» визуала
 // в сценах, где нет собственного bg (например, menu/text после перехода).
 var vnAutosaveLastVisualSnapshot = null;
@@ -3053,15 +3054,43 @@ function captureLastVisualSnapshotForAutosave(currentBgSnap) {
   return null;
 }
 
+// Приводит yaw к диапазону 0..360, чтобы сохранённый ракурс не ломался после поворота в отрицательные углы.
+function normalizeBg360YawDegForAutosave(yawDeg) {
+  var yaw = typeof yawDeg === "number" && isFinite(yawDeg) ? yawDeg : 180;
+  return ((yaw % 360) + 360) % 360;
+}
+
+// Снимает направление 360-камеры в двух формах: градусы удобны для отладки, focusX/Y — для штатного восстановления.
+function captureBg360ViewSnapshotForAutosave() {
+  if (!bg360Runtime || !bg360Runtime.active) return null;
+
+  var yaw = normalizeBg360YawDegForAutosave(bg360Runtime.yawDeg);
+  var pitch = clamp(
+    typeof bg360Runtime.pitchDeg === "number" && isFinite(bg360Runtime.pitchDeg) ? bg360Runtime.pitchDeg : 0,
+    -85,
+    85
+  );
+  var q = "auto";
+  if (bg360Runtime.sourceSrc && /-360-mobile\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "mobile";
+  else if (bg360Runtime.sourceSrc && /-360\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "normal";
+
+  return {
+    yawDeg: yaw,
+    pitchDeg: pitch,
+    focusX: yaw / 360,
+    focusY: (pitch + 85) / 170,
+    fov: typeof bg360Runtime.fovDeg === "number" && isFinite(bg360Runtime.fovDeg) ? bg360Runtime.fovDeg : null,
+    quality: q
+  };
+}
+
 function captureBackgroundScrollSnapshotForAutosave() {
   // Для активного 360 сохраняем положение камеры и интерактивность напрямую из runtime.
   // Иначе после F5 восстановится только источник, но не ракурс/управление.
   if (bg360Runtime && bg360Runtime.active) {
-    var fx = clamp((typeof bg360Runtime.yawDeg === "number" ? bg360Runtime.yawDeg : 180) / 360, 0, 1);
-    var fy = clamp(((typeof bg360Runtime.pitchDeg === "number" ? bg360Runtime.pitchDeg : 0) + 85) / 170, 0, 1);
-    var q = "auto";
-    if (bg360Runtime.sourceSrc && /-360-mobile\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "mobile";
-    else if (bg360Runtime.sourceSrc && /-360\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "normal";
+    var view = captureBg360ViewSnapshotForAutosave();
+    var fx = view ? view.focusX : 0.5;
+    var fy = view ? view.focusY : 0.5;
     return {
       interactive: !!bg360Runtime.interactive,
       position: fx,
@@ -3070,8 +3099,10 @@ function captureBackgroundScrollSnapshotForAutosave() {
       scale: 1,
       start: fx,
       is360: true,
-      fov: typeof bg360Runtime.fovDeg === "number" ? bg360Runtime.fovDeg : null,
-      quality: q
+      yawDeg: view ? view.yawDeg : null,
+      pitchDeg: view ? view.pitchDeg : null,
+      fov: view ? view.fov : null,
+      quality: view ? view.quality : "auto"
     };
   }
   if (!backgroundScroll || !backgroundScroll.enabled) return null;
@@ -3084,6 +3115,62 @@ function captureBackgroundScrollSnapshotForAutosave() {
     focusY: typeof backgroundScroll.focusY === "number" ? backgroundScroll.focusY : null,
     scale: typeof backgroundScroll.mediaScale === "number" ? backgroundScroll.mediaScale : 1,
     start: typeof backgroundScroll.start === "number" ? backgroundScroll.start : 0.5
+  };
+}
+
+// Копирует только безопасные поля ракурса 360 из bgScroll/вложенного view для последующего восстановления камеры.
+function buildStory360ViewRestoreSnapshot(source) {
+  if (!source || typeof source !== "object") return null;
+  var out = {};
+  var hasAny = false;
+
+  if (typeof source.focusX === "number" && isFinite(source.focusX)) {
+    out.focusX = clamp(source.focusX, 0, 1);
+    hasAny = true;
+  } else if (typeof source.yawDeg === "number" && isFinite(source.yawDeg)) {
+    out.focusX = normalizeBg360YawDegForAutosave(source.yawDeg) / 360;
+    out.yawDeg = normalizeBg360YawDegForAutosave(source.yawDeg);
+    hasAny = true;
+  }
+
+  if (typeof source.focusY === "number" && isFinite(source.focusY)) {
+    out.focusY = clamp(source.focusY, 0, 1);
+    hasAny = true;
+  } else if (typeof source.pitchDeg === "number" && isFinite(source.pitchDeg)) {
+    out.focusY = (clamp(source.pitchDeg, -85, 85) + 85) / 170;
+    out.pitchDeg = clamp(source.pitchDeg, -85, 85);
+    hasAny = true;
+  }
+
+  if (typeof source.fov === "number" && isFinite(source.fov)) {
+    out.fov = source.fov;
+    hasAny = true;
+  }
+  if (typeof source.quality === "string" && source.quality) {
+    out.quality = source.quality;
+    hasAny = true;
+  }
+
+  return hasAny ? out : null;
+}
+
+// Сохраняет текущее положение игрока внутри story360/goto360: пространство, панораму и ракурс камеры.
+function captureStory360SnapshotForAutosave(bgScrollSnapshot) {
+  if (!goto360Runtime || !goto360Runtime.active || goto360Runtime.done) return null;
+
+  var spaceId = String(goto360Runtime.spaceId || "").trim();
+  var panoramaId = String(goto360Runtime.panoramaId || "").trim();
+  if (!spaceId || !panoramaId) return null;
+
+  return {
+    active: true,
+    spaceId: spaceId,
+    panoramaId: panoramaId,
+    entryId: String(goto360Runtime.entryId || "default") || "default",
+    resultVar: String(goto360Runtime.resultVar || ""),
+    titleText: String(goto360Runtime.titleText || ""),
+    buttonText: String(goto360Runtime.buttonText || ""),
+    view: buildStory360ViewRestoreSnapshot(bgScrollSnapshot || captureBg360ViewSnapshotForAutosave())
   };
 }
 
@@ -3220,6 +3307,7 @@ function buildAutosavePayload(opts) {
   var bgSnap = captureBackgroundSnapshotForAutosave();
   var lastVisualSnap = captureLastVisualSnapshotForAutosave(bgSnap);
   var bgScroll = captureBackgroundScrollSnapshotForAutosave();
+  var story360Snap = captureStory360SnapshotForAutosave(bgScroll);
   var charSnap = captureCharacterSnapshotForAutosave();
   var bgmSnap = captureBgmSnapshotForAutosave();
   // В runCurrent перед выполнением шага делается actionIndex++; во время ожидания клика «дальше»
@@ -3292,6 +3380,7 @@ function buildAutosavePayload(opts) {
     bg: bgSnap,
     lastVisualSnapshot: lastVisualSnap,
     bgScroll: bgScroll,
+    story360: story360Snap,
     char: charSnap,
     bgm: bgmSnap
   };
@@ -3359,6 +3448,7 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
 
 function clearAutosaveStorage() {
   cancelPendingAutosaveTimer("clear_storage");
+  vnAutosaveStory360RestorePending = null;
   try {
     localStorage.removeItem(VN_AUTOSAVE_STORAGE_KEY);
     autosaveDebugLog("clear:removed", {});
@@ -3400,6 +3490,30 @@ function getBgScrollFocusYFromAutosavePayload(payload) {
   if (!payload || typeof payload !== "object") return null;
   if (typeof payload.focusY === "number") return payload.focusY;
   return null;
+}
+
+// Нормализует сохранённое состояние story360 перед одноразовым применением в startGoto360.
+function buildStory360RestorePendingFromAutosave(story360Snap, bgScrollSnap) {
+  if (!story360Snap || typeof story360Snap !== "object" || story360Snap.active !== true) return null;
+
+  var spaceId = String(story360Snap.spaceId || "").trim();
+  var panoramaId = String(story360Snap.panoramaId || "").trim();
+  if (!spaceId || !panoramaId) return null;
+
+  var view = buildStory360ViewRestoreSnapshot(story360Snap.view);
+  if (!view && bgScrollSnap && bgScrollSnap.is360 === true) {
+    view = buildStory360ViewRestoreSnapshot(bgScrollSnap);
+  }
+
+  return {
+    spaceId: spaceId,
+    panoramaId: panoramaId,
+    entryId: String(story360Snap.entryId || "default") || "default",
+    resultVar: String(story360Snap.resultVar || ""),
+    titleText: String(story360Snap.titleText || ""),
+    buttonText: String(story360Snap.buttonText || ""),
+    view: view
+  };
 }
 
 // Восстанавливает pan/focusX без смены src; true если позиция применена (видимый слой и для видео есть размеры кадра).
@@ -3495,6 +3609,7 @@ function tryApplyAutosave() {
   }
 
   if (!STORY || !isStoryAutosaveEnabled()) return false;
+  vnAutosaveStory360RestorePending = null;
   var raw = null;
   try {
     raw = localStorage.getItem(VN_AUTOSAVE_STORAGE_KEY);
@@ -3665,6 +3780,11 @@ function tryApplyAutosave() {
   }
 
   console.log("[AUTOSAVE] restored", data.sceneId, data.actionIndex);
+  // Перед runCurrent передаём startGoto360 текущую панораму story360; иначе команда откроет стартовый узел.
+  vnAutosaveStory360RestorePending =
+    restoreAction && restoreAction.type === "goto360"
+      ? buildStory360RestorePendingFromAutosave(data.story360, data.bgScroll)
+      : null;
   vnAutosaveBgScrollRestorePending =
     data.bg && data.bgScroll && typeof data.bgScroll === "object"
       ? { dataBg: data.bg, dataBgScroll: data.bgScroll }
@@ -3781,6 +3901,7 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
 
 function restart() {
   vnAutosaveBgScrollRestorePending = null;
+  vnAutosaveStory360RestorePending = null;
   __visualTransitionSeq++;
   clearVisualTransitionClasses();
 
@@ -6103,6 +6224,36 @@ function buildStory360MediaOptions(panorama, entry) {
   return options;
 }
 
+// Перекрывает стартовые настройки entry сохранённым ракурсом: панорама берётся из story360, а камера остаётся как перед F5.
+function applyStory360RestoreViewToMediaOptions(options, restoreView) {
+  if (!options || !restoreView || typeof restoreView !== "object") return options;
+
+  var fx = null;
+  if (typeof restoreView.focusX === "number" && isFinite(restoreView.focusX)) {
+    fx = clamp(restoreView.focusX, 0, 1);
+  } else if (typeof restoreView.yawDeg === "number" && isFinite(restoreView.yawDeg)) {
+    fx = normalizeBg360YawDegForAutosave(restoreView.yawDeg) / 360;
+  }
+  if (fx !== null) options.focusX = fx;
+
+  var fy = null;
+  if (typeof restoreView.focusY === "number" && isFinite(restoreView.focusY)) {
+    fy = clamp(restoreView.focusY, 0, 1);
+  } else if (typeof restoreView.pitchDeg === "number" && isFinite(restoreView.pitchDeg)) {
+    fy = (clamp(restoreView.pitchDeg, -85, 85) + 85) / 170;
+  }
+  if (fy !== null) options.focusY = fy;
+
+  if (typeof restoreView.fov === "number" && isFinite(restoreView.fov)) {
+    options.fov = normalizeMediaFov(restoreView.fov, options.fov);
+  }
+  if (typeof restoreView.quality === "string" && restoreView.quality) {
+    options.quality = normalizeBg360Quality(restoreView.quality, options.quality || "auto");
+  }
+
+  return options;
+}
+
 // Определяет файл/ассет панорамы: story360 может ссылаться на [bg] через bgId или хранить путь прямо у себя.
 function getStory360PanoramaMedia(spaceId, panoramaId, panorama) {
   var bgId = String(readStory360Field(panorama, ["bgId", "bg", "backgroundId"]) || "").trim();
@@ -6314,7 +6465,8 @@ function runGoto360ParallelFovZoomWhileLoading(mark) {
 // Показывает панораму из story360 и включает кликабельные метки для внутренней навигации goto360.
 // sourcePanoramaIdForEntryResolve — id панорамы «откуда» при переходе меткой (непусто только внутри goto360); смотри resolveGoto360EntryKey / getStory360Entry.
 // markForZoomTransition — метка клика (walk): перед сменой фона выполняется короткий зум к ней и захват hold, чтобы не было чёрной вспышки и «отрыва» стрелок.
-function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForEntryResolve, markForZoomTransition) {
+// restoreViewOverride — ракурс из автосейва; он перекрывает entry только при восстановлении текущей 360-сцены.
+function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForEntryResolve, markForZoomTransition, restoreViewOverride) {
   var panorama = getStory360Panorama(spaceId, panoramaId);
   if (!panorama) {
     console.warn("[goto360] panorama not found", { spaceId: spaceId, panoramaId: panoramaId });
@@ -6330,6 +6482,9 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
   }
 
   var options = buildStory360MediaOptions(panorama, entry);
+  if (restoreViewOverride) {
+    options = applyStory360RestoreViewToMediaOptions(options, restoreViewOverride);
+  }
   var marksNormalized = normalizeStory360Marks(spaceId, panorama);
 
   function commitGoto360StateAndStartLoad(isParallelZoom) {
@@ -8054,6 +8209,25 @@ function finishWalk360(selectedId, targetScene) {
   runCurrent();
 }
 
+// Берёт сохранённую story360-панораму ровно для ближайшего goto360; если данные устарели, даём сценарию стартовать обычно.
+function consumeStory360RestorePendingForGoto(action) {
+  var restore = vnAutosaveStory360RestorePending;
+  vnAutosaveStory360RestorePending = null;
+
+  if (!restore) return null;
+  if (!action || action.type !== "goto360") return null;
+
+  if (!getStory360Panorama(restore.spaceId, restore.panoramaId)) {
+    console.warn("[goto360] autosave panorama not found, fallback to action start", {
+      spaceId: restore.spaceId,
+      panoramaId: restore.panoramaId
+    });
+    return null;
+  }
+
+  return restore;
+}
+
 // Запускает навигацию по 360-пространству из story360.js.
 function startGoto360(action) {
   var spaceId = action && action.spaceId ? String(action.spaceId).trim() : "";
@@ -8062,8 +8236,10 @@ function startGoto360(action) {
   var resultVar = action && action.result ? String(action.result).trim() : "";
   var titleText = action && action.text ? String(action.text) : "";
   var buttonText = action && action.button ? String(action.button) : "";
+  // После автосейва ближайший goto360 возобновляется из сохранённой панорамы и ракурса, а не из стартовых параметров команды.
+  var restore360 = consumeStory360RestorePendingForGoto(action);
 
-  if (resultVar) {
+  if (resultVar && !restore360) {
     // Новый вход в 360-пространство не должен наследовать прежнюю выбранную метку.
     state.vars[resultVar] = "";
   }
@@ -8074,9 +8250,9 @@ function startGoto360(action) {
   }
 
   goto360Runtime.active = true;
-  goto360Runtime.spaceId = spaceId;
-  goto360Runtime.panoramaId = panoramaId;
-  goto360Runtime.entryId = entryId || "default";
+  goto360Runtime.spaceId = restore360 ? restore360.spaceId : spaceId;
+  goto360Runtime.panoramaId = restore360 ? restore360.panoramaId : panoramaId;
+  goto360Runtime.entryId = restore360 ? (restore360.entryId || "default") : (entryId || "default");
   goto360Runtime.resultVar = resultVar;
   goto360Runtime.done = false;
   goto360Runtime.titleText = titleText;
@@ -8099,7 +8275,23 @@ function startGoto360(action) {
     console.groupEnd();
   }
 
-  if (!applyGoto360Panorama(spaceId, panoramaId, goto360Runtime.entryId, "")) {
+  var applyOk = applyGoto360Panorama(
+    goto360Runtime.spaceId,
+    goto360Runtime.panoramaId,
+    goto360Runtime.entryId,
+    "",
+    null,
+    restore360 ? restore360.view : null
+  );
+  if (!applyOk && restore360) {
+    console.warn("[goto360] autosave restore failed, fallback to action start", restore360);
+    if (resultVar) state.vars[resultVar] = "";
+    goto360Runtime.spaceId = spaceId;
+    goto360Runtime.panoramaId = panoramaId;
+    goto360Runtime.entryId = entryId || "default";
+    applyOk = applyGoto360Panorama(spaceId, panoramaId, goto360Runtime.entryId, "");
+  }
+  if (!applyOk) {
     goto360Runtime.active = false;
     goto360Runtime.done = false;
     return false;
