@@ -1475,6 +1475,18 @@ var BG_MEDIA_SCALE_MIN = 0.05;
 var BG_MEDIA_SCALE_MAX = 8;
 var BG_360_FOV_MIN = 35;
 var BG_360_FOV_MAX = 90;
+/**
+ * Длительность «наезда» (сужение FOV) при goto360 между 360-панорамами, миллисекунды.
+ * Загрузка новой сцены идёт параллельно; если текстура пришла раньше — анимация прерывается.
+ * Альтернатива без правки этого файла: перед игрой в консоли window.VN_BG360_GOTO_ZOOM_MS = 2000;
+ */
+var BG_360_GOTO_ZOOM_MS = 500;
+/**
+ * Растворение снимка старой сцены (hold) поверх уже отрисованной новой на canvas, мс. 0 — сразу убрать hold.
+ * Новая сцена остаётся непрозрачной; hold сверху уходит opacity 1→0 (полупрозрачный WebGL-canvas даёт чёрную подмес).
+ * Переопределение: window.VN_BG360_NEW_SCENE_REVEAL_MS = 600;
+ */
+var BG_360_NEW_SCENE_REVEAL_MS = 250;
 
 var backgroundScroll = {
   enabled: false,
@@ -1548,7 +1560,18 @@ var bg360Runtime = {
    * Номер поколения loadSeq, на котором последний раз была применена текстура к сфере (успешный onLoadTexture).
    * Пока не совпадает с текущим loadSeq, навигационный оверлей к новой панораме не строим — иначе стрелки опережают фон.
    */
-  textureReadyLoadSeq: 0
+  textureReadyLoadSeq: 0,
+  /** Один раз не дублировать showBg360HoldFromCurrentFrame: кадр уже захвачен после зума к метке goto360. */
+  suppressNextHoldCapture: false,
+  /** Таймер плавного скрытия hold-слоя (чтобы не копить таймеры при быстрых переходах). */
+  holdFadeTimer: null,
+  /** goto360: зум и загрузка следующей панорамы параллельно; метки новой сцены — в pending до прихода текстуры. */
+  goto360ParallelZoomActive: false,
+  pendingGoto360MarksPayload: null,
+  /** requestAnimationFrame зума FOV при параллельной загрузке (отменяется при готовности текстуры). */
+  goto360ZoomRafId: 0,
+  /** Таймер завершения растворения hold поверх новой сцены; сбрасывается в resetBg360CanvasRevealStyles / disable. */
+  revealFallbackTimer: null
 };
 
 // Runtime меток 360: хранит список меток и управляет интерактивностью до следующего bg.
@@ -6187,9 +6210,111 @@ function normalizeStory360Marks(spaceId, panorama) {
   return result;
 }
 
+// Итоговая длительность наезда: константа BG_360_GOTO_ZOOM_MS или переопределение window.VN_BG360_GOTO_ZOOM_MS (число ≥ 0).
+function resolveBg360GotoZoomDurationMs() {
+  if (typeof window !== "undefined" && typeof window.VN_BG360_GOTO_ZOOM_MS === "number" && isFinite(window.VN_BG360_GOTO_ZOOM_MS)) {
+    return Math.max(0, window.VN_BG360_GOTO_ZOOM_MS);
+  }
+  return Math.max(0, BG_360_GOTO_ZOOM_MS);
+}
+
+// Длительность растворения hold (снимок старой сцены) поверх уже отрисованной новой: BG_360_NEW_SCENE_REVEAL_MS или window.VN_BG360_NEW_SCENE_REVEAL_MS.
+function resolveBg360NewSceneRevealMs() {
+  if (typeof window !== "undefined" && window.VN_BG360_NEW_SCENE_REVEAL_MS != null && window.VN_BG360_NEW_SCENE_REVEAL_MS !== "") {
+    var w = Number(window.VN_BG360_NEW_SCENE_REVEAL_MS);
+    if (isFinite(w)) return Math.max(0, w);
+  }
+  return Math.max(0, BG_360_NEW_SCENE_REVEAL_MS);
+}
+
+// Проверяет, что hold-изображение реально показывает снимок (атрибут src и свойство .src расходятся в части движков).
+function bg360HoldLayerHasUsableSnapshot(holdEl) {
+  if (!holdEl || holdEl.classList.contains("hidden")) return false;
+  var fromAttr = holdEl.getAttribute("src");
+  if (fromAttr && String(fromAttr).length > 0) return true;
+  var fromProp = (holdEl.currentSrc || holdEl.src || "").trim();
+  if (!fromProp || fromProp === window.location.href.split("#")[0]) return false;
+  return fromProp.indexOf("data:") === 0 || fromProp.indexOf("blob:") === 0 || /^https?:/i.test(fromProp);
+}
+
+// Сбрасывает стили проявления: canvas (на случай прерванной анимации) и hold (z-index после растворения).
+// ВАЖНО: эта функция вызывается в начале onLoadTexture ДО запуска новой reveal-анимации,
+// поэтому она НЕ должна задавать transition у hold (иначе короткие 0.14s «съедают» наш длинный reveal до того,
+// как успеют сработать RAF-колбэки). Транзишены назначаются точечно — в hideBg360HoldLayer и в ветке reveal.
+function resetBg360CanvasRevealStyles() {
+  if (bg360Runtime.revealFallbackTimer) {
+    clearTimeout(bg360Runtime.revealFallbackTimer);
+    bg360Runtime.revealFallbackTimer = null;
+  }
+  if (elBg360) {
+    elBg360.style.zIndex = "";
+    elBg360.style.opacity = "";
+    elBg360.style.transition = "";
+  }
+  if (elBg360Hold) {
+    elBg360Hold.style.zIndex = "3";
+    elBg360Hold.style.pointerEvents = "none";
+  }
+}
+
+// Прерывает параллельный зум FOV при goto360 (когда текстура новой панорамы уже загружена).
+function cancelGoto360ParallelZoomRaf() {
+  if (bg360Runtime.goto360ZoomRafId) {
+    cancelAnimationFrame(bg360Runtime.goto360ZoomRafId);
+    bg360Runtime.goto360ZoomRafId = 0;
+  }
+}
+
+// Параллельно с загрузкой следующей панорамы: только сужает FOV (yaw/pitch без изменений). Завершается сам по длительности или прерывается cancelGoto360ParallelZoomRaf при swap.
+function runGoto360ParallelFovZoomWhileLoading(mark) {
+  if (!mark) return;
+
+  var startFov = bg360Runtime.fovDeg;
+  var targetFov = clamp(Math.min(startFov - 20, (startFov + BG_360_FOV_MIN) * 0.5), BG_360_FOV_MIN, BG_360_FOV_MAX);
+
+  cancelGoto360ParallelZoomRaf();
+  if (bg360Runtime.frameId) {
+    cancelAnimationFrame(bg360Runtime.frameId);
+    bg360Runtime.frameId = 0;
+  }
+
+  var durationMs = resolveBg360GotoZoomDurationMs();
+  var t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function tick(now) {
+    if (!bg360Runtime.goto360ZoomRafId) return;
+    var t = Math.min(1, (now - t0) / durationMs);
+    var e = easeOutCubic(t);
+    bg360Runtime.fovDeg = startFov + (targetFov - startFov) * e;
+    updateBg360Camera();
+    updateBg360NavBillboardMeshes();
+    if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
+      bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+    }
+    updateBg360NavArrowHitCache();
+    updateBg360MarksProjection();
+    updateBg360NavEdgeHints();
+
+    if (t < 1) {
+      bg360Runtime.goto360ZoomRafId = requestAnimationFrame(tick);
+      return;
+    }
+    bg360Runtime.goto360ZoomRafId = 0;
+    if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
+      bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+    }
+  }
+
+  bg360Runtime.goto360ZoomRafId = requestAnimationFrame(tick);
+}
+
 // Показывает панораму из story360 и включает кликабельные метки для внутренней навигации goto360.
 // sourcePanoramaIdForEntryResolve — id панорамы «откуда» при переходе меткой (непусто только внутри goto360); смотри resolveGoto360EntryKey / getStory360Entry.
-function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForEntryResolve) {
+// markForZoomTransition — метка клика (walk): перед сменой фона выполняется короткий зум к ней и захват hold, чтобы не было чёрной вспышки и «отрыва» стрелок.
+function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForEntryResolve, markForZoomTransition) {
   var panorama = getStory360Panorama(spaceId, panoramaId);
   if (!panorama) {
     console.warn("[goto360] panorama not found", { spaceId: spaceId, panoramaId: panoramaId });
@@ -6204,65 +6329,93 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
     return false;
   }
 
-  stripBg360NavigationOverlayPendingLoad();
-
   var options = buildStory360MediaOptions(panorama, entry);
-  state.currentBgId = media.bgId;
-  setBackground(media.file, media.fallback, media.volume, options);
-
-  goto360Runtime.spaceId = String(spaceId || "");
-  goto360Runtime.panoramaId = String(panoramaId || "");
-  goto360Runtime.entryId = String(resolvedEntryKey || "default") || "default";
-
-  bg360MarksRuntime.bgId = state.currentBgId;
-  bg360MarksRuntime.lines = readStory360Field(panorama, ["lines"]) !== false;
   var marksNormalized = normalizeStory360Marks(spaceId, panorama);
-  bg360MarksRuntime.marks = marksNormalized;
-  bg360MarksRuntime.locked = false;
-  bg360MarksRuntime.interactive = true;
 
-  if (story360DebugFocusLogEnabled()) {
-    var entriesRoot = panorama.entries || panorama.entryPoints || panorama.focuses;
-    console.groupCollapsed("[goto360-focus] applyGoto360Panorama → " + spaceId + "." + panoramaId);
-    console.info("режим входа", {
-      тип:
-        String(sourcePanoramaIdForEntryResolve || "").trim() === ""
-          ? "из_сценария_или_без_источника — ключ только из entryId переданного сюда"
-          : "из_метки_внутри_goto360 — ключ обычно = id панорамы-источника «" +
-            String(sourcePanoramaIdForEntryResolve).trim() +
-            "» если у метки нет своего entry"
-    });
-    console.info("аргументы вызова", {
-      rawEntryIdFromCaller: entryId,
-      sourcePanoramaIdForEntryResolve: sourcePanoramaIdForEntryResolve || "(пусто)",
-      resolvedArrivalKey: resolvedEntryKey,
-      goto360RuntimeПослеСохранения: {
-        spaceId: goto360Runtime.spaceId,
-        panoramaId: goto360Runtime.panoramaId,
-        entryId: goto360Runtime.entryId
-      }
-    });
-    console.info("entries на панораме назначения", story360SummarizeEntriesForDebug(entriesRoot));
-    console.info("итог камеры setBackground360", {
-      focusX: options.focusX,
-      focusY: options.focusY,
-      focusZ: options.focusZ,
-      fov: options.fov,
-      entryFocusAsPanoramaUv: !!panorama.entryFocusAsPanoramaUv
-    });
-    console.info(
-      "метки на новой панораме (id / uv / target)",
-      marksNormalized.map(function (m) {
-        return {
-          id: m.id,
-          uv: [m.x, m.y],
-          targetType: m.target ? m.target.type : null,
-          targetPanorama: m.target && m.target.type === "360" ? m.target.panoramaId : null,
-          targetEntryId: m.target && m.target.type === "360" ? m.target.entryId : null
-        };
-      })
-    );
-    console.groupEnd();
+  function commitGoto360StateAndStartLoad(isParallelZoom) {
+    state.currentBgId = media.bgId;
+
+    goto360Runtime.spaceId = String(spaceId || "");
+    goto360Runtime.panoramaId = String(panoramaId || "");
+    goto360Runtime.entryId = String(resolvedEntryKey || "default") || "default";
+
+    if (!isParallelZoom) {
+      bg360MarksRuntime.bgId = state.currentBgId;
+      bg360MarksRuntime.lines = readStory360Field(panorama, ["lines"]) !== false;
+      bg360MarksRuntime.marks = marksNormalized;
+      bg360MarksRuntime.locked = false;
+      bg360MarksRuntime.interactive = true;
+    } else {
+      bg360Runtime.pendingGoto360MarksPayload = {
+        lines: readStory360Field(panorama, ["lines"]) !== false,
+        marks: marksNormalized
+      };
+    }
+
+    if (story360DebugFocusLogEnabled()) {
+      var entriesRoot = panorama.entries || panorama.entryPoints || panorama.focuses;
+      console.groupCollapsed("[goto360-focus] applyGoto360Panorama → " + spaceId + "." + panoramaId);
+      console.info("режим входа", {
+        тип:
+          String(sourcePanoramaIdForEntryResolve || "").trim() === ""
+            ? "из_сценария_или_без_источника — ключ только из entryId переданного сюда"
+            : "из_метки_внутри_goto360 — ключ обычно = id панорамы-источника «" +
+              String(sourcePanoramaIdForEntryResolve).trim() +
+              "» если у метки нет своего entry"
+      });
+      console.info("аргументы вызова", {
+        rawEntryIdFromCaller: entryId,
+        sourcePanoramaIdForEntryResolve: sourcePanoramaIdForEntryResolve || "(пусто)",
+        resolvedArrivalKey: resolvedEntryKey,
+        goto360RuntimeПослеСохранения: {
+          spaceId: goto360Runtime.spaceId,
+          panoramaId: goto360Runtime.panoramaId,
+          entryId: goto360Runtime.entryId
+        }
+      });
+      console.info("entries на панораме назначения", story360SummarizeEntriesForDebug(entriesRoot));
+      console.info("итог камеры setBackground360", {
+        focusX: options.focusX,
+        focusY: options.focusY,
+        focusZ: options.focusZ,
+        fov: options.fov,
+        entryFocusAsPanoramaUv: !!panorama.entryFocusAsPanoramaUv
+      });
+      console.info(
+        "метки на новой панораме (id / uv / target)",
+        marksNormalized.map(function (m) {
+          return {
+            id: m.id,
+            uv: [m.x, m.y],
+            targetType: m.target ? m.target.type : null,
+            targetPanorama: m.target && m.target.type === "360" ? m.target.panoramaId : null,
+            targetEntryId: m.target && m.target.type === "360" ? m.target.entryId : null
+          };
+        })
+      );
+      console.groupEnd();
+    }
+
+    setBackground(media.file, media.fallback, media.volume, options);
+  }
+
+  var useZoomTransition =
+    markForZoomTransition &&
+    bg360IsDirectionalMark(markForZoomTransition) &&
+    bg360Runtime.active &&
+    bg360Runtime.mesh &&
+    !bg360Runtime.isVideoSource &&
+    ensureBg360Renderer();
+
+  if (useZoomTransition) {
+    bg360MarksRuntime.locked = true;
+    bg360MarksRuntime.interactive = false;
+    bg360Runtime.goto360ParallelZoomActive = true;
+    runGoto360ParallelFovZoomWhileLoading(markForZoomTransition);
+    commitGoto360StateAndStartLoad(true);
+  } else {
+    stripBg360NavigationOverlayPendingLoad();
+    commitGoto360StateAndStartLoad(false);
   }
 
   return true;
@@ -8029,7 +8182,7 @@ function onGoto360SelectMark(markId) {
     var nextSpace = target.spaceId || goto360Runtime.spaceId;
     var sourcePanoramaId = goto360Runtime.panoramaId;
     var nextEntry = target.entryId;
-    if (applyGoto360Panorama(nextSpace, target.panoramaId, nextEntry, sourcePanoramaId)) {
+    if (applyGoto360Panorama(nextSpace, target.panoramaId, nextEntry, sourcePanoramaId, selectedMark)) {
       return;
     }
     console.warn("[goto360] target panorama not found", target);
@@ -8314,8 +8467,13 @@ function ensureBg360Renderer() {
     canvas: elBg360,
     antialias: true,
     alpha: true,
-    powerPreference: "high-performance"
+    powerPreference: "high-performance",
+    // Без preserveDrawingBuffer вызов canvas.toDataURL() после композитинга возвращает пустой буфер —
+    // и hold-снимок старой 360-сцены оказывается прозрачным (визуально перехода нет).
+    preserveDrawingBuffer: true
   });
+  // Прозрачный clear, чтобы при необходимости полупрозрачный canvas не «подмешивал» чёрный к слою под ним.
+  renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(Math.max(1, elNovelWindow.clientWidth), Math.max(1, elNovelWindow.clientHeight), false);
 
@@ -8522,6 +8680,8 @@ function ensureBg360HoldLayer() {
   hold.style.pointerEvents = "none";
   // Держим снимок выше фоновых слоёв (.bg z-index:2), но ниже меток 360 и UI.
   hold.style.zIndex = "3";
+  hold.style.opacity = "1";
+  hold.style.transition = "opacity 0.14s ease-out";
   elNovelWindow.appendChild(hold);
   elBg360Hold = hold;
   console.log("[BG360 HOLD] layer created");
@@ -8529,11 +8689,34 @@ function ensureBg360HoldLayer() {
 }
 
 // Скрывает hold-слой 360; вызывается после успешной загрузки нового кадра или при отмене смены.
-function hideBg360HoldLayer() {
+// Снимает hold-слой; при immediate=true — сразу (сброс движка), иначе короткое затухание, чтобы не мигал переход с новой панорамой.
+function hideBg360HoldLayer(immediate) {
   if (!elBg360Hold) return;
-  console.log("[BG360 HOLD] hide");
-  elBg360Hold.classList.add("hidden");
-  elBg360Hold.removeAttribute("src");
+  if (elBg360Hold.classList.contains("hidden")) return;
+  if (bg360Runtime.holdFadeTimer) {
+    clearTimeout(bg360Runtime.holdFadeTimer);
+    bg360Runtime.holdFadeTimer = null;
+  }
+  if (immediate) {
+    console.log("[BG360 HOLD] hide immediate");
+    elBg360Hold.classList.add("hidden");
+    elBg360Hold.removeAttribute("src");
+    elBg360Hold.style.opacity = "1";
+    elBg360Hold.style.zIndex = "3";
+    elBg360Hold.style.transition = "opacity 0.14s ease-out";
+    return;
+  }
+  console.log("[BG360 HOLD] hide (fade)");
+  // Гарантируем короткое затухание именно здесь, не полагаясь на наследуемый из reveal "1500ms".
+  elBg360Hold.style.transition = "opacity 0.14s ease-out";
+  elBg360Hold.style.opacity = "0";
+  bg360Runtime.holdFadeTimer = setTimeout(function() {
+    bg360Runtime.holdFadeTimer = null;
+    if (!elBg360Hold) return;
+    elBg360Hold.classList.add("hidden");
+    elBg360Hold.removeAttribute("src");
+    elBg360Hold.style.opacity = "1";
+  }, 140);
 }
 
 // Делает снимок текущего 360-canvas, чтобы не показывать «черный» фон между загрузками.
@@ -8542,26 +8725,45 @@ function showBg360HoldFromCurrentFrame() {
     console.log("[BG360 HOLD] skip capture: no canvas");
     return false;
   }
-  if (!bg360Runtime.active) {
-    console.log("[BG360 HOLD] skip capture: runtime inactive");
-    return false;
-  }
+  // Не требуем active: при первом включении 360 после 2D-фона снимок может быть пустым/тёмным,
+  // но hold всё равно даёт плавное растворение вместо мгновенного cut (ветка revealMs && holdOk).
   var hold = ensureBg360HoldLayer();
   if (!hold) {
     console.log("[BG360 HOLD] skip capture: no hold layer");
     return false;
   }
   try {
+    if (bg360Runtime.holdFadeTimer) {
+      clearTimeout(bg360Runtime.holdFadeTimer);
+      bg360Runtime.holdFadeTimer = null;
+    }
     console.log("[BG360 HOLD] capture start", {
       width: elBg360.width,
       height: elBg360.height,
       clientWidth: elBg360.clientWidth,
       clientHeight: elBg360.clientHeight
     });
-    hold.src = elBg360.toDataURL("image/png");
+    // Перед снимком форсируем свежий рендер: иначе после композитинга буфер может быть очищен
+    // (характерно для preserveDrawingBuffer:false, но и с true — даёт гарантированно актуальный кадр).
+    if (
+      bg360Runtime.renderer &&
+      bg360Runtime.scene &&
+      bg360Runtime.camera &&
+      bg360Runtime.mesh
+    ) {
+      try {
+        bg360Runtime.renderer.render(bg360Runtime.scene, bg360Runtime.camera);
+      } catch (rerr) {
+        console.warn("[BG360 HOLD] pre-capture render failed", rerr);
+      }
+    }
+    hold.style.opacity = "1";
+    // JPEG-снимок легче PNG (~10x), декодируется быстрее — критично для растворения за 1.5s.
+    hold.src = elBg360.toDataURL("image/jpeg", 0.85);
     hold.classList.remove("hidden");
     console.log("[BG360 HOLD] capture success: hold shown", {
-      srcLength: hold.src ? hold.src.length : 0
+      srcLength: hold.src ? hold.src.length : 0,
+      hasMeshAtCapture: !!bg360Runtime.mesh
     });
     return true;
   } catch (e) {
@@ -8622,6 +8824,15 @@ function disableBg360Renderer() {
   // Каждое отключение инвалидирует старые async onload, чтобы они не вернули уже сброшенный фон.
   bg360Runtime.loadSeq++;
   bg360Runtime.textureReadyLoadSeq = 0;
+  bg360Runtime.suppressNextHoldCapture = false;
+  cancelGoto360ParallelZoomRaf();
+  bg360Runtime.goto360ParallelZoomActive = false;
+  bg360Runtime.pendingGoto360MarksPayload = null;
+  resetBg360CanvasRevealStyles();
+  if (bg360Runtime.holdFadeTimer) {
+    clearTimeout(bg360Runtime.holdFadeTimer);
+    bg360Runtime.holdFadeTimer = null;
+  }
   bg360Runtime.active = false;
   bg360Runtime.interactive = false;
   bg360Runtime.sourceSrc = "";
@@ -8641,7 +8852,7 @@ function disableBg360Renderer() {
     elBg360.classList.remove("is-nav-arrow-hover");
   }
   updateBg360CursorClasses();
-  hideBg360HoldLayer();
+  hideBg360HoldLayer(true);
 }
 
 // Проверяет, что путь указывает на JS-пакет 360, а не на исходную картинку.
@@ -8819,6 +9030,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   function isCurrentBg360Load() {
     return bg360LoadSeq === bg360Runtime.loadSeq;
   }
+  var deferSwapUntilTexture = bg360Runtime.goto360ParallelZoomActive === true;
+  if (deferSwapUntilTexture) {
+    bg360Runtime.goto360ParallelZoomActive = false;
+  }
   var packedDataUrl = "";
   console.log("[BG360 HOLD] setBackground360 start", {
     src: normalizedSrc,
@@ -8827,6 +9042,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   });
   if (!isVideo) {
     if (!isPackScriptSource) {
+      if (deferSwapUntilTexture) {
+        bg360Runtime.goto360ParallelZoomActive = true;
+      }
       console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", normalizedSrc);
       return;
     }
@@ -8837,20 +9055,22 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     });
     // Важно: пока пакет подгружается, не трогаем текущие слои, иначе при restore возможен «черный экран».
     if (packState === "loading") {
+      if (deferSwapUntilTexture) {
+        bg360Runtime.goto360ParallelZoomActive = true;
+      }
       return;
     }
     packedDataUrl = resolveBg360PackDataUrl(normalizedSrc, bg360Quality) || resolveBg360PackDataUrl(selectedPackScriptUrl, bg360Quality);
     if (isPackScriptSource && !packedDataUrl) {
+      if (deferSwapUntilTexture) {
+        bg360Runtime.goto360ParallelZoomActive = true;
+      }
       console.warn("[BG360] JS-пакет загружен, но data-url не зарегистрирован:", selectedPackScriptUrl || normalizedSrc);
       return;
     }
   }
   var textureSource = packedDataUrl || normalizedSrc;
 
-  // Для 360-слоя интерактив включается только при явном scroll в сценарии.
-  // Это позволяет зафиксировать ракурс для сцен, где обзор не должен двигаться.
-  bg360Runtime.interactive = normalized.enabled === true;
-  updateBg360CursorClasses();
   function buildNonWebgl360FallbackOptions(baseOptions) {
     // Фолбэк без WebGL: включаем drag по широкой 2:1-картинке, чтобы 360 не превращался в полностью статичный фон.
     var fallback = Object.assign({}, normalizeBackgroundScrollOptions(baseOptions), { is360: false, panorama360Fallback: true });
@@ -8864,44 +9084,73 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
   if (!ensureBg360Renderer()) {
     console.warn("[BG360] WebGL/THREE недоступны, включен drag-фолбэк без 3D");
+    cancelGoto360ParallelZoomRaf();
+    bg360Runtime.goto360ParallelZoomActive = false;
+    if (bg360Runtime.pendingGoto360MarksPayload) {
+      var plW = bg360Runtime.pendingGoto360MarksPayload;
+      bg360MarksRuntime.bgId = state.currentBgId;
+      bg360MarksRuntime.lines = plW.lines;
+      bg360MarksRuntime.marks = plW.marks;
+      bg360MarksRuntime.locked = false;
+      bg360MarksRuntime.interactive = true;
+      bg360Runtime.pendingGoto360MarksPayload = null;
+    }
     setBackground(src, fallbackSrc, null, buildNonWebgl360FallbackOptions(normalized));
     return;
   }
 
-  showBg360HoldFromCurrentFrame();
-  console.log("[BG360 HOLD] capture requested before swap");
-  disableBackgroundScroll();
-  if (elBg) elBg.classList.add("hidden");
-  if (elBgVideo) {
-    try { elBgVideo.pause(); } catch (e) {}
-    elBgVideo.onloadeddata = null;
-    elBgVideo.onerror = null;
-    elBgVideo.removeAttribute("src");
-    elBgVideo.load();
-    elBgVideo.classList.add("hidden");
+  var geometry = null;
+
+  if (!deferSwapUntilTexture) {
+    // Для 360-слоя интерактив включается только при явном scroll в сценарии (после swap — сразу; при отложенном swap — в onLoadTexture).
+    bg360Runtime.interactive = normalized.enabled === true;
+    updateBg360CursorClasses();
+    cancelGoto360ParallelZoomRaf();
+    if (bg360Runtime.suppressNextHoldCapture) {
+      bg360Runtime.suppressNextHoldCapture = false;
+      var holdKeep = ensureBg360HoldLayer();
+      if (holdKeep) {
+        holdKeep.style.opacity = "1";
+        holdKeep.classList.remove("hidden");
+      }
+      console.log("[BG360 HOLD] reuse snapshot after goto360 zoom (skip duplicate capture)");
+    } else {
+      showBg360HoldFromCurrentFrame();
+      console.log("[BG360 HOLD] capture requested before swap");
+    }
+    disableBackgroundScroll();
+    if (elBg) elBg.classList.add("hidden");
+    if (elBgVideo) {
+      try { elBgVideo.pause(); } catch (e) {}
+      elBgVideo.onloadeddata = null;
+      elBgVideo.onerror = null;
+      elBgVideo.removeAttribute("src");
+      elBgVideo.load();
+      elBgVideo.classList.add("hidden");
+    }
+    // 360-фон пока считается визуальным слоем без отдельного аудио-канала.
+    setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
+    audio.currentBgVideoVolume = 0;
+
+    clearBg360MediaResources();
+    resizeBg360Renderer();
+
+    var initialYaw = clamp(typeof normalized.focusX === "number" ? normalized.focusX : 0.5, 0, 1) * 360;
+    var initialPitch = -85 + clamp(typeof normalized.focusY === "number" ? normalized.focusY : 0.5, 0, 1) * 170;
+    var initialFov = normalizeMediaFov(normalized.fov, null);
+    if (initialFov === null) {
+      initialFov = mapFocusZToFov(normalized.focusZ);
+    }
+
+    bg360Runtime.yawDeg = initialYaw;
+    bg360Runtime.pitchDeg = initialPitch;
+    bg360Runtime.fovDeg = initialFov;
+    updateBg360Camera();
+
+    geometry = new window.THREE.SphereGeometry(500, 60, 40);
+    geometry.scale(-1, 1, 1);
+    bg360Runtime.geometry = geometry;
   }
-  // 360-фон пока считается визуальным слоем без отдельного аудио-канала.
-  setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
-  audio.currentBgVideoVolume = 0;
-
-  clearBg360MediaResources();
-  resizeBg360Renderer();
-
-  var initialYaw = clamp(typeof normalized.focusX === "number" ? normalized.focusX : 0.5, 0, 1) * 360;
-  var initialPitch = -85 + clamp(typeof normalized.focusY === "number" ? normalized.focusY : 0.5, 0, 1) * 170;
-  var initialFov = normalizeMediaFov(normalized.fov, null);
-  if (initialFov === null) {
-    initialFov = mapFocusZToFov(normalized.focusZ);
-  }
-
-  bg360Runtime.yawDeg = initialYaw;
-  bg360Runtime.pitchDeg = initialPitch;
-  bg360Runtime.fovDeg = initialFov;
-  updateBg360Camera();
-
-  var geometry = new window.THREE.SphereGeometry(500, 60, 40);
-  geometry.scale(-1, 1, 1);
-  bg360Runtime.geometry = geometry;
 
   if (packedDataUrl) {
     console.log("[BG360] Используется data-пакет для:", normalizedSrc);
@@ -8913,6 +9162,51 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       if (texture && typeof texture.dispose === "function") texture.dispose();
       return;
     }
+    resetBg360CanvasRevealStyles();
+    if (deferSwapUntilTexture) {
+      cancelGoto360ParallelZoomRaf();
+      showBg360HoldFromCurrentFrame();
+      if (elBg360) elBg360.classList.add("hidden");
+      stripBg360NavigationOverlayPendingLoad();
+      if (bg360Runtime.pendingGoto360MarksPayload) {
+        var pl = bg360Runtime.pendingGoto360MarksPayload;
+        bg360MarksRuntime.bgId = state.currentBgId;
+        bg360MarksRuntime.lines = pl.lines;
+        bg360MarksRuntime.marks = pl.marks;
+        bg360MarksRuntime.locked = false;
+        bg360MarksRuntime.interactive = true;
+        bg360Runtime.pendingGoto360MarksPayload = null;
+      }
+      bg360Runtime.interactive = normalized.enabled === true;
+      updateBg360CursorClasses();
+      disableBackgroundScroll();
+      if (elBg) elBg.classList.add("hidden");
+      if (elBgVideo) {
+        try { elBgVideo.pause(); } catch (e) {}
+        elBgVideo.onloadeddata = null;
+        elBgVideo.onerror = null;
+        elBgVideo.removeAttribute("src");
+        elBgVideo.load();
+        elBgVideo.classList.add("hidden");
+      }
+      setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
+      audio.currentBgVideoVolume = 0;
+      clearBg360MediaResources();
+      resizeBg360Renderer();
+      var initialYawD = clamp(typeof normalized.focusX === "number" ? normalized.focusX : 0.5, 0, 1) * 360;
+      var initialPitchD = -85 + clamp(typeof normalized.focusY === "number" ? normalized.focusY : 0.5, 0, 1) * 170;
+      var initialFovD = normalizeMediaFov(normalized.fov, null);
+      if (initialFovD === null) {
+        initialFovD = mapFocusZToFov(normalized.focusZ);
+      }
+      bg360Runtime.yawDeg = initialYawD;
+      bg360Runtime.pitchDeg = initialPitchD;
+      bg360Runtime.fovDeg = initialFovD;
+      updateBg360Camera();
+      geometry = new window.THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1);
+      bg360Runtime.geometry = geometry;
+    }
     var material = new window.THREE.MeshBasicMaterial({ map: texture });
     var mesh = new window.THREE.Mesh(geometry, material);
     bg360Runtime.texture = texture;
@@ -8923,11 +9217,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.active = true;
     // Метки и стрелки привязаны к UV новой сферы: пересобираем оверлей только после готовности текстуры.
     renderBg360Marks();
-    if (elBg360) elBg360.classList.remove("hidden");
-    if (bg360Runtime.interactive) showBg360NavigationHint();
-    else hideBackgroundScrollHint();
-    // Важно: сначала рисуем первый кадр нового 360, и только затем убираем hold-слой.
-    // Иначе между "готово" и первым rAF-кадром может мелькнуть чёрный фон.
+    // Важно: сначала рисуем первый кадр нового 360, затем показываем canvas; при reveal hold сверху уходит opacity 1→0.
     if (bg360Runtime.renderer && bg360Runtime.scene && bg360Runtime.camera) {
       // Обновляем billboard-геометрию ДО первого рендера, чтобы меши не были пустыми на первом кадре.
       updateBg360NavBillboardMeshes();
@@ -8935,15 +9225,64 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       updateBg360NavArrowHitCache();
       updateBg360MarksProjection();
     }
-    console.log("[BG360 HOLD] first frame rendered: schedule hold hide after 2 RAF");
-    // На части устройств один кадр после render() ещё может композиться с чёрной подложкой.
-    // Поэтому держим hold ещё два requestAnimationFrame и скрываем только после стабильного показа.
-    requestAnimationFrame(function() {
-      requestAnimationFrame(function() {
-        console.log("[BG360 HOLD] hide after 2 RAF");
-        hideBg360HoldLayer();
-      });
+    var revealMs = resolveBg360NewSceneRevealMs();
+    var swapSeqForReveal = bg360LoadSeq;
+    if (elBg360) {
+      elBg360.classList.remove("hidden");
+    }
+    if (bg360Runtime.interactive) showBg360NavigationHint();
+    else hideBackgroundScrollHint();
+
+    var holdEl = elBg360Hold;
+    var holdOk = bg360HoldLayerHasUsableSnapshot(holdEl);
+    console.log("[BG360 HOLD] reveal decision", {
+      revealMs: revealMs,
+      holdOk: holdOk,
+      holdHasSrc: !!(holdEl && holdEl.getAttribute("src")),
+      holdHidden: !!(holdEl && holdEl.classList.contains("hidden")),
+      holdInlineOpacity: holdEl ? holdEl.style.opacity : null
     });
+
+    if (revealMs <= 0 || !holdOk) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          if (swapSeqForReveal !== bg360Runtime.loadSeq) return;
+          hideBg360HoldLayer();
+        });
+      });
+    } else {
+      // Готовим стартовое состояние: hold над canvas, полностью непрозрачен, без transition.
+      // Применяем стили в первом RAF, ставим transition во втором, opacity=0 в третьем — так браузер гарантированно увидит изменение.
+      holdEl.classList.remove("hidden");
+      holdEl.style.opacity = "1";
+      holdEl.style.pointerEvents = "none";
+      holdEl.style.transition = "none";
+      holdEl.style.zIndex = "5";
+      requestAnimationFrame(function() {
+        if (swapSeqForReveal !== bg360Runtime.loadSeq) return;
+        // На текущем кадре фиксируем длительность; следующий кадр — целевое значение opacity.
+        holdEl.style.transition = "opacity " + revealMs + "ms ease-out";
+        requestAnimationFrame(function() {
+          if (swapSeqForReveal !== bg360Runtime.loadSeq) return;
+          console.log("[BG360 HOLD] reveal start", {
+            revealMs: revealMs,
+            computedTransition: window.getComputedStyle(holdEl).transition,
+            computedOpacity: window.getComputedStyle(holdEl).opacity
+          });
+          holdEl.style.opacity = "0";
+        });
+      });
+      bg360Runtime.revealFallbackTimer = setTimeout(function() {
+        bg360Runtime.revealFallbackTimer = null;
+        if (swapSeqForReveal !== bg360Runtime.loadSeq) {
+          resetBg360CanvasRevealStyles();
+          return;
+        }
+        console.log("[BG360 HOLD] reveal fallback fire (cleanup)");
+        hideBg360HoldLayer(true);
+        resetBg360CanvasRevealStyles();
+      }, revealMs + 120);
+    }
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
     if (typeof updateBlurBackground === "function") {
@@ -8963,6 +9302,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       src: normalizedSrc,
       fallback: normalizedFallback
     });
+    cancelGoto360ParallelZoomRaf();
+    bg360Runtime.pendingGoto360MarksPayload = null;
     disableBg360Renderer();
     var fallbackOptions = buildNonWebgl360FallbackOptions(normalized);
     if (normalizedFallback) {
@@ -8970,7 +9311,6 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     } else {
       setBackground(normalizedSrc, "", null, fallbackOptions);
     }
-    hideBg360HoldLayer();
   }
 
   if (isVideo) {
