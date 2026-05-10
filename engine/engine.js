@@ -6624,6 +6624,8 @@ function renderBg360Marks() {
 
   // Треугольные подсказки по краю экрана, если WebGL-стрелка к метке выходит за кадр.
   if (useWebglNavArrows) {
+    appendBg360Compass();
+
     var edgeHintsSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     edgeHintsSvg.classList.add("bg360-nav-edge-hints");
     edgeHintsSvg.setAttribute("aria-hidden", "true");
@@ -7342,6 +7344,161 @@ function bg360PaintToSvgColorOpacity(paint) {
   var g = (hex >> 8) & 255;
   var b = hex & 255;
   return { rgb: "rgb(" + r + "," + g + "," + b + ")", opacity: a };
+}
+
+// Читает CSS-настройки SVG-компаса; длины заданы в координатах viewBox, а размер на экране задаёт CSS.
+function readBg360CompassConfig() {
+  var minLen = Math.max(1, getBg360CssNumber("--bg360-compass-arrow-min-length", 25));
+  var maxLen = Math.max(minLen, getBg360CssNumber("--bg360-compass-arrow-max-length", 47));
+  return {
+    enabled: getBg360CssNumber("--bg360-compass-enabled", 1) !== 0,
+    opacity: clamp(getBg360CssNumber("--bg360-compass-opacity", 0.62), 0.05, 1),
+    circleRadius: Math.max(1, getBg360CssNumber("--bg360-compass-circle-radius", 14)),
+    circleStrokeWidth: Math.max(0, getBg360CssNumber("--bg360-compass-circle-stroke-width", 2)),
+    circleFillPaint: parseBg360CssColor("--bg360-compass-circle-fill", 0x505050, 1),
+    circleStrokePaint: parseBg360CssColor("--bg360-compass-circle-stroke", 0xdcdcdc, 1),
+    arrowPaint: parseBg360CssColor("--bg360-compass-arrow-color", 0xdcdcdc, 1),
+    arrowMinLength: minLen,
+    arrowMaxLength: maxLen,
+    arrowRibbonHalfW: Math.max(0.5, getBg360CssNumber("--bg360-compass-arrow-ribbon-half-w", 3.2)),
+    arrowHeadDepth: Math.max(1, getBg360CssNumber("--bg360-compass-arrow-head-depth", 10)),
+    arrowHeadHalfW: Math.max(0.5, getBg360CssNumber("--bg360-compass-arrow-head-half-w", 7.5)),
+    padding: Math.max(0, getBg360CssNumber("--bg360-compass-padding", 4))
+  };
+}
+
+// Возвращает SVG path стрелки, направленной вверх; поворот конкретного направления задаётся transform rotate().
+function buildBg360CompassArrowPath(length, cfg) {
+  var len = Math.max(1, Number(length) || 1);
+  var headDepth = Math.min(cfg.arrowHeadDepth, len * 0.62);
+  var shaftEnd = Math.max(0.5, len - headDepth);
+  var ribbonHalf = Math.min(cfg.arrowRibbonHalfW, Math.max(0.5, shaftEnd * 0.42));
+  var headHalf = Math.max(ribbonHalf, Math.min(cfg.arrowHeadHalfW, Math.max(ribbonHalf, len * 0.42)));
+
+  return [
+    "M", -ribbonHalf, 0,
+    "L", ribbonHalf, 0,
+    "L", ribbonHalf, -shaftEnd,
+    "L", headHalf, -shaftEnd,
+    "L", 0, -len,
+    "L", -headHalf, -shaftEnd,
+    "L", -ribbonHalf, -shaftEnd,
+    "Z"
+  ].join(" ");
+}
+
+// Собирает плоские направления компаса из тех же UV-меток и длины хорды, что используются WebGL-стрелками пола.
+function buildBg360CompassArrowData(compassCfg, navCfg) {
+  var marks = bg360MarksRuntime.marks;
+  if (!Array.isArray(marks) || !marks.length) return [];
+
+  var wpAnchor = bg360UvToWorldPointOnSphere(navCfg.anchorU, navCfg.anchorV, 500);
+  if (!wpAnchor) return [];
+
+  var arrows = [];
+  var rawMax = -Infinity;
+  for (var i = 0; i < marks.length; i++) {
+    var mark = marks[i];
+    if (!bg360IsDirectionalMark(mark)) continue;
+
+    var wMark = bg360UvToWorldPointOnSphere(mark.x, mark.y, 500);
+    if (!wMark) continue;
+
+    var dx = wMark.x - wpAnchor.x;
+    var dy = wMark.y - wpAnchor.y;
+    var dz = wMark.z - wpAnchor.z;
+    var chordLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (chordLen < 1e-3) continue;
+
+    var sm = Math.min(navCfg.chordMarginStart, chordLen * 0.4);
+    var em = Math.min(navCfg.chordMarginEnd, chordLen * 0.4);
+    var rawLen = Math.max(0, chordLen - sm - em);
+    // Повторяем отбор 3D-стрелок: если на полу стрелка слишком короткая, компас её тоже не показывает.
+    if (rawLen < navCfg.headDepth + 1) continue;
+
+    var flatLen = Math.sqrt(dx * dx + dz * dz);
+    if (flatLen < 1e-6) continue;
+
+    var angleDeg = window.THREE.MathUtils.radToDeg(Math.atan2(dx, -dz));
+    arrows.push({
+      id: mark.id,
+      angleDeg: angleDeg,
+      rawLen: rawLen
+    });
+    rawMax = Math.max(rawMax, rawLen);
+  }
+
+  if (!arrows.length) return [];
+
+  var rawScaleMax = rawMax > 1e-6 ? rawMax : 1;
+  for (var a = 0; a < arrows.length; a++) {
+    // Сохраняем пропорцию с реальной WebGL-стрелкой: максимум сцены равен maxLength, остальные только ограничены снизу minLength.
+    var proportionalLen = (arrows[a].rawLen / rawScaleMax) * compassCfg.arrowMaxLength;
+    arrows[a].drawLen = clamp(proportionalLen, compassCfg.arrowMinLength, compassCfg.arrowMaxLength);
+  }
+  return arrows;
+}
+
+// Создаёт SVG-компас в левом нижнем углу слоя меток и рисует направления текущей 360-панорамы.
+function appendBg360Compass() {
+  if (!elBg360Marks || !window.THREE) return;
+  var cfg = readBg360CompassConfig();
+  if (!cfg.enabled) return;
+
+  var navCfg = readBg360NavConfig();
+  var arrows = buildBg360CompassArrowData(cfg, navCfg);
+  if (!arrows.length) return;
+
+  var ns = "http://www.w3.org/2000/svg";
+  var maxReach = Math.max(cfg.arrowMaxLength, cfg.circleRadius) + Math.max(cfg.arrowHeadHalfW, cfg.arrowRibbonHalfW) + cfg.circleStrokeWidth + cfg.padding;
+  var half = Math.ceil(Math.max(1, maxReach));
+  var svg = document.createElementNS(ns, "svg");
+  svg.classList.add("bg360-compass");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.setAttribute("viewBox", (-half) + " " + (-half) + " " + (half * 2) + " " + (half * 2));
+
+  var group = document.createElementNS(ns, "g");
+  group.classList.add("bg360-compass-shapes");
+  // Общая прозрачность группы убирает двойное затемнение там, где круг и стрелки перекрываются.
+  group.setAttribute("opacity", String(cfg.opacity));
+
+  var circleFill = bg360PaintToSvgColorOpacity(cfg.circleFillPaint);
+  var circleStroke = bg360PaintToSvgColorOpacity(cfg.circleStrokePaint);
+  var arrowPaint = bg360PaintToSvgColorOpacity(cfg.arrowPaint);
+
+  var circle = document.createElementNS(ns, "circle");
+  circle.classList.add("bg360-compass-shape");
+  circle.setAttribute("cx", "0");
+  circle.setAttribute("cy", "0");
+  circle.setAttribute("r", String(cfg.circleRadius));
+  circle.setAttribute("fill", circleFill.rgb);
+  circle.setAttribute("stroke", circleStroke.rgb);
+  circle.setAttribute("stroke-width", String(cfg.circleStrokeWidth));
+  group.appendChild(circle);
+
+  for (var i = 0; i < arrows.length; i++) {
+    var path = document.createElementNS(ns, "path");
+    path.classList.add("bg360-compass-shape");
+    path.setAttribute("d", buildBg360CompassArrowPath(arrows[i].drawLen, cfg));
+    path.setAttribute("fill", arrowPaint.rgb);
+    path.setAttribute("transform", "rotate(" + arrows[i].angleDeg.toFixed(3) + ")");
+    path.dataset.markId = arrows[i].id != null ? String(arrows[i].id) : "";
+    group.appendChild(path);
+  }
+
+  svg.appendChild(group);
+  elBg360Marks.appendChild(svg);
+  updateBg360CompassRotation();
+}
+
+// Поворачивает компас так, чтобы верх SVG всегда совпадал с текущим направлением взгляда камеры.
+function updateBg360CompassRotation() {
+  if (!elBg360Marks) return;
+  var group = elBg360Marks.querySelector(".bg360-compass-shapes");
+  if (!group) return;
+  var yaw = Number(bg360Runtime.yawDeg) || 0;
+  group.setAttribute("transform", "rotate(" + yaw.toFixed(3) + ")");
 }
 
 /**
@@ -9008,6 +9165,7 @@ function renderBg360Frame() {
   updateBg360NavArrowHitCache();
   updateBg360NavEdgeHints();
   updateBg360MarksProjection();
+  updateBg360CompassRotation();
   bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
 }
 

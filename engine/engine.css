@@ -246,6 +246,27 @@ body {
   --bg360-nav-edge-hint-stroke: rgba(255, 255, 255, 0.30);
   --bg360-nav-edge-hint-stroke-width: 1.25;
 
+  /* SVG-компас 360: прозрачность общая для всей группы, чтобы круг и стрелки не темнели на пересечениях. */
+  --bg360-compass-enabled: 1;
+  --bg360-compass-size-base: 118px;
+  --bg360-compass-offset-left-base: 18px;
+  --bg360-compass-offset-bottom-base: 18px;
+  --bg360-compass-size: calc(var(--bg360-compass-size-base) * var(--visualScale));
+  --bg360-compass-offset-left: calc(var(--bg360-compass-offset-left-base) * var(--visualScale));
+  --bg360-compass-offset-bottom: calc(var(--bg360-compass-offset-bottom-base) * var(--visualScale));
+  --bg360-compass-opacity: 0.62;
+  --bg360-compass-circle-radius: 8;
+  --bg360-compass-circle-stroke-width: 2;
+  --bg360-compass-circle-fill: rgb(220, 220, 220);
+  --bg360-compass-circle-stroke: rgb(220, 220, 220);
+  --bg360-compass-arrow-color: rgb(220, 220, 220);
+  --bg360-compass-arrow-min-length: 25;
+  --bg360-compass-arrow-max-length: 47;
+  --bg360-compass-arrow-ribbon-half-w: 3.2;
+  --bg360-compass-arrow-head-depth: 10;
+  --bg360-compass-arrow-head-half-w: 7.5;
+  --bg360-compass-padding: 4;
+
   /* =========================================================
      МОДАЛКИ / МИНИ-ИГРЫ / СТАТИСТИКА
      Править здесь, если полноэкранные панели выглядят слишком
@@ -483,6 +504,21 @@ body {
 }
 
 .bg360-nav-edge-hint-triangle {
+  vector-effect: non-scaling-stroke;
+}
+
+.bg360-compass {
+  position: absolute;
+  left: var(--bg360-compass-offset-left);
+  bottom: calc(var(--bg360-compass-offset-bottom) + env(safe-area-inset-bottom, 0px));
+  width: var(--bg360-compass-size);
+  height: var(--bg360-compass-size);
+  overflow: visible;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.bg360-compass-shape {
   vector-effect: non-scaling-stroke;
 }
 
