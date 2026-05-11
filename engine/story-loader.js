@@ -982,9 +982,9 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   return { type: "bg360marks", bgId: bgId, marks: marks, lines: showLines };
 }
 
-// Приводит значение параметра from360 к ключу arrivalKey в panorama.entries для первого захода из сценария
-// (совпадает с тем же полем, что target.entry у меток; это имя записи, не «режим по умолчанию» в приоритете над источником внутри goto360).
-// Допускает bare id («174»), составной space.pan («main360.174») и вариант с двоеточием («main360:174» → «main360.174»).
+// Приводит from/from360 к ключу arrivalKey в panorama.entries для первого захода из сценария.
+// from=<sceneId> — штатный сценарный вход; from360 оставлен как совместимость с ключами панорам.
+// Допускает bare id («scIntro01»/«174»), составной space.pan («main360.174») и вариант с двоеточием («main360:174» → «main360.174»).
 function normalizeGoto360From360Alias(raw) {
   if (raw === undefined || raw === null) return "";
   var s = String(raw).trim();
@@ -992,9 +992,9 @@ function normalizeGoto360From360Alias(raw) {
   return s.replace(/:/g, ".");
 }
 
-// Разбирает команду входа в 360-пространство: goto360 space.panorama entry=… или from360=…
-// entry / from360 задают ключ записи на целевой панораме при первом входе из сценария (часто это ключ default = entries.default как базис).
-// Явный entry= имеет приоритет над from360. Внутри goto360 после клика метки ключ для фокуса берётся из id панорамы «откуда», см. resolveGoto360EntryKey в engine.js.
+// Разбирает команду входа в 360-пространство: goto360 space.panorama entry=… или from=<sceneId>.
+// entry / from / from360 задают ключ записи на целевой панораме при первом входе из сценария (часто это ключ default = entries.default как базис).
+// Явный entry= имеет приоритет над from=, а from= — над совместимым from360=. Внутри goto360 после клика метки ключ для фокуса берётся из id панорамы «откуда», см. resolveGoto360EntryKey в engine.js.
 // Допускается позиционная форма «goto360 space panorama» без именованных параметров.
 function parseGoto360Command(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("goto360".length).trim();
@@ -1036,11 +1036,14 @@ function parseGoto360Command(cleanLine, lineNumber, originalLine) {
   if (params.entry !== undefined && String(params.entry).trim() !== "") {
     entryKey = String(params.entry).trim();
   } else {
-    var from360Norm = normalizeGoto360From360Alias(params.from360);
-    if (from360Norm) {
-      entryKey = from360Norm;
-    } else if (params.from !== undefined && String(params.from).trim() !== "") {
-      entryKey = String(params.from).trim();
+    var fromSceneNorm = normalizeGoto360From360Alias(params.from);
+    if (fromSceneNorm) {
+      entryKey = fromSceneNorm;
+    } else {
+      var from360Norm = normalizeGoto360From360Alias(params.from360);
+      if (from360Norm) {
+        entryKey = from360Norm;
+      }
     }
   }
 
@@ -2634,7 +2637,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    // goto360 space.panorama [entry=ключ | from360=источник] text="..." button="..." result=varName
+    // goto360 space.panorama [entry=ключ | from=sceneId | from360=источник] text="..." button="..." result=varName
     if (cleanLine.startsWith('goto360 ')) {
       var goto360Action = parseGoto360Command(cleanLine, lineNumber, line);
       if (!goto360Action) return;

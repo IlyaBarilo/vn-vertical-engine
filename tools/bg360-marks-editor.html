@@ -659,6 +659,14 @@
       <div class="status" id="statusBox">Загрузите 360-изображение.</div>
 
       <h2>Точки входа (фокусы)</h2>
+      <div class="row">
+        <label for="scenarioEntryInput">Сценарный вход from=&lt;sceneId&gt;</label>
+        <input id="scenarioEntryInput" type="text" placeholder="scIntro01" />
+      </div>
+      <div class="row two">
+        <button id="writeScenarioEntryBtn" class="good" type="button">Записать из камеры</button>
+        <button id="deleteScenarioEntryBtn" class="danger" type="button">Удалить вход</button>
+      </div>
       <div id="focusEntriesList" class="focus-entries-panel">Обновляется после загрузки скриптов…</div>
 
       <h2>Список меток</h2>
@@ -851,6 +859,9 @@
     var exportBox = document.getElementById("exportBox");
     var clearPointsBtn = document.getElementById("clearPointsBtn");
     var placeMarkBtn = document.getElementById("placeMarkBtn");
+    var scenarioEntryInput = document.getElementById("scenarioEntryInput");
+    var writeScenarioEntryBtn = document.getElementById("writeScenarioEntryBtn");
+    var deleteScenarioEntryBtn = document.getElementById("deleteScenarioEntryBtn");
     var saveStory360LocalBtn = document.getElementById("saveStory360LocalBtn");
     var downloadStory360JsBtn = document.getElementById("downloadStory360JsBtn");
     var openBulkModalBtn = document.getElementById("openBulkModalBtn");
@@ -1506,6 +1517,27 @@
     }
 
     /**
+     * Отличает entry, созданный для входа из обычной сцены через goto360 from=<sceneId>, от entry перехода между панорамами.
+     */
+    function isStory360ScenarioEntry(entry) {
+      if (!entry || typeof entry !== "object") return false;
+      var sourceType = String(entry.sourceType || entry.kind || entry.source || "").trim().toLowerCase();
+      return sourceType === "scene" || sourceType === "scenario";
+    }
+
+    /**
+     * Создаёт нормализованную запись entries.* и сохраняет признак сценарного источника, если он уже был или нужен.
+     */
+    function buildNormalizedEntryFocusObject(pair, preserveScenarioSource) {
+      var out = {
+        focusX: Number(clamp(Number(pair.focusX), 0, 1).toFixed(4)),
+        focusY: Number(clamp(Number(pair.focusY), 0, 1).toFixed(4))
+      };
+      if (preserveScenarioSource) out.sourceType = "scene";
+      return out;
+    }
+
+    /**
      * Сравнивает две пары фокуса с допуском от округления в UI (4 знака).
      */
     function focusPairsNearlyEqual(a, b) {
@@ -1521,9 +1553,10 @@
       if (!pano || !pano.entries || typeof pano.entries !== "object") return out;
       Object.keys(pano.entries).forEach(function (key) {
         if (key === "default") return;
-        var pair = readEntryFocusPair(pano.entries[key]);
+        var entry = pano.entries[key];
+        var pair = readEntryFocusPair(entry);
         if (!pair) return;
-        out[key] = { focusX: pair.focusX, focusY: pair.focusY };
+        out[key] = buildNormalizedEntryFocusObject(pair, isStory360ScenarioEntry(entry));
       });
       return out;
     }
@@ -1810,6 +1843,13 @@
       }).filter(function (p) {
         return isFinite(p.x) && isFinite(p.y);
       }) : [];
+      var createdSceneEntryOnLoad = false;
+      points.forEach(function (p) {
+        if (ensureScenarioEntryForSceneTarget(p, false)) createdSceneEntryOnLoad = true;
+      });
+      if (createdSceneEntryOnLoad) {
+        persistEditorDraft();
+      }
 
       renderPointsList();
       updateExport();
@@ -2278,8 +2318,58 @@
         focusYInput.value = fyn.toFixed(4);
       } else {
         var pano = ensurePanoramaBucketForFocusWrite();
-        pano.entries[entryKey] = { focusX: fxn, focusY: fyn };
+        pano.entries[entryKey] = buildNormalizedEntryFocusObject(
+          { focusX: fxn, focusY: fyn },
+          isStory360ScenarioEntry(pano.entries[entryKey])
+        );
       }
+    }
+
+    /** Смещение автосозданного сценарного фокуса вверх от метки, чтобы прицел не скрывался под точкой выхода в сцену. */
+    var SCENARIO_ENTRY_AUTO_FOCUS_Y_OFFSET = -0.055;
+
+    /**
+     * Берёт стартовый фокус сценарного входа из позиции метки: в UV-режиме это сами x/y метки, иначе пересчёт в yaw/pitch focus.
+     */
+    function getInitialScenarioEntryFocusFromPoint(point) {
+      if (!point) return null;
+      var u = clamp(Number(point.x), 0, 1);
+      var v = clamp(Number(point.y) + SCENARIO_ENTRY_AUTO_FOCUS_Y_OFFSET, 0, 1);
+      if (!isFinite(u) || !isFinite(v)) return null;
+      if (currentPanoramaUsesEntryUvFocus()) {
+        return { focusX: u, focusY: v };
+      }
+      var converted = cameraFractionsFromPanoramaUv(u, v);
+      if (converted) return { focusX: converted.focusX, focusY: converted.focusY };
+      return { focusX: u, focusY: v };
+    }
+
+    /**
+     * Создаёт entries[sceneId] для метки выхода в обычную сцену, чтобы goto360 from=sceneId сразу имел отдельный фокус.
+     */
+    function ensureScenarioEntryForSceneTarget(point, showStatusMessage) {
+      if (!point || String(point.targetType || "").trim().toLowerCase() !== "scene") return false;
+      var sceneKey = String(point.targetScene || "").trim();
+      if (!sceneKey || sceneKey === "default" || /\s/.test(sceneKey)) return false;
+
+      var pano = ensurePanoramaBucketForFocusWrite();
+      if (!pano.entries || typeof pano.entries !== "object") pano.entries = {};
+      if (Object.prototype.hasOwnProperty.call(pano.entries, sceneKey)) {
+        if (isStory360ScenarioEntry(pano.entries[sceneKey])) return false;
+        if (showStatusMessage) {
+          setStatus("entries[" + sceneKey + "] уже занят фокусом перехода между панорамами; сценарный фокус не создан.", true);
+        }
+        return false;
+      }
+
+      var pair = getInitialScenarioEntryFocusFromPoint(point);
+      if (!pair) return false;
+      pano.entries[sceneKey] = buildNormalizedEntryFocusObject(pair, true);
+      editorEntryFocusWorld[sceneKey] = null;
+      if (showStatusMessage) {
+        setStatus("Создан сценарный фокус entries[" + sceneKey + "] для goto360 from=" + sceneKey + ".", false);
+      }
+      return true;
     }
 
     /**
@@ -2520,6 +2610,9 @@
         });
         targetType.addEventListener("change", function () {
           points[idx].targetType = targetType.value;
+          if (points[idx].targetType === "scene") {
+            ensureScenarioEntryForSceneTarget(points[idx], true);
+          }
           updateExport();
           renderPointsList();
         });
@@ -2545,6 +2638,22 @@
           targetScene.addEventListener("input", function () {
             points[idx].targetScene = targetScene.value;
             updateExport();
+          });
+          targetScene.addEventListener("change", function () {
+            points[idx].targetScene = targetScene.value;
+            if (ensureScenarioEntryForSceneTarget(points[idx], true)) {
+              persistEditorDraft();
+            }
+            updateExport();
+            renderPointsList();
+          });
+          targetScene.addEventListener("blur", function () {
+            points[idx].targetScene = targetScene.value;
+            if (ensureScenarioEntryForSceneTarget(points[idx], false)) {
+              persistEditorDraft();
+              updateExport();
+              renderPointsList();
+            }
           });
           targetWrap.appendChild(targetScene);
         }
@@ -2590,6 +2699,29 @@
     }
 
     /**
+     * Форматирует значение from= для подсказки экспорта: обычные sceneId оставляет без кавычек, сложные ключи экранирует.
+     */
+    function formatGoto360ParamValue(value) {
+      var raw = String(value || "").trim();
+      if (/^[A-Za-z0-9_-]+$/.test(raw)) return raw;
+      return '"' + raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+    }
+
+    /**
+     * Возвращает сценарные ключи текущей панорамы, которые можно использовать в goto360 from=<sceneId>.
+     */
+    function getCurrentScenarioEntryKeys() {
+      var merged = getMergedEntriesForOverlay();
+      return Object.keys(merged)
+        .filter(function (key) {
+          return key !== "default" && isStory360ScenarioEntry(merged[key]);
+        })
+        .sort(function (a, b) {
+          return String(a).localeCompare(String(b));
+        });
+    }
+
+    /**
      * Обновляет поле экспорта: bg c focus и команду bg360marks.
      */
     function updateExport() {
@@ -2605,6 +2737,9 @@
 
       var lines = [];
       lines.push("goto360 " + ids.spaceId + "." + ids.panoramaId + " entry=default");
+      getCurrentScenarioEntryKeys().forEach(function (sceneKey) {
+        lines.push("goto360 " + ids.spaceId + "." + ids.panoramaId + " from=" + formatGoto360ParamValue(sceneKey));
+      });
       lines.push("");
       lines.push("# legacy export:");
       var legacyFx = getLegacyBgFocusPairForExport();
@@ -2964,13 +3099,100 @@
     }
 
     /**
+     * Нормализует имя сцены для сценарного входа; этот ключ затем используется командой goto360 from=<sceneId>.
+     */
+    function readScenarioEntryKeyFromInput() {
+      var key = String(scenarioEntryInput && scenarioEntryInput.value || "").trim();
+      if (!key) {
+        setStatus("Укажите sceneId для сценарного входа from=.", true);
+        return "";
+      }
+      if (key === "default") {
+        setStatus("Ключ default уже занят базовым входом сценария; укажите id сцены.", true);
+        return "";
+      }
+      if (/\s/.test(key)) {
+        setStatus("sceneId для from= не должен содержать пробелы.", true);
+        return "";
+      }
+      return key;
+    }
+
+    /**
+     * Записывает фокус входа из обычной сцены: entries[sceneId] + sourceType=scene для команды goto360 from=sceneId.
+     */
+    function writeScenarioEntryFromCameraView() {
+      var key = readScenarioEntryKeyFromInput();
+      if (!key) return;
+      var pair = readFocusPairFromCurrentCameraForEntryWrite();
+      if (!pair) {
+        setStatus(
+          "Не удалось снять фокус для from=" + key + ": нет пересечения луча из центра экрана с панорамой.",
+          true
+        );
+        return;
+      }
+      var pano = ensurePanoramaBucketForFocusWrite();
+      var had = !!(pano.entries && readEntryFocusPair(pano.entries[key]));
+      pano.entries[key] = buildNormalizedEntryFocusObject(pair, true);
+      editorEntryFocusWorld[key] = null;
+      persistEditorDraft();
+      updateExport();
+      setStatus(
+        (had ? "Обновлён" : "Добавлен") +
+          " сценарный фокус entries[" +
+          key +
+          "]. В сценарии используйте: goto360 " +
+          getCurrentStory360Ids().spaceId +
+          "." +
+          getCurrentStory360Ids().panoramaId +
+          " from=" +
+          key,
+        false
+      );
+    }
+
+    /**
+     * Удаляет сценарный entry текущей панорамы, не трогая default и фокусы переходов между 360-панорамами.
+     */
+    function deleteScenarioEntryFromCurrentPanorama() {
+      var key = readScenarioEntryKeyFromInput();
+      if (!key) return;
+      var pano = ensurePanoramaBucketForFocusWrite();
+      if (!pano.entries || !Object.prototype.hasOwnProperty.call(pano.entries, key)) {
+        setStatus("Сценарный вход entries[" + key + "] не найден.", true);
+        return;
+      }
+      if (!isStory360ScenarioEntry(pano.entries[key])) {
+        setStatus("entries[" + key + "] не помечен как сценарный вход; удаление отменено.", true);
+        return;
+      }
+      delete pano.entries[key];
+      delete editorEntryFocusWorld[key];
+      persistEditorDraft();
+      updateExport();
+      setStatus("Удалён сценарный вход entries[" + key + "].", false);
+    }
+
+    /**
      * Старый второй блок фокусов удален из интерфейса как дублирующий.
      * Функция оставлена пустой для безопасной совместимости старых вызовов.
      */
     function renderIncomingLinksSidebar() {}
 
     /**
-     * Текстовый список фокусов в сайдбаре: default и по ключу для каждой ссылающейся панорамы.
+     * Возвращает человекочитаемую подпись entry: default, сценарный from=<sceneId> или переход с панорамы.
+     */
+    function getFocusEntryDisplayLabel(entryKey, entry, compact) {
+      if (entryKey === "default") return compact ? "Сценарий" : "default (сценарий)";
+      if (isStory360ScenarioEntry(entry)) {
+        return compact ? ("Сцена «" + entryKey + "»") : ("from=" + entryKey + " (сцена)");
+      }
+      return compact ? ("С «" + entryKey + "»") : entryKey;
+    }
+
+    /**
+     * Текстовый список фокусов в сайдбаре: default, сценарные from=<sceneId> и ключи панорам-источников.
      */
     function renderFocusEntriesSidebar() {
       var el = document.getElementById("focusEntriesList");
@@ -2985,14 +3207,15 @@
       var fpCount = {};
       var lines = [];
       keys.forEach(function (entryKey) {
-        var pair = readEntryFocusPair(merged[entryKey]);
+        var entry = merged[entryKey];
+        var pair = readEntryFocusPair(entry);
         if (!pair) {
           lines.push(entryKey + ": нет focusX/focusY");
           return;
         }
         var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
         fpCount[fp] = (fpCount[fp] || 0) + 1;
-        var label = entryKey === "default" ? "default (сценарий)" : entryKey;
+        var label = getFocusEntryDisplayLabel(entryKey, entry, false);
         lines.push(label + " → focusX=" + pair.focusX.toFixed(4) + " focusY=" + pair.focusY.toFixed(4));
       });
       var hasOverlap = Object.keys(fpCount).some(function (k) {
@@ -3049,7 +3272,7 @@
         if (!pos) return;
 
         var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
-        items.push({ entryKey: entryKey, pair: pair, pos: pos, fp: fp });
+        items.push({ entryKey: entryKey, entry: merged[entryKey], pair: pair, pos: pos, fp: fp });
       });
 
       // Группируем точки, которые стоят очень близко на экране: для них сдвигаем только подписи.
@@ -3094,7 +3317,7 @@
        */
       function formatFocusEntryCaptionText(entryKey, pair) {
         var fy = pair && isFinite(pair.focusY) ? Number(pair.focusY).toFixed(4) : "—";
-        var base = entryKey === "default" ? "Сценарий (default)" : ("С «" + entryKey + "»");
+        var base = getFocusEntryDisplayLabel(entryKey, merged[entryKey], true);
         return base + " · focusY=" + fy;
       }
 
@@ -4488,6 +4711,14 @@
         updateExport();
       });
 
+      writeScenarioEntryBtn.addEventListener("click", function () {
+        writeScenarioEntryFromCameraView();
+      });
+
+      deleteScenarioEntryBtn.addEventListener("click", function () {
+        deleteScenarioEntryFromCurrentPanorama();
+      });
+
       assetPathInput.addEventListener("input", function () {
         refreshGeneratedBgId();
         updateExport();
@@ -4675,6 +4906,7 @@
         var idsSet = getPanoramaIdSetForSpace(sid);
         Object.keys(pano.entries).forEach(function (key) {
           if (key === "default") return;
+          if (isStory360ScenarioEntry(pano.entries[key])) return;
           if (!idsSet[key]) {
             rows.push({
               spaceId: sid,
@@ -4730,6 +4962,7 @@
         var idsSet = getPanoramaIdSetForSpace(sid);
         Object.keys(pano.entries).forEach(function (key) {
           if (key === "default") return;
+          if (isStory360ScenarioEntry(pano.entries[key])) return;
           if (!idsSet[key]) return;
           if (isBulkEntryKeyUsedByMarks(sid, pid, key)) return;
           rows.push({
