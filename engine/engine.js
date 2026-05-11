@@ -13569,46 +13569,340 @@ function buildAdjacency(story) {
   return { sceneMap: sceneMap, adj: adj };
 }
 
+// Обходит команды goto360 в обычных сценах и вложенных ветках, чтобы граф показывал входы в 360-пространства.
+function forEachOutgoingStory360Target(actions, cb, currentLabel) {
+  if (!Array.isArray(actions)) return;
+  var label = currentLabel || "";
+
+  for (var i = 0; i < actions.length; i++) {
+    var act = actions[i];
+    if (!act || !act.type) continue;
+
+    if (act.type === "goto360" && act.spaceId && act.panoramaId) {
+      cb({
+        spaceId: String(act.spaceId || "").trim(),
+        panoramaId: String(act.panoramaId || "").trim(),
+        label: label
+      });
+      continue;
+    }
+
+    if (act.type === "if_block") {
+      if (Array.isArray(act.branches)) {
+        for (var b = 0; b < act.branches.length; b++) {
+          var br = act.branches[b];
+          if (br && Array.isArray(br.actions)) {
+            forEachOutgoingStory360Target(br.actions, cb, String(br.condition || ""));
+          }
+        }
+      }
+      if (Array.isArray(act.elseActions)) {
+        forEachOutgoingStory360Target(act.elseActions, cb, "else");
+      }
+      continue;
+    }
+
+    if (act.type === "choice" && Array.isArray(act.choices)) {
+      for (var c = 0; c < act.choices.length; c++) {
+        var ch = act.choices[c];
+        if (!ch || !Array.isArray(ch.actions)) continue;
+        forEachOutgoingStory360Target(ch.actions, cb, String(ch.text || ""));
+      }
+    }
+  }
+}
+
+// Превращает id 360-пространства или панорамы в безопасную часть Mermaid-id без потери читаемой привязки.
+function sanitizeStory360GraphIdPart(value) {
+  var safe = String(value || "").trim().replace(/[^A-Za-z0-9_]/g, "_");
+  return safe || "id";
+}
+
+// Создаёт стабильный id узла Mermaid для 360-панорамы, чтобы он не конфликтовал с id обычных сцен.
+function getStory360GraphNodeId(spaceId, panoramaId) {
+  return "story360_" + sanitizeStory360GraphIdPart(spaceId) + "__" + sanitizeStory360GraphIdPart(panoramaId);
+}
+
+// Возвращает человекочитаемую ссылку на 360-панораму в формате space.panorama.
+function getStory360GraphRef(spaceId, panoramaId) {
+  return String(spaceId || "").trim() + "." + String(panoramaId || "").trim();
+}
+
+// Собирает все 360-панорамы, их превью и связи из story360.js и входы goto360 из обычного сценария.
+function buildStory360GraphData(story) {
+  var result = {
+    nodes: [],
+    nodeMap: {},
+    edges: []
+  };
+  var root = getStory360Root();
+  if (!root || !root.spaces || typeof root.spaces !== "object") return result;
+
+  // Добавляет связь 360-графа и пропускает неполные переходы без источника или цели.
+  function addEdge(from, to, label, kind) {
+    if (!from || !to) return;
+    result.edges.push({
+      from: from,
+      to: to,
+      label: String(label || ""),
+      kind: kind || ""
+    });
+  }
+
+  var spaces = root.spaces || {};
+  var spaceIds = Object.keys(spaces).sort();
+  for (var si = 0; si < spaceIds.length; si++) {
+    var spaceId = spaceIds[si];
+    var space = spaces[spaceId];
+    var panoramas = getStory360Panoramas(space);
+    if (!panoramas) continue;
+
+    var panoramaIds = Object.keys(panoramas).sort();
+    for (var pi = 0; pi < panoramaIds.length; pi++) {
+      var panoramaId = panoramaIds[pi];
+      var panorama = panoramas[panoramaId];
+      if (!panorama || typeof panorama !== "object") continue;
+
+      var media = getStory360PanoramaMedia(spaceId, panoramaId, panorama);
+      var quality = normalizeBg360Quality(readStory360Field(panorama, ["quality"]), null);
+      if (!quality && media && media.assetInfo) quality = media.assetInfo.quality;
+      if (!quality) quality = "auto";
+
+      var node = {
+        id: getStory360GraphNodeId(spaceId, panoramaId),
+        ref: getStory360GraphRef(spaceId, panoramaId),
+        spaceId: String(spaceId || ""),
+        panoramaId: String(panoramaId || ""),
+        panorama: panorama,
+        bgId: media ? media.bgId : "",
+        file: media ? media.file : "",
+        quality: quality,
+        markCount: 0,
+        outgoing360Count: 0,
+        outgoingSceneCount: 0,
+        incomingCount: 0
+      };
+
+      result.nodes.push(node);
+      result.nodeMap[node.ref] = node;
+    }
+  }
+
+  var scenes = story && story.scenes ? story.scenes : [];
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id) continue;
+    forEachOutgoingStory360Target(scene.actions || [], function(edge) {
+      var targetRef = getStory360GraphRef(edge.spaceId, edge.panoramaId);
+      var targetNode = result.nodeMap[targetRef];
+      var targetId = targetNode ? targetNode.id : getStory360GraphNodeId(edge.spaceId, edge.panoramaId);
+      if (targetNode) targetNode.incomingCount++;
+      addEdge(scene.id, targetId, edge.label, "scene-to-360");
+    });
+  }
+
+  for (var n = 0; n < result.nodes.length; n++) {
+    var node = result.nodes[n];
+    var marks = normalizeStory360Marks(node.spaceId, node.panorama);
+    node.markCount = marks.length;
+
+    for (var mi = 0; mi < marks.length; mi++) {
+      var mark = marks[mi];
+      var target = mark && mark.target ? mark.target : null;
+      if (!target) continue;
+
+      var markLabel = mark.label || mark.id || "";
+      if (target.type === "360") {
+        var targetSpace = target.spaceId || node.spaceId;
+        var targetPanorama = target.panoramaId || "";
+        var target360Ref = getStory360GraphRef(targetSpace, targetPanorama);
+        var target360Node = result.nodeMap[target360Ref];
+        var target360Id = target360Node ? target360Node.id : getStory360GraphNodeId(targetSpace, targetPanorama);
+        if (target360Node) target360Node.incomingCount++;
+        node.outgoing360Count++;
+        addEdge(node.id, target360Id, markLabel, "360-to-360");
+        continue;
+      }
+
+      if (target.type === "scene" && target.sceneId) {
+        node.outgoingSceneCount++;
+        addEdge(node.id, target.sceneId, markLabel, "360-to-scene");
+      }
+    }
+  }
+
+  return result;
+}
+
+// Готовит связи 360-графа к отрисовке: взаимные переходы между 360-панорамами схлопывает в одну двустороннюю стрелку.
+function buildRenderableStory360Edges(edges) {
+  var sourceEdges = Array.isArray(edges) ? edges : [];
+  var grouped360 = {};
+  var renderable = [];
+
+  for (var i = 0; i < sourceEdges.length; i++) {
+    var edge = sourceEdges[i];
+    if (!edge || !edge.from || !edge.to || edge.kind !== "360-to-360") continue;
+
+    var a = String(edge.from);
+    var b = String(edge.to);
+    var pairKey = a < b ? (a + "\u0000" + b) : (b + "\u0000" + a);
+    if (!grouped360[pairKey]) {
+      grouped360[pairKey] = {
+        labels: [],
+        lowToHigh: false,
+        highToLow: false
+      };
+    }
+
+    var group = grouped360[pairKey];
+    var edgeLabel = String(edge.label || "").trim();
+    if (edgeLabel !== "") group.labels.push(edgeLabel);
+    if (a <= b) {
+      group.lowToHigh = true;
+    } else {
+      group.highToLow = true;
+    }
+  }
+
+  var renderedPairs = {};
+  for (var r = 0; r < sourceEdges.length; r++) {
+    var sourceEdge = sourceEdges[r];
+    if (!sourceEdge || !sourceEdge.from || !sourceEdge.to) continue;
+
+    if (sourceEdge.kind === "360-to-360") {
+      var from = String(sourceEdge.from);
+      var to = String(sourceEdge.to);
+      var sourcePairKey = from < to ? (from + "\u0000" + to) : (to + "\u0000" + from);
+      var sourceGroup = grouped360[sourcePairKey];
+      if (sourceGroup && sourceGroup.lowToHigh && sourceGroup.highToLow) {
+        if (renderedPairs[sourcePairKey]) continue;
+        renderedPairs[sourcePairKey] = true;
+        renderable.push({
+          from: sourceEdge.from,
+          to: sourceEdge.to,
+          label: sourceGroup.labels.join(", "),
+          bidirectional: true
+        });
+        continue;
+      }
+    }
+
+    renderable.push({
+      from: sourceEdge.from,
+      to: sourceEdge.to,
+      label: String(sourceEdge.label || ""),
+      bidirectional: false
+    });
+  }
+
+  return renderable;
+}
+
+// Считает достижимость по объединённому графу: обычные сцены, входы goto360 и переходы между 360-панорамами.
+function buildCombinedStoryGraphReachability(story, story360GraphData) {
+  var scenes = story && story.scenes ? story.scenes : [];
+  var startId = (story && story.meta && story.meta.start) ? story.meta.start : null;
+  var allNodes = {};
+  var sceneMap = {};
+  var adj = {};
+
+  // Регистрирует узел объединённого графа и заранее готовит список исходящих связей.
+  function addNode(id) {
+    if (!id) return;
+    allNodes[id] = true;
+    if (!adj[id]) adj[id] = [];
+  }
+
+  // Добавляет направленный переход в объединённый граф, создавая технические узлы при необходимости.
+  function addEdge(from, to) {
+    if (!from || !to) return;
+    addNode(from);
+    addNode(to);
+    adj[from].push(to);
+  }
+
+  for (var i = 0; i < scenes.length; i++) {
+    if (scenes[i] && scenes[i].id) {
+      sceneMap[scenes[i].id] = true;
+      addNode(scenes[i].id);
+    }
+  }
+
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s];
+    if (!scene || !scene.id) continue;
+
+    forEachOutgoingTarget(scene.actions || [], function(edge) {
+      addEdge(scene.id, edge.to);
+    });
+  }
+
+  var story360 = story360GraphData || buildStory360GraphData(story);
+  var story360Nodes = story360.nodes || [];
+  for (var n = 0; n < story360Nodes.length; n++) {
+    addNode(story360Nodes[n].id);
+  }
+
+  var story360Edges = story360.edges || [];
+  for (var e = 0; e < story360Edges.length; e++) {
+    addEdge(story360Edges[e].from, story360Edges[e].to);
+  }
+
+  var visited = {};
+  if (startId && allNodes[startId]) {
+    var stack = [startId];
+    visited[startId] = true;
+    while (stack.length) {
+      var current = stack.pop();
+      var edges = adj[current] || [];
+      for (var ai = 0; ai < edges.length; ai++) {
+        var to = edges[ai];
+        if (!visited[to] && allNodes[to]) {
+          visited[to] = true;
+          stack.push(to);
+        }
+      }
+    }
+  }
+
+  var reachableScenes = [];
+  var unreachableScenes = [];
+  for (var id in sceneMap) {
+    if (!Object.prototype.hasOwnProperty.call(sceneMap, id)) continue;
+    if (visited[id]) reachableScenes.push(id);
+    else unreachableScenes.push(id);
+  }
+
+  var unreachableStory360 = {};
+  for (var pn = 0; pn < story360Nodes.length; pn++) {
+    var panoNode = story360Nodes[pn];
+    if (!visited[panoNode.id]) unreachableStory360[panoNode.id] = true;
+  }
+
+  reachableScenes.sort();
+  unreachableScenes.sort();
+
+  return {
+    visited: visited,
+    reachableScenes: reachableScenes,
+    unreachableScenes: unreachableScenes,
+    unreachableStory360: unreachableStory360
+  };
+}
+
 function findUnreachableScenes(story) {
   var startId = (story.meta && story.meta.start) ? story.meta.start : null;
   var built = buildAdjacency(story);
   var sceneMap = built.sceneMap;
-  var adj = built.adj;
 
   if (!startId || !sceneMap[startId]) {
     // Если стартовая сцена не задана/не найдена — считаем всё “сомнительным”
     return { unreachable: Object.keys(sceneMap).sort(), reachable: [] };
   }
 
-  var visited = {};
-  var stack = [startId];
-  visited[startId] = true;
-
-  while (stack.length) {
-    var v = stack.pop();
-    var edges = adj[v] || [];
-    for (var i = 0; i < edges.length; i++) {
-      var to = edges[i].to;
-      if (!visited[to] && sceneMap[to]) {
-        visited[to] = true;
-        stack.push(to);
-      }
-    }
-  }
-
-  var reachable = [];
-  var unreachable = [];
-
-  for (var id in sceneMap) {
-    if (!Object.prototype.hasOwnProperty.call(sceneMap, id)) continue;
-    if (visited[id]) reachable.push(id);
-    else unreachable.push(id);
-  }
-
-  reachable.sort();
-  unreachable.sort();
-
-  return { unreachable: unreachable, reachable: reachable };
+  var combinedReach = buildCombinedStoryGraphReachability(story, buildStory360GraphData(story));
+  return { unreachable: combinedReach.unreachableScenes, reachable: combinedReach.reachableScenes };
 }
 
 
@@ -13930,6 +14224,24 @@ function buildMermaidGraph(story, unreachableList, options) {
     nodesById[nodes[ni].id] = nodes[ni];
   }
 
+  var story360GraphData = scope === "resources" ? { nodes: [], edges: [] } : buildStory360GraphData(story);
+  var combinedReachability = scope === "resources"
+    ? null
+    : buildCombinedStoryGraphReachability(story, story360GraphData);
+
+  if (story360GraphData.edges && story360GraphData.edges.length) {
+    for (var se = 0; se < story360GraphData.edges.length; se++) {
+      var story360EdgeForStats = story360GraphData.edges[se];
+      if (story360EdgeForStats.kind === "scene-to-360") {
+        outgoingEdges[story360EdgeForStats.from] = (outgoingEdges[story360EdgeForStats.from] || 0) + 1;
+        outgoingEdgesNonStart[story360EdgeForStats.from] = (outgoingEdgesNonStart[story360EdgeForStats.from] || 0) + 1;
+      } else if (story360EdgeForStats.kind === "360-to-scene") {
+        if (!incomingEdges[story360EdgeForStats.to]) incomingEdges[story360EdgeForStats.to] = 0;
+        incomingEdges[story360EdgeForStats.to]++;
+      }
+    }
+  }
+
 
 
   // Формируем Mermaid граф
@@ -13941,6 +14253,7 @@ function buildMermaidGraph(story, unreachableList, options) {
   // Стили для узлов. Основные настройки производятся в CSS
   mermaid += "%% Defining styles for scenes\n";
   mermaid += "classDef scene fill:#fff3e0,stroke:#e6d6bc,color:#000,stroke-width:1px,r:12px;\n";
+  mermaid += "classDef panorama360 fill:#e7f6f2,stroke:#4f9a8b,color:#000,stroke-width:1px,r:12px;\n";
   mermaid += "classDef start fill:#e1f5e1,stroke:#b6deb6,color:#000,stroke-width:2px,r:15px;\n";
   mermaid += "classDef unreachable fill:#ffebee,stroke:#ff0000,color:#000,stroke-dasharray:5 5,stroke-width:2px,r:12px;\n";
   mermaid += "classDef final fill:#f3e5f5,stroke:#e0bfe2,color:#000,stroke-width:2px,r:14px;\n\n";
@@ -14103,7 +14416,49 @@ function buildMermaidGraph(story, unreachableList, options) {
     mermaid += '    ' + node.id + '["' + label + '"]\n';
     mermaid += '    class ' + node.id + ' scene;\n';  // Добавляем класс scene
   }
-      
+
+  if (scope !== "resources" && story360GraphData.nodes && story360GraphData.nodes.length) {
+    mermaid += "\n    %% Story360 panorama nodes\n";
+    for (var panoIndex = 0; panoIndex < story360GraphData.nodes.length; panoIndex++) {
+      var panoNode = story360GraphData.nodes[panoIndex];
+      var panoSafeTitle = escapeHtml(panoNode.ref || panoNode.id);
+      // Название 360-панорамы ставим первой строкой, чтобы узел читался так же, как обычная сцена.
+      var panoLabel = "\uD83C\uDF10 " + escapeHtml(panoNode.ref) + "<br/>";
+
+      if (!compact && panoNode.file) {
+        var panoImgClass = "imgcount1";
+        panoLabel += "<div class='scene-bg-images-container " + panoImgClass + " story360-graph-preview'>";
+
+        if (isBg360PackScriptPath(panoNode.file)) {
+          panoLabel += "<span class='scene-bg-frame " + panoImgClass + "'>" +
+            "<img " +
+            "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + panoImgClass + "' " +
+            "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
+            "data-index='0' " +
+            "data-bg360-src='" + escapeHtml(panoNode.file || "") + "' " +
+            "data-bg360-quality='" + escapeHtml(panoNode.quality || "auto") + "' " +
+            "title='" + panoSafeTitle + "' " +
+            "alt='' />" +
+            "</span>";
+        } else if (!isVideoAssetPath(panoNode.file)) {
+          panoLabel += "<span class='scene-bg-frame " + panoImgClass + "'>" +
+            "<img src='" + getGraphImageSrc(panoNode.file) + "' " +
+            "class='scene-bg-thumbnail " + panoImgClass + "' " +
+            "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
+            "data-index='0' " +
+            "title='" + panoSafeTitle + "' " +
+            "alt='' />" +
+            "</span>";
+        }
+
+        panoLabel += "</div>";
+      }
+
+      mermaid += '    ' + panoNode.id + '["' + panoLabel + '"]\n';
+      mermaid += '    class ' + panoNode.id + ' panorama360;\n';
+    }
+  }
+
   mermaid += "\n";
     
   // Применяем классы
@@ -14138,6 +14493,15 @@ function buildMermaidGraph(story, unreachableList, options) {
       mermaid += '    class ' + node.id + ' ' + classes.join(',') + ';\n';
     }
   }
+
+  if (scope !== "resources" && story360GraphData.nodes && story360GraphData.nodes.length) {
+    for (var panoClassIndex = 0; panoClassIndex < story360GraphData.nodes.length; panoClassIndex++) {
+      var panoClassNode = story360GraphData.nodes[panoClassIndex];
+      if (combinedReachability && combinedReachability.unreachableStory360[panoClassNode.id]) {
+        mermaid += '    class ' + panoClassNode.id + ' unreachable;\n';
+      }
+    }
+  }
   
   mermaid += "\n%% Edges\n";
     
@@ -14157,6 +14521,25 @@ function buildMermaidGraph(story, unreachableList, options) {
       mermaid += '    ' + ed.from + ' -->|"' + label + '"| ' + ed.to + ';\n';
     } else {
       mermaid += '    ' + ed.from + ' --> ' + ed.to + ';\n';
+    }
+  }
+
+  if (scope !== "resources" && story360GraphData.edges && story360GraphData.edges.length) {
+    mermaid += "\n%% Story360 Edges\n";
+    var renderableStory360Edges = buildRenderableStory360Edges(story360GraphData.edges);
+    for (var story360EdgeIndex = 0; story360EdgeIndex < renderableStory360Edges.length; story360EdgeIndex++) {
+      var story360Edge = renderableStory360Edges[story360EdgeIndex];
+      var story360Label = String(story360Edge.label || "");
+      if (story360Label.length > 40) story360Label = story360Label.substring(0, 40) + "...";
+      var story360Arrow = story360Edge.bidirectional ? " <--> " : " --> ";
+      var story360ArrowWithLabel = story360Edge.bidirectional ? " <-->" : " -->";
+
+      if (story360Label.trim() !== "") {
+        var safeStory360Label = story360Label.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        mermaid += '    ' + story360Edge.from + story360ArrowWithLabel + '|"' + safeStory360Label + '"| ' + story360Edge.to + ';\n';
+      } else {
+        mermaid += '    ' + story360Edge.from + story360Arrow + story360Edge.to + ';\n';
+      }
     }
   }
     

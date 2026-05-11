@@ -390,6 +390,10 @@ body {
   --graph-node-stroke: #666;
   --graph-node-stroke-width: 1px;
   --graph-node-radius: 12px;  /* ДОБАВЛЕНО: скругление углов узлов */
+  /* Цвет отдельного типа узла для 360-панорам, чтобы они читались отдельно от обычных сцен. */
+  --graph-node-360-fill: #e7f6f2;
+  --graph-node-360-stroke: #4f9a8b;
+  --graph-node-360-stroke-width: 1px;
   
   /* Настройки для стартовых узлов */
   --graph-node-start-fill: #e1f5e1;
@@ -1605,6 +1609,13 @@ body {
   stroke-width: var(--graph-node-stroke-width) !important;
   rx: var(--graph-node-radius) !important;  /* ДОБАВЛЕНО: скругление по горизонтали */
   ry: var(--graph-node-radius) !important;  /* ДОБАВЛЕНО: скругление по вертикали */
+}
+
+/* 360-панорамы на графе отделены от обычных сцен цветом, но используют те же миниатюры и hover. */
+.graphContainer .mermaid .node.panorama360 rect {
+  fill: var(--graph-node-360-fill) !important;
+  stroke: var(--graph-node-360-stroke) !important;
+  stroke-width: var(--graph-node-360-stroke-width) !important;
 }
 
 /* Стартовые узлы */
