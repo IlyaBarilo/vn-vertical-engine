@@ -170,7 +170,7 @@ body {
   --bg360-scene-mark-label-padding-x-base: 9px;
   --bg360-scene-mark-label-radius-base: 6px;
   --bg360-scene-mark-label-font-size-base: 18px;
-  --bg360-scene-mark-fill: rgba(24, 96, 48, 0.75);
+  --bg360-scene-mark-fill: rgba(50, 50, 50, 0.5); /* rgba(24, 96, 48, 0.75); */
   --bg360-scene-mark-border: rgba(210, 214, 220, 0.95);
   --bg360-scene-mark-dot-fill: rgba(255, 255, 255, 0.88);
   --bg360-scene-mark-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(210, 214, 220, 0.45);
@@ -233,7 +233,7 @@ body {
   /* Половина ширины основания наконечника у метки, мир. ед. */
   --bg360-nav-head-half-w: 60;
   /* Прозрачность серой ленты/наконечника к меткам, 0..1. */
-  --bg360-nav-line-opacity: 0.55;
+  --bg360-nav-line-opacity: 0.25;
   /* Сдвиг капы надира по Y, мир. ед. */
   --bg360-nav-cap-y-lift: 5;
   /* Добавка к радиусу меша капы относительно 499, мир. ед. */
@@ -274,9 +274,9 @@ body {
 
   /* SVG-компас 360: прозрачность общая для всей группы, чтобы круг и стрелки не темнели на пересечениях. */
   --bg360-compass-enabled: 1;
-  --bg360-compass-size-base: 118px;
-  --bg360-compass-offset-left-base: 18px;
-  --bg360-compass-offset-bottom-base: 18px;
+  --bg360-compass-size-base: 200px; /* 118px; */
+  --bg360-compass-offset-left-base: -10px;
+  --bg360-compass-offset-bottom-base: -10px;
   --bg360-compass-size: calc(var(--bg360-compass-size-base) * var(--visualScale));
   --bg360-compass-offset-left: calc(var(--bg360-compass-offset-left-base) * var(--visualScale));
   --bg360-compass-offset-bottom: calc(var(--bg360-compass-offset-bottom-base) * var(--visualScale));

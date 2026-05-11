@@ -7240,7 +7240,7 @@ function readBg360NavConfig() {
     ribbonHalfW: Math.max(1, getBg360CssNumber("--bg360-nav-ribbon-half-w", 14)),
     headDepth: Math.max(2, getBg360CssNumber("--bg360-nav-head-depth", 28)),
     headHalfW: Math.max(1, getBg360CssNumber("--bg360-nav-head-half-w", 10)),
-    lineOpacity: clamp(getBg360CssNumber("--bg360-nav-line-opacity", 0.55), 0.15, 1),
+    lineOpacity: clamp(getBg360CssNumber("--bg360-nav-line-opacity", 0.55), 0.05, 1),
     nadirArrowEnabled: getBg360CssNumber("--bg360-nav-nadir-arrow-enabled", 1) !== 0,
     /* Цвет стрелки на круге: rgb/rgba/#hex; альфа из rgba дополнительно умножается на nadirArrowOpacity. */
     nadirArrowPaint: nadirArrowPaint,
