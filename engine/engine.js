@@ -5930,11 +5930,13 @@ function applyBg360Marks(action) {
     var targetSceneRaw = m && m.targetScene !== undefined && m.targetScene !== null
       ? String(m.targetScene).trim()
       : "";
+    var labelRaw = readStory360Field(m, ["label", "title", "name", "text"]);
     return {
       id: String(m.id || ""),
       x: Number(m.x),
       y: Number(m.y),
-      kind: String(m.kind || "walk"),
+      kind: normalizeBg360MarkKind(m.kind || m.type || "walk"),
+      label: String(labelRaw || "").trim(),
       // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
       targetScene: targetSceneRaw || null,
       target: m && m.target ? m.target : null
@@ -6305,6 +6307,14 @@ function normalizeStory360Target(mark, defaultSpaceId) {
       var targetScene = String(readStory360Field(rawTarget, ["scene", "sceneId", "id", "targetScene"]) || "").trim();
       return targetScene ? { type: "scene", sceneId: targetScene } : null;
     }
+    if (rawType === "360") {
+      var implicitTargetScene = String(readStory360Field(rawTarget, ["sceneId", "targetScene", "storyScene"]) || "").trim();
+      var hasExplicitPanorama = readStory360Field(rawTarget, ["panorama", "panoramaId"]) !== undefined;
+      if (implicitTargetScene && !hasExplicitPanorama) {
+        // Старый/ручной формат без type: { sceneId: "..." } тоже является выходом в обычную сцену.
+        return { type: "scene", sceneId: implicitTargetScene };
+      }
+    }
     var targetPanorama = String(readStory360Field(rawTarget, ["panorama", "panoramaId", "scene", "id"]) || "").trim();
     if (!targetPanorama) return null;
     return {
@@ -6338,6 +6348,13 @@ function normalizeStory360Target(mark, defaultSpaceId) {
   return panoramaId ? { type: "360", spaceId: spaceId, panoramaId: panoramaId, entryId: entryFromStr } : null;
 }
 
+// Приводит тип 360-метки к поддержанным вариантам: walk рисует стрелку, text/view остаются экранными метками без WebGL-стрелок.
+function normalizeBg360MarkKind(kind) {
+  var value = String(kind || "walk").toLowerCase();
+  if (value === "text" || value === "view") return value;
+  return "walk";
+}
+
 // Нормализует метки выбранной панорамы, отбрасывая неполные координаты.
 function normalizeStory360Marks(spaceId, panorama) {
   var sourceMarks = panorama && (panorama.marks || panorama.hotspots || panorama.points);
@@ -6348,13 +6365,13 @@ function normalizeStory360Marks(spaceId, panorama) {
     var x = Number(readStory360Field(mark, ["x", "u"]));
     var y = Number(readStory360Field(mark, ["y", "v"]));
     if (!isFinite(x) || x < 0 || x > 1 || !isFinite(y) || y < 0 || y > 1) continue;
-    var kind = String(readStory360Field(mark, ["type", "kind"]) || "walk").toLowerCase();
-    if (kind !== "text") kind = "walk";
+    var kind = normalizeBg360MarkKind(readStory360Field(mark, ["type", "kind"]) || "walk");
     result.push({
       id: String(mark.id || ("mark" + (result.length + 1))),
       x: x,
       y: y,
       kind: kind,
+      label: String(readStory360Field(mark, ["label", "title", "name", "text"]) || "").trim(),
       target: normalizeStory360Target(mark, spaceId)
     });
   }
@@ -6576,10 +6593,37 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
   return true;
 }
 
-// Проверяет, что метка участвует в навигации: это не текстовая подпись и у неё есть корректные UV.
+// Проверяет, что метка выводит из 360-пространства в обычную сцену, а значит должна быть DOM-точкой без WebGL-стрелки.
+function bg360IsSceneTargetMark(mark) {
+  if (!mark || typeof mark !== "object") return false;
+  if (mark.target && String(mark.target.type || "").toLowerCase() === "scene") return true;
+  return mark.targetScene !== undefined && mark.targetScene !== null && String(mark.targetScene || "").trim() !== "";
+}
+
+// Возвращает подпись для scene-метки: явный label/name/title важнее служебного id сцены, как в редакторе 360-меток.
+function bg360GetSceneTargetLabel(mark) {
+  if (!mark || typeof mark !== "object") return "";
+  var explicitLabel = String(mark.label || "").trim();
+  if (explicitLabel) return explicitLabel;
+  var markId = String(mark.id || "").trim();
+  if (markId) return markId;
+  var target = mark.target && String(mark.target.type || "").toLowerCase() === "scene" ? mark.target : null;
+  var sceneId = target ? String(target.sceneId || target.scene || "").trim() : String(mark.targetScene || "").trim();
+  if (sceneId) return "Сценарий: " + sceneId;
+  return "";
+}
+
+// Проверяет, что метка является обзорной view-точкой: она видима как DOM-метка и отдельный пунктир в компасе, но без стрелки на полу.
+function bg360IsViewMark(mark) {
+  return !!(mark && typeof mark === "object" && String(mark.kind || "").toLowerCase() === "view");
+}
+
+// Проверяет, что метка участвует в навигации WebGL-стрелками: scene-выходы намеренно исключены и рисуются отдельной DOM-меткой.
 function bg360IsDirectionalMark(mark) {
   if (!mark || typeof mark !== "object") return false;
-  if (String(mark.kind || "").toLowerCase() === "text") return false;
+  var kind = String(mark.kind || "").toLowerCase();
+  if (kind === "text" || kind === "view") return false;
+  if (bg360IsSceneTargetMark(mark)) return false;
   var x = Number(mark.x);
   var y = Number(mark.y);
   return isFinite(x) && isFinite(y);
@@ -6590,6 +6634,16 @@ function bg360MarksHasAnyDirectional(marks) {
   if (!Array.isArray(marks)) return false;
   for (var i = 0; i < marks.length; i++) {
     if (bg360IsDirectionalMark(marks[i])) return true;
+  }
+  return false;
+}
+
+// Проверяет, есть ли направления, которые должны попасть в SVG-компас: 360-стрелки, view-точки или выходы в обычные сцены.
+function bg360MarksHasAnyCompassMark(marks) {
+  if (!Array.isArray(marks)) return false;
+  for (var i = 0; i < marks.length; i++) {
+    var mark = marks[i];
+    if (bg360IsDirectionalMark(mark) || bg360IsViewMark(mark) || bg360IsSceneTargetMark(mark)) return true;
   }
   return false;
 }
@@ -6611,6 +6665,7 @@ function renderBg360Marks() {
 
   // Если есть навигационные метки, отключаем пунктир и DOM-кружки направлений: переходы идут по WebGL-стрелкам.
   var useWebglNavArrows = bg360MarksHasAnyDirectional(bg360MarksRuntime.marks);
+  var hasCompassMarks = bg360MarksHasAnyCompassMark(bg360MarksRuntime.marks);
   var domMarksAdded = 0;
 
   var linesLayer = null;
@@ -6622,10 +6677,12 @@ function renderBg360Marks() {
     elBg360Marks.appendChild(linesLayer);
   }
 
+  if (hasCompassMarks) {
+    appendBg360Compass();
+  }
+
   // Треугольные подсказки по краю экрана, если WebGL-стрелка к метке выходит за кадр.
   if (useWebglNavArrows) {
-    appendBg360Compass();
-
     var edgeHintsSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     edgeHintsSvg.classList.add("bg360-nav-edge-hints");
     edgeHintsSvg.setAttribute("aria-hidden", "true");
@@ -6634,9 +6691,12 @@ function renderBg360Marks() {
   }
 
   bg360MarksRuntime.marks.forEach(function (mark, index) {
+    var isSceneTarget = bg360IsSceneTargetMark(mark);
+    var isViewMark = bg360IsViewMark(mark);
     if (bg360MarksRuntime.lines && !useWebglNavArrows) {
       var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.classList.add("bg360-mark-line");
+      if (isSceneTarget || isViewMark) line.classList.add("hidden");
       line.dataset.markId = mark.id;
       line.dataset.markLineIndex = String(index);
       linesLayer.appendChild(line);
@@ -6645,10 +6705,12 @@ function renderBg360Marks() {
     if (useWebglNavArrows && bg360IsDirectionalMark(mark)) {
       return;
     }
+    if (isViewMark) return;
 
     var btn = document.createElement("div");
     btn.className = "bg360-mark";
     if (mark.kind === "text") btn.classList.add("kind-text");
+    if (isSceneTarget) btn.classList.add("kind-scene-target");
     if (bg360MarksRuntime.locked) btn.classList.add("is-locked");
 
     // Сохраняем исходные UV-координаты метки (0..1), чтобы в каждом кадре
@@ -6661,6 +6723,17 @@ function renderBg360Marks() {
     btn.dataset.markLineIndex = String(index);
     btn.dataset.markU = String(mark.x);
     btn.dataset.markV = String(mark.y);
+
+    if (isSceneTarget) {
+      var sceneLabelText = bg360GetSceneTargetLabel(mark);
+      if (sceneLabelText) {
+        var sceneLabel = document.createElement("div");
+        sceneLabel.className = "bg360-scene-mark-label";
+        // Подпись хранится внутри кликабельной метки: клик по тексту запускает тот же переход, что и клик по окружности.
+        sceneLabel.textContent = sceneLabelText;
+        btn.appendChild(sceneLabel);
+      }
+    }
 
     // Клик по метке разрешён только в интерактивном режиме walk360.
     btn.addEventListener("click", function (e) {
@@ -7067,6 +7140,12 @@ function updateBg360MarkLine(markNode, screenX, screenY, visible) {
   var line = linesLayer && lineIndex !== "" ? linesLayer.children[Number(lineIndex)] : null;
   if (!line || !line.classList || !line.classList.contains("bg360-mark-line")) return;
 
+  if (markNode && markNode.classList && markNode.classList.contains("kind-scene-target")) {
+    // Scene-выходы показываются окружностью с подписью, без пунктирной линии/стрелки к точке.
+    line.classList.add("hidden");
+    return;
+  }
+
   if (!visible) {
     line.classList.add("hidden");
     return;
@@ -7363,6 +7442,15 @@ function readBg360CompassConfig() {
     arrowRibbonHalfW: Math.max(0.5, getBg360CssNumber("--bg360-compass-arrow-ribbon-half-w", 3.2)),
     arrowHeadDepth: Math.max(1, getBg360CssNumber("--bg360-compass-arrow-head-depth", 10)),
     arrowHeadHalfW: Math.max(0.5, getBg360CssNumber("--bg360-compass-arrow-head-half-w", 7.5)),
+    scenePaint: parseBg360CssColor("--bg360-compass-scene-color", 0xdcdcdc, 1),
+    sceneLineWidth: Math.max(0.25, getBg360CssNumber("--bg360-compass-scene-line-width", 1.35)),
+    sceneCircleRadius: Math.max(0.5, getBg360CssNumber("--bg360-compass-scene-circle-radius", 3.8)),
+    sceneCircleStrokeWidth: Math.max(0, getBg360CssNumber("--bg360-compass-scene-circle-stroke-width", 1.35)),
+    sceneCircleFillPaint: parseBg360CssColor("--bg360-compass-scene-circle-fill", 0xdcdcdc, 1),
+    sceneCircleStrokePaint: parseBg360CssColor("--bg360-compass-scene-circle-stroke", 0xdcdcdc, 1),
+    viewLineWidth: Math.max(0.25, getBg360CssNumber("--bg360-compass-view-line-width", 1.15)),
+    viewLineDash: Math.max(0, getBg360CssNumber("--bg360-compass-view-line-dash", 2.6)),
+    viewLineGap: Math.max(0, getBg360CssNumber("--bg360-compass-view-line-gap", 2.3)),
     padding: Math.max(0, getBg360CssNumber("--bg360-compass-padding", 4))
   };
 }
@@ -7399,7 +7487,9 @@ function buildBg360CompassArrowData(compassCfg, navCfg) {
   var rawMax = -Infinity;
   for (var i = 0; i < marks.length; i++) {
     var mark = marks[i];
-    if (!bg360IsDirectionalMark(mark)) continue;
+    var isSceneTarget = bg360IsSceneTargetMark(mark);
+    var isViewMark = bg360IsViewMark(mark);
+    if (!bg360IsDirectionalMark(mark) && !isSceneTarget && !isViewMark) continue;
 
     var wMark = bg360UvToWorldPointOnSphere(mark.x, mark.y, 500);
     if (!wMark) continue;
@@ -7422,6 +7512,7 @@ function buildBg360CompassArrowData(compassCfg, navCfg) {
     var angleDeg = window.THREE.MathUtils.radToDeg(Math.atan2(dx, -dz));
     arrows.push({
       id: mark.id,
+      kind: isSceneTarget ? "sceneTarget" : (isViewMark ? "view" : "arrow"),
       angleDeg: angleDeg,
       rawLen: rawLen
     });
@@ -7450,7 +7541,10 @@ function appendBg360Compass() {
   if (!arrows.length) return;
 
   var ns = "http://www.w3.org/2000/svg";
-  var maxReach = Math.max(cfg.arrowMaxLength, cfg.circleRadius) + Math.max(cfg.arrowHeadHalfW, cfg.arrowRibbonHalfW) + cfg.circleStrokeWidth + cfg.padding;
+  var maxReach = Math.max(cfg.arrowMaxLength, cfg.circleRadius) +
+    Math.max(cfg.arrowHeadHalfW, cfg.arrowRibbonHalfW, cfg.sceneCircleRadius, cfg.sceneLineWidth, cfg.viewLineWidth) +
+    Math.max(cfg.circleStrokeWidth, cfg.sceneCircleStrokeWidth) +
+    cfg.padding;
   var half = Math.ceil(Math.max(1, maxReach));
   var svg = document.createElementNS(ns, "svg");
   svg.classList.add("bg360-compass");
@@ -7466,6 +7560,9 @@ function appendBg360Compass() {
   var circleFill = bg360PaintToSvgColorOpacity(cfg.circleFillPaint);
   var circleStroke = bg360PaintToSvgColorOpacity(cfg.circleStrokePaint);
   var arrowPaint = bg360PaintToSvgColorOpacity(cfg.arrowPaint);
+  var scenePaint = bg360PaintToSvgColorOpacity(cfg.scenePaint);
+  var sceneCircleFill = bg360PaintToSvgColorOpacity(cfg.sceneCircleFillPaint);
+  var sceneCircleStroke = bg360PaintToSvgColorOpacity(cfg.sceneCircleStrokePaint);
 
   var circle = document.createElementNS(ns, "circle");
   circle.classList.add("bg360-compass-shape");
@@ -7478,6 +7575,64 @@ function appendBg360Compass() {
   group.appendChild(circle);
 
   for (var i = 0; i < arrows.length; i++) {
+    if (arrows[i].kind === "view") {
+      var viewGroup = document.createElementNS(ns, "g");
+      viewGroup.setAttribute("transform", "rotate(" + arrows[i].angleDeg.toFixed(3) + ")");
+      viewGroup.dataset.markId = arrows[i].id != null ? String(arrows[i].id) : "";
+
+      var viewLine = document.createElementNS(ns, "line");
+      viewLine.classList.add("bg360-compass-shape");
+      viewLine.setAttribute("x1", "0");
+      viewLine.setAttribute("y1", String(-cfg.circleRadius));
+      viewLine.setAttribute("x2", "0");
+      viewLine.setAttribute("y2", String(-arrows[i].drawLen));
+      viewLine.setAttribute("stroke", arrowPaint.rgb);
+      viewLine.setAttribute("stroke-opacity", String(arrowPaint.opacity));
+      viewLine.setAttribute("stroke-width", String(cfg.viewLineWidth));
+      viewLine.setAttribute("stroke-linecap", "round");
+      if (cfg.viewLineDash > 0 || cfg.viewLineGap > 0) {
+        viewLine.setAttribute("stroke-dasharray", cfg.viewLineDash + " " + cfg.viewLineGap);
+      }
+      viewGroup.appendChild(viewLine);
+
+      group.appendChild(viewGroup);
+      continue;
+    }
+
+    if (arrows[i].kind === "sceneTarget") {
+      var sceneGroup = document.createElementNS(ns, "g");
+      sceneGroup.setAttribute("transform", "rotate(" + arrows[i].angleDeg.toFixed(3) + ")");
+      sceneGroup.dataset.markId = arrows[i].id != null ? String(arrows[i].id) : "";
+
+      var lineEnd = Math.max(cfg.circleRadius + cfg.sceneCircleRadius, arrows[i].drawLen - cfg.sceneCircleRadius);
+      var sceneLine = document.createElementNS(ns, "line");
+      sceneLine.classList.add("bg360-compass-shape");
+      sceneLine.setAttribute("x1", "0");
+      sceneLine.setAttribute("y1", String(-cfg.circleRadius));
+      sceneLine.setAttribute("x2", "0");
+      sceneLine.setAttribute("y2", String(-lineEnd));
+      sceneLine.setAttribute("stroke", scenePaint.rgb);
+      sceneLine.setAttribute("stroke-opacity", String(scenePaint.opacity));
+      sceneLine.setAttribute("stroke-width", String(cfg.sceneLineWidth));
+      sceneLine.setAttribute("stroke-linecap", "round");
+      sceneGroup.appendChild(sceneLine);
+
+      var sceneCircle = document.createElementNS(ns, "circle");
+      sceneCircle.classList.add("bg360-compass-shape");
+      sceneCircle.setAttribute("cx", "0");
+      sceneCircle.setAttribute("cy", String(-arrows[i].drawLen));
+      sceneCircle.setAttribute("r", String(cfg.sceneCircleRadius));
+      sceneCircle.setAttribute("fill", sceneCircleFill.rgb);
+      sceneCircle.setAttribute("fill-opacity", String(sceneCircleFill.opacity));
+      sceneCircle.setAttribute("stroke", sceneCircleStroke.rgb);
+      sceneCircle.setAttribute("stroke-opacity", String(sceneCircleStroke.opacity));
+      sceneCircle.setAttribute("stroke-width", String(cfg.sceneCircleStrokeWidth));
+      sceneGroup.appendChild(sceneCircle);
+
+      group.appendChild(sceneGroup);
+      continue;
+    }
+
     var path = document.createElementNS(ns, "path");
     path.classList.add("bg360-compass-shape");
     path.setAttribute("d", buildBg360CompassArrowPath(arrows[i].drawLen, cfg));

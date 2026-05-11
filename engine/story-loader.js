@@ -893,7 +893,7 @@ function parseActionParamsFromText(rawText) {
 }
 
 // Разбирает команду bg360marks: bgId, набор меток в скобках и опции вроде lines.
-// Формат метки: (id, x, y, type[, targetScene]), где targetScene может отсутствовать или быть пустым.
+// Формат метки: (id, x, y, type[, targetScene]), где view — экранная обзорная метка без стрелки перехода.
 // Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk, scene_hall) (mark2, 0.50, 0.20, walk, ) lines
 function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("bg360marks".length).trim();
@@ -937,8 +937,8 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
       addParseError(lineNumber, originalLine, 'bg360marks: x/y должны быть числами 0..1', true);
       return null;
     }
-    if (kind !== "walk" && kind !== "walk2" && kind !== "walk3" && kind !== "text") {
-      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk, walk2, walk3 или text', true);
+    if (kind !== "walk" && kind !== "walk2" && kind !== "walk3" && kind !== "text" && kind !== "view") {
+      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk, walk2, walk3, text или view', true);
       return null;
     }
     // Варианты walk2/walk3 считаем алиасами обычного walk, чтобы рантайм обрабатывал их идентично.

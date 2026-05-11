@@ -161,6 +161,23 @@ body {
   --bg360-mark-line-shadow-blur-base: 7px;
   --bg360-origin-cover-size-base: 600px;
   --bg360-origin-cover-stroke-width-base: 2px;
+  --bg360-scene-mark-size-base: 40px;
+  --bg360-scene-mark-dot-inset-base: 7px;
+  --bg360-scene-mark-border-width-base: 2.5px;
+  --bg360-scene-mark-label-offset-x-base: 19px;
+  --bg360-scene-mark-label-max-width-base: 260px;
+  --bg360-scene-mark-label-padding-y-base: 6px;
+  --bg360-scene-mark-label-padding-x-base: 9px;
+  --bg360-scene-mark-label-radius-base: 6px;
+  --bg360-scene-mark-label-font-size-base: 18px;
+  --bg360-scene-mark-fill: rgba(24, 96, 48, 0.75);
+  --bg360-scene-mark-border: rgba(210, 214, 220, 0.95);
+  --bg360-scene-mark-dot-fill: rgba(255, 255, 255, 0.88);
+  --bg360-scene-mark-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(210, 214, 220, 0.45);
+  --bg360-scene-mark-label-background: rgba(12, 16, 28, 0.82);
+  --bg360-scene-mark-label-border: rgba(255, 255, 255, 0.35);
+  --bg360-scene-mark-label-color: #fff;
+  --bg360-scene-mark-label-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   /* Заливка WebGL-диска «под ногами»: цвет и прозрачность в rgba / rgb(a). Читает syncBg360OriginCoverMesh() через parseBg360CssColor("--bg360-origin-cover-fill", …). */
   --bg360-origin-cover-fill: rgba(150,150,150,1);
   /* Ободок вокруг диска: цвет и непрозрачность кольца (при opacity 0 кольцо не создаётся). */
@@ -179,6 +196,15 @@ body {
   --bg360-mark-line-shadow-blur: calc(var(--bg360-mark-line-shadow-blur-base) * var(--visualScale));
   --bg360-origin-cover-size: calc(var(--bg360-origin-cover-size-base) * var(--visualScale));
   --bg360-origin-cover-stroke-width: calc(var(--bg360-origin-cover-stroke-width-base) * var(--visualScale));
+  --bg360-scene-mark-size: calc(var(--bg360-scene-mark-size-base) * var(--visualScale));
+  --bg360-scene-mark-dot-inset: calc(var(--bg360-scene-mark-dot-inset-base) * var(--visualScale));
+  --bg360-scene-mark-border-width: calc(var(--bg360-scene-mark-border-width-base) * var(--visualScale));
+  --bg360-scene-mark-label-offset-x: calc(var(--bg360-scene-mark-label-offset-x-base) * var(--visualScale));
+  --bg360-scene-mark-label-max-width: calc(var(--bg360-scene-mark-label-max-width-base) * var(--visualScale));
+  --bg360-scene-mark-label-padding-y: calc(var(--bg360-scene-mark-label-padding-y-base) * var(--visualScale));
+  --bg360-scene-mark-label-padding-x: calc(var(--bg360-scene-mark-label-padding-x-base) * var(--visualScale));
+  --bg360-scene-mark-label-radius: calc(var(--bg360-scene-mark-label-radius-base) * var(--visualScale));
+  --bg360-scene-mark-label-font-size: calc(var(--bg360-scene-mark-label-font-size-base) * var(--visualScale));
 
   /* WebGL-стрелки навигации 360 (как в bg360-marks-editor): клик по полосе вокруг проекции хорды. Читает движок в readBg360NavConfig(). */
   /* Якорь начала стрелок на панораме, доли UV 0..1 (как focusX/focusY). */
@@ -265,6 +291,15 @@ body {
   --bg360-compass-arrow-ribbon-half-w: 3.2;
   --bg360-compass-arrow-head-depth: 10;
   --bg360-compass-arrow-head-half-w: 7.5;
+  --bg360-compass-scene-color: rgb(220, 220, 220);
+  --bg360-compass-scene-line-width: 1.35;
+  --bg360-compass-scene-circle-radius: 3.8;
+  --bg360-compass-scene-circle-stroke-width: 1.35;
+  --bg360-compass-scene-circle-fill: rgb(220, 220, 220);
+  --bg360-compass-scene-circle-stroke: rgb(220, 220, 220);
+  --bg360-compass-view-line-width: 2.15;
+  --bg360-compass-view-line-dash: 4.6;
+  --bg360-compass-view-line-gap: 4.3;
   --bg360-compass-padding: 4;
 
   /* =========================================================
@@ -533,6 +568,44 @@ body {
 
 .bg360-mark.kind-text {
   border-style: dashed;
+}
+
+.bg360-mark.kind-scene-target {
+  width: var(--bg360-scene-mark-size);
+  height: var(--bg360-scene-mark-size);
+  border-width: var(--bg360-scene-mark-border-width);
+  border-color: var(--bg360-scene-mark-border);
+  background: var(--bg360-scene-mark-fill);
+  box-shadow: var(--bg360-scene-mark-shadow);
+}
+
+.bg360-mark.kind-scene-target::after {
+  inset: var(--bg360-scene-mark-dot-inset);
+  background: var(--bg360-scene-mark-dot-fill);
+  opacity: 1;
+}
+
+.bg360-scene-mark-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(var(--bg360-scene-mark-label-offset-x), -50%);
+  width: max-content;
+  max-width: min(var(--bg360-scene-mark-label-max-width), 42vw);
+  padding: var(--bg360-scene-mark-label-padding-y) var(--bg360-scene-mark-label-padding-x);
+  border: var(--ui-border-width) solid var(--bg360-scene-mark-label-border);
+  border-radius: var(--bg360-scene-mark-label-radius);
+  background: var(--bg360-scene-mark-label-background);
+  color: var(--bg360-scene-mark-label-color);
+  font-size: var(--bg360-scene-mark-label-font-size);
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  box-shadow: var(--bg360-scene-mark-label-shadow);
+  pointer-events: auto;
 }
 
 .bg360-mark.is-locked {

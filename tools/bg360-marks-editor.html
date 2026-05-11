@@ -200,6 +200,14 @@
       background: rgba(30, 30, 30, 0.65);
     }
 
+    .mark-dot.view {
+      border-color: rgba(246, 198, 76, 0.98);
+      background: rgba(150, 104, 18, 0.82);
+      color: #241704;
+      text-shadow: 0 1px 0 rgba(255, 232, 148, 0.45);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(246, 198, 76, 0.4);
+    }
+
     /* Точки входа (entries): превью направления фокуса; положение правится перетаскиванием прицела/подписи. */
     .focus-entry-reticle {
       position: absolute;
@@ -644,6 +652,7 @@
         <select id="newPointTypeInput">
           <option value="walk">walk</option>
           <option value="text">text</option>
+          <option value="view">view</option>
         </select>
       </div>
 
@@ -1040,6 +1049,8 @@
     var editorEntryFocusWorld = {};
 
     var points = [];
+    /** Единый список типов меток, чтобы форма создания и карточки существующих меток не расходились. */
+    var pointTypeOptions = ["walk", "text", "view"];
     var pointCounter = 1;
     var tempProjectVec = null;
     var tempCameraDir = null;
@@ -1059,6 +1070,30 @@
     var suppressEditorAutosave = false;
     // Ссылка на панораму, которую сейчас редактируем в story360Data (нужна для корректного переименования по полям ID).
     var currentEditingPanoramaRef = { spaceId: "main360", panoramaId: "start" };
+
+    /**
+     * Приводит тип метки к поддержанному значению; неизвестные старые значения безопасно считаем walk.
+     */
+    function normalizePointType(value) {
+      var type = String(value || "walk").trim().toLowerCase();
+      return pointTypeOptions.indexOf(type) >= 0 ? type : "walk";
+    }
+
+    /**
+     * Заполняет select типами меток из единого списка, чтобы view был доступен и при создании, и при правке.
+     */
+    function fillPointTypeSelect(selectEl, selectedType) {
+      if (!selectEl) return;
+      var normalizedType = normalizePointType(selectedType);
+      while (selectEl.firstChild) selectEl.removeChild(selectEl.firstChild);
+      pointTypeOptions.forEach(function (type) {
+        var option = document.createElement("option");
+        option.value = type;
+        option.textContent = type;
+        option.selected = type === normalizedType;
+        selectEl.appendChild(option);
+      });
+    }
 
     /**
      * Создаёт базовую 360-сцену и переиспользует её при смене изображений.
@@ -1504,7 +1539,7 @@
           id: String(p.id || ""),
           x: Number(p.x),
           y: Number(p.y),
-          type: String(p.type || "walk")
+          type: normalizePointType(p.type)
         };
         var target = buildPointTarget(p);
         if (target) mark.target = target;
@@ -1767,7 +1802,7 @@
           id: String((m && m.id) || ("mark" + (index + 1))),
           x: Number(m && m.x),
           y: Number(m && m.y),
-          type: String((m && (m.type || m.kind)) || "walk"),
+          type: normalizePointType((m && (m.type || m.kind)) || "walk"),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
@@ -2251,11 +2286,12 @@
      * Добавляет новую метку в список по UV-координатам.
      * Если передан worldPoint (Vector3 из raycast), оверлей рисуется через project() —
      * иначе возможна ошибка по вертикали из-за несовпадения ручной UV→sphere с Three.js.
+     * Тип новой метки сохраняется выбранным в форме: walk, text или view.
      */
     function addPointAtUv(uv, worldPoint) {
       if (!uv) return;
 
-      var type = String(newPointTypeInput.value || "walk").trim().toLowerCase();
+      var type = normalizePointType(newPointTypeInput.value || "walk");
       var id = getNextMarkId();
 
       var finalId = id;
@@ -2269,7 +2305,7 @@
         id: finalId,
         x: Number(uv.u.toFixed(4)),
         y: Number(uv.v.toFixed(4)),
-        type: (type === "text" ? "text" : "walk"),
+        type: type,
         targetType: "none",
         targetPanorama: "",
         targetScene: ""
@@ -2431,6 +2467,9 @@
       }
 
       points.forEach(function (p, idx) {
+        var currentPointType = normalizePointType(p.type);
+        p.type = currentPointType;
+
         var item = document.createElement("div");
         item.className = "point-item";
 
@@ -2448,7 +2487,7 @@
 
         var meta = document.createElement("div");
         meta.className = "point-meta";
-        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + p.type;
+        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType;
         info.appendChild(nameInput);
         info.appendChild(meta);
 
@@ -2456,6 +2495,16 @@
         targetWrap.style.display = "grid";
         targetWrap.style.gap = "6px";
         targetWrap.style.marginTop = "6px";
+
+        var pointTypeSelect = document.createElement("select");
+        pointTypeSelect.title = "Тип метки";
+        fillPointTypeSelect(pointTypeSelect, currentPointType);
+        pointTypeSelect.addEventListener("change", function () {
+          points[idx].type = normalizePointType(pointTypeSelect.value);
+          updateExport();
+          renderPointsList();
+        });
+        targetWrap.appendChild(pointTypeSelect);
 
         var targetType = document.createElement("select");
         [
@@ -2551,7 +2600,7 @@
       var bgId = refreshGeneratedBgId();
       var marksPart = points.map(function (p) {
         var sceneTarget = (p.targetType === "scene" && p.targetScene) ? ", " + p.targetScene : "";
-        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + p.type + sceneTarget + ")";
+        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + normalizePointType(p.type) + sceneTarget + ")";
       }).join(" ");
 
       var lines = [];
@@ -3940,9 +3989,10 @@
         points.forEach(function (p, index) {
           var pos = getPointOverlayPos(p, width, height, rect);
           if (!pos) return;
+          var pointType = normalizePointType(p.type);
 
           var el = document.createElement("div");
-          el.className = "mark-dot" + (p.type === "text" ? " text" : "");
+          el.className = "mark-dot" + (pointType === "text" ? " text" : "") + (pointType === "view" ? " view" : "");
           if (String(p.targetType || "").trim().toLowerCase() === "scene") el.classList.add("scene-target");
           el.style.left = pos.x + "px";
           el.style.top = pos.y + "px";
@@ -5172,6 +5222,7 @@
      */
     function bootstrap() {
       initViewer();
+      fillPointTypeSelect(newPointTypeInput, newPointTypeInput ? newPointTypeInput.value : "walk");
       bindEvents();
       var restored = restoreEditorDraft();
       if (!restored) {
