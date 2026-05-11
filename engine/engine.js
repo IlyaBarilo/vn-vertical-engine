@@ -2952,6 +2952,14 @@ function isStoryAutosaveEnabled() {
   return STORY.meta.autosave !== false;
 }
 
+// Возвращает строгий режим проверки автосейва: engine.loadsafe=false разрешает dev-загрузку после изменения текста истории.
+function isStoryLoadsafeEnabled() {
+  if (!STORY || !STORY.meta) return true;
+  var engineMeta = STORY.meta.engine;
+  if (!engineMeta || typeof engineMeta !== "object") return true;
+  return engineMeta.loadsafe !== false;
+}
+
 /**
  * Снимает «мёртвую» комбинацию nextLocked без waitingNext посередине сцены (после гонок при F5),
  * иначе onNext не вызывается и кажется, что диалог не реагирует.
@@ -3397,9 +3405,17 @@ function validateAutosavePayload(data) {
     autosaveDebugLog("restore:reject_legacy_bgScroll_focus", {});
     return false;
   }
-  var fp = computeStoryTextFingerprint();
-  if (String(data.hashHex || "") !== fp.hashHex) return false;
-  if (Number(data.textLength) !== fp.textLength) return false;
+  if (isStoryLoadsafeEnabled()) {
+    var fp = computeStoryTextFingerprint();
+    if (String(data.hashHex || "") !== fp.hashHex) return false;
+    if (Number(data.textLength) !== fp.textLength) return false;
+  } else {
+    // В dev-режиме engine.loadsafe=false пропускает только проверку fingerprint, но не структуру слота.
+    autosaveDebugLog("restore:loadsafe_disabled_skip_fingerprint", {
+      slotHashHex: data.hashHex || "",
+      slotTextLength: data.textLength || 0
+    });
+  }
   if (!data.sceneId) return false;
   var scene = state.sceneMap[data.sceneId];
   if (!scene || !Array.isArray(scene.actions)) return false;

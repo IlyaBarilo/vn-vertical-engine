@@ -114,6 +114,14 @@
     }
   };
 
+  // Системные параметры движка задаются в [meta] как engine.<ключ>, чтобы не смешивать их со сценарными переменными.
+  const ENGINE_META_CONFIG = {
+    loadsafe: {
+      target: 'loadsafe',
+      type: 'bool'
+    }
+  };
+
 
 
   // Проверяем наличие текста и называем файл, который реально подключил загрузчик.
@@ -179,7 +187,11 @@
         // Режим новеллы: debug/release. Если не задан, используем debug.
         mode: 'debug',
         blurBackground: true,
-        bg360Quality: 'normal'
+        bg360Quality: 'normal',
+        // engine.loadsafe по умолчанию включён: автосейв принимается только для той же версии текста истории.
+        engine: {
+          loadsafe: true
+        }
       },
       assets: {
         backgrounds: {},
@@ -506,6 +518,11 @@
   // Регулярное выражение для допустимых имён сценарных переменных.
   var SAFE_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+  // Проверяет системные имена, которые нельзя использовать как пользовательские переменные.
+  function isReservedStoryVariableName(name) {
+    return String(name || '').trim() === 'engine';
+  }
+
   // Проверяет, что имя переменной безопасно и не совпадает с потенциально опасными служебными ключами.
   function validateSafeVariableName(name, lineNumber, line, contextLabel) {
     var key = String(name || '').trim();
@@ -525,6 +542,10 @@
     }
     if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
       addParseError(lineNumber, line, 'Unsafe ' + context + ' name "' + key + '" is not allowed.', true);
+      return false;
+    }
+    if (isReservedStoryVariableName(key)) {
+      addParseError(lineNumber, line, 'The ' + context + ' name "' + key + '" is reserved for system engine.* parameters.', true);
       return false;
     }
     return true;
@@ -1023,6 +1044,12 @@ function parseGoto360Command(cleanLine, lineNumber, originalLine) {
     }
   }
 
+  // result пишет выбранную 360-метку в vars, поэтому имя проверяем как пользовательскую переменную.
+  var goto360ResultVar = params.result !== undefined ? String(params.result).trim() : "";
+  if (goto360ResultVar && !validateSafeVariableName(goto360ResultVar, lineNumber, originalLine, 'goto360 result variable')) {
+    return null;
+  }
+
   return {
     type: "goto360",
     spaceId: spaceId,
@@ -1030,7 +1057,7 @@ function parseGoto360Command(cleanLine, lineNumber, originalLine) {
     entry: entryKey,
     text: params.text !== undefined ? String(params.text) : "",
     button: params.button !== undefined ? String(params.button) : "",
-    result: params.result !== undefined ? String(params.result) : ""
+    result: goto360ResultVar
   };
 }
 
@@ -1329,6 +1356,8 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     addParseError(lineNumber, line, 'The result variable in game command cannot be empty', true);
     return;
   }
+  // Результат игры сохраняется в vars и не может занимать системное имя engine.
+  if (!validateSafeVariableName(resultVar, lineNumber, line, 'game result variable')) return;
 
   delete params.result;
 
@@ -1538,6 +1567,43 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     var value = line.slice(separatorIndex + 1).trim();
 
     if (!key) return;
+
+    // Пространство engine.* зарезервировано под параметры движка, а не под пользовательские meta-поля.
+    if (key === 'engine') {
+      addParseError(lineNumber, originalLine, 'The "engine" meta key is reserved. Use engine.<parameter>, for example engine.loadsafe=false.', true);
+      return;
+    }
+
+    if (key.indexOf('engine.') === 0) {
+      var engineMetaKey = key.slice('engine.'.length).trim();
+      var engineConfig = ENGINE_META_CONFIG[engineMetaKey];
+      if (!engineMetaKey || !engineConfig) {
+        addParseError(lineNumber, originalLine, 'Unknown engine meta parameter "' + key + '".', false);
+        return;
+      }
+
+      var parsedEngineValue;
+      if (engineConfig.type === 'bool') {
+        var normalizedEngineBool = String(value || '').trim().toLowerCase();
+        if (normalizedEngineBool === 'true' || normalizedEngineBool === '1') {
+          parsedEngineValue = true;
+        } else if (normalizedEngineBool === 'false' || normalizedEngineBool === '0') {
+          parsedEngineValue = false;
+        } else {
+          addParseError(lineNumber, originalLine, 'The "' + key + '" value must be true or false.', false);
+          return;
+        }
+      } else {
+        parsedEngineValue = parseMetaValueByType(value, engineConfig.type);
+      }
+      if (parsedEngineValue !== null) {
+        if (!story.meta.engine || typeof story.meta.engine !== 'object') {
+          story.meta.engine = {};
+        }
+        story.meta.engine[engineConfig.target] = parsedEngineValue;
+      }
+      return;
+    }
 
     // Базовые служебные параметры истории
     if (key === 'title') {
@@ -2555,12 +2621,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
 
       var params360 = parseActionParamsFromText(rest360);
+      // walk360 result тоже пишет в vars, так что системный namespace engine остаётся закрытым.
+      var walk360ResultVar = params360.result !== undefined ? String(params360.result).trim() : "";
+      if (walk360ResultVar && !validateSafeVariableName(walk360ResultVar, lineNumber, line, 'walk360 result variable')) return;
       actions.push({
         type: 'walk360',
         bgId: bgId360,
         text: params360.text !== undefined ? String(params360.text) : "",
         button: params360.button !== undefined ? String(params360.button) : "",
-        result: params360.result !== undefined ? String(params360.result) : ""
+        result: walk360ResultVar
       });
       return;
     }
