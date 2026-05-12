@@ -250,7 +250,9 @@
     .focus-entry-caption {
       position: absolute;
       transform: translate(14px, -50%);
-      max-width: min(220px, 40vw);
+      /* Ширина с запасом под кнопку Y→½: больше прежних 220px/40vw, чтобы длинные подписи чаще умещались в одну строку. */
+      --focus-caption-y-btn-slot: 56px;
+      max-width: min(calc(380px + var(--focus-caption-y-btn-slot)), calc(58vw + var(--focus-caption-y-btn-slot)));
       padding: 4px 7px;
       border-radius: 5px;
       border: 1px solid rgba(82, 166, 214, 0.66);
@@ -261,8 +263,6 @@
       pointer-events: auto;
       cursor: grab;
       z-index: 9;
-      white-space: normal;
-      overflow-wrap: anywhere;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
       touch-action: none;
       user-select: none;
@@ -309,6 +309,38 @@
     }
     .focus-entry-caption.is-nav-source-highlight.is-active-drag {
       z-index: 13;
+    }
+
+    /* Ряд подписи и кнопки: при нехватке ширины текст переносится на следующие строки (без многоточия и без лимита числа строк). */
+    .focus-entry-caption-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 5px;
+      width: 100%;
+      min-width: 0;
+    }
+    .focus-entry-caption-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .focus-entry-y-mid-btn {
+      flex: 0 0 auto;
+      align-self: flex-start;
+      margin-top: 1px;
+      width: auto;
+      min-width: 0;
+      padding: 1px 5px;
+      margin: 0;
+      font-size: 10px;
+      line-height: 1.2;
+      border-radius: 4px;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     h1, h2 {
@@ -2325,6 +2357,25 @@
       }
     }
 
+    /**
+     * Выставляет focusY=0.5 для точки входа, не меняя focusX: сбрасывает кэш мира на сфере, чтобы прицел пересчитался.
+     * Включает entryFocusAsPanoramaUv у текущей панорамы при наличии узла — как после перетаскивания фокуса на оверлее.
+     */
+    function alignFocusEntryToMiddleY(entryKey, focusX) {
+      var fx = clamp(Number(focusX), 0, 1);
+      if (!isFinite(fx)) return;
+      writeFocusEntryLive(entryKey, fx, 0.5);
+      editorEntryFocusWorld[entryKey] = null;
+      var ids = getCurrentStory360Ids();
+      var space = ensureSpace(ids.spaceId);
+      var panoAlign = space.panoramas && space.panoramas[ids.panoramaId];
+      if (panoAlign) panoAlign.entryFocusAsPanoramaUv = true;
+      renderOverlayMarks();
+      renderFocusEntriesSidebar();
+      if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+      updateExport();
+    }
+
     /** Смещение автосозданного сценарного фокуса вверх от метки, чтобы прицел не скрывался под точкой выхода в сцену. */
     var SCENARIO_ENTRY_AUTO_FOCUS_Y_OFFSET = -0.055;
 
@@ -3351,8 +3402,25 @@
         cap.style.transform = isNavSourceHighlight
           ? "translate(44px, -50%) scale(2)"
           : "translate(14px, -50%)";
-        cap.textContent = formatFocusEntryCaptionText(it.entryKey, it.pair);
-        cap.setAttribute("data-focus-entry", String(it.entryKey));
+        var capRow = document.createElement("span");
+        capRow.className = "focus-entry-caption-row";
+        var capText = document.createElement("span");
+        capText.className = "focus-entry-caption-text";
+        capText.textContent = formatFocusEntryCaptionText(it.entryKey, it.pair);
+        capText.setAttribute("data-focus-entry", String(it.entryKey));
+        var yMidBtn = document.createElement("button");
+        yMidBtn.type = "button";
+        yMidBtn.className = "focus-entry-y-mid-btn";
+        yMidBtn.textContent = "Y→½";
+        yMidBtn.title = "Выровнять focusY до 0.5 (прицел сместится по вертикали)";
+        yMidBtn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          alignFocusEntryToMiddleY(it.entryKey, it.pair.focusX);
+        });
+        capRow.appendChild(capText);
+        capRow.appendChild(yMidBtn);
+        cap.appendChild(capRow);
         if (idxNear > 0) {
           cap.title = reticle.title;
         }
@@ -4483,6 +4551,8 @@
       var target = e.target;
       if (!target || typeof target.closest !== "function") return;
 
+      if (target.closest(".focus-entry-y-mid-btn")) return;
+
       var markEl = target.closest(".mark-dot");
       if (markEl && markEl.dataset.markIndex !== undefined && markEl.dataset.markIndex !== "") {
         var idx = Number(markEl.dataset.markIndex);
@@ -4586,7 +4656,8 @@
         if (
           t.closest(".mark-dot") ||
           t.closest(".mark-action") ||
-          t.closest("[data-focus-entry]")
+          t.closest("[data-focus-entry]") ||
+          t.closest(".focus-entry-caption")
         ) {
           viewerWrap.style.cursor = "";
           return;
