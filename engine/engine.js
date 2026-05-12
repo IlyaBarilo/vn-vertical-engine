@@ -1477,16 +1477,17 @@ var BG_360_FOV_MIN = 35;
 var BG_360_FOV_MAX = 90;
 /**
  * Длительность «наезда» (сужение FOV) при goto360 между 360-панорамами, миллисекунды.
- * Загрузка новой сцены идёт параллельно; если текстура пришла раньше — анимация прерывается.
+ * Загрузка новой сцены идёт параллельно; если текстура пришла раньше — WebGL-зум кадра останавливается,
+ * но визуальный наезд продолжается на снимке hold (CSS scale) до конца этого интервала.
  * Альтернатива без правки этого файла: перед игрой в консоли window.VN_BG360_GOTO_ZOOM_MS = 2000;
  */
-var BG_360_GOTO_ZOOM_MS = 500;
+var BG_360_GOTO_ZOOM_MS = 4000;
 /**
  * Растворение снимка старой сцены (hold) поверх уже отрисованной новой на canvas, мс. 0 — сразу убрать hold.
  * Новая сцена остаётся непрозрачной; hold сверху уходит opacity 1→0 (полупрозрачный WebGL-canvas даёт чёрную подмес).
  * Переопределение: window.VN_BG360_NEW_SCENE_REVEAL_MS = 600;
  */
-var BG_360_NEW_SCENE_REVEAL_MS = 250;
+var BG_360_NEW_SCENE_REVEAL_MS = 500;
 
 var backgroundScroll = {
   enabled: false,
@@ -1570,6 +1571,15 @@ var bg360Runtime = {
   pendingGoto360MarksPayload: null,
   /** requestAnimationFrame зума FOV при параллельной загрузке (отменяется при готовности текстуры). */
   goto360ZoomRafId: 0,
+  /** Продолжение того же наезда на img-hold после подмены сферы (CSS scale, тот же easing по времени). */
+  goto360HoldZoomRafId: 0,
+  /** Начало таймлайна easeOutCubic для параллельного зума (мс, performance.now). */
+  goto360ParallelZoomAnimT0: 0,
+  /** Длительность полного параллельного зума, мс (копия resolveBg360GotoZoomDurationMs на старте). */
+  goto360ParallelZoomAnimDurationMs: 0,
+  /** FOV на старте и в конце параллельного зума goto360 (для продолжения на hold). */
+  goto360ParallelZoomStartFov: 0,
+  goto360ParallelZoomTargetFov: 0,
   /** Таймер завершения растворения hold поверх новой сцены; сбрасывается в resetBg360CanvasRevealStyles / disable. */
   revealFallbackTimer: null
 };
@@ -6395,6 +6405,7 @@ function normalizeStory360Marks(spaceId, panorama) {
 }
 
 // Итоговая длительность наезда: константа BG_360_GOTO_ZOOM_MS или переопределение window.VN_BG360_GOTO_ZOOM_MS (число ≥ 0).
+// Тот же интервал задаёт продолжение наезда на hold после готовности текстуры (до конца easing).
 function resolveBg360GotoZoomDurationMs() {
   if (typeof window !== "undefined" && typeof window.VN_BG360_GOTO_ZOOM_MS === "number" && isFinite(window.VN_BG360_GOTO_ZOOM_MS)) {
     return Math.max(0, window.VN_BG360_GOTO_ZOOM_MS);
@@ -6438,7 +6449,10 @@ function resetBg360CanvasRevealStyles() {
   if (elBg360Hold) {
     elBg360Hold.style.zIndex = "3";
     elBg360Hold.style.pointerEvents = "none";
+    elBg360Hold.style.transform = "";
+    elBg360Hold.style.transformOrigin = "";
   }
+  cancelGoto360HoldZoomRaf();
 }
 
 // Прерывает параллельный зум FOV при goto360 (когда текстура новой панорамы уже загружена).
@@ -6449,7 +6463,66 @@ function cancelGoto360ParallelZoomRaf() {
   }
 }
 
-// Параллельно с загрузкой следующей панорамы: только сужает FOV (yaw/pitch без изменений). Завершается сам по длительности или прерывается cancelGoto360ParallelZoomRaf при swap.
+// Прерывает донастройку масштаба hold после swap (см. runGoto360HoldZoomContinueAfterParallelSwap).
+function cancelGoto360HoldZoomRaf() {
+  if (bg360Runtime.goto360HoldZoomRafId) {
+    cancelAnimationFrame(bg360Runtime.goto360HoldZoomRafId);
+    bg360Runtime.goto360HoldZoomRafId = 0;
+  }
+}
+
+// После загрузки текстуры: продолжает тот же наезд на снимке hold через scale, пока не догонит глобальный t=1 по easeOutCubic.
+// holdEl — слой снимка; loadSeqExpected — поколение загрузки: при смене фона анимация гасится.
+function runGoto360HoldZoomContinueAfterParallelSwap(holdEl, loadSeqExpected) {
+  if (!holdEl) return;
+  cancelGoto360HoldZoomRaf();
+  var durationMs = bg360Runtime.goto360ParallelZoomAnimDurationMs;
+  var animT0 = bg360Runtime.goto360ParallelZoomAnimT0;
+  var startFov = bg360Runtime.goto360ParallelZoomStartFov;
+  var targetFov = bg360Runtime.goto360ParallelZoomTargetFov;
+  if (!(durationMs > 0) || !isFinite(startFov) || !isFinite(targetFov) || targetFov >= startFov - 0.01) return;
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  var now0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+  var tLoad = Math.min(1, Math.max(0, (now0 - animT0) / durationMs));
+  if (tLoad >= 1) return;
+
+  var fovAtLoad = startFov + (targetFov - startFov) * easeOutCubic(tLoad);
+  if (!(fovAtLoad > 0.01)) return;
+
+  holdEl.style.transformOrigin = "50% 50%";
+
+  function tick(now) {
+    if (!bg360Runtime.goto360HoldZoomRafId) return;
+    if (loadSeqExpected !== bg360Runtime.loadSeq) {
+      cancelGoto360HoldZoomRaf();
+      return;
+    }
+    if (holdEl.classList.contains("hidden")) {
+      cancelGoto360HoldZoomRaf();
+      return;
+    }
+    var t = Math.min(1, Math.max(0, (now - animT0) / durationMs));
+    var e = easeOutCubic(t);
+    var fovInterp = startFov + (targetFov - startFov) * e;
+    if (fovInterp < BG_360_FOV_MIN) fovInterp = BG_360_FOV_MIN;
+    var scale = fovAtLoad / fovInterp;
+    holdEl.style.transform = "scale(" + scale + ")";
+
+    if (t < 1) {
+      bg360Runtime.goto360HoldZoomRafId = requestAnimationFrame(tick);
+    } else {
+      bg360Runtime.goto360HoldZoomRafId = 0;
+    }
+  }
+
+  bg360Runtime.goto360HoldZoomRafId = requestAnimationFrame(tick);
+}
+
+// Параллельно с загрузкой следующей панорамы: только сужает FOV (yaw/pitch без изменений). WebGL-часть прерывается при swap; визуальное продолжение — на hold (runGoto360HoldZoomContinueAfterParallelSwap).
 function runGoto360ParallelFovZoomWhileLoading(mark) {
   if (!mark) return;
 
@@ -6457,6 +6530,7 @@ function runGoto360ParallelFovZoomWhileLoading(mark) {
   var targetFov = clamp(Math.min(startFov - 20, (startFov + BG_360_FOV_MIN) * 0.5), BG_360_FOV_MIN, BG_360_FOV_MAX);
 
   cancelGoto360ParallelZoomRaf();
+  cancelGoto360HoldZoomRaf();
   if (bg360Runtime.frameId) {
     cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = 0;
@@ -6464,6 +6538,10 @@ function runGoto360ParallelFovZoomWhileLoading(mark) {
 
   var durationMs = resolveBg360GotoZoomDurationMs();
   var t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+  bg360Runtime.goto360ParallelZoomAnimT0 = t0;
+  bg360Runtime.goto360ParallelZoomAnimDurationMs = durationMs;
+  bg360Runtime.goto360ParallelZoomStartFov = startFov;
+  bg360Runtime.goto360ParallelZoomTargetFov = targetFov;
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
   }
@@ -9214,6 +9292,7 @@ function ensureBg360HoldLayer() {
 function hideBg360HoldLayer(immediate) {
   if (!elBg360Hold) return;
   if (elBg360Hold.classList.contains("hidden")) return;
+  cancelGoto360HoldZoomRaf();
   if (bg360Runtime.holdFadeTimer) {
     clearTimeout(bg360Runtime.holdFadeTimer);
     bg360Runtime.holdFadeTimer = null;
@@ -9225,6 +9304,8 @@ function hideBg360HoldLayer(immediate) {
     elBg360Hold.style.opacity = "1";
     elBg360Hold.style.zIndex = "3";
     elBg360Hold.style.transition = "opacity 0.14s ease-out";
+    elBg360Hold.style.transform = "";
+    elBg360Hold.style.transformOrigin = "";
     return;
   }
   console.log("[BG360 HOLD] hide (fade)");
@@ -9237,6 +9318,8 @@ function hideBg360HoldLayer(immediate) {
     elBg360Hold.classList.add("hidden");
     elBg360Hold.removeAttribute("src");
     elBg360Hold.style.opacity = "1";
+    elBg360Hold.style.transform = "";
+    elBg360Hold.style.transformOrigin = "";
   }, 140);
 }
 
@@ -9607,6 +9690,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   if (!ensureBg360Renderer()) {
     console.warn("[BG360] WebGL/THREE недоступны, включен drag-фолбэк без 3D");
     cancelGoto360ParallelZoomRaf();
+    cancelGoto360HoldZoomRaf();
     bg360Runtime.goto360ParallelZoomActive = false;
     if (bg360Runtime.pendingGoto360MarksPayload) {
       var plW = bg360Runtime.pendingGoto360MarksPayload;
@@ -9628,6 +9712,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.interactive = normalized.enabled === true;
     updateBg360CursorClasses();
     cancelGoto360ParallelZoomRaf();
+    cancelGoto360HoldZoomRaf();
     if (bg360Runtime.suppressNextHoldCapture) {
       bg360Runtime.suppressNextHoldCapture = false;
       var holdKeep = ensureBg360HoldLayer();
@@ -9688,6 +9773,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     if (deferSwapUntilTexture) {
       cancelGoto360ParallelZoomRaf();
       showBg360HoldFromCurrentFrame();
+      // Пока hold растворяется, продолжаем тот же наезд (масштаб снимка), что шёл на старой сфере до swap.
+      runGoto360HoldZoomContinueAfterParallelSwap(elBg360Hold, bg360LoadSeq);
       if (elBg360) elBg360.classList.add("hidden");
       stripBg360NavigationOverlayPendingLoad();
       if (bg360Runtime.pendingGoto360MarksPayload) {
@@ -9825,6 +9912,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       fallback: normalizedFallback
     });
     cancelGoto360ParallelZoomRaf();
+    cancelGoto360HoldZoomRaf();
     bg360Runtime.pendingGoto360MarksPayload = null;
     disableBg360Renderer();
     var fallbackOptions = buildNonWebgl360FallbackOptions(normalized);
