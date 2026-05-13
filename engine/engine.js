@@ -3598,9 +3598,11 @@ function flushAutosaveBgScrollRestorePending() {
 }
 
 /**
- * executeIfBlock во время игры вставляет действия в scene.actions; автосейв хранит индекс уже после этого «раздувания».
- * После перезагрузки STORY парсится заново — массив короче, индекс оказывается ≥ length → пустой текст и конец сцены.
- * При ожидании клика откатываемся к последнему if_block: runCurrent снова выполнит вставку ветки (vars из слота уже применены).
+ * executeIfBlock раньше делал splice в scene.actions (индекс автосейва «раздувался» вместе с массивом).
+ * Теперь ветка выполняется через state.pendingActions (как у choice.actions) — без мутации сцены,
+ * чтобы повторный goto на ту же сцену не копил старые bg/реплики и не откатывал картинку.
+ * rewindAutosaveIndexIfPastColdSceneEnd по-прежнему откатывает к последнему if_block, если слот
+ * указывал за пределы «холодной» длины массива после смены сценария.
  */
 function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
   if (!state || !state.sceneId || !state.sceneMap) return;
@@ -8919,6 +8921,8 @@ function executeIfSafe(action) {
 
 function executeIfBlock(action) {
   // if_block использует тот же безопасный evaluator, чтобы ветки не могли исполнять JS-код.
+  // Ветку ставим в pendingActions (а не splice в scene.actions): иначе при каждом повторном
+  // входе в сцену накапливаются старые вставки, и следующий за новым bg шаг снова ставит первый фон.
   if (!action || !Array.isArray(action.branches)) return false;
 
   var selectedActions = null;
@@ -8945,11 +8949,11 @@ function executeIfBlock(action) {
 
   if (selectedActions.length === 0) return false;
 
-  var scene = state.sceneMap[state.sceneId];
-  if (!scene || !Array.isArray(scene.actions)) return false;
-
   var clone = JSON.parse(JSON.stringify(selectedActions));
-  Array.prototype.splice.apply(scene.actions, [state.actionIndex, 0].concat(clone));
+  if (!Array.isArray(state.pendingActions)) {
+    state.pendingActions = [];
+  }
+  state.pendingActions = clone.concat(state.pendingActions);
   return false;
 }
 
