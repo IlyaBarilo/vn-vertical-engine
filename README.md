@@ -420,7 +420,7 @@ This includes:
 The UI is designed for **tall vertical displays**.
 
 Available settings:
-- window mode (`vertical` or `horizontal`)
+- window mode (`vertical` or `auto`)
 - top spacing
 - bottom spacing
 
@@ -428,11 +428,11 @@ Example:
 
 ```text
 [meta]
-window=horizontal
+window=auto
 ```
 
 `vertical` is the default mode and keeps the current narrow visual-novel
-window. `horizontal` lets backgrounds and scene visuals fill the available
+window. `auto` lets backgrounds and scene visuals fill the available
 screen while keeping the interface centered in the familiar 10:16 area.
 
 This allows adapting the interface for **very tall screens and vertical

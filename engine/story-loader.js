@@ -186,7 +186,7 @@
         lang: 'en',
         // Режим новеллы: debug/release. Если не задан, используем debug.
         mode: 'debug',
-        // Режим окна: vertical сохраняет старую узкую область, horizontal расширяет сцену и центрирует UI.
+        // Режим окна: vertical сохраняет старую узкую область, auto расширяет сцену и центрирует UI.
         window: 'vertical',
         blurBackground: true,
         bg360Quality: 'normal',
@@ -1215,11 +1215,11 @@ function parseBg360QualityOption(rawValue, lineNumber, line) {
   return null;
 }
 
-// Разбирает режим окна истории: vertical оставляет старую компоновку, horizontal расширяет сцену под широкий экран.
+// Разбирает режим окна истории: vertical оставляет старую компоновку, auto расширяет сцену под широкий экран.
 function parseStoryWindowOption(rawValue, lineNumber, line) {
   var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
-  if (value === "vertical" || value === "horizontal") return value;
-  addParseError(lineNumber, line, `Invalid window mode "${rawValue}". Use vertical or horizontal.`, true);
+  if (value === "vertical" || value === "auto") return value;
+  addParseError(lineNumber, line, `Invalid window mode "${rawValue}". Use vertical or auto.`, true);
   return null;
 }
 

@@ -809,7 +809,7 @@ const UI_STYLE_CONFIG = {
 const MAX_NOVEL_ASPECT_W = 10;
 const MAX_NOVEL_ASPECT_H = 16;
 const STORY_WINDOW_VERTICAL = "vertical";
-const STORY_WINDOW_HORIZONTAL = "horizontal";
+const STORY_WINDOW_AUTO = "auto";
 
 // ---------- DOM ----------
 var elTitle = document.getElementById("title");
@@ -16116,7 +16116,7 @@ function getUIOverridesFromQuery() {
 // Нормализует режим окна из meta: любые неизвестные значения безопасно возвращают старую vertical-компоновку.
 function normalizeStoryWindowMode(rawMode) {
   var mode = String(rawMode || STORY_WINDOW_VERTICAL).trim().toLowerCase();
-  if (mode === STORY_WINDOW_HORIZONTAL) return STORY_WINDOW_HORIZONTAL;
+  if (mode === STORY_WINDOW_AUTO) return STORY_WINDOW_AUTO;
   return STORY_WINDOW_VERTICAL;
 }
 
@@ -16124,7 +16124,7 @@ function normalizeStoryWindowMode(rawMode) {
 function applyWindowLayoutClasses(layoutMode, requestedWindowMode, manualMode) {
   if (!elNovelWindow) return;
 
-  elNovelWindow.classList.toggle("window-horizontal", layoutMode === STORY_WINDOW_HORIZONTAL);
+  elNovelWindow.classList.toggle("window-horizontal", layoutMode === "horizontal");
   elNovelWindow.classList.toggle("window-vertical", layoutMode === STORY_WINDOW_VERTICAL);
   elNovelWindow.classList.toggle("window-manual", !!manualMode);
   elNovelWindow.dataset.windowMode = requestedWindowMode;
@@ -16175,8 +16175,10 @@ function applySpacingSettings() {
     hasExplicitTop || hasExplicitRight || hasExplicitBottom || hasExplicitLeft;
 
   var requestedWindowMode = normalizeStoryWindowMode(finalMeta.window);
-  // Ручные отступы считаются авторской компоновкой и имеют приоритет над window=horizontal.
-  var layoutMode = manualMode ? "manual" : requestedWindowMode;
+  // Ручные отступы считаются авторской компоновкой и имеют приоритет над window=auto.
+  var layoutMode = manualMode
+    ? "manual"
+    : (requestedWindowMode === STORY_WINDOW_AUTO ? "horizontal" : STORY_WINDOW_VERTICAL);
 
   var effectiveTop = 0;
   var effectiveRight = 0;
@@ -16205,7 +16207,7 @@ function applySpacingSettings() {
   var novelHeight = Math.max(0, window.innerHeight - effectiveTop - effectiveBottom);
   var uiFrameWidth = novelWidth;
 
-  if (!manualMode && requestedWindowMode === STORY_WINDOW_HORIZONTAL) {
+  if (!manualMode && requestedWindowMode === STORY_WINDOW_AUTO) {
     // В широком режиме визуальная сцена занимает всё окно, а интерфейс остаётся в центральной зоне 10:16.
     uiFrameWidth = Math.min(novelWidth, novelHeight * MAX_NOVEL_ASPECT_W / MAX_NOVEL_ASPECT_H);
   }
