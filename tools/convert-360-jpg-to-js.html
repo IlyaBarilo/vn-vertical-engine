@@ -60,15 +60,58 @@
       flex-wrap: wrap;
       align-items: center;
     }
-    .settings-grid {
+    /* Два компактных блока normal/mobile в одну линию — меньше вертикального скролла. */
+    .settings-pair {
       display: grid;
-      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .settings-subcard {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f172a;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .settings-subcard h3 {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .settings-compact {
+      display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      margin-top: 10px;
+      gap: 4px 6px;
+    }
+    .settings-compact .field label {
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .settings-compact select {
+      padding: 5px 6px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .settings-subcard-actions {
+      margin-top: 6px;
+    }
+    .settings-subcard-actions button {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
     }
     .field {
       display: grid;
       gap: 6px;
+    }
+    /* Колонки «картинка» / «JS-пакет» в одном ряду карточки «Входные данные». */
+    .input-col {
+      display: grid;
+      gap: 6px;
+      align-content: start;
     }
     .result-grid {
       display: grid;
@@ -126,8 +169,8 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     @media (max-width: 820px) {
       .row,
-      .settings-grid,
-      .result-grid {
+      .result-grid,
+      .settings-pair {
         grid-template-columns: 1fr;
       }
     }
@@ -144,89 +187,103 @@
 
     <div class="card">
       <h2>Входные данные</h2>
-      <label for="fileInput">Изображение 2:1</label>
-      <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+      <div class="row">
+        <div class="input-col">
+          <label for="fileInput">Выберите файл jpeg/jpg/webp/png (изображение 2:1)</label>
+          <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+        </div>
+        <div class="input-col">
+          <label for="packJsInput">Или загрузите готовый <span class="mono">*-360.js</span> / <span class="mono">*-360-mobile.js</span></label>
+          <input id="packJsInput" type="file" accept=".js,text/javascript,application/javascript" />
+          <div class="hint">Изображение извлекается из массива <span class="mono">dataUrl</span> внутри пакета, сформированного этим конвертером.</div>
+        </div>
+      </div>
       <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
       <div class="hint" style="margin-top:8px;">Normal сохраняется как IMG-360.js. Mobile сохраняется отдельно как IMG-360-mobile.js. В истории указывайте JS-пакет, а не исходное изображение.</div>
     </div>
 
     <div class="card">
-      <h2>Настройки normal</h2>
-      <div class="settings-grid">
-        <div class="field">
-          <label for="normalHeight">Высота</label>
-          <select id="normalHeight">
-            <option value="source" selected>Исходный размер</option>
-            <option value="2048">2048 px</option>
-            <option value="1440">1440 px</option>
-            <option value="1080">1080 px</option>
-          </select>
+      <h2>Настройки экспорта</h2>
+      <div class="settings-pair">
+        <div class="settings-subcard">
+          <h3>Normal</h3>
+          <div class="settings-compact">
+            <div class="field">
+              <label for="normalHeight">Высота</label>
+              <select id="normalHeight">
+                <option value="source" selected>Исходный</option>
+                <option value="2048">2048</option>
+                <option value="1440">1440</option>
+                <option value="1080">1080</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="normalQuality">Кач-во</label>
+              <select id="normalQuality">
+                <option value="1.00">100</option>
+                <option value="0.95">95</option>
+                <option value="0.85" selected>85</option>
+                <option value="0.75">75</option>
+                <option value="0.50">50</option>
+                <option value="0.25">25</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="normalFormat">Формат</label>
+              <select id="normalFormat">
+                <option value="image/webp" selected>WebP</option>
+                <option value="image/jpeg">JPG</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-subcard-actions">
+            <button id="btnDownloadImageNormal" type="button" disabled>Скачать изображение</button>
+          </div>
         </div>
-        <div class="field">
-          <label for="normalQuality">Качество</label>
-          <select id="normalQuality">
-            <option value="1.00">100</option>
-            <option value="0.95">95</option>
-            <option value="0.85" selected>85</option>
-            <option value="0.75">75</option>
-            <option value="0.50">50</option>
-            <option value="0.25">25</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="normalFormat">Формат</label>
-          <select id="normalFormat">
-            <option value="image/webp" selected>WebP</option>
-            <option value="image/jpeg">JPG</option>
-          </select>
+        <div class="settings-subcard">
+          <h3>Mobile</h3>
+          <div class="settings-compact">
+            <div class="field">
+              <label for="mobileHeight">Высота</label>
+              <select id="mobileHeight">
+                <option value="source">Исходный</option>
+                <option value="2048">2048</option>
+                <option value="1440" selected>1440</option>
+                <option value="1080">1080</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mobileQuality">Кач-во</label>
+              <select id="mobileQuality">
+                <option value="1.00">100</option>
+                <option value="0.95">95</option>
+                <option value="0.85">85</option>
+                <option value="0.75" selected>75</option>
+                <option value="0.50">50</option>
+                <option value="0.25">25</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mobileFormat">Формат</label>
+              <select id="mobileFormat">
+                <option value="image/webp" selected>WebP</option>
+                <option value="image/jpeg">JPG</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-subcard-actions">
+            <button id="btnDownloadImageMobile" type="button" disabled>Скачать изображение</button>
+          </div>
         </div>
       </div>
-      <div class="hint" style="margin-top:10px;">Normal генерируется вручную по этим настройкам и сохраняется как основной JS-пакет.</div>
-    </div>
-
-    <div class="card">
-      <h2>Настройки mobile</h2>
-      <div class="settings-grid">
-        <div class="field">
-          <label for="mobileHeight">Высота</label>
-          <select id="mobileHeight">
-            <option value="source">Исходный размер</option>
-            <option value="2048">2048 px</option>
-            <option value="1440" selected>1440 px</option>
-            <option value="1080">1080 px</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="mobileQuality">Качество</label>
-          <select id="mobileQuality">
-            <option value="1.00">100</option>
-            <option value="0.95">95</option>
-            <option value="0.85">85</option>
-            <option value="0.75" selected>75</option>
-            <option value="0.50">50</option>
-            <option value="0.25">25</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="mobileFormat">Формат</label>
-          <select id="mobileFormat">
-            <option value="image/webp" selected>WebP</option>
-            <option value="image/jpeg">JPG</option>
-          </select>
-        </div>
-      </div>
-      <div class="hint" style="margin-top:10px;">Mobile генерируется отдельно по этим настройкам и загружается только при quality=mobile.</div>
+      <div class="hint" style="margin-top:8px;">Normal — основной <span class="mono">*-360.js</span>; mobile — <span class="mono">*-360-mobile.js</span> при quality=mobile.</div>
     </div>
 
     <div class="card">
       <h2>Генерация пакетов</h2>
       <div class="actions">
         <button id="btnGenerate" class="primary" type="button">Сгенерировать normal + mobile</button>
-        <button id="btnDownload" type="button" disabled>Скачать выбранный JS</button>
-        <select id="outputVariant" disabled style="max-width:220px;">
-          <option value="normal">Показать normal</option>
-          <option value="mobile">Показать mobile</option>
-        </select>
+        <button id="btnDownload" type="button" disabled>Скачать оба JS</button>
       </div>
       <div id="status" class="hint" style="margin-top:10px;">Ожидание.</div>
       <div class="hint" style="margin-top:10px;">
@@ -251,6 +308,7 @@
     "use strict";
 
     var fileInput = document.getElementById("fileInput");
+    var packJsInput = document.getElementById("packJsInput");
     var imageInfoEl = document.getElementById("imageInfo");
     var statusEl = document.getElementById("status");
     var outputEl = document.getElementById("output");
@@ -262,7 +320,8 @@
     var mobileHeightEl = document.getElementById("mobileHeight");
     var mobileQualityEl = document.getElementById("mobileQuality");
     var mobileFormatEl = document.getElementById("mobileFormat");
-    var outputVariantEl = document.getElementById("outputVariant");
+    var btnDownloadImageNormal = document.getElementById("btnDownloadImageNormal");
+    var btnDownloadImageMobile = document.getElementById("btnDownloadImageMobile");
     var resultGridEl = document.getElementById("resultGrid");
 
     var generatedPacks = { normal: null, mobile: null };
@@ -345,11 +404,13 @@
       return type || "unknown";
     }
 
-    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1.
+    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1; кнопки скачивания растра включаются только при загруженном источнике.
     function updateImageInfo(meta) {
       if (!meta) {
         imageInfoEl.textContent = "Файл еще не выбран.";
         imageInfoEl.className = "hint";
+        btnDownloadImageNormal.disabled = true;
+        btnDownloadImageMobile.disabled = true;
         return;
       }
       var ratio = meta.height > 0 ? meta.width / meta.height : 0;
@@ -362,6 +423,89 @@
         "ratio: " + ratio.toFixed(4) + " " +
         (ratioOk ? "<span class='ok'>(OK ~ 2:1)</span>" : "<span class='warn'>(не похоже на 2:1)</span>");
       imageInfoEl.className = "hint";
+      btnDownloadImageNormal.disabled = false;
+      btnDownloadImageMobile.disabled = false;
+    }
+
+    // Вырезает из текста *-360.js содержимое массива строк и склеивает в один data-url (как в сгенерированном пакете).
+    function extractDataUrlFromPackJs(jsText) {
+      var text = String(jsText || "");
+      var startRe = /var\s+dataUrl\s*=\s*\[/;
+      var startMatch = text.match(startRe);
+      if (!startMatch) {
+        throw new Error("В файле не найден блок var dataUrl = [ ... ] (ожидается пакет этого конвертера).");
+      }
+      var i = startMatch.index + startMatch[0].length;
+      var endRe = /\]\s*\.\s*join\s*\(\s*(['"])\s*\1\s*\)/;
+      var rest = text.slice(i);
+      var endMatch = rest.match(endRe);
+      if (!endMatch) {
+        throw new Error("Не найдено окончание массива dataUrl (].join('')).");
+      }
+      var body = rest.slice(0, endMatch.index);
+      var chunks = [];
+      var p = 0;
+      while (p < body.length) {
+        while (p < body.length && /[\s,\r\n]/.test(body.charAt(p))) p++;
+        if (p >= body.length) break;
+        var q = body.charAt(p);
+        if (q !== "'" && q !== "\"") {
+          throw new Error("Некорректный фрагмент в массиве dataUrl (ожидалась строка в кавычках).");
+        }
+        p++;
+        var frag = "";
+        var quote = q;
+        while (p < body.length) {
+          var c = body.charAt(p);
+          if (c === "\\") {
+            p++;
+            if (p >= body.length) throw new Error("Обрыв escape в строке dataUrl.");
+            var e = body.charAt(p);
+            if (e === "n") frag += "\n";
+            else if (e === "r") frag += "\r";
+            else if (e === quote) frag += quote;
+            else if (e === "\\") frag += "\\";
+            else frag += e;
+            p++;
+          } else if (c === quote) {
+            p++;
+            break;
+          } else {
+            frag += c;
+            p++;
+          }
+        }
+        chunks.push(frag);
+      }
+      var joined = chunks.join("");
+      if (!/^data:/i.test(joined)) {
+        throw new Error("В пакете не получился корректный data-url (нет префикса data:).");
+      }
+      return joined;
+    }
+
+    // Читает data-url в Image и возвращает те же поля, что readImageFile, для общей ветки «источник загружен».
+    function decodeImageFromDataUrl(dataUrl, displayName) {
+      return new Promise(function(resolve, reject) {
+        var img = new Image();
+        img.onload = function() {
+          resolve({
+            dataUrl: dataUrl,
+            meta: {
+              name: displayName || "из-js-пакета",
+              size: getDataUrlByteSize(dataUrl),
+              type: getDataUrlMime(dataUrl) || "image/jpeg",
+              width: img.naturalWidth || img.width || 0,
+              height: img.naturalHeight || img.height || 0
+            },
+            image: img
+          });
+        };
+        img.onerror = function() {
+          reject(new Error("Не удалось декодировать изображение из data-url пакета."));
+        };
+        img.src = dataUrl;
+      });
     }
 
     // Читает изображение как data-url и достает его размеры через Image.
@@ -477,6 +621,80 @@
       return buildImageVariant("mobile", "Mobile", getVariantSettings(mobileHeightEl, mobileQualityEl, mobileFormatEl));
     }
 
+    // Возвращает расширение файла по фактическому MIME после canvas.toDataURL.
+    function extensionForImageMime(mime) {
+      var m = String(mime || "").toLowerCase();
+      if (m === "image/jpeg") return "jpg";
+      if (m === "image/webp") return "webp";
+      if (m === "image/png") return "png";
+      return "img";
+    }
+
+    // Базовое имя для скачиваемого растра: убираем суффикс (из JS), расширение и хвосты *-360 из имени источника.
+    function getDownloadImageBaseName() {
+      var name = loadedMeta && loadedMeta.name ? String(loadedMeta.name) : "asset";
+      name = name.replace(/\s*\(из JS\)\s*$/i, "");
+      var dot = name.lastIndexOf(".");
+      if (dot > 0) name = name.slice(0, dot);
+      name = name.replace(/-360-mobile$/i, "").replace(/-360$/i, "");
+      if (!name) name = "asset";
+      return name;
+    }
+
+    // Декодирует data-url с base64-полезной нагрузкой в Uint8Array (формат вывода canvas.toDataURL).
+    function dataUrlToUint8Array(dataUrl) {
+      var text = String(dataUrl || "");
+      var comma = text.indexOf(",");
+      if (comma < 0) throw new Error("Некорректный data-url.");
+      var header = text.slice(0, comma).toLowerCase();
+      var payload = text.slice(comma + 1).replace(/\s/g, "");
+      if (header.indexOf(";base64") < 0) {
+        throw new Error("Ожидался base64 data-url (результат canvas.toDataURL).");
+      }
+      var binary = atob(payload);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    // Скачивает растровый файл по data-url без JS-обёртки.
+    function downloadDataUrlAsFile(dataUrl, fileName) {
+      var bytes = dataUrlToUint8Array(dataUrl);
+      var mime = getDataUrlMime(dataUrl) || "application/octet-stream";
+      var blob = new Blob([bytes], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+    }
+
+    // Перекодирует загруженное изображение по настройкам блока normal или mobile и инициирует скачивание файла.
+    function downloadSettingsRaster(mode) {
+      if (!loadedDataUrl || !loadedMeta || !loadedImage) {
+        statusEl.innerHTML = "<span class='warn'>Сначала загрузите изображение или JS-пакет.</span>";
+        return;
+      }
+      try {
+        var variant = mode === "mobile" ? buildMobileVariant() : buildNormalVariant();
+        var base = getDownloadImageBaseName();
+        var ext = extensionForImageMime(variant.type);
+        var tag = mode === "mobile" ? "mobile" : "normal";
+        var fileName = base + "-" + tag + "." + ext;
+        downloadDataUrlAsFile(variant.dataUrl, fileName);
+        var okMsg = "<span class='ok'>Сохранено: " + escapeHtml(fileName) + "</span>";
+        if (variant.warnings && variant.warnings.length) {
+          okMsg += " <span class='warn'>" + escapeHtml(variant.warnings.join(" ")) + "</span>";
+        }
+        statusEl.innerHTML = okMsg;
+      } catch (err) {
+        statusEl.innerHTML = "<span class='warn'>" + escapeHtml(err.message) + "</span>";
+      }
+    }
+
     // Собирает итоговый текст -360.js: ключ берется из пути самого пакета, без ручного дублирования story.js.
     function buildPackJs(variant) {
       var chunks = chunkString(variant.dataUrl, 16384);
@@ -564,11 +782,13 @@
       ].join("\n");
     }
 
-    // Подсказывает имена результирующих файлов на основе имени входного изображения.
+    // Подсказывает имена результирующих файлов на основе имени входа; для уже готовых *-360.js убирает суффикс, чтобы не было *-360-360.js.
     function suggestPackFileNames(fileName) {
       var name = String(fileName || "asset");
       var dot = name.lastIndexOf(".");
       if (dot > 0) name = name.slice(0, dot);
+      name = name.replace(/-360-mobile$/i, "").replace(/-360$/i, "");
+      if (!name) name = "asset";
       return {
         normal: name + "-360.js",
         mobile: name + "-360-mobile.js"
@@ -580,18 +800,16 @@
       generatedPacks = { normal: null, mobile: null };
       outputEl.value = "";
       btnDownload.disabled = true;
-      outputVariantEl.disabled = true;
       resultGridEl.innerHTML = '<div class="hint">После генерации здесь появятся размеры, вес и превью normal/mobile.</div>';
     }
 
-    // Переключает textarea на JS выбранного режима.
+    // Показывает в textarea JS указанного варианта (normal или mobile) для ручного просмотра.
     function showOutputVariant(mode) {
       var pack = generatedPacks[mode] || generatedPacks.normal || generatedPacks.mobile;
       if (!pack) {
         outputEl.value = "";
         return;
       }
-      outputVariantEl.value = pack.mode;
       outputEl.value = pack.jsText;
     }
 
@@ -685,7 +903,7 @@
       });
     }
 
-    // Скачивает JS-пакет выбранного режима.
+    // Скачивает один JS-пакет по режиму normal или mobile.
     function downloadPack(mode) {
       var pack = generatedPacks[mode];
       if (!pack) return;
@@ -698,6 +916,15 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+    }
+
+    // Скачивает оба пакета подряд; небольшая задержка между кликами снижает риск блокировки второго файла браузером.
+    function downloadBothPacks() {
+      if (!generatedPacks.normal || !generatedPacks.mobile) return;
+      downloadPack("normal");
+      setTimeout(function() {
+        downloadPack("mobile");
+      }, 300);
     }
 
     // Формирует оба режима и сохраняет готовый JS в generatedPacks.
@@ -714,10 +941,9 @@
 
       generatedPacks.normal = normal;
       generatedPacks.mobile = mobile;
-      outputVariantEl.disabled = false;
       btnDownload.disabled = false;
       renderResults();
-      showOutputVariant(outputVariantEl.value || "normal");
+      showOutputVariant("normal");
     }
 
     fileInput.addEventListener("change", function() {
@@ -732,6 +958,7 @@
         statusEl.textContent = "Файл не выбран.";
         return;
       }
+      packJsInput.value = "";
       suggestedFileNames = suggestPackFileNames(file.name);
       statusEl.textContent = "Чтение изображения...";
       readImageFile(file).then(function(result) {
@@ -749,19 +976,64 @@
       });
     });
 
+    packJsInput.addEventListener("change", function() {
+      var file = packJsInput.files && packJsInput.files[0] ? packJsInput.files[0] : null;
+      resetGeneratedPacks();
+      loadedFile = null;
+      if (!file) {
+        loadedDataUrl = "";
+        loadedMeta = null;
+        loadedImage = null;
+        updateImageInfo(null);
+        statusEl.textContent = "JS-пакет не выбран.";
+        return;
+      }
+      fileInput.value = "";
+      suggestedFileNames = suggestPackFileNames(file.name);
+      statusEl.textContent = "Разбор JS-пакета...";
+      var reader = new FileReader();
+      reader.onerror = function() {
+        statusEl.innerHTML = "<span class='warn'>Ошибка чтения JS-файла.</span>";
+      };
+      reader.onload = function() {
+        Promise.resolve().then(function() {
+          var jsText = String(reader.result || "");
+          var dataUrl = extractDataUrlFromPackJs(jsText);
+          return decodeImageFromDataUrl(dataUrl, file.name + " (из JS)");
+        }).then(function(result) {
+          loadedDataUrl = result.dataUrl;
+          loadedMeta = result.meta;
+          loadedImage = result.image;
+          updateImageInfo(loadedMeta);
+          statusEl.innerHTML = "<span class='ok'>Изображение извлечено из пакета. Можно генерировать JS.</span>";
+        }).catch(function(err) {
+          loadedDataUrl = "";
+          loadedMeta = null;
+          loadedImage = null;
+          updateImageInfo(null);
+          statusEl.innerHTML = "<span class='warn'>" + escapeHtml(err.message) + "</span>";
+        });
+      };
+      reader.readAsText(file);
+    });
+
     normalHeightEl.addEventListener("change", resetGeneratedPacks);
     normalQualityEl.addEventListener("change", resetGeneratedPacks);
     normalFormatEl.addEventListener("change", resetGeneratedPacks);
     mobileHeightEl.addEventListener("change", resetGeneratedPacks);
     mobileQualityEl.addEventListener("change", resetGeneratedPacks);
     mobileFormatEl.addEventListener("change", resetGeneratedPacks);
-    outputVariantEl.addEventListener("change", function() {
-      showOutputVariant(outputVariantEl.value);
+
+    btnDownloadImageNormal.addEventListener("click", function() {
+      downloadSettingsRaster("normal");
+    });
+    btnDownloadImageMobile.addEventListener("click", function() {
+      downloadSettingsRaster("mobile");
     });
 
     btnGenerate.addEventListener("click", function() {
-      if (!loadedFile || !loadedDataUrl || !loadedMeta || !loadedImage) {
-        statusEl.innerHTML = "<span class='warn'>Сначала выберите и загрузите изображение.</span>";
+      if (!loadedDataUrl || !loadedMeta || !loadedImage) {
+        statusEl.innerHTML = "<span class='warn'>Сначала выберите изображение или JS-пакет.</span>";
         return;
       }
       btnGenerate.disabled = true;
@@ -780,7 +1052,7 @@
     });
 
     btnDownload.addEventListener("click", function() {
-      downloadPack(outputVariantEl.value || "normal");
+      downloadBothPacks();
     });
   </script>
 </body>
