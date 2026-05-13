@@ -1787,9 +1787,9 @@ body {
   gap: 4px !important;
   padding: 2px !important;
   min-width: 120px !important;
-  /* Узел Mermaid расширяется по содержимому, чтобы длинные названия игр не выходили за рамку. */
-  width: max-content !important;
-  max-width: none !important;
+  /* Длинные id/названия переносятся; верхняя граница ширины согласована со списками на графе. */
+  width: auto !important;
+  max-width: min(100%, 340px) !important;
   text-align: center !important;
   background: transparent !important;
 }
@@ -1798,14 +1798,17 @@ body {
   font-size: 11px !important;
   font-weight: 700 !important;
   color: #333 !important;
-  word-break: break-word !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
 }
 
 .game-card-title {
   font-size: 12px !important;
   font-weight: 700 !important;
   color: #111 !important;
-  white-space: nowrap !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
 }
 
 .game-card-image-wrap {
@@ -1872,6 +1875,15 @@ body {
   font-family: var(--graph-label-font) !important;
 }
 
+/* Корневой div Mermaid внутри foreignObject (htmlLabels): не растягиваем на всю ширину FO (ломало бы fit-content у сеток миниатюр),
+   но ограничиваем сверху и даём перенос длинных подписей. min-width:0 — корректная укладка flex/grid внутри узла. */
+.graphContainer .mermaid .node foreignObject > div {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  overflow-wrap: anywhere !important;
+}
+
 .graphContainer .mermaid .node div,
 .graphContainer .mermaid .node span,
 .graphContainer .mermaid .node b,
@@ -1928,11 +1940,12 @@ body {
 /* Контейнер для эмоций персонажа */
 .games-list-box {
   display: grid !important;
-  grid-auto-rows: 34px !important;
+  grid-auto-rows: minmax(34px, auto) !important;
   row-gap: 4px !important;
   margin: 2px auto 0 !important;
   padding: 2px 8px 6px !important;
   min-width: 160px !important;
+  max-width: min(100%, 340px) !important;
   background-color: rgba(220,220,220,0.3) !important;
   border-radius: 8px !important;
   box-sizing: border-box !important;
@@ -1940,10 +1953,10 @@ body {
 
 .game-list-row {
   display: block !important;
-  height: 34px !important;
+  height: auto !important;
   min-height: 34px !important;
-  max-height: 34px !important;
-  padding: 0 8px !important;
+  max-height: none !important;
+  padding: 5px 8px !important;
   margin: 0 !important;
   border-radius: 6px !important;
   background: rgba(255,255,255,0.55) !important;
@@ -1951,9 +1964,10 @@ body {
   color: #333333 !important;
   font-size: 12px !important;
   font-weight: 500 !important;
-  line-height: 34px !important;
+  line-height: 1.35 !important;
   text-align: left !important;
-  white-space: nowrap !important;
+  white-space: normal !important;
+  overflow: visible !important;
   box-sizing: border-box !important;
 }
 
@@ -1969,15 +1983,19 @@ body {
 
 .game-list-row.game-list-row-with-count {
   display: flex !important;
-  align-items: center !important;
+  align-items: flex-start !important;
   gap: 12px !important;
-  line-height: 1.2 !important;
+  line-height: 1.35 !important;
 }
 
 .game-list-id {
+  flex: 1 1 auto !important;
   min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
 }
 
 .game-list-count {
@@ -2352,6 +2370,7 @@ body {
 .graphContainer .mermaid .node .bgl {
   display: inline-flex !important;
   width: fit-content !important;
+  max-width: 100% !important;
   flex-wrap: wrap !important;
   justify-content: center !important;
   align-items: flex-start !important;
@@ -2360,6 +2379,32 @@ body {
   padding: 6px !important;
   background-color: rgba(220,220,220,0.3) !important;
   border-radius: 8px !important;
+}
+
+/* Потолок ширины по imgcount1–4: числа согласованы с ширинами ячеек .cew/.bgw/img (120 / 75 / 60 / 40) и зазорами,
+   чтобы flex-wrap стабильно давал 1–4 колонки, а не одну длинную строку при широком foreignObject. */
+.graphContainer .mermaid .node .bgl.imgcount1,
+.graphContainer .mermaid .node .scene-bg-images-container.imgcount1,
+.graphContainer .mermaid .node .char-emotions-container.imgcount1 {
+  max-width: calc(120px + 20px) !important;
+}
+
+.graphContainer .mermaid .node .bgl.imgcount2,
+.graphContainer .mermaid .node .scene-bg-images-container.imgcount2,
+.graphContainer .mermaid .node .char-emotions-container.imgcount2 {
+  max-width: calc(2 * 75px + 4px + 20px) !important;
+}
+
+.graphContainer .mermaid .node .bgl.imgcount3,
+.graphContainer .mermaid .node .scene-bg-images-container.imgcount3,
+.graphContainer .mermaid .node .char-emotions-container.imgcount3 {
+  max-width: calc(3 * 60px + 2 * 4px + 20px) !important;
+}
+
+.graphContainer .mermaid .node .bgl.imgcount4,
+.graphContainer .mermaid .node .scene-bg-images-container.imgcount4,
+.graphContainer .mermaid .node .char-emotions-container.imgcount4 {
+  max-width: calc(4 * 40px + 3 * 4px + 20px) !important;
 }
 
 .graphContainer .mermaid .node .cew .char-emotion-thumbnail {

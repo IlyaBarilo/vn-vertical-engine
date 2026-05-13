@@ -1146,8 +1146,10 @@ if (btnCopyMermaid) {
 // Обработчик кнопки обновления
 if (btnRefreshGraph) {
   btnRefreshGraph.addEventListener("click", function() {
-    if (showingGraph) {
-      renderMermaidGraph();
+    if (!showingGraph) return;
+    var refreshKey = getPanzoomStateKeyForView(currentStatsView);
+    if (refreshKey) {
+      renderGraphViewWithPanzoomLifecycle(refreshKey);
     }
   });
 }
@@ -1215,9 +1217,7 @@ function setStatsView(view) {
   }
 
   if (isGraphView) {
-    neutralizePanzoomForRender();
-    renderMermaidGraph();
-    restorePanzoomWhenGraphReady(currentStateKey);
+    renderGraphViewWithPanzoomLifecycle(currentStateKey);
   }
 
   if (currentStatsView === "games") {
@@ -13104,7 +13104,10 @@ function renderStats() {
       if (showingGraph && window.STORY) {
         setTimeout(function() {
           try {
-            renderMermaidGraph();
+            var statsGraphKey = getPanzoomStateKeyForView(currentStatsView);
+            if (statsGraphKey) {
+              renderGraphViewWithPanzoomLifecycle(statsGraphKey);
+            }
           } catch (e) {
             console.error("[STATS] Mermaid graph rendering error:", e);
           }
@@ -16883,7 +16886,6 @@ function shouldUseCompactMermaid(fullCode, stats) {
   return false;
 }
 
-// Модифицируйте функцию renderMermaidGraph для сброса масштаба при новой загрузке
 function renderMermaidGraph() {
   if (!window.STORY) return;
   if (!currentMermaidCode) return;
@@ -16979,7 +16981,18 @@ function renderMermaidGraph() {
     });
 }
 
-
+/**
+ * Полный цикл перерисовки графа на вкладке статистики: сброс transform панорамы, Mermaid-render,
+ * затем восстановление сохранённого масштаба после появления SVG и догрузки img (см. restorePanzoomWhenGraphReady).
+ * Вызов только renderMermaidGraph() из UI оставлял старый scale/translate на .panzoom-content — расходились getBBox,
+ * раскладка foreignObject и визуальный размер узлов при повторных рефрешах.
+ */
+function renderGraphViewWithPanzoomLifecycle(stateKey) {
+  if (!stateKey) return;
+  neutralizePanzoomForRender();
+  renderMermaidGraph();
+  restorePanzoomWhenGraphReady(stateKey);
+}
 
 function debugCharacterGraphLayout() {
   try {
