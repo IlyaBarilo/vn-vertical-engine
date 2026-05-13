@@ -1,0 +1,1846 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Редактор focus / scale (10:16)</title>
+  <style>
+    :root {
+      --bg: #0c1020;
+      --panel: #141a2e;
+      --border: #2a3558;
+      --text: #e8ecff;
+      --muted: #9aa3c9;
+      --accent: #6b8cff;
+      --good: #6bd491;
+      --frame-bg: #060812;
+      /* Параметры нижнего индикатора выхода/недобора по Y: можно быстро подстроить размер, фон и позицию. */
+      --bottom-offset-font-size: 13px;
+      --bottom-offset-x: 0px;
+      --bottom-offset-y: 8px;
+      --bottom-offset-padding-y: 3px;
+      --bottom-offset-padding-x: 8px;
+      --bottom-offset-radius: 6px;
+      --bottom-offset-text: #ffffff;
+      --bottom-offset-gap-bg: rgba(218, 55, 55, 0.94);
+      --bottom-offset-overflow-bg: rgba(57, 117, 255, 0.94);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      font: 13px/1.45 system-ui, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+    /* Две колонки настроек слева от превью: общие — слева; основной / сценарий / оверлей — справа. */
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(260px, 300px) minmax(280px, 340px) 1fr;
+      height: 100vh;
+      min-height: 0;
+      gap: 0;
+      overflow: hidden;
+    }
+    .panel {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 14px 16px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      max-height: 100vh;
+      /* Поверх колонки превью: при overflow:visible у .stage медиа может рисоваться шире колонки */
+      position: relative;
+      z-index: 2;
+    }
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    fieldset {
+      margin: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    legend {
+      padding: 0 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    label.row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+    label.row:first-of-type { margin-top: 0; }
+    label.row.check {
+      grid-template-columns: auto 1fr;
+    }
+    input[type="range"] { width: 100%; grid-column: 1 / -1; }
+    .val {
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      min-width: 3.2em;
+      text-align: right;
+    }
+    .val-input {
+      width: 5.6em;
+      min-width: 5.6em;
+      padding: 3px 6px;
+      font: 12px/1.2 ui-monospace, monospace;
+      color: var(--accent);
+      text-align: right;
+    }
+    input[type="text"], input[type="number"], textarea, select {
+      width: 100%;
+      background: #0a0e1a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 10px;
+      font: 12px/1.4 ui-monospace, monospace;
+    }
+    select { cursor: pointer; }
+    input.val-input {
+      width: 5.6em;
+      min-width: 5.6em;
+      padding: 3px 6px;
+      font: 12px/1.2 ui-monospace, monospace;
+      color: var(--accent);
+      text-align: right;
+    }
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .slider-with-reset {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .slider-with-reset input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+    }
+    .btn-slider-reset {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 1.2;
+      min-width: 2rem;
+    }
+    button, .file-btn, .btn-slider-reset {
+      font: inherit;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #1c2540;
+      color: var(--text);
+      padding: 7px 12px;
+    }
+    button:hover, .file-btn:hover, .btn-slider-reset:hover { background: #243056; }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+    button.danger { border-color: #6b3030; color: #ffb4b4; }
+    .file-btn { display: inline-block; }
+    .file-btn input { display: none; }
+    .stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Сверху/снизу ~10% воздуха; по горизонтали без отступов */
+      padding: min(10vh, 10vw) 0;
+      background:
+        radial-gradient(ellipse at 50% 20%, rgba(107, 140, 255, 0.08), transparent 50%),
+        var(--frame-bg);
+      height: 100vh;
+      min-height: 0;
+      min-width: 0;
+      /* Обрезаем широкий холст слоя сценой, чтобы он не создавал общий скролл страницы. */
+      overflow: hidden;
+      position: relative;
+      z-index: 0;
+      box-sizing: border-box;
+    }
+    /* Область композиции 10:16; медиа с transform scale не обрезается — видно за пределами рамки */
+    .viewport-shell {
+      position: relative;
+      aspect-ratio: 10 / 16;
+      width: min(80vw, calc(80vh * 10 / 16), 100%);
+      max-height: 80vh;
+      overflow: visible;
+      border-radius: 0;
+      flex-shrink: 0;
+      pointer-events: auto;
+    }
+    /* Чёрный фон только внутри эталонного прямоугольника */
+    .viewport-fill {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      z-index: 0;
+      pointer-events: none;
+    }
+    /* Контур стоит на фактической границе 10:16, чтобы совпадать с зелёной рамкой слоя. */
+    .viewport-outline {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      pointer-events: none;
+      box-sizing: border-box;
+      border: 2px solid var(--accent);
+      border-radius: 0;
+      outline: none;
+    }
+    .viewport-shell.is-dragover .viewport-outline {
+      border-style: dashed;
+      border-color: #9ab8ff;
+    }
+    .viewport-shell.can-pan {
+      cursor: grab;
+      touch-action: none;
+    }
+    .viewport-shell.can-pan.is-panning {
+      cursor: grabbing;
+    }
+    /*
+      Широкий «холст» вокруг центра рамки: родитель не обрезает раздутое transform-ом медиа.
+      Реальный размер под object-fit задаётся в .layer-viewbox (= рамка 10:16), его выставляет JS.
+    */
+    .layer {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 1000vmax;
+      height: 1000vmax;
+      margin-left: -500vmax;
+      margin-top: -500vmax;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .layer-viewbox {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      overflow: visible;
+      pointer-events: none;
+    }
+    .layer-viewbox img, .layer-viewbox video {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      object-fit: cover;
+      display: block;
+      vertical-align: top;
+      pointer-events: none;
+      overflow: visible;
+    }
+    /* Пунктир показывает полный прямоугольник файла, включая прозрачные поля PNG. */
+    .media-bounds {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      box-sizing: border-box;
+      border: 2px dashed rgba(84, 255, 128, 0.96);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+      z-index: 5;
+    }
+    .bottom-offset-indicator {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + var(--bottom-offset-y));
+      transform: translateX(calc(-50% + var(--bottom-offset-x)));
+      display: none;
+      pointer-events: none;
+      z-index: 45;
+      min-width: 4.2em;
+      padding: var(--bottom-offset-padding-y) var(--bottom-offset-padding-x);
+      border-radius: var(--bottom-offset-radius);
+      color: var(--bottom-offset-text);
+      font: 700 var(--bottom-offset-font-size)/1.2 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      text-align: center;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+      white-space: nowrap;
+    }
+    .bottom-offset-indicator.is-gap {
+      display: block;
+      background: var(--bottom-offset-gap-bg);
+    }
+    .bottom-offset-indicator.is-overflow {
+      display: block;
+      background: var(--bottom-offset-overflow-bg);
+    }
+    .guides {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      overflow: hidden;
+    }
+    .guides svg { width: 100%; height: 100%; }
+    .guides line {
+      stroke: rgba(255, 255, 255, 0.35);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+    .guides .center { stroke: rgba(107, 140, 255, 0.65); }
+    .char-y-limit-mask {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 15%;
+      z-index: 3;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(
+          135deg,
+          rgba(255, 82, 82, 0.34) 0,
+          rgba(255, 82, 82, 0.34) 6px,
+          rgba(255, 82, 82, 0.08) 6px,
+          rgba(255, 82, 82, 0.08) 12px
+        );
+      border-bottom: 1px solid rgba(255, 110, 110, 0.82);
+    }
+    .guides .user-guide {
+      position: absolute;
+      background: rgba(255, 209, 102, 0.92);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+    .guides .user-guide.vertical {
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      transform: translateX(-1px);
+    }
+    .guides .user-guide.horizontal {
+      left: 0;
+      right: 0;
+      height: 2px;
+      transform: translateY(-1px);
+    }
+    .guides .user-guide.is-delete {
+      background: rgba(255, 110, 110, 0.9);
+      opacity: 0.65;
+    }
+    .drop-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .viewport-shell.has-main .drop-hint { display: none; }
+    code { font-size: 11px; color: var(--muted); }
+    .crop-panel {
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      background: #0a0e1a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .crop-panel strong { color: var(--text); }
+    .crop-ok { color: var(--good); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="panel panel-left">
+      <h1>Кадр 10:16 · focus / scale</h1>
+      <p class="hint">
+        Перетащите файл в рамку. <strong>Alt</strong> + drop → оверлей. В рамке: перетаскивание
+        левой кнопкой двигает focus (основной слой; <strong>Shift</strong> — оверлей). По X редактор
+        поджимает изображение к краям без пустых полей; focus ограничен 0..1: X слева направо,
+        Y снизу вверх по рабочей высоте. Параметры в <code>#…</code> для закладки.
+      </p>
+
+      <fieldset>
+        <legend>Пресеты (localStorage)</legend>
+        <select id="presetSelect" size="1"></select>
+        <div class="btn-row" style="margin-top:8px">
+          <button type="button" id="presetLoad">Загрузить</button>
+          <button type="button" id="presetSave">Сохранить как…</button>
+          <button type="button" class="danger" id="presetDelete">Удалить</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Синхронизация слоёв</legend>
+        <div class="btn-row">
+          <button type="button" id="syncMainToOver" title="Копирует focus и scale основного в оверлей">Основной → оверлей</button>
+          <button type="button" id="syncOverToMain" title="Копирует focus и scale оверлея в основной">Оверлей → основной</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Предпросмотр</legend>
+        <label class="row check">
+          <input type="checkbox" id="previewFitContain" />
+          Вписать целиком (contain)
+        </label>
+        <label class="row">Высота персонажа в движке <span class="val" id="charHeightRatioV">85%</span></label>
+        <div class="slider-with-reset">
+          <input type="range" id="charHeightRatio" min="0.5" max="1" step="0.01" value="0.85" />
+          <button type="button" class="btn-slider-reset" data-slider-id="charHeightRatio" title="Сброс высоты персонажа (85%)">↺</button>
+        </div>
+        <p class="hint" style="margin:0">
+          По умолчанию scale=1 заполняет изображением рабочую высоту персонажа из настройки ниже: при 85% это нижние
+          85% кадра. Красная штриховка сверху не входит в рабочую высоту. <strong>contain</strong> дополнительно
+          вписывает слишком широкий файл по ширине.
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Метрики кропа (как в движке)</legend>
+        <div class="crop-panel" id="cropPanel">Нет загруженного медиа.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Экспорт</legend>
+        <label class="row check"><input type="checkbox" id="exportGuides" /> Включить сетку и оси в PNG</label>
+        <label class="row check"><input type="checkbox" id="export2x" checked /> Удвоить разрешение (чётче)</label>
+        <div class="btn-row">
+          <button type="button" id="btnExportPng">Скачать кадр PNG</button>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="panel panel-right" id="panelRight">
+      <fieldset>
+        <legend>Основной слой</legend>
+        <div class="btn-row">
+          <label class="file-btn">Файл…<input type="file" id="fileMain" accept="image/*,video/*" /></label>
+          <button type="button" id="clearMain">Сбросить</button>
+        </div>
+        <label class="row check"><input type="checkbox" id="mainMirror" /> Зеркало по X</label>
+        <label class="row">focusX <input type="number" class="val val-input" id="mainFxV" min="0" max="1" step="0.001" value="0.5" aria-label="focusX основного слоя" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="mainFx" min="0" max="1" step="0.001" value="0.5" />
+          <button type="button" class="btn-slider-reset" data-slider-id="mainFx" title="Сброс focusX (0.5)">↺</button>
+        </div>
+        <label class="row">focusY <input type="number" class="val val-input" id="mainFyV" min="0" max="1" step="0.001" value="0.5" aria-label="focusY основного слоя" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="mainFy" min="0" max="1" step="0.001" value="0.5" />
+          <button type="button" class="btn-slider-reset" data-slider-id="mainFy" title="Сброс focusY (0.5)">↺</button>
+        </div>
+        <label class="row">scale <input type="number" class="val val-input" id="mainScV" min="0.01" max="2" step="0.001" value="1" aria-label="scale основного слоя" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="mainSc" min="0.01" max="2" step="0.001" value="1" />
+          <button type="button" class="btn-slider-reset" data-slider-id="mainSc" title="Сброс scale (1)">↺</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Строка для сценария</legend>
+        <textarea id="copyOut" readonly></textarea>
+        <div class="btn-row">
+          <button type="button" id="btnCopy">Копировать</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Оверлей (сравнение)</legend>
+        <div class="btn-row">
+          <label class="file-btn">Файл…<input type="file" id="fileOver" accept="image/*,video/*" /></label>
+          <button type="button" id="clearOver">Убрать</button>
+          <button type="button" id="copyMainToOverlay" title="Копирует файл, focus, scale и зеркало основного слоя в оверлей" disabled>Скопировать из основного слоя</button>
+        </div>
+        <label class="row check"><input type="checkbox" id="overMirror" /> Зеркало по X</label>
+        <label class="row">непрозрачность <span class="val" id="overOpV">0.45</span></label>
+        <div class="slider-with-reset">
+          <input type="range" id="overOp" min="0" max="1" step="0.01" value="0.45" />
+          <button type="button" class="btn-slider-reset" data-slider-id="overOp" title="Сброс (0.45)">↺</button>
+        </div>
+        <label class="row">focusX <input type="number" class="val val-input" id="overFxV" min="0" max="1" step="0.001" value="0.5" aria-label="focusX оверлея" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="overFx" min="0" max="1" step="0.001" value="0.5" />
+          <button type="button" class="btn-slider-reset" data-slider-id="overFx" title="Сброс focusX (0.5)">↺</button>
+        </div>
+        <label class="row">focusY <input type="number" class="val val-input" id="overFyV" min="0" max="1" step="0.001" value="0.5" aria-label="focusY оверлея" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="overFy" min="0" max="1" step="0.001" value="0.5" />
+          <button type="button" class="btn-slider-reset" data-slider-id="overFy" title="Сброс focusY (0.5)">↺</button>
+        </div>
+        <label class="row">scale <input type="number" class="val val-input" id="overScV" min="0.01" max="2" step="0.001" value="1" aria-label="scale оверлея" /></label>
+        <div class="slider-with-reset">
+          <input type="range" id="overSc" min="0.01" max="2" step="0.001" value="1" />
+          <button type="button" class="btn-slider-reset" data-slider-id="overSc" title="Сброс scale (1)">↺</button>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="viewport-shell" id="viewport" tabindex="0">
+        <div class="viewport-fill" aria-hidden="true"></div>
+        <div class="drop-hint" id="dropHint">
+          Перетащите изображение или видео сюда<br />
+          <span style="font-size:11px;opacity:.85">Alt + drop → оверлей</span>
+        </div>
+        <div class="layer" id="layerMain" style="z-index:1"><div class="layer-viewbox"></div></div>
+        <div class="layer" id="layerOver" style="z-index:2"><div class="layer-viewbox"></div></div>
+        <div class="char-y-limit-mask" id="charYLimitMask" aria-hidden="true"></div>
+        <div class="guides" id="guidesLayer" aria-hidden="true">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="33.333" y1="0" x2="33.333" y2="100" />
+            <line x1="66.666" y1="0" x2="66.666" y2="100" />
+            <line x1="0" y1="33.333" x2="100" y2="33.333" />
+            <line x1="0" y1="66.666" x2="100" y2="66.666" />
+            <line class="center" x1="50" y1="0" x2="50" y2="100" />
+            <line class="center" x1="0" y1="50" x2="100" y2="50" />
+          </svg>
+        </div>
+        <div class="viewport-outline" aria-hidden="true"></div>
+        <div class="bottom-offset-indicator" id="bottomOffsetIndicator" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'media-focus-editor-presets-v1';
+  var SETTINGS_KEY = 'media-focus-editor-settings-v1';
+  /** Диапазон focus: редактор не разрешает уходить за пределы рабочей шкалы 0..1. */
+  var FOCUS_SLIDER_MIN = 0;
+  var FOCUS_SLIDER_MAX = 1;
+  /** Диапазон ползунка scale (как множитель в движке). */
+  var SCALE_SLIDER_MIN = 0.01;
+  var SCALE_SLIDER_MAX = 2;
+  var CHAR_HEIGHT_RATIO_DEFAULT = 0.85;
+  var CHAR_HEIGHT_RATIO_MIN = 0.5;
+  var CHAR_HEIGHT_RATIO_MAX = 1;
+
+  /** Значения по умолчанию ползунков (для кнопок ↺ и строки копирования). */
+  var SLIDER_DEFAULTS = {
+    mainFx: 0.5,
+    mainFy: 0.5,
+    mainSc: 1,
+    overFx: 0.5,
+    overFy: 0.5,
+    overSc: 1,
+    overOp: 0.45,
+    charHeightRatio: CHAR_HEIGHT_RATIO_DEFAULT
+  };
+  /** Зоны срабатывания направляющих в пикселях: край для вытягивания, линия для захвата, край для удаления. */
+  var GUIDE_EDGE_HIT_PX = 14;
+  var GUIDE_HIT_PX = 7;
+  var GUIDE_DELETE_EDGE_PX = 12;
+
+  /**
+   * Сравнение с допуском (ползунки дают float с погрешностью).
+   */
+  function approxEq(a, b, eps) {
+    return Math.abs(Number(a) - Number(b)) < (eps !== undefined ? eps : 0.00051);
+  }
+
+  /**
+   * Подпись значения scale рядом с ползунком: компактная запись без лишних нулей.
+   */
+  function formatScaleDisplay(s) {
+    var v = Number(s);
+    if (!isFinite(v)) return String(s);
+    return v.toFixed(3).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  }
+
+  /**
+   * Подпись focus всегда показывает тысячные, чтобы ручной ввод и слайдер выглядели одинаково.
+   */
+  function formatFocusDisplay(s) {
+    return normalizeFocus(s).toFixed(3);
+  }
+
+  function clamp(v, a, b) {
+    return Math.max(a, Math.min(b, v));
+  }
+
+  function normalizeCharHeightRatio(value) {
+    var n = Number(value);
+    if (!isFinite(n)) return CHAR_HEIGHT_RATIO_DEFAULT;
+    return clamp(n, CHAR_HEIGHT_RATIO_MIN, CHAR_HEIGHT_RATIO_MAX);
+  }
+
+  /**
+   * Нормализует focus из UI, hash и localStorage, чтобы старые данные не уводили слой за шкалу 0..1.
+   */
+  function normalizeFocus(value) {
+    var n = Number(value);
+    if (!isFinite(n)) return 0.5;
+    return clamp(n, FOCUS_SLIDER_MIN, FOCUS_SLIDER_MAX);
+  }
+
+  /**
+   * Нормализует scale из UI, hash и localStorage под текущий диапазон редактора.
+   */
+  function normalizeScale(value) {
+    var n = Number(value);
+    if (!isFinite(n)) return SLIDER_DEFAULTS.mainSc;
+    return clamp(n, SCALE_SLIDER_MIN, SCALE_SLIDER_MAX);
+  }
+
+  /**
+   * Масштаб считается от рабочей высоты персонажа: scale=1 заполняет зону из настройки редактора.
+   * В режиме contain широкий файл дополнительно уменьшается, чтобы не выходить за края по X.
+   */
+  function getRenderedMetrics(mediaEl, mediaW, mediaH, rectW, rectH, mediaScaleFactor, useContain, charHeightRatio) {
+    var extra = typeof mediaScaleFactor === 'number' && isFinite(mediaScaleFactor) && mediaScaleFactor > 0
+      ? mediaScaleFactor
+      : 1;
+    var workHeight = Math.max(1, rectH * normalizeCharHeightRatio(charHeightRatio));
+    var heightBase = workHeight / mediaH;
+    var base = useContain ? Math.min(rectW / mediaW, heightBase) : heightBase;
+    var scale = base * extra;
+    var renderedWidth = mediaW * scale;
+    var renderedHeight = mediaH * scale;
+    var hiddenWidth = Math.max(0, renderedWidth - rectW);
+    var hiddenHeight = Math.max(0, renderedHeight - workHeight);
+    return {
+      renderedWidth: renderedWidth,
+      renderedHeight: renderedHeight,
+      hiddenWidth: hiddenWidth,
+      hiddenHeight: hiddenHeight,
+      rectWidth: rectW,
+      rectHeight: rectH,
+      workHeight: workHeight,
+      scale: scale
+    };
+  }
+
+  /**
+   * По X держит слой в пределах рамки: focusX 0..1 равномерно проходит доступный кроп без пустых краёв.
+   */
+  function focusXToClampedLeft(focusX, metrics) {
+    if (!metrics || metrics.renderedWidth <= metrics.rectWidth) {
+      return (metrics.rectWidth - (metrics ? metrics.renderedWidth : 0)) / 2;
+    }
+    var fx = normalizeFocus(focusX);
+    return -fx * metrics.hiddenWidth;
+  }
+
+  /**
+   * Обратный расчёт для перетаскивания по X: смещение по доступному кропу превращается обратно в focusX 0..1.
+   */
+  function clampedLeftToFocusX(left, metrics) {
+    if (!metrics || metrics.renderedWidth <= metrics.rectWidth || metrics.hiddenWidth <= 1) return 0.5;
+    var hiddenLeft = clamp(-left, 0, metrics.hiddenWidth);
+    return hiddenLeft / metrics.hiddenWidth;
+  }
+
+  /**
+   * Переводит focus в размещение медиа: X поджимается к краям, Y двигает центр слоя в пределах 0..1.
+   * По Y 0 — низ рамки, 1 — верх рабочей области.
+   */
+  function getFocusPlacement(mediaEl, mediaW, mediaH, rectW, rectH, focusX, focusY, scaleVal, useContain, charHeightRatio) {
+    var m = getRenderedMetrics(mediaEl, mediaW, mediaH, rectW, rectH, scaleVal, useContain, charHeightRatio);
+    var fy = normalizeFocus(focusY);
+    return {
+      width: m.renderedWidth,
+      height: m.renderedHeight,
+      left: focusXToClampedLeft(focusX, m),
+      top: (rectH - fy * m.workHeight) - m.renderedHeight / 2
+    };
+  }
+
+  /**
+   * Синхронизирует зелёный пунктир с реальным боксом медиа, чтобы видеть прозрачные края файла.
+   */
+  function syncMediaBounds(mediaEl, placement, mirror) {
+    var bounds = mediaEl && mediaEl._boundsEl;
+    if (!bounds || !placement) return;
+    bounds.style.display = 'block';
+    bounds.style.left = placement.left + 'px';
+    bounds.style.top = placement.top + 'px';
+    bounds.style.width = placement.width + 'px';
+    bounds.style.height = placement.height + 'px';
+    bounds.style.transformOrigin = '50% 50%';
+    bounds.style.transform = mirror ? 'scaleX(-1)' : '';
+  }
+
+  /**
+   * Показывает под рамкой, насколько нижний край файла не дошёл до кадра или вышел за него.
+   */
+  function updateBottomOffsetIndicator(placement, rectH) {
+    var indicator = document.getElementById('bottomOffsetIndicator');
+    if (!indicator) return;
+    indicator.classList.remove('is-gap', 'is-overflow');
+    indicator.textContent = '';
+    if (!placement || !rectH) return;
+    var bottomDelta = placement.top + placement.height - rectH;
+    if (Math.abs(bottomDelta) < 0.01) return;
+    var px = Math.ceil(Math.abs(bottomDelta));
+    if (px <= 0) return;
+    indicator.textContent = (bottomDelta < 0 ? '-' : '+') + px + ' px';
+    indicator.classList.add(bottomDelta < 0 ? 'is-gap' : 'is-overflow');
+  }
+
+  /**
+   * Ставит медиа вручную: по X нет пустых краёв, по Y край может выходить из-за масштаба.
+   */
+  function applyMediaTransform(el, mediaW, mediaH, rectW, rectH, focusX, focusY, scaleVal, mirror, useContain, charHeightRatio) {
+    if (!el || !mediaW || !mediaH || !rectW || !rectH) return;
+    var p = getFocusPlacement(el, mediaW, mediaH, rectW, rectH, focusX, focusY, scaleVal, useContain, charHeightRatio);
+    el.style.position = 'absolute';
+    el.style.left = p.left + 'px';
+    el.style.top = p.top + 'px';
+    el.style.width = p.width + 'px';
+    el.style.height = p.height + 'px';
+    el.style.minWidth = '';
+    el.style.minHeight = '';
+    el.style.objectFit = 'fill';
+    el.style.objectPosition = '50% 50%';
+    el.style.transformOrigin = '50% 50%';
+    el.style.transform = mirror ? 'scaleX(-1)' : '';
+    syncMediaBounds(el, p, mirror);
+    return p;
+  }
+
+  /**
+   * Рисует один слой (img/video) в canvas с тем же прямым focus-позиционированием, что и предпросмотр.
+   */
+  function drawLayerToCanvas(ctx, dw, dh, mediaEl, focusX, focusY, scaleVal, mirror, globalAlpha, useContain, charHeightRatio) {
+    var iw = mediaEl.naturalWidth || mediaEl.videoWidth;
+    var ih = mediaEl.naturalHeight || mediaEl.videoHeight;
+    if (!iw || !ih) return;
+    var prevAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = globalAlpha;
+    var p = getFocusPlacement(mediaEl, iw, ih, dw, dh, focusX, focusY, scaleVal, useContain, charHeightRatio);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, dw, dh);
+    ctx.clip();
+    try {
+      if (mirror) {
+        ctx.translate(p.left + p.width / 2, p.top + p.height / 2);
+        ctx.scale(-1, 1);
+        ctx.drawImage(mediaEl, -p.width / 2, -p.height / 2, p.width, p.height);
+      } else {
+        ctx.drawImage(mediaEl, p.left, p.top, p.width, p.height);
+      }
+    } catch (err) {
+      console.warn('drawImage', err);
+    }
+    ctx.restore();
+    ctx.globalAlpha = prevAlpha;
+  }
+
+  /**
+   * Накладывает линии сетки (трети + оси центра) и пользовательские направляющие в координатах логического кадра dw×dh.
+   */
+  function drawGuidesToCanvas(ctx, dw, dh) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    function vline(x) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, dh);
+      ctx.stroke();
+    }
+    function hline(y) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(dw, y);
+      ctx.stroke();
+    }
+    vline(dw / 3);
+    vline(2 * dw / 3);
+    hline(dh / 3);
+    hline(2 * dh / 3);
+    ctx.strokeStyle = 'rgba(107, 140, 255, 0.65)';
+    vline(dw / 2);
+    hline(dh / 2);
+    ctx.strokeStyle = 'rgba(255, 209, 102, 0.92)';
+    for (var i = 0; i < customGuides.length; i += 1) {
+      var guide = customGuides[i];
+      if (guide.axis === 'x') {
+        vline(clamp(guide.pos, 0, 1) * dw);
+      } else if (guide.axis === 'y') {
+        hline(clamp(guide.pos, 0, 1) * dh);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Рисует красную штриховку над рабочей областью персонажа при экспорте сетки.
+   */
+  function drawCharLimitToCanvas(ctx, dw, dh, charHeightRatio) {
+    var ratio = normalizeCharHeightRatio(charHeightRatio);
+    var blockedH = Math.max(0, dh * (1 - ratio));
+    if (blockedH <= 0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, dw, blockedH);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255, 82, 82, 0.10)';
+    ctx.fillRect(0, 0, dw, blockedH);
+    ctx.strokeStyle = 'rgba(255, 82, 82, 0.48)';
+    ctx.lineWidth = 1;
+    for (var x = -blockedH; x < dw + blockedH; x += 12) {
+      ctx.beginPath();
+      ctx.moveTo(x, blockedH);
+      ctx.lineTo(x + blockedH, 0);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255, 110, 110, 0.82)';
+    ctx.beginPath();
+    ctx.moveTo(0, blockedH);
+    ctx.lineTo(dw, blockedH);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  var viewport = document.getElementById('viewport');
+  var guidesLayer = document.getElementById('guidesLayer');
+  var charYLimitMask = document.getElementById('charYLimitMask');
+  var layerMain = document.getElementById('layerMain');
+  var layerOver = document.getElementById('layerOver');
+
+  /**
+   * Размер медиа-бокса = рамка 10:16; сам .layer — огромный холст, чтобы transform не резался рамкой.
+   */
+  function syncLayerViewboxes(rw, rh) {
+    if (!rw || !rh) return;
+    [layerMain, layerOver].forEach(function (layer) {
+      var vb = layer.querySelector('.layer-viewbox');
+      if (!vb) return;
+      vb.style.width = rw + 'px';
+      vb.style.height = rh + 'px';
+      vb.style.marginLeft = (-rw / 2) + 'px';
+      vb.style.marginTop = (-rh / 2) + 'px';
+    });
+  }
+  var mainEl = null;
+  var overEl = null;
+  var mainName = '';
+  var overName = '';
+  var mainFile = null;
+  var overFile = null;
+  var mainRevoke = null;
+  var overRevoke = null;
+
+  var mainFx = document.getElementById('mainFx');
+  var mainFy = document.getElementById('mainFy');
+  var mainSc = document.getElementById('mainSc');
+  var mainMirror = document.getElementById('mainMirror');
+  var overFx = document.getElementById('overFx');
+  var overFy = document.getElementById('overFy');
+  var overSc = document.getElementById('overSc');
+  var overOp = document.getElementById('overOp');
+  var overMirror = document.getElementById('overMirror');
+  var previewFitContain = document.getElementById('previewFitContain');
+  var charHeightRatio = document.getElementById('charHeightRatio');
+  var customGuides = [];
+  var guideSeq = 1;
+  var guideDrag = null;
+  var settingsTimer = null;
+
+  /**
+   * Читает текущие элементы управления и сразу зажимает focus в 0..1 для всех дальнейших расчётов.
+   */
+  function readNums() {
+    return {
+      mainFx: normalizeFocus(mainFx.value),
+      mainFy: normalizeFocus(mainFy.value),
+      mainSc: normalizeScale(mainSc.value),
+      overFx: normalizeFocus(overFx.value),
+      overFy: normalizeFocus(overFy.value),
+      overSc: normalizeScale(overSc.value),
+      overOp: Number(overOp.value),
+      mainMirror: mainMirror.checked,
+      overMirror: overMirror.checked,
+      previewContain: previewFitContain.checked,
+      charHeightRatio: normalizeCharHeightRatio(charHeightRatio.value)
+    };
+  }
+
+  /**
+   * Возвращает сохранённую форму пользовательских направляющих без временных флагов перетаскивания.
+   */
+  function serializeCustomGuides() {
+    var result = [];
+    for (var i = 0; i < customGuides.length; i += 1) {
+      var guide = customGuides[i];
+      if (!guide || (guide.axis !== 'x' && guide.axis !== 'y')) continue;
+      result.push({
+        id: guide.id,
+        axis: guide.axis,
+        pos: clamp(Number(guide.pos), 0, 1)
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Восстанавливает направляющие из localStorage и отбрасывает повреждённые записи.
+   */
+  function normalizeCustomGuides(list) {
+    var result = [];
+    if (!Array.isArray(list)) return result;
+    for (var i = 0; i < list.length; i += 1) {
+      var raw = list[i];
+      var axis = raw && raw.axis;
+      var pos = raw ? Number(raw.pos) : NaN;
+      if ((axis !== 'x' && axis !== 'y') || !isFinite(pos)) continue;
+      result.push({
+        id: 'g' + (guideSeq += 1),
+        axis: axis,
+        pos: clamp(pos, 0, 1)
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Рисует пользовательские направляющие поверх статической сетки, не меняя сам SVG с третями и центром.
+   */
+  function renderCustomGuides() {
+    if (!guidesLayer) return;
+    var old = guidesLayer.querySelectorAll('.user-guide');
+    for (var i = old.length - 1; i >= 0; i -= 1) {
+      old[i].parentNode.removeChild(old[i]);
+    }
+    for (var j = 0; j < customGuides.length; j += 1) {
+      var guide = customGuides[j];
+      var line = document.createElement('div');
+      line.className = 'user-guide ' + (guide.axis === 'x' ? 'vertical' : 'horizontal') + (guide.deletePending ? ' is-delete' : '');
+      if (guide.axis === 'x') {
+        line.style.left = (clamp(guide.pos, 0, 1) * 100).toFixed(4) + '%';
+      } else {
+        line.style.top = (clamp(guide.pos, 0, 1) * 100).toFixed(4) + '%';
+      }
+      guidesLayer.appendChild(line);
+    }
+  }
+
+  /**
+   * Проверяет, дотянута ли направляющая до своего края, где отпускание мыши удаляет её.
+   */
+  function isGuideNearDeleteEdge(guide, rect) {
+    var span = guide.axis === 'x' ? rect.width : rect.height;
+    if (span <= 0) return false;
+    var posPx = clamp(guide.pos, 0, 1) * span;
+    return posPx <= GUIDE_DELETE_EDGE_PX || posPx >= span - GUIDE_DELETE_EDGE_PX;
+  }
+
+  /**
+   * Переводит координаты указателя в точку внутри рамки и поджимает выход за её границы.
+   */
+  function viewportPointFromEvent(ev, rect) {
+    return {
+      x: clamp(ev.clientX - rect.left, 0, rect.width),
+      y: clamp(ev.clientY - rect.top, 0, rect.height)
+    };
+  }
+
+  /**
+   * Считает позицию направляющей 0..1 по текущей точке указателя.
+   */
+  function guidePosFromPoint(axis, point, rect) {
+    var span = axis === 'x' ? rect.width : rect.height;
+    if (span <= 0) return 0.5;
+    return clamp((axis === 'x' ? point.x : point.y) / span, 0, 1);
+  }
+
+  /**
+   * Находит пользовательскую направляющую под указателем, чтобы её можно было сдвинуть.
+   */
+  function findCustomGuideHit(ev, rect) {
+    var point = viewportPointFromEvent(ev, rect);
+    for (var i = customGuides.length - 1; i >= 0; i -= 1) {
+      var guide = customGuides[i];
+      if (guide.axis === 'x' && Math.abs(point.x - guide.pos * rect.width) <= GUIDE_HIT_PX) return guide;
+      if (guide.axis === 'y' && Math.abs(point.y - guide.pos * rect.height) <= GUIDE_HIT_PX) return guide;
+    }
+    return null;
+  }
+
+  /**
+   * Определяет ближайший край рамки, из которого вытягивается новая направляющая.
+   */
+  function findGuideEdgeHit(ev, rect) {
+    var point = viewportPointFromEvent(ev, rect);
+    var bestAxis = null;
+    var bestDist = Infinity;
+    var candidates = [
+      { axis: 'x', dist: point.x },
+      { axis: 'x', dist: rect.width - point.x },
+      { axis: 'y', dist: point.y },
+      { axis: 'y', dist: rect.height - point.y }
+    ];
+    for (var i = 0; i < candidates.length; i += 1) {
+      if (candidates[i].dist < bestDist) {
+        bestDist = candidates[i].dist;
+        bestAxis = candidates[i].axis;
+      }
+    }
+    return bestDist <= GUIDE_EDGE_HIT_PX ? bestAxis : null;
+  }
+
+  /**
+   * Меняет курсор у рамки, когда рядом есть край для новой направляющей или сама направляющая.
+   */
+  function syncGuideCursor(ev) {
+    if (guideDrag || panDrag) return;
+    var rect = viewport.getBoundingClientRect();
+    var guide = findCustomGuideHit(ev, rect);
+    var axis = guide ? guide.axis : findGuideEdgeHit(ev, rect);
+    viewport.style.cursor = axis === 'x' ? 'col-resize' : (axis === 'y' ? 'row-resize' : '');
+  }
+
+  /**
+   * Запускает перетаскивание существующей направляющей или создаёт новую из края рамки.
+   */
+  function beginGuideDrag(ev) {
+    var rect = viewport.getBoundingClientRect();
+    var guide = findCustomGuideHit(ev, rect);
+    var axis = guide ? guide.axis : findGuideEdgeHit(ev, rect);
+    if (!axis) return false;
+    var point = viewportPointFromEvent(ev, rect);
+    if (!guide) {
+      guide = {
+        id: 'g' + (guideSeq += 1),
+        axis: axis,
+        pos: guidePosFromPoint(axis, point, rect)
+      };
+      customGuides.push(guide);
+    }
+    guide.pos = guidePosFromPoint(guide.axis, point, rect);
+    guide.deletePending = isGuideNearDeleteEdge(guide, rect);
+    guideDrag = {
+      pointerId: ev.pointerId,
+      guideId: guide.id
+    };
+    viewport.style.cursor = guide.axis === 'x' ? 'col-resize' : 'row-resize';
+    renderCustomGuides();
+    scheduleSettingsSave();
+    try {
+      viewport.setPointerCapture(ev.pointerId);
+    } catch (err) {}
+    return true;
+  }
+
+  /**
+   * Обновляет позицию направляющей во время перетаскивания и подсвечивает удаление у края.
+   */
+  function updateGuideDrag(ev) {
+    if (!guideDrag || ev.pointerId !== guideDrag.pointerId) return false;
+    var rect = viewport.getBoundingClientRect();
+    var point = viewportPointFromEvent(ev, rect);
+    for (var i = 0; i < customGuides.length; i += 1) {
+      var guide = customGuides[i];
+      if (guide.id !== guideDrag.guideId) continue;
+      guide.pos = guidePosFromPoint(guide.axis, point, rect);
+      guide.deletePending = isGuideNearDeleteEdge(guide, rect);
+      renderCustomGuides();
+      scheduleSettingsSave();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Завершает перетаскивание и удаляет направляющую, если её отпустили у края рамки.
+   */
+  function endGuideDrag(ev) {
+    if (!guideDrag || ev.pointerId !== guideDrag.pointerId) return false;
+    var keep = [];
+    for (var i = 0; i < customGuides.length; i += 1) {
+      var guide = customGuides[i];
+      if (guide.id === guideDrag.guideId && guide.deletePending) continue;
+      guide.deletePending = false;
+      keep.push(guide);
+    }
+    customGuides = keep;
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch (err) {}
+    guideDrag = null;
+    viewport.style.cursor = '';
+    renderCustomGuides();
+    scheduleSettingsSave();
+    return true;
+  }
+
+  /**
+   * Собирает объект пресета без id (только слайдеры, зеркала, подписи файлов).
+   */
+  function gatherPresetPayload() {
+    var n = readNums();
+    return {
+      mainFx: n.mainFx,
+      mainFy: n.mainFy,
+      mainSc: n.mainSc,
+      overFx: n.overFx,
+      overFy: n.overFy,
+      overSc: n.overSc,
+      overOp: n.overOp,
+      mainMirror: n.mainMirror,
+      overMirror: n.overMirror,
+      previewContain: n.previewContain,
+      charHeightRatio: n.charHeightRatio,
+      hintMain: mainName || '',
+      hintOver: overName || ''
+    };
+  }
+
+  /**
+   * Применяет сохранённый набор и зажимает focus, чтобы старые пресеты не выходили за 0..1.
+   */
+  function applyPresetPayload(p) {
+    if (!p) return;
+    mainFx.value = String(normalizeFocus(p.mainFx));
+    mainFy.value = String(normalizeFocus(p.mainFy));
+    mainSc.value = String(normalizeScale(p.mainSc));
+    overFx.value = String(normalizeFocus(p.overFx));
+    overFy.value = String(normalizeFocus(p.overFy));
+    overSc.value = String(normalizeScale(p.overSc));
+    overOp.value = String(clamp(Number(p.overOp), 0, 1));
+    mainMirror.checked = !!p.mainMirror;
+    overMirror.checked = !!p.overMirror;
+    previewFitContain.checked = !!p.previewContain;
+    charHeightRatio.value = String(normalizeCharHeightRatio(p.charHeightRatio));
+    refresh();
+  }
+
+  /**
+   * Собирает текущие настройки программы для автосохранения, включая пользовательские направляющие.
+   */
+  function gatherSettingsPayload() {
+    var payload = gatherPresetPayload();
+    payload.guides = serializeCustomGuides();
+    return payload;
+  }
+
+  /**
+   * Отложенно сохраняет настройки, чтобы drag слайдеров и направляющих не писал в localStorage на каждый пиксель.
+   */
+  function scheduleSettingsSave() {
+    if (settingsTimer) clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(saveSettings, 180);
+  }
+
+  /**
+   * Записывает настройки редактора в localStorage; ошибки приватного режима браузера просто игнорируются.
+   */
+  function saveSettings() {
+    settingsTimer = null;
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ v: 1, settings: gatherSettingsPayload() }));
+    } catch (e) {}
+  }
+
+  /**
+   * Загружает последние настройки программы из localStorage; hash страницы применяется позже и может их переопределить.
+   */
+  function tryLoadSettings() {
+    try {
+      var raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return false;
+      var data = JSON.parse(raw);
+      var settings = data && (data.settings || data);
+      if (!settings) return false;
+      applyPresetPayload(settings);
+      customGuides = normalizeCustomGuides(settings.guides);
+      renderCustomGuides();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function loadPresetsArray() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      var data = JSON.parse(raw);
+      return Array.isArray(data.presets) ? data.presets : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function savePresetsArray(arr) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, presets: arr }));
+  }
+
+  function refreshPresetSelect() {
+    var sel = document.getElementById('presetSelect');
+    var arr = loadPresetsArray();
+    sel.innerHTML = '';
+    var opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '— выберите пресет —';
+    sel.appendChild(opt0);
+    arr.forEach(function (pr) {
+      var o = document.createElement('option');
+      o.value = pr.id;
+      o.textContent = pr.name || pr.id;
+      sel.appendChild(o);
+    });
+  }
+
+  /**
+   * Обновляет редактируемое числовое поле, не перебивая пользователя во время ручного ввода.
+   */
+  function setEditableNumber(id, value, force) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!force && document.activeElement === el) return;
+    el.value = value;
+  }
+
+  /**
+   * Обновляет подписи, медиа, текст кропа, hash, автосохранение и блок копирования.
+   */
+  function refresh() {
+    var n = readNums();
+    setEditableNumber('mainFxV', formatFocusDisplay(n.mainFx));
+    setEditableNumber('mainFyV', formatFocusDisplay(n.mainFy));
+    setEditableNumber('mainScV', formatScaleDisplay(n.mainSc));
+    setEditableNumber('overFxV', formatFocusDisplay(n.overFx));
+    setEditableNumber('overFyV', formatFocusDisplay(n.overFy));
+    setEditableNumber('overScV', formatScaleDisplay(n.overSc));
+    document.getElementById('overOpV').textContent = n.overOp.toFixed(2);
+    document.getElementById('charHeightRatioV').textContent = Math.round(n.charHeightRatio * 100) + '%';
+    layerOver.style.opacity = '1';
+    document.getElementById('copyMainToOverlay').disabled = !mainFile;
+    if (charYLimitMask) {
+      charYLimitMask.style.height = ((1 - n.charHeightRatio) * 100).toFixed(3) + '%';
+    }
+
+    var rect = viewport.getBoundingClientRect();
+    var rw = rect.width;
+    var rh = rect.height;
+    var mainPlacement = null;
+    var overPlacement = null;
+    syncLayerViewboxes(rw, rh);
+
+    if (mainEl && mainEl.naturalWidth) {
+      mainPlacement = applyMediaTransform(mainEl, mainEl.naturalWidth, mainEl.naturalHeight, rw, rh, n.mainFx, n.mainFy, n.mainSc, n.mainMirror, n.previewContain, n.charHeightRatio);
+    } else if (mainEl && mainEl.videoWidth) {
+      mainPlacement = applyMediaTransform(mainEl, mainEl.videoWidth, mainEl.videoHeight, rw, rh, n.mainFx, n.mainFy, n.mainSc, n.mainMirror, n.previewContain, n.charHeightRatio);
+    }
+    if (overEl && overEl.naturalWidth) {
+      overPlacement = applyMediaTransform(overEl, overEl.naturalWidth, overEl.naturalHeight, rw, rh, n.overFx, n.overFy, n.overSc, n.overMirror, n.previewContain, n.charHeightRatio);
+    } else if (overEl && overEl.videoWidth) {
+      overPlacement = applyMediaTransform(overEl, overEl.videoWidth, overEl.videoHeight, rw, rh, n.overFx, n.overFy, n.overSc, n.overMirror, n.previewContain, n.charHeightRatio);
+    }
+    if (overEl) {
+      // Прозрачность применяется только к самому оверлею: зелёный контур остаётся хорошо видимым.
+      overEl.style.opacity = String(n.overOp);
+    }
+    updateBottomOffsetIndicator(panDrag && panDrag.isOver && overPlacement ? overPlacement : (mainPlacement || overPlacement), rh);
+
+    viewport.classList.toggle('can-pan', !!(mainEl || overEl));
+
+    updateCropPanel(rw, rh, n.previewContain);
+    buildCopyString();
+    scheduleSettingsSave();
+    scheduleHashUpdate();
+  }
+
+  function describeCrop(title, mediaEl, sc, previewContain, charHeightRatio) {
+    var iw = mediaEl.naturalWidth || mediaEl.videoWidth;
+    var ih = mediaEl.naturalHeight || mediaEl.videoHeight;
+    if (!iw || !ih) return '';
+    var rect = viewport.getBoundingClientRect();
+    var ratio = normalizeCharHeightRatio(charHeightRatio);
+    var m = getRenderedMetrics(mediaEl, iw, ih, rect.width, rect.height, sc, previewContain, ratio);
+    var lines = [];
+    lines.push(title + ': ' + iw + '×' + ih + ' px');
+    lines.push('  scale=1: рабочая высота ' + Math.round(m.workHeight) + ' px (' + Math.round(ratio * 100) + '% кадра)');
+    lines.push('  режим: ' + (previewContain ? 'contain + рабочая высота' : 'рабочая высота') +
+      ', размер слоя ' + Math.round(m.renderedWidth) + '×' + Math.round(m.renderedHeight) + ' px');
+    lines.push('  прозрачные области считаются частью изображения и влияют на отступы');
+    lines.push('  запас кропа: X ' + Math.round(m.hiddenWidth) + ' px, Y ' + Math.round(m.hiddenHeight) + ' px');
+    lines.push('  focusX: кроп по X без пустых краёв; если слой уже рамки, он центрируется');
+    lines.push('  focusY: позиция центра слоя по рабочей высоте ' + Math.round(ratio * 100) + '%; 0 снизу, 1 у верхней границы штриховки');
+    return lines.join('\n');
+  }
+
+  function updateCropPanel(rw, rh, previewContain) {
+    var el = document.getElementById('cropPanel');
+    var n = readNums();
+    var pc = previewContain !== undefined ? previewContain : n.previewContain;
+    var parts = [];
+    parts.push('Вьюпорт (логический): ' + Math.round(rw) + '×' + Math.round(rh));
+    if (mainEl) {
+      parts.push(describeCrop('Основной', mainEl, n.mainSc, pc, n.charHeightRatio));
+    } else {
+      parts.push('Основной: нет файла');
+    }
+    if (overEl) {
+      parts.push(describeCrop('Оверлей', overEl, n.overSc, pc, n.charHeightRatio));
+    }
+    el.textContent = parts.join('\n\n');
+  }
+
+  /**
+   * Собирает хвост команды для основного слоя: только параметры, отличные от SLIDER_DEFAULTS.
+   */
+  function mainLayerCmdTail(n) {
+    var tail = [];
+    if (!approxEq(n.mainFx, SLIDER_DEFAULTS.mainFx)) tail.push('focusx=' + n.mainFx.toFixed(4));
+    if (!approxEq(n.mainFy, SLIDER_DEFAULTS.mainFy)) tail.push('focusy=' + n.mainFy.toFixed(4));
+    if (!approxEq(n.mainSc, SLIDER_DEFAULTS.mainSc)) tail.push('scale=' + n.mainSc.toFixed(4));
+    return tail.length ? ' ' + tail.join(' ') : '';
+  }
+
+  /**
+   * То же для оверлея (дополнительно opacity).
+   */
+  function overLayerCmdTail(n) {
+    var tail = [];
+    if (!approxEq(n.overFx, SLIDER_DEFAULTS.overFx)) tail.push('focusx=' + n.overFx.toFixed(4));
+    if (!approxEq(n.overFy, SLIDER_DEFAULTS.overFy)) tail.push('focusy=' + n.overFy.toFixed(4));
+    if (!approxEq(n.overSc, SLIDER_DEFAULTS.overSc)) tail.push('scale=' + n.overSc.toFixed(4));
+    if (!approxEq(n.overOp, SLIDER_DEFAULTS.overOp)) tail.push('opacity=' + n.overOp.toFixed(2));
+    return tail.length ? ' ' + tail.join(' ') : '';
+  }
+
+  function buildCopyString() {
+    var n = readNums();
+    var lines = [];
+
+    if (mainName) {
+      lines.push(mainName + mainLayerCmdTail(n));
+    } else {
+      lines.push('# основной слой: нет файла');
+    }
+    if (overName) {
+      lines.push('# оверлей: ' + overName + overLayerCmdTail(n));
+    }
+    if (n.mainMirror) {
+      lines.push('# зеркало X основного — только в этом редакторе (в движке отдельного ключа нет)');
+    }
+    if (n.overMirror) {
+      lines.push('# зеркало X оверлея — только в этом редакторе');
+    }
+    if (n.previewContain) {
+      lines.push('# предпросмотр редактора: contain (в движке фон — object-fit: cover)');
+    }
+    document.getElementById('copyOut').value = lines.join('\n');
+  }
+
+  var hashTimer = null;
+  function scheduleHashUpdate() {
+    if (hashTimer) clearTimeout(hashTimer);
+    hashTimer = setTimeout(pushStateHash, 280);
+  }
+
+  /**
+   * Кодиет параметры в hash (#q=...) для закладок; короткий формат без JSON для читаемости.
+   */
+  function pushStateHash() {
+    var n = readNums();
+    var q = [
+      'mf=' + n.mainFx.toFixed(4),
+      'my=' + n.mainFy.toFixed(4),
+      'ms=' + n.mainSc.toFixed(4),
+      'mm=' + (n.mainMirror ? '1' : '0'),
+      'of=' + n.overFx.toFixed(4),
+      'oy=' + n.overFy.toFixed(4),
+      'os=' + n.overSc.toFixed(4),
+      'oo=' + n.overOp.toFixed(3),
+      'om=' + (n.overMirror ? '1' : '0'),
+      'pc=' + (n.previewContain ? '1' : '0'),
+      'ch=' + n.charHeightRatio.toFixed(4)
+    ].join('&');
+    var next = '#q=' + encodeURIComponent(q);
+    if (location.hash !== next) {
+      if (history.replaceState) {
+        history.replaceState(null, '', location.pathname + location.search + next);
+      } else {
+        location.hash = next;
+      }
+    }
+  }
+
+  /**
+   * Читает hash при открытии страницы и применяет к слайдерам.
+   */
+  function tryLoadFromHash() {
+    var h = location.hash.replace(/^#/, '');
+    if (h.indexOf('q=') !== 0) return;
+    var raw = decodeURIComponent(h.slice(2));
+    var map = {};
+    raw.split('&').forEach(function (pair) {
+      var kv = pair.split('=');
+      if (kv.length >= 2) map[kv[0]] = kv[1];
+    });
+    function num(key, def) {
+      var v = Number(map[key]);
+      return isFinite(v) ? v : def;
+    }
+    mainFx.value = String(normalizeFocus(num('mf', 0.5)));
+    mainFy.value = String(normalizeFocus(num('my', 0.5)));
+    mainSc.value = String(normalizeScale(num('ms', 1)));
+    mainMirror.checked = map.mm === '1';
+    overFx.value = String(normalizeFocus(num('of', 0.5)));
+    overFy.value = String(normalizeFocus(num('oy', 0.5)));
+    overSc.value = String(normalizeScale(num('os', 1)));
+    overOp.value = String(clamp(num('oo', 0.45), 0, 1));
+    overMirror.checked = map.om === '1';
+    previewFitContain.checked = map.pc === '1';
+    charHeightRatio.value = String(normalizeCharHeightRatio(num('ch', CHAR_HEIGHT_RATIO_DEFAULT)));
+  }
+
+  function clearLayer(isOverlay) {
+    if (isOverlay) {
+      if (overRevoke) URL.revokeObjectURL(overRevoke);
+      overRevoke = null;
+      overName = '';
+      overFile = null;
+      var ovb = layerOver.querySelector('.layer-viewbox');
+      if (ovb) ovb.innerHTML = '';
+      overEl = null;
+    } else {
+      if (mainRevoke) URL.revokeObjectURL(mainRevoke);
+      mainRevoke = null;
+      mainName = '';
+      mainFile = null;
+      var mvb = layerMain.querySelector('.layer-viewbox');
+      if (mvb) mvb.innerHTML = '';
+      mainEl = null;
+      viewport.classList.remove('has-main');
+    }
+    refresh();
+  }
+
+  function mountFile(file, isOverlay) {
+    var url = URL.createObjectURL(file);
+    var shortName = file.name || 'media';
+    var isVid = file.type.indexOf('video/') === 0;
+    var host = isOverlay ? layerOver : layerMain;
+    if (isOverlay) {
+      if (overRevoke) URL.revokeObjectURL(overRevoke);
+      overRevoke = url;
+      overName = shortName;
+      overFile = file;
+    } else {
+      if (mainRevoke) URL.revokeObjectURL(mainRevoke);
+      mainRevoke = url;
+      mainName = shortName;
+      mainFile = file;
+    }
+    var vb = host.querySelector('.layer-viewbox');
+    if (!vb) {
+      vb = document.createElement('div');
+      vb.className = 'layer-viewbox';
+      host.appendChild(vb);
+    }
+    vb.innerHTML = '';
+    var el;
+    if (isVid) {
+      el = document.createElement('video');
+      el.src = url;
+      el.muted = true;
+      el.loop = true;
+      el.playsInline = true;
+      el.play().catch(function () {});
+      el.addEventListener('loadedmetadata', refresh);
+    } else {
+      el = document.createElement('img');
+      el.src = url;
+      el.addEventListener('load', refresh);
+    }
+    var bounds = document.createElement('div');
+    bounds.className = 'media-bounds';
+    bounds.setAttribute('aria-hidden', 'true');
+    el._boundsEl = bounds;
+    if (isOverlay) overEl = el; else mainEl = el;
+    if (!isOverlay) viewport.classList.add('has-main');
+    vb.appendChild(el);
+    vb.appendChild(bounds);
+    refresh();
+  }
+
+  /**
+   * Связывает редактируемое число рядом со слайдером: ввод меняет сам слайдер и запускает общий refresh.
+   */
+  function bindEditableNumber(valueId, sliderId, normalizeValue, formatValue) {
+    var valueEl = document.getElementById(valueId);
+    var sliderEl = document.getElementById(sliderId);
+    if (!valueEl || !sliderEl) return;
+
+    function applyTypedValue(forceReset) {
+      var raw = String(valueEl.value || '').trim();
+      if (!raw || raw === '-' || raw === '.' || raw === '-.') {
+        if (forceReset) setEditableNumber(valueId, formatValue(sliderEl.value), true);
+        return;
+      }
+      var next = normalizeValue(raw);
+      sliderEl.value = String(next);
+      if (forceReset) setEditableNumber(valueId, formatValue(next), true);
+      refresh();
+    }
+
+    valueEl.addEventListener('input', function () {
+      applyTypedValue(false);
+    });
+    valueEl.addEventListener('change', function () {
+      applyTypedValue(true);
+    });
+    valueEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') valueEl.blur();
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('.btn-slider-reset');
+    if (!btn) return;
+    e.preventDefault();
+    var sid = btn.getAttribute('data-slider-id');
+    if (!sid || SLIDER_DEFAULTS[sid] === undefined) return;
+    var inp = document.getElementById(sid);
+    if (!inp) return;
+    inp.value = String(SLIDER_DEFAULTS[sid]);
+    refresh();
+  });
+
+  ['mainFx', 'mainFy', 'mainSc', 'overFx', 'overFy', 'overSc', 'overOp', 'charHeightRatio'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', refresh);
+  });
+  [
+    ['mainFxV', 'mainFx', normalizeFocus, formatFocusDisplay],
+    ['mainFyV', 'mainFy', normalizeFocus, formatFocusDisplay],
+    ['mainScV', 'mainSc', normalizeScale, formatScaleDisplay],
+    ['overFxV', 'overFx', normalizeFocus, formatFocusDisplay],
+    ['overFyV', 'overFy', normalizeFocus, formatFocusDisplay],
+    ['overScV', 'overSc', normalizeScale, formatScaleDisplay]
+  ].forEach(function (binding) {
+    bindEditableNumber(binding[0], binding[1], binding[2], binding[3]);
+  });
+  mainMirror.addEventListener('change', refresh);
+  overMirror.addEventListener('change', refresh);
+  previewFitContain.addEventListener('change', refresh);
+
+  document.getElementById('syncMainToOver').addEventListener('click', function () {
+    var n = readNums();
+    overFx.value = String(n.mainFx);
+    overFy.value = String(n.mainFy);
+    overSc.value = String(n.mainSc);
+    overMirror.checked = n.mainMirror;
+    refresh();
+  });
+  document.getElementById('syncOverToMain').addEventListener('click', function () {
+    var n = readNums();
+    mainFx.value = String(n.overFx);
+    mainFy.value = String(n.overFy);
+    mainSc.value = String(n.overSc);
+    mainMirror.checked = n.overMirror;
+    refresh();
+  });
+
+  // Кнопка в блоке оверлея дублирует файл основного слоя и стартовые параметры кадра.
+  document.getElementById('copyMainToOverlay').addEventListener('click', function () {
+    if (!mainFile) return;
+    var n = readNums();
+    overFx.value = String(n.mainFx);
+    overFy.value = String(n.mainFy);
+    overSc.value = String(n.mainSc);
+    overMirror.checked = n.mainMirror;
+    mountFile(mainFile, true);
+  });
+
+  document.getElementById('presetLoad').addEventListener('click', function () {
+    var id = document.getElementById('presetSelect').value;
+    if (!id) return;
+    var arr = loadPresetsArray();
+    var pr = arr.filter(function (x) { return x.id === id; })[0];
+    if (pr) applyPresetPayload(pr);
+  });
+
+  document.getElementById('presetSave').addEventListener('click', function () {
+    var name = window.prompt('Имя пресета', 'кадр');
+    if (name === null || !String(name).trim()) return;
+    var arr = loadPresetsArray();
+    var payload = gatherPresetPayload();
+    arr.push({
+      id: 'p' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      name: String(name).trim(),
+      mainFx: payload.mainFx,
+      mainFy: payload.mainFy,
+      mainSc: payload.mainSc,
+      overFx: payload.overFx,
+      overFy: payload.overFy,
+      overSc: payload.overSc,
+      overOp: payload.overOp,
+      mainMirror: payload.mainMirror,
+      overMirror: payload.overMirror,
+      previewContain: payload.previewContain,
+      charHeightRatio: payload.charHeightRatio,
+      hintMain: payload.hintMain,
+      hintOver: payload.hintOver
+    });
+    savePresetsArray(arr);
+    refreshPresetSelect();
+  });
+
+  document.getElementById('presetDelete').addEventListener('click', function () {
+    var id = document.getElementById('presetSelect').value;
+    if (!id) return;
+    if (!window.confirm('Удалить пресет?')) return;
+    var arr = loadPresetsArray().filter(function (x) { return x.id !== id; });
+    savePresetsArray(arr);
+    refreshPresetSelect();
+  });
+
+  document.getElementById('fileMain').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) mountFile(f, false);
+  });
+  document.getElementById('fileOver').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) mountFile(f, true);
+  });
+  document.getElementById('clearMain').addEventListener('click', function () { clearLayer(false); });
+  document.getElementById('clearOver').addEventListener('click', function () { clearLayer(true); });
+
+  document.getElementById('btnCopy').addEventListener('click', function () {
+    var text = document.getElementById('copyOut').value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () {
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+  });
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+
+  document.getElementById('btnExportPng').addEventListener('click', function () {
+    var rect = viewport.getBoundingClientRect();
+    var dw = Math.max(1, Math.round(rect.width));
+    var dh = Math.max(1, Math.round(rect.height));
+    var mult = document.getElementById('export2x').checked ? 2 : 1;
+    var outW = dw * mult;
+    var outH = dh * mult;
+    var canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(mult, mult);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, dw, dh);
+    var n = readNums();
+    if (mainEl && (mainEl.naturalWidth || mainEl.videoWidth)) {
+      drawLayerToCanvas(ctx, dw, dh, mainEl, n.mainFx, n.mainFy, n.mainSc, n.mainMirror, 1, n.previewContain, n.charHeightRatio);
+    }
+    if (overEl && (overEl.naturalWidth || overEl.videoWidth)) {
+      drawLayerToCanvas(ctx, dw, dh, overEl, n.overFx, n.overFy, n.overSc, n.overMirror, n.overOp, n.previewContain, n.charHeightRatio);
+    }
+    if (document.getElementById('exportGuides').checked) {
+      drawCharLimitToCanvas(ctx, dw, dh, n.charHeightRatio);
+      drawGuidesToCanvas(ctx, dw, dh);
+    }
+    canvas.toBlob(function (blob) {
+      if (!blob) return;
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'media-focus-frame.png';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    }, 'image/png');
+  });
+
+  /**
+   * Перетаскивание мышью: X пересчитывается с поджатием к краям, Y остаётся прямым сдвигом центра в 0..1.
+   */
+  function applyPanMedia(deltaClientX, deltaClientY, mediaEl, startFx, startFy, scaleVal, mirror, rectW, rectH, useContain, charHeightRatio) {
+    var iw = mediaEl.naturalWidth || mediaEl.videoWidth;
+    var ih = mediaEl.naturalHeight || mediaEl.videoHeight;
+    if (!iw || !ih || rectW <= 0 || rectH <= 0) return null;
+    var m = getRenderedMetrics(mediaEl, iw, ih, rectW, rectH, scaleVal, useContain, charHeightRatio);
+    var startLeft = focusXToClampedLeft(startFx, m);
+    var ySpan = rectH * normalizeCharHeightRatio(charHeightRatio);
+    return {
+      fx: clampedLeftToFocusX(startLeft + deltaClientX, m),
+      fy: normalizeFocus(startFy - deltaClientY / ySpan)
+    };
+  }
+
+  /**
+   * Выбор слоя под перетаскивание: Shift — оверлей; иначе основной, если нет — оверлей.
+   */
+  function pickPanLayer(ev) {
+    if (ev.shiftKey && overEl) return { isOver: true };
+    if (mainEl) return { isOver: false };
+    if (overEl) return { isOver: true };
+    return null;
+  }
+
+  var panDrag = null;
+
+  viewport.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    if (beginGuideDrag(e)) {
+      e.preventDefault();
+      return;
+    }
+    var pick = pickPanLayer(e);
+    if (!pick) return;
+    e.preventDefault();
+    var n = readNums();
+    panDrag = {
+      pointerId: e.pointerId,
+      isOver: pick.isOver,
+      startX: e.clientX,
+      startY: e.clientY,
+      startFx: pick.isOver ? n.overFx : n.mainFx,
+      startFy: pick.isOver ? n.overFy : n.mainFy,
+      sc: pick.isOver ? n.overSc : n.mainSc,
+      mir: pick.isOver ? n.overMirror : n.mainMirror
+    };
+    viewport.classList.add('is-panning');
+    try {
+      viewport.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  });
+
+  function endPanDrag(e) {
+    if (!panDrag || e.pointerId !== panDrag.pointerId) return;
+    try {
+      viewport.releasePointerCapture(e.pointerId);
+    } catch (err2) {}
+    viewport.classList.remove('is-panning');
+    panDrag = null;
+  }
+
+  viewport.addEventListener('pointermove', function (e) {
+    if (updateGuideDrag(e)) {
+      e.preventDefault();
+      return;
+    }
+    if (!panDrag || e.pointerId !== panDrag.pointerId) {
+      syncGuideCursor(e);
+      return;
+    }
+    var rect = viewport.getBoundingClientRect();
+    var rw = rect.width;
+    var rh = rect.height;
+    var mediaEl = panDrag.isOver ? overEl : mainEl;
+    if (!mediaEl) {
+      endPanDrag(e);
+      return;
+    }
+    var res = applyPanMedia(
+      e.clientX - panDrag.startX,
+      e.clientY - panDrag.startY,
+      mediaEl,
+      panDrag.startFx,
+      panDrag.startFy,
+      panDrag.sc,
+      panDrag.mir,
+      rw,
+      rh,
+      readNums().previewContain,
+      readNums().charHeightRatio
+    );
+    if (!res) return;
+    if (panDrag.isOver) {
+      overFx.value = String(res.fx);
+      overFy.value = String(res.fy);
+    } else {
+      mainFx.value = String(res.fx);
+      mainFy.value = String(res.fy);
+    }
+    refresh();
+  });
+
+  // Отпускание указателя сначала завершает drag направляющей, а затем обычный pan медиа.
+  viewport.addEventListener('pointerup', function (e) {
+    if (endGuideDrag(e)) return;
+    endPanDrag(e);
+  });
+  viewport.addEventListener('pointercancel', function (e) {
+    if (endGuideDrag(e)) return;
+    endPanDrag(e);
+  });
+  viewport.addEventListener('pointerleave', function () {
+    if (!guideDrag && !panDrag) viewport.style.cursor = '';
+  });
+
+  viewport.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    viewport.classList.add('is-dragover');
+  });
+  viewport.addEventListener('dragleave', function () {
+    viewport.classList.remove('is-dragover');
+  });
+  viewport.addEventListener('drop', function (e) {
+    e.preventDefault();
+    viewport.classList.remove('is-dragover');
+    var file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    mountFile(file, e.altKey);
+  });
+
+  window.addEventListener('resize', refresh);
+
+  if (typeof ResizeObserver !== 'undefined') {
+    var ro = new ResizeObserver(function () { refresh(); });
+    ro.observe(viewport);
+  }
+
+  refreshPresetSelect();
+  tryLoadSettings();
+  tryLoadFromHash();
+  renderCustomGuides();
+  refresh();
+})();
+  </script>
+</body>
+</html>
