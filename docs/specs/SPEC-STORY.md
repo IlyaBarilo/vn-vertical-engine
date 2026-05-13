@@ -113,6 +113,7 @@ anna: "Привет!"
 title = Demo Story
 startScene = intro
 lang = en
+window = vertical
 bg360Quality = auto
 ```
 
@@ -148,6 +149,17 @@ scene intro
 lang = en
 lang = ru
 ```
+
+### `window`
+
+Режим окна истории.
+
+```text
+window = vertical
+window = horizontal
+```
+
+`vertical` используется по умолчанию и сохраняет прежнюю узкую область 10:16. `horizontal` растягивает визуальную сцену на весь доступный экран, но оставляет интерфейс, меню, диалог и кнопки в центральной области 10:16. Если явно заданы `topSpacing`, `rightSpacing`, `bottomSpacing` или `leftSpacing`, ручные отступы имеют приоритет.
 
 ### `bg360Quality`
 

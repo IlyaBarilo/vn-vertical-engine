@@ -808,10 +808,13 @@ const UI_STYLE_CONFIG = {
 
 const MAX_NOVEL_ASPECT_W = 10;
 const MAX_NOVEL_ASPECT_H = 16;
+const STORY_WINDOW_VERTICAL = "vertical";
+const STORY_WINDOW_HORIZONTAL = "horizontal";
 
 // ---------- DOM ----------
 var elTitle = document.getElementById("title");
 var elNovelWindow = document.getElementById("novelWindow");
+var elUiFrame = document.getElementById("uiFrame");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
 var elBg360 = document.getElementById("bg360Layer");
@@ -16110,6 +16113,24 @@ function getUIOverridesFromQuery() {
   return overrides;
 }
 
+// Нормализует режим окна из meta: любые неизвестные значения безопасно возвращают старую vertical-компоновку.
+function normalizeStoryWindowMode(rawMode) {
+  var mode = String(rawMode || STORY_WINDOW_VERTICAL).trim().toLowerCase();
+  if (mode === STORY_WINDOW_HORIZONTAL) return STORY_WINDOW_HORIZONTAL;
+  return STORY_WINDOW_VERTICAL;
+}
+
+// Обновляет служебные классы, чтобы текущую компоновку было проще проверять и отлаживать в DOM.
+function applyWindowLayoutClasses(layoutMode, requestedWindowMode, manualMode) {
+  if (!elNovelWindow) return;
+
+  elNovelWindow.classList.toggle("window-horizontal", layoutMode === STORY_WINDOW_HORIZONTAL);
+  elNovelWindow.classList.toggle("window-vertical", layoutMode === STORY_WINDOW_VERTICAL);
+  elNovelWindow.classList.toggle("window-manual", !!manualMode);
+  elNovelWindow.dataset.windowMode = requestedWindowMode;
+  elNovelWindow.dataset.layoutMode = layoutMode;
+}
+
 function applySpacingSettings() {
   var storyMeta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
   var queryOverrides = {};
@@ -16153,6 +16174,10 @@ function applySpacingSettings() {
   var manualMode =
     hasExplicitTop || hasExplicitRight || hasExplicitBottom || hasExplicitLeft;
 
+  var requestedWindowMode = normalizeStoryWindowMode(finalMeta.window);
+  // Ручные отступы считаются авторской компоновкой и имеют приоритет над window=horizontal.
+  var layoutMode = manualMode ? "manual" : requestedWindowMode;
+
   var effectiveTop = 0;
   var effectiveRight = 0;
   var effectiveBottom = 0;
@@ -16163,7 +16188,7 @@ function applySpacingSettings() {
     effectiveRight = num(finalMeta.rightSpacing, 0);
     effectiveBottom = num(finalMeta.bottomSpacing, 0);
     effectiveLeft = num(finalMeta.leftSpacing, 0);
-  } else {
+  } else if (requestedWindowMode === STORY_WINDOW_VERTICAL) {
     var availableHeight = Math.max(0, window.innerHeight);
     var maxAllowedWidth = availableHeight * MAX_NOVEL_ASPECT_W / MAX_NOVEL_ASPECT_H;
     var autoSide = 0;
@@ -16178,6 +16203,14 @@ function applySpacingSettings() {
 
   var novelWidth = Math.max(0, window.innerWidth - effectiveLeft - effectiveRight);
   var novelHeight = Math.max(0, window.innerHeight - effectiveTop - effectiveBottom);
+  var uiFrameWidth = novelWidth;
+
+  if (!manualMode && requestedWindowMode === STORY_WINDOW_HORIZONTAL) {
+    // В широком режиме визуальная сцена занимает всё окно, а интерфейс остаётся в центральной зоне 10:16.
+    uiFrameWidth = Math.min(novelWidth, novelHeight * MAX_NOVEL_ASPECT_W / MAX_NOVEL_ASPECT_H);
+  }
+
+  uiFrameWidth = Math.max(0, uiFrameWidth);
 
   applyUIStyleVariables(finalMeta);
 
@@ -16185,6 +16218,7 @@ function applySpacingSettings() {
   document.documentElement.style.setProperty('--rightSpacing', effectiveRight + 'px');
   document.documentElement.style.setProperty('--bottomSpacing', effectiveBottom + 'px');
   document.documentElement.style.setProperty('--leftSpacing', effectiveLeft + 'px');
+  document.documentElement.style.setProperty('--uiFrameWidth', uiFrameWidth + 'px');
 
   if (elNovelWindow) {
     elNovelWindow.style.left = effectiveLeft + 'px';
@@ -16192,6 +16226,8 @@ function applySpacingSettings() {
     elNovelWindow.style.width = novelWidth + 'px';
     elNovelWindow.style.height = novelHeight + 'px';
   }
+
+  applyWindowLayoutClasses(layoutMode, requestedWindowMode, manualMode);
 
   var blurBackground = (typeof finalMeta.blurBackground === 'boolean')
     ? finalMeta.blurBackground
@@ -16203,12 +16239,15 @@ function applySpacingSettings() {
 
   console.log('[Engine] novel window applied:', {
     manualMode: manualMode,
+    requestedWindowMode: requestedWindowMode,
+    layoutMode: layoutMode,
     effectiveTop: effectiveTop,
     effectiveRight: effectiveRight,
     effectiveBottom: effectiveBottom,
     effectiveLeft: effectiveLeft,
     novelWidth: novelWidth,
-    novelHeight: novelHeight
+    novelHeight: novelHeight,
+    uiFrameWidth: uiFrameWidth
   });
 
   adjustCharacterScale();

@@ -52,6 +52,7 @@ body {
   --rightSpacing: 0px;
   --bottomSpacing: 0px;
   --leftSpacing: 0px;
+  --uiFrameWidth: 100%;
 
   /* Базовые токены интерфейса */
   --ui-font-base: 1rem;
@@ -1350,6 +1351,26 @@ body {
   height: calc(100% - var(--topSpacing) - var(--bottomSpacing));
   overflow: hidden;
   z-index: 2;
+}
+
+/* Центральная область интерфейса: в horizontal-режиме фон шире, а кнопки и диалоги остаются в привычной зоне 10:16. */
+.ui-frame {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(100%, var(--uiFrameWidth));
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* Сама рамка не перехватывает сцену, но реальные элементы UI внутри остаются интерактивными. */
+.ui-frame > .topbar,
+.ui-frame > .dialog,
+.ui-frame > .choices,
+.ui-frame > .gameModal {
+  pointer-events: auto;
 }
 
 

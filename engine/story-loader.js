@@ -186,6 +186,8 @@
         lang: 'en',
         // Режим новеллы: debug/release. Если не задан, используем debug.
         mode: 'debug',
+        // Режим окна: vertical сохраняет старую узкую область, horizontal расширяет сцену и центрирует UI.
+        window: 'vertical',
         blurBackground: true,
         bg360Quality: 'normal',
         // engine.loadsafe по умолчанию включён: автосейв принимается только для той же версии текста истории.
@@ -1213,6 +1215,14 @@ function parseBg360QualityOption(rawValue, lineNumber, line) {
   return null;
 }
 
+// Разбирает режим окна истории: vertical оставляет старую компоновку, horizontal расширяет сцену под широкий экран.
+function parseStoryWindowOption(rawValue, lineNumber, line) {
+  var value = String(rawValue === undefined ? "" : rawValue).trim().toLowerCase();
+  if (value === "vertical" || value === "horizontal") return value;
+  addParseError(lineNumber, line, `Invalid window mode "${rawValue}". Use vertical or horizontal.`, true);
+  return null;
+}
+
 function stripInlineComment(line) {
   var text = String(line || '');
   var quote = null;
@@ -1646,6 +1656,15 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
       addParseError(lineNumber, originalLine, 'Invalid mode "' + value + '". Use debug or release.', false);
       story.meta.mode = 'debug';
+      return;
+    }
+
+    // Режим окна управляет только компоновкой сцены и UI, не влияя на логику сценария.
+    if (key === 'window') {
+      var parsedWindowMode = parseStoryWindowOption(value, lineNumber, originalLine);
+      if (parsedWindowMode !== null) {
+        story.meta.window = parsedWindowMode;
+      }
       return;
     }
 

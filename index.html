@@ -122,45 +122,47 @@
         </div>
 
 
-        <!-- Верхняя панель -->
-        <div class="topbar">
-          <div class="topbar-left">
-            
+        <div id="uiFrame" class="ui-frame">
+          <!-- Верхняя панель -->
+          <div class="topbar">
+            <div class="topbar-left">
+
+            </div>
+
+            <div class="topbar-right">
+              <!-- Mute -->
+              <button id="btnMute" class="btn icon-btn" type="button" aria-label="Mute"><span class="btn-icon">🔊</span></button>
+
+              <!-- Volume -->
+              <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
+
+              <!-- НОВОЕ: статистика/настройки -->
+              <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация о программе"><span class="btn-icon">ℹ️</span></button>
+              <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
+
+              <!-- Restart -->
+              <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
+            </div>
           </div>
 
-          <div class="topbar-right">
-            <!-- Mute -->
-            <button id="btnMute" class="btn icon-btn" type="button" aria-label="Mute"><span class="btn-icon">🔊</span></button>
 
-            <!-- Volume -->
-            <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
-
-            <!-- НОВОЕ: статистика/настройки -->
-            <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация о программе"><span class="btn-icon">ℹ️</span></button>
-            <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
-
-            <!-- Restart -->
-            <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
+          <!-- Диалоговое окно -->
+          <div id="dialog" class="dialog" role="button" tabindex="0" aria-label="Next">
+            <div id="nameBox" class="name hidden"></div>
+            <div id="textBox" class="text"></div>
+            <div class="hint">Click to continue</div>
           </div>
-        </div>
 
+          <!-- Контейнер выбора -->
+          <div id="choices" class="choices hidden" aria-label="Choices"></div>
 
-        <!-- Диалоговое окно -->
-        <div id="dialog" class="dialog" role="button" tabindex="0" aria-label="Next">
-          <div id="nameBox" class="name hidden"></div>
-          <div id="textBox" class="text"></div>
-          <div class="hint">Click to continue</div>
-        </div>
-
-        <!-- Контейнер выбора -->
-        <div id="choices" class="choices hidden" aria-label="Choices"></div>
-
-        <!-- Контейнер мини-игры (iframe) -->
-        <div id="gameModal" class="gameModal hidden" aria-label="Game">
-          <div class="gameFrameWrap">
-            <iframe id="gameFrame" class="gameFrame" title="Mini game" src="about:blank"></iframe>
-            <div class="gameControls">
-              <button id="btnCloseGame" class="btn" type="button">Close Game</button>
+          <!-- Контейнер мини-игры (iframe) -->
+          <div id="gameModal" class="gameModal hidden" aria-label="Game">
+            <div class="gameFrameWrap">
+              <iframe id="gameFrame" class="gameFrame" title="Mini game" src="about:blank"></iframe>
+              <div class="gameControls">
+                <button id="btnCloseGame" class="btn" type="button">Close Game</button>
+              </div>
             </div>
           </div>
         </div>
