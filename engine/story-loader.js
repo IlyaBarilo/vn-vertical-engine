@@ -1816,9 +1816,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           bgEntry.quality = parsedBgQuality;
         }
 
+        // userfocus: при смене 360-фона подставлять последний ракурс активной сферы в пустые focus/fov (движок).
+        if (hasBareToken(rest, "userfocus") && args.userfocus === undefined) {
+          bgEntry.userFocus = true;
+        }
+        if (args.userfocus !== undefined) {
+          var uft = String(args.userfocus || "").trim().toLowerCase();
+          if (uft === "true" || uft === "1" || uft === "yes" || uft === "on") {
+            bgEntry.userFocus = true;
+          } else if (uft === "false" || uft === "0" || uft === "no" || uft === "off") {
+            bgEntry.userFocus = false;
+          } else {
+            addParseError(lineNumber, line, `Invalid userfocus value "${args.userfocus}". Use true/false or bare token userfocus.`, true);
+            return true;
+          }
+        }
+
         // Для простых строк без fallback/volume сохраняем старый формат (string),
         // чтобы не ломать обратную совместимость.
-        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined && bgEntry.is360 === undefined && bgEntry.focusZ === undefined && bgEntry.fov === undefined && bgEntry.quality === undefined) {
+        if (bgEntry.fallback === undefined && bgEntry.volume === undefined && bgEntry.scroll === undefined && bgEntry.focusX === undefined && bgEntry.focusY === undefined && bgEntry.scale === undefined && bgEntry.is360 === undefined && bgEntry.focusZ === undefined && bgEntry.fov === undefined && bgEntry.quality === undefined && bgEntry.userFocus === undefined) {
           story.assets.backgrounds[assetId] = args.file;
         } else {
           story.assets.backgrounds[assetId] = bgEntry;
@@ -2671,6 +2687,23 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         const parsedScroll = parseBackgroundScrollOption(bgParams.scroll, lineNumber, line);
         if (parsedScroll === null) return;
         bgAction.scroll = parsedScroll.enabled ? parsedScroll : false;
+      }
+      if (bgParams.userfocus === undefined && bgTokens.slice(1).some(function(token) {
+        return String(token || "").toLowerCase() === "userfocus";
+      })) {
+        bgParams.userfocus = true;
+      }
+      if (bgParams.userfocus !== undefined) {
+        var userFocusRaw = bgParams.userfocus;
+        var userFocusTxt = String(userFocusRaw === undefined ? "" : userFocusRaw).trim().toLowerCase();
+        if (userFocusRaw === true || userFocusTxt === "true" || userFocusTxt === "1" || userFocusTxt === "yes" || userFocusTxt === "on") {
+          bgAction.userFocus = true;
+        } else if (userFocusRaw === false || userFocusTxt === "false" || userFocusTxt === "0" || userFocusTxt === "no" || userFocusTxt === "off") {
+          bgAction.userFocus = false;
+        } else {
+          addParseError(lineNumber, line, 'bg userfocus must be true/false, 1/0, yes/no, on/off or bare userfocus token', true);
+          return;
+        }
       }
       var bgFocusXRaw = bgParams.focusX !== undefined ? bgParams.focusX : bgParams.focusx;
       if (bgFocusXRaw !== undefined) {

@@ -2577,6 +2577,49 @@ function mergeMediaFocusOptions(scrollOptions, focusX, scale, focusY, is360, foc
   return normalized;
 }
 
+// Подставляет в scroll/focus-опции 360 последний ракурс активной сферы (после перетаскивания игроком),
+// только для полей, которые сценарий не задал явно (null). Явные focusx/focusy/fov из [bg] или команды bg имеют приоритет.
+function applyLastUserBg360FocusToScrollOptionsIfNeeded(options) {
+  if (!options || options.is360 !== true) return options;
+  if (!bg360Runtime || !bg360Runtime.active) return options;
+  var snap = captureBg360ViewSnapshotForAutosave();
+  if (!snap || typeof snap !== "object") return options;
+  if (options.focusX === null || options.focusX === undefined) {
+    if (typeof snap.focusX === "number" && isFinite(snap.focusX)) {
+      options.focusX = snap.focusX;
+    }
+  }
+  if (options.focusY === null || options.focusY === undefined) {
+    if (typeof snap.focusY === "number" && isFinite(snap.focusY)) {
+      options.focusY = snap.focusY;
+    }
+  }
+  if (options.fov === null || options.fov === undefined) {
+    if (typeof snap.fov === "number" && isFinite(snap.fov)) {
+      options.fov = snap.fov;
+    }
+  }
+  return options;
+}
+
+// Решает, включён ли userfocus в команде bg или в [bg], и при необходимости подмешивает последний ракурс.
+// Нужна одна точка входа: тот же merge вызывается из prepareBackgroundVisualAction (visual_batch) и из executeAction("bg") без батча.
+function applyUserFocusToMergedBgMediaOptions(action, bgAssetInfo, bgMediaOptions) {
+  if (!action || !bgAssetInfo || !bgMediaOptions) return bgMediaOptions;
+  var userFocusWanted = false;
+  if (action.userFocus === true) {
+    userFocusWanted = true;
+  } else if (action.userFocus === false) {
+    userFocusWanted = false;
+  } else {
+    userFocusWanted = bgAssetInfo.userFocus === true;
+  }
+  if (userFocusWanted && bgMediaOptions.is360 === true) {
+    return applyLastUserBg360FocusToScrollOptionsIfNeeded(bgMediaOptions);
+  }
+  return bgMediaOptions;
+}
+
 // Возвращает настройки скролла, заданные у фонового ассета.
 // Важно: focusX, focusY и scale в [bg] живут на объекте ассета рядом с scroll, а не внутри scroll.
 // mergeMediaFocusOptions при отсутствии override в команде bg делает ранний return, если focusX, focusY и scale
@@ -3918,6 +3961,7 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
     lastBgAction.fov !== undefined ? lastBgAction.fov : bgAssetInfo.fov,
     lastBgAction.quality !== undefined ? lastBgAction.quality : bgAssetInfo.quality
   );
+  bgMediaOptions = applyUserFocusToMergedBgMediaOptions(lastBgAction, bgAssetInfo, bgMediaOptions);
   state.currentBgId = lastBgAction.bgId || extractBgIdFromRef(lastBgAction.src);
   setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
   if (lastBg360MarksAction) {
@@ -4935,6 +4979,8 @@ function prepareBackgroundVisualAction(action) {
     action.quality !== undefined ? action.quality : bgAssetInfo.quality
   );
 
+  bgMediaOptions = applyUserFocusToMergedBgMediaOptions(action, bgAssetInfo, bgMediaOptions);
+
   state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
 
   var normalizedSrc = normalizeAssetUrl(bgAssetInfo.file || "");
@@ -5586,6 +5632,7 @@ function executeAction(action) {
         action.fov !== undefined ? action.fov : bgAssetInfo.fov,
         action.quality !== undefined ? action.quality : bgAssetInfo.quality
       );
+      bgMediaOptions = applyUserFocusToMergedBgMediaOptions(action, bgAssetInfo, bgMediaOptions);
       // Сохраняем id фона, чтобы walk360 мог проверить соответствие.
       state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
       setBackground(bgAssetInfo.file, bgAssetInfo.fallback, bgAssetInfo.volume, bgMediaOptions);
@@ -12034,6 +12081,7 @@ function resolveBackgroundAsset(ref) {
   var focusZ = null;
   var fov = null;
   var quality = null;
+  var userFocus = false;
 
   if (typeof ref === "string" && ref.indexOf("@bg.") === 0 && STORY && STORY.assets && STORY.assets.backgrounds) {
     var bgId = ref.substring(4);
@@ -12048,6 +12096,9 @@ function resolveBackgroundAsset(ref) {
     focusZ = getBackgroundAssetFocusZ(bgEntry);
     fov = getBackgroundAssetFov(bgEntry);
     quality = getBackgroundAssetQuality(bgEntry);
+    if (bgEntry && typeof bgEntry === "object" && bgEntry.userFocus === true) {
+      userFocus = true;
+    }
   }
 
   return {
@@ -12061,7 +12112,8 @@ function resolveBackgroundAsset(ref) {
     is360: is360,
     focusZ: focusZ,
     fov: fov,
-    quality: quality
+    quality: quality,
+    userFocus: userFocus
   };
 }
 
