@@ -11,6 +11,7 @@ lang=ru                  # Язык инфтерфейса программы. �
 startScene=scIntro01
 mode=debug              # Режим: release и debug. По умолчанию debug
 bg360Quality=auto       # auto: mobile только на телефоне; normal/mobile — ручной режим для всех устройств
+engine.optimized=auto  # false | true | auto: webp --vnv-optimized(-mobile), затем исходный файл
 # topSpacing=500        # отступ сверху в пикселях (можно 100, 200 и т.д.)
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
 transition = fade       # fade, black, white, instant или none

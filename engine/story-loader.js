@@ -119,6 +119,10 @@
     loadsafe: {
       target: 'loadsafe',
       type: 'bool'
+    },
+    optimized: {
+      target: 'optimized',
+      type: 'optimizedMode'
     }
   };
 
@@ -192,7 +196,9 @@
         bg360Quality: 'normal',
         // engine.loadsafe по умолчанию включён: автосейв принимается только для той же версии текста истории.
         engine: {
-          loadsafe: true
+          loadsafe: true,
+          // false — только исходные пути; true/auto — сначала --vnv-optimized webp, затем исходник.
+          optimized: 'false'
         }
       },
       assets: {
@@ -1605,6 +1611,18 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         } else {
           addParseError(lineNumber, originalLine, 'The "' + key + '" value must be true or false.', false);
           return;
+        }
+      } else if (engineConfig.type === 'optimizedMode') {
+        var normalizedOptimized = String(value || '').trim().toLowerCase();
+        if (normalizedOptimized === 'true' || normalizedOptimized === '1') {
+          parsedEngineValue = 'true';
+        } else if (normalizedOptimized === 'auto') {
+          parsedEngineValue = 'auto';
+        } else if (normalizedOptimized === 'false' || normalizedOptimized === '0' || normalizedOptimized === '') {
+          parsedEngineValue = 'false';
+        } else {
+          addParseError(lineNumber, originalLine, 'The "' + key + '" value must be false, true or auto.', false);
+          parsedEngineValue = 'false';
         }
       } else {
         parsedEngineValue = parseMetaValueByType(value, engineConfig.type);

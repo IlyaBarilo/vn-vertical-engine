@@ -2256,6 +2256,308 @@ function normalizeAssetUrl(url) {
   }
 }
 
+// Кэш уже найденного рабочего URL для пути из сценария: повторные показы не перебирают 404 webp.
+var imageOptimizeResolvedCache = Object.create(null);
+// Если оба webp-варианта уже дали 404, дальше для этого пути пробуем только исходник из сценария.
+var imageOptimizeWebpExhaustedCache = Object.create(null);
+
+// Возвращает режим engine.optimized: false, true или auto (по умолчанию false).
+function getEngineOptimizedMode() {
+  var engine = window.STORY && window.STORY.meta && window.STORY.meta.engine;
+  var raw = engine && engine.optimized !== undefined && engine.optimized !== null
+    ? String(engine.optimized).trim().toLowerCase()
+    : "false";
+  if (raw === "true" || raw === "1") return "true";
+  if (raw === "auto") return "auto";
+  return "false";
+}
+
+// В true/auto включается цепочка webp-копий; false оставляет только исходный путь из сценария.
+function isEngineImageOptimizationEnabled() {
+  var mode = getEngineOptimizedMode();
+  return mode === "true" || mode === "auto";
+}
+
+// Проверяет, что путь — растровое изображение, для которого имеет смысл искать --vnv-optimized webp.
+function isRasterImagePathForOptimization(path) {
+  var value = String(path || "").trim();
+  if (!value) return false;
+  if (/^data:/i.test(value)) return false;
+  if (/--vnv-optimized(-mobile)?\.webp(\?|#|$)/i.test(value)) return false;
+  if (/\.(mp4|webm|js)(\?|#|$)/i.test(value)) return false;
+  if (!/\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(value)) return false;
+  if (/\.webp(\?|#|$)/i.test(value)) return false;
+  return true;
+}
+
+// Делит путь сценария на базу без расширения и хвост (?query/#hash).
+function splitStoryImagePathForOptimize(path) {
+  var raw = String(path || "").trim();
+  if (!raw) return { basePath: "", suffix: "" };
+  var hashIdx = raw.indexOf("#");
+  var hash = hashIdx >= 0 ? raw.slice(hashIdx) : "";
+  var withoutHash = hashIdx >= 0 ? raw.slice(0, hashIdx) : raw;
+  var queryIdx = withoutHash.indexOf("?");
+  var query = queryIdx >= 0 ? withoutHash.slice(queryIdx) : "";
+  var pathOnly = queryIdx >= 0 ? withoutHash.slice(0, queryIdx) : withoutHash;
+  var dot = pathOnly.lastIndexOf(".");
+  if (dot <= 0) return { basePath: pathOnly, suffix: query + hash };
+  return {
+    basePath: pathOnly.slice(0, dot),
+    suffix: query + hash
+  };
+}
+
+// Собирает путь webp-копии: desktop (--vnv-optimized) или mobile (--vnv-optimized-mobile).
+function buildVnvOptimizedImagePath(basePath, variant, suffix) {
+  var tag = variant === "mobile" ? "--vnv-optimized-mobile" : "--vnv-optimized";
+  return basePath + tag + ".webp" + (suffix || "");
+}
+
+// true, если URL — webp-копия оптимизатора (--vnv-optimized).
+function isVnvOptimizedWebpPath(path) {
+  return /--vnv-optimized(-mobile)?\.webp(\?|#|$)/i.test(String(path || ""));
+}
+
+// Запоминает, что для пути сценария webp-копий нет — больше не дергаем их по сети.
+function markImageOptimizeWebpExhausted(storyPath) {
+  var key = normalizeAssetUrl(String(storyPath || "").trim());
+  if (!key) return;
+  imageOptimizeWebpExhaustedCache[key] = true;
+}
+
+// true, если оба webp-варианта для этого сценарного пути уже провалились.
+function areImageOptimizeWebpVariantsExhausted(storyPath) {
+  return !!imageOptimizeWebpExhaustedCache[normalizeAssetUrl(String(storyPath || "").trim())];
+}
+
+// После 404 обоих webp сужаем цепочку до исходного файла из сценария.
+function noteImageOptimizeCandidateFailure(storyPath, failedNormalizedUrl) {
+  if (!isEngineImageOptimizationEnabled()) return;
+  if (!isVnvOptimizedWebpPath(failedNormalizedUrl)) return;
+
+  var original = String(storyPath || "").trim();
+  if (!original || !isRasterImagePathForOptimization(original)) return;
+
+  var parts = splitStoryImagePathForOptimize(original);
+  var desktopNorm = normalizeAssetUrl(buildVnvOptimizedImagePath(parts.basePath, "desktop", parts.suffix));
+  var mobileNorm = normalizeAssetUrl(buildVnvOptimizedImagePath(parts.basePath, "mobile", parts.suffix));
+  if (failedAssets.images[desktopNorm] && failedAssets.images[mobileNorm]) {
+    markImageOptimizeWebpExhausted(original);
+  }
+}
+
+// Возвращает упорядоченный список путей сценария: сначала webp под устройство, затем исходник.
+function getImageLoadCandidatePaths(storyPath) {
+  var original = String(storyPath || "").trim();
+  if (!original) return [];
+  if (!isEngineImageOptimizationEnabled() || !isRasterImagePathForOptimization(original)) {
+    return [original];
+  }
+
+  var cacheKey = normalizeAssetUrl(original);
+  var cachedWinner = imageOptimizeResolvedCache[cacheKey];
+  if (cachedWinner) {
+    return [cachedWinner];
+  }
+
+  if (areImageOptimizeWebpVariantsExhausted(original)) {
+    return [original];
+  }
+
+  var parts = splitStoryImagePathForOptimize(original);
+  var desktopPath = buildVnvOptimizedImagePath(parts.basePath, "desktop", parts.suffix);
+  var mobilePath = buildVnvOptimizedImagePath(parts.basePath, "mobile", parts.suffix);
+  if (isConfidentPhoneForUiBoost()) {
+    return [mobilePath, desktopPath, original];
+  }
+  return [desktopPath, mobilePath, original];
+}
+
+// Нормализует кандидатов для загрузки в DOM/прелоад.
+function getImageLoadCandidates(storyPath) {
+  var list = getImageLoadCandidatePaths(storyPath);
+  var out = [];
+  var seen = Object.create(null);
+  for (var i = 0; i < list.length; i++) {
+    var normalized = normalizeAssetUrl(list[i]);
+    if (!normalized || seen[normalized]) continue;
+    seen[normalized] = true;
+    out.push(normalized);
+  }
+  return out;
+}
+
+// Запоминает рабочий URL, чтобы не повторять цепочку 404 на следующих показах той же картинки.
+function rememberImageOptimizeWinner(storyPath, winnerNormalizedUrl) {
+  if (!storyPath || !winnerNormalizedUrl) return;
+  imageOptimizeResolvedCache[normalizeAssetUrl(storyPath)] = winnerNormalizedUrl;
+}
+
+// true, если загруженный URL относится к одному ассету сценария (исходник или его webp-копии).
+function imageUrlMatchesStoryCandidates(normalizedUrl, storyPath) {
+  if (!normalizedUrl || !storyPath) return false;
+  var candidates = getImageLoadCandidates(storyPath);
+  for (var i = 0; i < candidates.length; i++) {
+    if (urlsMatchForAutosaveRestore(normalizedUrl, candidates[i])) return true;
+  }
+  return false;
+}
+
+// true, если для сценарного пути исчерпаны все варианты (webp и исходник).
+function areAllImageCandidatesFailed(storyPath) {
+  var candidates = getImageLoadCandidates(storyPath);
+  if (!candidates.length) return true;
+  for (var i = 0; i < candidates.length; i++) {
+    if (!failedAssets.images[candidates[i]]) return false;
+  }
+  return true;
+}
+
+// Подбирает src для <img>: перебирает кандидатов до onload или исчерпания списка.
+function assignRasterImageToElement(img, storyPath, handlers) {
+  handlers = handlers || {};
+  if (!img) {
+    if (handlers.onAllFailed) handlers.onAllFailed(storyPath);
+    return;
+  }
+
+  var story = String(storyPath || "").trim();
+  if (!story) {
+    if (handlers.onAllFailed) handlers.onAllFailed(story);
+    return;
+  }
+
+  var seq = handlers.seq;
+  var activeSeq = handlers.activeSeq;
+  var candidates = getImageLoadCandidates(story);
+  var index = 0;
+
+  function shouldAbort() {
+    return seq !== undefined && seq !== null && activeSeq !== undefined && seq !== activeSeq;
+  }
+
+  function clearRasterHandlers() {
+    img.onload = null;
+    img.onerror = null;
+  }
+
+  function tryAssignNext() {
+    if (shouldAbort()) return;
+    clearRasterHandlers();
+
+    while (index < candidates.length) {
+      var url = candidates[index++];
+      if (failedAssets.images[url]) continue;
+
+      img.onload = function() {
+        if (shouldAbort()) return;
+        var loaded = normalizeAssetUrl(img.currentSrc || img.src || "");
+        if (!imageUrlMatchesStoryCandidates(loaded, story)) return;
+        rememberImageOptimizeWinner(story, loaded);
+        clearRasterHandlers();
+        if (handlers.onLoad) handlers.onLoad(loaded, story);
+      };
+
+      img.onerror = function() {
+        if (shouldAbort()) return;
+        var badSrc = normalizeAssetUrl(img.currentSrc || img.src || url);
+        if (badSrc) {
+          failedAssets.images[badSrc] = true;
+          noteImageOptimizeCandidateFailure(story, badSrc);
+        }
+        clearRasterHandlers();
+        tryAssignNext();
+      };
+
+      img.src = url;
+      if (img.complete && img.naturalWidth && img.naturalHeight) {
+        var loadedNow = normalizeAssetUrl(img.currentSrc || img.src || url);
+        if (imageUrlMatchesStoryCandidates(loadedNow, story)) {
+          rememberImageOptimizeWinner(story, loadedNow);
+          clearRasterHandlers();
+          if (handlers.onLoad) handlers.onLoad(loadedNow, story);
+        }
+      }
+      return;
+    }
+
+    if (handlers.onAllFailed) handlers.onAllFailed(story);
+  }
+
+  tryAssignNext();
+}
+
+// Загружает растровую картинку во временный Image() с той же цепочкой кандидатов.
+function loadRasterImageResource(storyPath, handlers) {
+  handlers = handlers || {};
+  var story = String(storyPath || "").trim();
+  if (!story) {
+    if (handlers.onError) handlers.onError();
+    return;
+  }
+
+  var candidates = getImageLoadCandidates(story);
+  var index = 0;
+
+  function tryNext() {
+    while (index < candidates.length) {
+      var url = candidates[index++];
+      if (failedAssets.images[url]) continue;
+
+      var image = new Image();
+      if (handlers.crossOrigin) image.crossOrigin = handlers.crossOrigin;
+
+      image.onload = function() {
+        rememberImageOptimizeWinner(story, normalizeAssetUrl(url));
+        if (handlers.onLoad) handlers.onLoad(image, url);
+      };
+      image.onerror = function() {
+        var badSrc = normalizeAssetUrl(url);
+        failedAssets.images[badSrc] = true;
+        noteImageOptimizeCandidateFailure(story, badSrc);
+        tryNext();
+      };
+      image.src = url;
+      if (image.complete && image.naturalWidth && image.naturalHeight) {
+        rememberImageOptimizeWinner(story, normalizeAssetUrl(url));
+        if (handlers.onLoad) handlers.onLoad(image, url);
+      }
+      return;
+    }
+    if (handlers.onError) handlers.onError();
+  }
+
+  tryNext();
+}
+
+// Атрибут data-vnv-story-img для миниатюр графа: после Mermaid догружаем цепочку webp→исходник.
+function getGraphRasterImgDataAttr(storyPath) {
+  var story = String(storyPath || "").trim();
+  if (!story || !isEngineImageOptimizationEnabled() || !isRasterImagePathForOptimization(story)) {
+    return "";
+  }
+  return " data-vnv-story-img='" + escapeHtml(story) + "'";
+}
+
+// После отрисовки графа подставляет рабочий src для img с data-vnv-story-img.
+function hydrateOptimizedRasterGraphThumbnails(root) {
+  if (!isEngineImageOptimizationEnabled()) return;
+  var host = root || mermaidGraph;
+  if (!host) return;
+
+  var thumbs = host.querySelectorAll("img[data-vnv-story-img]");
+  if (!thumbs || !thumbs.length) return;
+
+  for (var i = 0; i < thumbs.length; i++) {
+    (function(img) {
+      var story = img.getAttribute("data-vnv-story-img") || "";
+      if (!story) return;
+      assignRasterImageToElement(img, story, {});
+    })(thumbs[i]);
+  }
+}
+
 function isVideoAssetPath(path) {
   return /\.(mp4|webm)$/i.test(String(path || ""));
 }
@@ -2704,11 +3006,19 @@ function visualTrace(label, data) {
 function getGraphImageSrc(src) {
   var original = String(src || "").trim();
   if (!original) return "";
+  if (areAllImageCandidatesFailed(original)) return "";
 
-  var normalized = normalizeAssetUrl(original);
-  if (failedAssets.images && failedAssets.images[normalized]) return "";
+  var candidates = getImageLoadCandidates(original);
+  if (!candidates.length) return "";
 
-  return escapeHtml(original);
+  var pick = candidates[0];
+  for (var i = 0; i < candidates.length; i++) {
+    if (!failedAssets.images[candidates[i]]) {
+      pick = candidates[i];
+      break;
+    }
+  }
+  return escapeHtml(pick);
 }
 
 // Чтобы музыка не включалась слишком громко при старте
@@ -4889,20 +5199,19 @@ function hideVisualBlurBgVideoCrossfadeLayer() {
 
 // Загружает картинку до старта fade-out, чтобы после исчезновения старого кадра не было пустой паузы.
 function preloadImageForVisualTransition(src) {
-  var normalizedSrc = normalizeAssetUrl(src || "");
-  if (!normalizedSrc) return Promise.resolve(false);
-  if (failedAssets.images[normalizedSrc]) return Promise.resolve(false);
+  var storyPath = String(src || "").trim();
+  if (!storyPath) return Promise.resolve(false);
+  if (areAllImageCandidatesFailed(storyPath)) return Promise.resolve(false);
 
   return new Promise(function(resolve) {
-    var image = new Image();
-    image.onload = function() {
-      resolve(true);
-    };
-    image.onerror = function() {
-      failedAssets.images[normalizedSrc] = true;
-      resolve(false);
-    };
-    image.src = normalizedSrc;
+    loadRasterImageResource(storyPath, {
+      onLoad: function() {
+        resolve(true);
+      },
+      onError: function() {
+        resolve(false);
+      }
+    });
   });
 }
 
@@ -4986,12 +5295,13 @@ function prepareBackgroundVisualAction(action) {
 
   state.currentBgId = action.bgId || extractBgIdFromRef(action.src);
 
-  var normalizedSrc = normalizeAssetUrl(bgAssetInfo.file || "");
+  var bgFile = bgAssetInfo.file || "";
+  var normalizedSrc = normalizeAssetUrl(bgFile);
   var currentBg = captureBackgroundSnapshotForAutosave();
   var currentSrc = currentBg && currentBg.src ? normalizeAssetUrl(currentBg.src) : "";
   var changesVisual = !!normalizedSrc && (
     !currentSrc ||
-    !urlsMatchForAutosaveRestore(currentSrc, normalizedSrc) ||
+    !imageUrlMatchesStoryCandidates(currentSrc, bgFile) ||
     (bgMediaOptions && bgMediaOptions.is360 === true)
   );
 
@@ -5030,19 +5340,19 @@ function prepareCharacterVisualAction(action) {
     return { kind: "skip", changesVisual: false };
   }
 
-  var normalizedSrc = normalizeAssetUrl(src);
-  if (failedAssets.images[normalizedSrc]) {
-    console.log('[VISUAL BATCH] char skipped: image marked failed', normalizedSrc);
+  if (areAllImageCandidatesFailed(src)) {
+    console.log('[VISUAL BATCH] char skipped: image marked failed', src);
     return { kind: "skip", changesVisual: false };
   }
 
+  var normalizedSrc = normalizeAssetUrl(src);
   var currentSrc = normalizeAssetUrl(elChar ? (elChar.getAttribute("src") || elChar.currentSrc || elChar.src || "") : "");
   var currentCharId = elChar && elChar.dataset ? elChar.dataset.charId : "";
   var hidden = !isElementVisibleForVisualTransition(elChar);
   var changesVisual =
     hidden ||
     !currentSrc ||
-    !urlsMatchForAutosaveRestore(currentSrc, normalizedSrc) ||
+    !imageUrlMatchesStoryCandidates(currentSrc, src) ||
     currentCharId !== action.charId;
 
   return {
@@ -5139,14 +5449,14 @@ function applyPreparedCharacterVisualState(preparedChar) {
   }
 
   if (preparedChar.kind !== "show") return;
-  if (failedAssets.images[preparedChar.normalizedSrc]) return;
+  if (areAllImageCandidatesFailed(preparedChar.src)) return;
 
   applyCharacterVisualPosition(preparedChar.pos);
   if (preparedChar.charId) {
     elChar.dataset.charId = preparedChar.charId;
   }
   elChar.style.maxHeight = "none";
-  elChar.src = preparedChar.normalizedSrc;
+  assignRasterImageToElement(elChar, preparedChar.src, {});
   elChar.classList.remove("hidden");
   adjustCharacterScale();
   requestAnimationFrame(function() {
@@ -5223,16 +5533,14 @@ function applyMediaScrollOptionsToTemporaryLayer(layer, options, containerEl) {
 
 // Дожидается размеров картинки overlay: focusX нельзя корректно посчитать до naturalWidth/naturalHeight.
 function loadVisualCrossfadeImage(imageEl, src) {
-  var normalizedSrc = normalizeAssetUrl(src || "");
-  if (!imageEl || !normalizedSrc) return Promise.resolve(false);
+  var storyPath = String(src || "").trim();
+  if (!imageEl || !storyPath) return Promise.resolve(false);
 
   return new Promise(function(resolve) {
     var done = false;
     function finish(ok) {
       if (done) return;
       done = true;
-      imageEl.onload = null;
-      imageEl.onerror = null;
       clearTimeout(timer);
       resolve(!!ok);
     }
@@ -5241,16 +5549,14 @@ function loadVisualCrossfadeImage(imageEl, src) {
       finish(!!(imageEl.naturalWidth && imageEl.naturalHeight));
     }, 5000);
 
-    imageEl.onload = function() {
-      finish(true);
-    };
-    imageEl.onerror = function() {
-      finish(false);
-    };
-    imageEl.src = normalizedSrc;
-    if (imageEl.complete && imageEl.naturalWidth && imageEl.naturalHeight) {
-      finish(true);
-    }
+    assignRasterImageToElement(imageEl, storyPath, {
+      onLoad: function() {
+        finish(true);
+      },
+      onAllFailed: function() {
+        finish(false);
+      }
+    });
   });
 }
 
@@ -5388,7 +5694,7 @@ function prepareBlurBackgroundImageCrossfade(src) {
   elBlurBgLayer.style.display = "block";
   layer.classList.remove("is-visible");
   layer.classList.remove("hidden");
-  layer.src = src;
+  assignRasterImageToElement(layer, src, {});
   return layer;
 }
 
@@ -5437,10 +5743,10 @@ function runBackgroundMediaCrossfade(preparedBg, transitionSettings) {
 
   var mediaReady = isVideo
     ? loadVisualCrossfadeVideo(layer, preparedBg.normalizedSrc, true)
-    : loadVisualCrossfadeImage(layer, preparedBg.normalizedSrc);
+    : loadVisualCrossfadeImage(layer, preparedBg.file || preparedBg.normalizedSrc);
   var blurReady = isVideo
     ? prepareBlurBackgroundVideoCrossfade(preparedBg)
-    : Promise.resolve(prepareBlurBackgroundImageCrossfade(preparedBg.normalizedSrc));
+    : Promise.resolve(prepareBlurBackgroundImageCrossfade(preparedBg.file || preparedBg.normalizedSrc));
 
   return Promise.all([mediaReady, blurReady]).then(function(results) {
     if (!results[0]) {
@@ -10009,22 +10315,55 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   // Для file:// TextureLoader может падать из-за CORS (origin null).
   // В этом режиме грузим картинку через HTMLImageElement без crossOrigin и оборачиваем в THREE.Texture вручную.
   if (window.location && window.location.protocol === "file:") {
-    var fileImage = new Image();
-    fileImage.onload = function() {
-      var texture = new window.THREE.Texture(fileImage);
-      texture.needsUpdate = true;
-      texture.minFilter = window.THREE.LinearFilter;
-      texture.magFilter = window.THREE.LinearFilter;
-      texture.generateMipmaps = false;
-      texture.colorSpace = window.THREE.SRGBColorSpace || texture.colorSpace;
-      onLoadTexture(texture);
-    };
-    fileImage.onerror = onLoadError;
-    fileImage.src = textureSource;
+    if (packedDataUrl) {
+      var fileImagePacked = new Image();
+      fileImagePacked.onload = function() {
+        var texturePacked = new window.THREE.Texture(fileImagePacked);
+        texturePacked.needsUpdate = true;
+        texturePacked.minFilter = window.THREE.LinearFilter;
+        texturePacked.magFilter = window.THREE.LinearFilter;
+        texturePacked.generateMipmaps = false;
+        texturePacked.colorSpace = window.THREE.SRGBColorSpace || texturePacked.colorSpace;
+        onLoadTexture(texturePacked);
+      };
+      fileImagePacked.onerror = onLoadError;
+      fileImagePacked.src = textureSource;
+      return;
+    }
+    loadRasterImageResource(src, {
+      onLoad: function(fileImage) {
+        var texture = new window.THREE.Texture(fileImage);
+        texture.needsUpdate = true;
+        texture.minFilter = window.THREE.LinearFilter;
+        texture.magFilter = window.THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        texture.colorSpace = window.THREE.SRGBColorSpace || texture.colorSpace;
+        onLoadTexture(texture);
+      },
+      onError: onLoadError
+    });
     return;
   }
 
   var loader = new window.THREE.TextureLoader();
+  if (!packedDataUrl && isEngineImageOptimizationEnabled() && isRasterImagePathForOptimization(src)) {
+    loadRasterImageResource(src, {
+      onLoad: function(_img, resolvedUrl) {
+        loader.load(
+          normalizeAssetUrl(resolvedUrl),
+          function(texture) {
+            texture.colorSpace = window.THREE.SRGBColorSpace || texture.colorSpace;
+            onLoadTexture(texture);
+          },
+          undefined,
+          onLoadError
+        );
+      },
+      onError: onLoadError
+    });
+    return;
+  }
+
   loader.load(
     textureSource,
     function(texture) {
@@ -10074,10 +10413,10 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     videoVolume: videoVolume
   });
 
-  if (failedAssets.images[normalizedSrc]) {
-    if (!failedAssets.images[normalizedSrc + "_logged"]) {
-      console.warn('[IMG] skip failed background src:', normalizedSrc);
-      failedAssets.images[normalizedSrc + "_logged"] = true;
+  if (areAllImageCandidatesFailed(src)) {
+    if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
+      console.warn('[IMG] skip failed background src:', src);
+      failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
     }
     disableBackgroundScroll();
     if (isVideo && normalizedFallbackSrc) {
@@ -10210,39 +10549,28 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     elBg.onload = null;
     setBackgroundScrollOptions(normalizedScrollOptions, elBg, elNovelWindow);
 
-    elBg.onerror = function() {
-      var badSrc = elBg.currentSrc || elBg.src || normalizedSrc;
-      badSrc = normalizeAssetUrl(badSrc);
-
-      console.warn('[IMG] background load error:', badSrc);
-      visualTrace("bgImage:error", { src: badSrc });
-
-      if (badSrc) {
-        failedAssets.images[badSrc] = true;
+    visualTrace("bgImage:set", { src: src });
+    assignRasterImageToElement(elBg, src, {
+      onLoad: function(loadedUrl) {
+        visualTrace("bgImage:load", { src: loadedUrl });
+        updateBackgroundScrollAvailability();
+        flushAutosaveBgScrollRestorePending();
+      },
+      onAllFailed: function() {
+        console.warn('[IMG] background load error:', src);
+        visualTrace("bgImage:error", { src: src });
+        disableBackgroundScroll();
+        elBg.removeAttribute('src');
+        elBg.src = "";
       }
-      disableBackgroundScroll();
-
-      elBg.onerror = null;
-      elBg.removeAttribute('src');
-      elBg.src = "";
-    };
-    elBg.onload = function() {
-      visualTrace("bgImage:load", {
-        src: normalizeAssetUrl(elBg.currentSrc || elBg.src || normalizedSrc)
-      });
-      updateBackgroundScrollAvailability();
-      flushAutosaveBgScrollRestorePending();
-    };
-
-    visualTrace("bgImage:set", { src: normalizedSrc });
-    elBg.src = normalizedSrc;
+    });
     updateBackgroundScrollAvailability();
-    visualTrace("bgImage:src-set", { src: normalizedSrc });
+    visualTrace("bgImage:src-set", { src: src });
   }
 
   // Обновляем размытый фон тем же изображением
   if (typeof updateBlurBackground === 'function') {
-    updateBlurBackground(normalizedSrc);
+    updateBlurBackground(src);
   }
   
   // Убираем принудительное применение стилей через JS
@@ -10284,13 +10612,13 @@ function setCharacter(src, pos, charId, done) {
 
   var normalizedSrc = normalizeAssetUrl(src);
 
-  if (failedAssets.images[normalizedSrc]) {
-    if (!failedAssets.images[normalizedSrc + "_logged"]) {
+  if (areAllImageCandidatesFailed(src)) {
+    if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
       console.warn('[CHAR FLOW] skip failed character src', {
-        src: normalizedSrc,
+        src: src,
         charId: charId
       });
-      failedAssets.images[normalizedSrc + "_logged"] = true;
+      failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
     }
 
     if (done) {
@@ -10350,44 +10678,34 @@ function setCharacter(src, pos, charId, done) {
   const currentCharId = elChar.dataset.charId;
 
   // Если это тот же персонаж с той же эмоцией и он уже видим
-  if (currentSrc === normalizedSrc && !elChar.classList.contains('hidden')) {
+  if (imageUrlMatchesStoryCandidates(currentSrc, src) && !elChar.classList.contains('hidden')) {
     console.log('[Engine setCharacter] Same image already visible, scheduling done asynchronously');
     if (done) setTimeout(done, 0);  // ← асинхронный вызов
     return;
   }
 
   // Если это тот же персонаж, но с другой эмоцией - показываем новую эмоцию без перезагрузки
-  if (currentCharId === charId && currentSrc !== normalizedSrc && !elChar.classList.contains('hidden')) {
+  if (currentCharId === charId && !imageUrlMatchesStoryCandidates(currentSrc, src) && !elChar.classList.contains('hidden')) {
     console.log('[Engine setCharacter] Same character, changing emotion');
-    
-    // Просто меняем src, не скрывая персонажа
-    elChar.onload = function() {
 
-      console.log('[Engine setCharacter] Emotion changed successfully:', normalizedSrc);
-      console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
-      adjustCharacterScale();
-      if (done) {
-        console.log('[setCharacter] onload - ВЫЗЫВАЕМ done callback');
-        done();
-        console.log('[setCharacter] onload - ИНДЕКС ПОСЛЕ callback:', state.actionIndex);
+    assignRasterImageToElement(elChar, src, {
+      seq: seq,
+      activeSeq: __activeCharSeq,
+      onLoad: function() {
+        console.log('[Engine setCharacter] Emotion changed successfully:', src);
+        console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
+        adjustCharacterScale();
+        if (done) {
+          console.log('[setCharacter] onload - ВЫЗЫВАЕМ done callback');
+          done();
+          console.log('[setCharacter] onload - ИНДЕКС ПОСЛЕ callback:', state.actionIndex);
+        }
+      },
+      onAllFailed: function() {
+        console.log('[Engine setCharacter] Failed to load new emotion:', src);
+        if (done) done();
       }
-    };
-    
-    elChar.onerror = function() {
-      var badSrc = normalizeAssetUrl(elChar.currentSrc || elChar.src || normalizedSrc);
-
-      console.log('[Engine setCharacter] Failed to load new emotion:', normalizedSrc);
-      console.log('[Engine setCharacter] Full URL:', elChar.src);
-      console.log('[Engine setCharacter] Error event:', arguments);
-
-      if (badSrc) {
-        failedAssets.images[badSrc] = true;
-      }
-
-      if (done) done();
-    };
-    
-    elChar.src = normalizedSrc;
+    });
     return; // Не продолжаем в основной код, так как уже обработали
   }
   // ===== =====
@@ -10412,89 +10730,64 @@ function setCharacter(src, pos, charId, done) {
   elChar.onload = null;
   elChar.onerror = null;
 
-  elChar.onload = function() {
-    console.log('[Engine setCharacter] Image loaded successfully:', src);
+  console.log('[Engine setCharacter] Setting src:', src);
+  assignRasterImageToElement(elChar, src, {
+    seq: seq,
+    activeSeq: __activeCharSeq,
+    onLoad: function() {
+      console.log('[Engine setCharacter] Image loaded successfully:', src);
 
-    console.log('[CHAR FLOW] onload', {
-      seq,
-      activeSeq: __activeCharSeq,
-      src,
-      domSrc: elChar.currentSrc || elChar.src,
-      hiddenBeforeShow: elChar.classList.contains('hidden'),
-      heightBeforeScale: elChar.style.height
-    });
-
-    // Проверяем, не устарел ли этот load
-    if (seq !== __activeCharSeq) {
-      console.warn('[CHAR FLOW] stale onload ignored', {
+      console.log('[CHAR FLOW] onload', {
         seq,
         activeSeq: __activeCharSeq,
-        src
+        src,
+        domSrc: elChar.currentSrc || elChar.src,
+        hiddenBeforeShow: elChar.classList.contains('hidden'),
+        heightBeforeScale: elChar.style.height
       });
-      return;
-    }
 
+      if (seq !== __activeCharSeq) {
+        console.warn('[CHAR FLOW] stale onload ignored', {
+          seq,
+          activeSeq: __activeCharSeq,
+          src
+        });
+        return;
+      }
 
-    // Проверяем, не переключилась ли сцена
-    if (state.sceneId !== currentSceneId) {
-      console.log('[setCharacter] Сцена изменилась с', currentSceneId, 'на', state.sceneId, '- не восстанавливаем индекс');
-      if (done) done();
-      return;
-    }
+      if (state.sceneId !== currentSceneId) {
+        console.log('[setCharacter] Сцена изменилась с', currentSceneId, 'на', state.sceneId, '- не восстанавливаем индекс');
+        if (done) done();
+        return;
+      }
 
-
-    // Сначала показываем, чтобы adjustCharacterScale не вышел по hidden
-    elChar.classList.remove("hidden");
-
-    // Потом применяем правильный размер
-    adjustCharacterScale();
-
-    // И даём браузеру кадр закрепить layout
-    requestAnimationFrame(function() {
+      elChar.classList.remove("hidden");
       adjustCharacterScale();
+      requestAnimationFrame(function() {
+        adjustCharacterScale();
+        if (done) done();
+      });
+    },
+    onAllFailed: function() {
+      console.log('[Engine setCharacter] Image failed to load:', src);
+      console.log('[CHAR FLOW] onerror', {
+        seq,
+        activeSeq: __activeCharSeq,
+        src: src,
+        domSrc: elChar.currentSrc || elChar.src
+      });
+
+      if (seq !== __activeCharSeq) {
+        return;
+      }
+
+      elChar.classList.add("hidden");
+      elChar.removeAttribute('src');
+      elChar.removeAttribute('data-char-id');
+
       if (done) done();
-    });
-  };
-
-  elChar.onerror = function() {
-    var badSrc = normalizeAssetUrl(elChar.currentSrc || elChar.src || normalizedSrc);
-
-    console.log('[Engine setCharacter] Image failed to load:', normalizedSrc);
-    console.log('[Engine setCharacter] Full URL:', elChar.src);
-    console.log('[Engine setCharacter] Error event:', arguments);
-
-    console.log('[CHAR FLOW] onerror', {
-      seq,
-      activeSeq: __activeCharSeq,
-      src: normalizedSrc,
-      domSrc: elChar.currentSrc || elChar.src
-    });
-
-    if (badSrc) {
-      failedAssets.images[badSrc] = true;
     }
-
-    if (seq !== __activeCharSeq) {
-      return;
-    }
-
-    elChar.classList.add("hidden");
-    elChar.removeAttribute('src');
-    elChar.removeAttribute('data-char-id');
-
-    if (done) done();
-  };
-
-  if (seq !== __activeCharSeq) {
-    console.warn('[CHAR FLOW] stale onload ignored', {
-      seq,
-      activeSeq: __activeCharSeq,
-      src
-    });
-  }
-
-  console.log('[Engine setCharacter] Setting src:', normalizedSrc);
-  elChar.src = normalizedSrc;
+  });
 }
 
 function showDialog(name, text, color) {
@@ -11962,9 +12255,8 @@ function resolveAsset(ref, charId, emotion) {
       console.log('[Engine resolveAsset] Found image path:', imagePath);
       
       if (imagePath) {
-        var normalizedImagePath = normalizeAssetUrl(imagePath);
-        if (failedAssets.images[normalizedImagePath]) {
-          console.log('[Engine resolveAsset] Character image marked as failed:', normalizedImagePath);
+        if (areAllImageCandidatesFailed(imagePath)) {
+          console.log('[Engine resolveAsset] Character image marked as failed:', imagePath);
           return "";
         }
 
@@ -12028,12 +12320,9 @@ function resolveAsset(ref, charId, emotion) {
     console.log('[Engine resolveAsset] Found background:', result);
     var bgPath = getBackgroundAssetPrimaryPath(result);
 
-    if (bgPath) {
-      var normalizedBg = normalizeAssetUrl(bgPath);
-      if (failedAssets.images[normalizedBg]) {
-        console.log('[Engine resolveAsset] Background marked as failed:', normalizedBg);
-        return "";
-      }
+    if (bgPath && areAllImageCandidatesFailed(bgPath)) {
+      console.log('[Engine resolveAsset] Background marked as failed:', bgPath);
+      return "";
     }
     return bgPath || "";
   }
@@ -12490,16 +12779,17 @@ function renderGamesCatalog() {
     if (item.cover) {
       var img = document.createElement("img");
       img.className = "gameCatalogCover";
-      img.src = item.cover;
       img.alt = item.title;
       img.loading = "lazy";
-      img.onerror = function() {
-        coverWrap.innerHTML = "";
-        var noCover = document.createElement("div");
-        noCover.className = "gameCatalogNoCover";
-        noCover.textContent = t("gamesNoCover");
-        coverWrap.appendChild(noCover);
-      };
+      assignRasterImageToElement(img, item.cover, {
+        onAllFailed: function() {
+          coverWrap.innerHTML = "";
+          var noCover = document.createElement("div");
+          noCover.className = "gameCatalogNoCover";
+          noCover.textContent = t("gamesNoCover");
+          coverWrap.appendChild(noCover);
+        }
+      });
       coverWrap.appendChild(img);
     } else {
       var noCover = document.createElement("div");
@@ -13529,8 +13819,7 @@ function checkAssetsFiles() {
       // Проверяем каждый уникальный файл
       uniquePaths.forEach(path => {
         if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          // Проверка изображения
-          const img = new Image();
+          // Проверка изображения: та же цепочка webp→исходник, что и в рантайме новеллы.
           let isResolved = false;
 
           const timeout = setTimeout(() => {
@@ -13541,7 +13830,8 @@ function checkAssetsFiles() {
               }
           }, 5000);
 
-          img.onload = function() {
+          loadRasterImageResource(path, {
+            onLoad: function(img) {
               if (isResolved) return;
               isResolved = true;
               clearTimeout(timeout);
@@ -13562,18 +13852,16 @@ function checkAssetsFiles() {
 
               loadedCount++;
               checkComplete();
-          };
-
-          img.onerror = function() {
+            },
+            onError: function() {
               if (isResolved) return;
               isResolved = true;
               clearTimeout(timeout);
 
               errorCount++;
               checkComplete();
-          };
-
-          img.src = path + '?' + Date.now(); // timestamp чтобы избежать кэша
+            }
+          });
         } else if (path.match(/\.(mp4|webm)$/i)) {
           // Видео по сети не проверяем — слишком тяжело и часто даёт ложные таймауты.
           const firstFile = pathGroups[path][0];
@@ -14507,7 +14795,7 @@ function buildMermaidGraph(story, unreachableList, options) {
 
           // Рамка вынесена в отдельную обёртку, чтобы изображение не перекрывало скруглённый контур.
           label += "<span class='scene-bg-frame " + sceneBgCountClass + "'>" +
-                  "<img src='" + imgSrc + "' " +
+                  "<img src='" + imgSrc + "'" + getGraphRasterImgDataAttr(bg.src) + " " +
                   "class='scene-bg-thumbnail " + sceneBgCountClass + "' " +
                   "data-id='" + safeBgId + "' " +
                   "data-index='" + b + "' " +
@@ -14609,7 +14897,7 @@ function buildMermaidGraph(story, unreachableList, options) {
             "</span>";
         } else if (!isVideoAssetPath(panoNode.file)) {
           panoLabel += "<span class='scene-bg-frame " + panoImgClass + "'>" +
-            "<img src='" + getGraphImageSrc(panoNode.file) + "' " +
+            "<img src='" + getGraphImageSrc(panoNode.file) + "'" + getGraphRasterImgDataAttr(panoNode.file) + " " +
             "class='scene-bg-thumbnail " + panoImgClass + "' " +
             "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
             "data-index='0' " +
@@ -14875,7 +15163,7 @@ function buildCharactersGraph(story, options) {
           : 0;
 
         emotionsHtml += "<span class='cew " + emotionCountClass + "'>" +
-                  "<img src='" + imgSrc + "' " +
+                  "<img src='" + imgSrc + "'" + getGraphRasterImgDataAttr(char.images[emotion]) + " " +
                   "class='char-emotion-thumbnail " + emotionCountClass + "' " +
                   "title='" + safeEmotion + "' alt='' />" +
                   "<b class='cec'>" + emotionUseCount + "</b>" +
@@ -15048,7 +15336,7 @@ function buildBackgroundsGraph(story, options) {
       if (!imgSrc) continue;
 
       bgImagesHtml += "<span class='bgw " + imgCountClass + "'>" +
-        "<img src='" + imgSrc + "' " +
+        "<img src='" + imgSrc + "'" + getGraphRasterImgDataAttr(allUniqueBgs[imgBgId]) + " " +
         "class='bgi " + imgCountClass + "' " +
         "title='" + safeImgBgId + "' alt='' />" +
         "<b class='bgc'>" + bgUseCount + "</b>" +
@@ -15563,7 +15851,7 @@ function buildGamesGraph(story, options) {
 
     if (!compact && safeCover) {
       label += "<div class='game-card-image-wrap'>" +
-            "<img src='" + safeCover + "' " +
+            "<img src='" + safeCover + "'" + getGraphRasterImgDataAttr(game.cover || "") + " " +
             "class='game-thumbnail " + gameCountClass + "' " +
             "alt='' " +
             "loading='eager' />" +
@@ -16308,7 +16596,7 @@ function updateBlurBackground(src) {
     console.log('[Engine] Устанавливаем размытый фон:', src);
     hideBlurBackgroundVideo();
     elBlurBgImage.classList.remove("hidden");
-    elBlurBgImage.src = src;
+    assignRasterImageToElement(elBlurBgImage, src, {});
     elBlurBgLayer.classList.remove("hidden");
     // applySpacingSettings мог выставить display:none — без явного block слой остаётся невидимым.
     elBlurBgLayer.style.display = "block";
@@ -16999,6 +17287,7 @@ function renderMermaidGraph() {
       setTimeout(function() {
         if (!hasMermaidRenderError()) {
           hydrateBg360GraphThumbnails(mermaidGraph);
+          hydrateOptimizedRasterGraphThumbnails(mermaidGraph);
         }
         if (hasMermaidRenderError() && index + 1 < renderQueue.length) {
           console.warn("[GRAPH] Full render produced Mermaid error, trying compact fallback.");
