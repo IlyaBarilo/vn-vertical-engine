@@ -6314,13 +6314,15 @@ function applyBg360Marks(action) {
     var targetSceneRaw = m && m.targetScene !== undefined && m.targetScene !== null
       ? String(m.targetScene).trim()
       : "";
-    var labelRaw = readStory360Field(m, ["label", "title", "name", "text"]);
+    var labelRaw = readStory360Field(m, ["label", "title", "name"]);
+    var textRaw = readStory360Field(m, ["text"]);
     return {
       id: String(m.id || ""),
       x: Number(m.x),
       y: Number(m.y),
       kind: normalizeBg360MarkKind(m.kind || m.type || "walk"),
       label: String(labelRaw || "").trim(),
+      text: String(textRaw || "").trim(),
       // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
       targetScene: targetSceneRaw || null,
       target: m && m.target ? m.target : null
@@ -6755,7 +6757,8 @@ function normalizeStory360Marks(spaceId, panorama) {
       x: x,
       y: y,
       kind: kind,
-      label: String(readStory360Field(mark, ["label", "title", "name", "text"]) || "").trim(),
+      label: String(readStory360Field(mark, ["label", "title", "name"]) || "").trim(),
+      text: String(readStory360Field(mark, ["text"]) || "").trim(),
       target: normalizeStory360Target(mark, spaceId)
     });
   }
@@ -7063,6 +7066,12 @@ function bg360GetSceneTargetLabel(mark) {
   var sceneId = target ? String(target.sceneId || target.scene || "").trim() : String(mark.targetScene || "").trim();
   if (sceneId) return "Сценарий: " + sceneId;
   return "";
+}
+
+// Возвращает текст направления для компаса: пустой text намеренно скрывает подпись у этой метки.
+function bg360GetCompassMarkLabel(mark) {
+  if (!mark || typeof mark !== "object") return "";
+  return String(mark.text || "").trim();
 }
 
 // Проверяет, что метка является обзорной view-точкой: она видима как DOM-метка и отдельный пунктир в компасе, но без стрелки на полу.
@@ -7903,6 +7912,14 @@ function readBg360CompassConfig() {
     viewLineWidth: Math.max(0.25, getBg360CssNumber("--bg360-compass-view-line-width", 1.15)),
     viewLineDash: Math.max(0, getBg360CssNumber("--bg360-compass-view-line-dash", 2.6)),
     viewLineGap: Math.max(0, getBg360CssNumber("--bg360-compass-view-line-gap", 2.3)),
+    labelEnabled: getBg360CssNumber("--bg360-compass-label-enabled", 1) !== 0,
+    labelFontSize: Math.max(1, getBg360CssNumber("--bg360-compass-label-font-size", 7.4)),
+    labelGap: Math.max(0, getBg360CssNumber("--bg360-compass-label-gap", 3.6)),
+    labelSideBias: clamp(getBg360CssNumber("--bg360-compass-label-side-bias", 0.28), 0, 0.95),
+    labelOpacity: clamp(getBg360CssNumber("--bg360-compass-label-opacity", 0.96), 0.05, 1),
+    labelPaint: parseBg360CssColor("--bg360-compass-label-color", 0xdcdcdc, 1),
+    labelStrokePaint: parseBg360CssColor("--bg360-compass-label-stroke", 0x000000, 0.62),
+    labelStrokeWidth: Math.max(0, getBg360CssNumber("--bg360-compass-label-stroke-width", 2.2)),
     padding: Math.max(0, getBg360CssNumber("--bg360-compass-padding", 4))
   };
 }
@@ -7965,6 +7982,7 @@ function buildBg360CompassArrowData(compassCfg, navCfg) {
     arrows.push({
       id: mark.id,
       kind: isSceneTarget ? "sceneTarget" : (isViewMark ? "view" : "arrow"),
+      label: bg360GetCompassMarkLabel(mark),
       angleDeg: angleDeg,
       rawLen: rawLen
     });
@@ -7980,6 +7998,40 @@ function buildBg360CompassArrowData(compassCfg, navCfg) {
     arrows[a].drawLen = clamp(proportionalLen, compassCfg.arrowMinLength, compassCfg.arrowMaxLength);
   }
   return arrows;
+}
+
+// Считает радиус точки привязки подписи: текст отодвигается от наконечника стрелки или внешнего края точки.
+function getBg360CompassLabelRadius(arrow, cfg) {
+  var extra = 0;
+  if (arrow && arrow.kind === "sceneTarget") {
+    extra = cfg.sceneCircleRadius + cfg.sceneCircleStrokeWidth * 0.5;
+  } else if (arrow && arrow.kind === "view") {
+    extra = cfg.viewLineWidth * 0.5;
+  }
+  return Math.max(0, (Number(arrow && arrow.drawLen) || 0) + extra);
+}
+
+// Добавляет горизонтальную подпись направления; координаты пересчитываются при каждом повороте компаса.
+function appendBg360CompassLabel(labelsGroup, arrow, cfg, labelPaint, labelStroke) {
+  if (!labelsGroup || !arrow || !arrow.label) return;
+  var text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  text.classList.add("bg360-compass-label");
+  text.textContent = String(arrow.label);
+  text.dataset.angleDeg = String(arrow.angleDeg);
+  text.dataset.labelRadius = String(getBg360CompassLabelRadius(arrow, cfg));
+  text.dataset.labelGap = String(cfg.labelGap);
+  text.dataset.labelSideBias = String(cfg.labelSideBias);
+  text.setAttribute("font-size", String(cfg.labelFontSize));
+  text.setAttribute("fill", labelPaint.rgb);
+  text.setAttribute("fill-opacity", String(labelPaint.opacity));
+  text.setAttribute("stroke", labelStroke.rgb);
+  text.setAttribute("stroke-opacity", String(labelStroke.opacity));
+  text.setAttribute("stroke-width", String(cfg.labelStrokeWidth));
+  text.setAttribute("stroke-linejoin", "round");
+  text.setAttribute("dominant-baseline", "middle");
+  text.setAttribute("aria-hidden", "true");
+  if (cfg.labelStrokeWidth <= 0) text.setAttribute("stroke", "none");
+  labelsGroup.appendChild(text);
 }
 
 // Создаёт SVG-компас в левом нижнем углу слоя меток и рисует направления текущей 360-панорамы.
@@ -8015,6 +8067,14 @@ function appendBg360Compass() {
   var scenePaint = bg360PaintToSvgColorOpacity(cfg.scenePaint);
   var sceneCircleFill = bg360PaintToSvgColorOpacity(cfg.sceneCircleFillPaint);
   var sceneCircleStroke = bg360PaintToSvgColorOpacity(cfg.sceneCircleStrokePaint);
+  var labelPaint = bg360PaintToSvgColorOpacity(cfg.labelPaint);
+  var labelStroke = bg360PaintToSvgColorOpacity(cfg.labelStrokePaint);
+  var labelsGroup = null;
+  if (cfg.labelEnabled) {
+    labelsGroup = document.createElementNS(ns, "g");
+    labelsGroup.classList.add("bg360-compass-labels");
+    labelsGroup.setAttribute("opacity", String(cfg.labelOpacity));
+  }
 
   var circle = document.createElementNS(ns, "circle");
   circle.classList.add("bg360-compass-shape");
@@ -8048,6 +8108,7 @@ function appendBg360Compass() {
       viewGroup.appendChild(viewLine);
 
       group.appendChild(viewGroup);
+      appendBg360CompassLabel(labelsGroup, arrows[i], cfg, labelPaint, labelStroke);
       continue;
     }
 
@@ -8082,6 +8143,7 @@ function appendBg360Compass() {
       sceneGroup.appendChild(sceneCircle);
 
       group.appendChild(sceneGroup);
+      appendBg360CompassLabel(labelsGroup, arrows[i], cfg, labelPaint, labelStroke);
       continue;
     }
 
@@ -8092,11 +8154,53 @@ function appendBg360Compass() {
     path.setAttribute("transform", "rotate(" + arrows[i].angleDeg.toFixed(3) + ")");
     path.dataset.markId = arrows[i].id != null ? String(arrows[i].id) : "";
     group.appendChild(path);
+    appendBg360CompassLabel(labelsGroup, arrows[i], cfg, labelPaint, labelStroke);
   }
 
   svg.appendChild(group);
+  if (labelsGroup && labelsGroup.childNodes.length) svg.appendChild(labelsGroup);
   elBg360Marks.appendChild(svg);
   updateBg360CompassRotation();
+}
+
+// Держит подписи горизонтальными и ставит их за концом направления, чтобы текст не ложился на линии компаса.
+function updateBg360CompassLabels(yawDeg) {
+  if (!elBg360Marks) return;
+  var labels = elBg360Marks.querySelectorAll(".bg360-compass-label");
+  if (!labels || !labels.length) return;
+
+  var yaw = Number(yawDeg);
+  if (!isFinite(yaw)) yaw = Number(bg360Runtime.yawDeg) || 0;
+
+  for (var i = 0; i < labels.length; i++) {
+    var label = labels[i];
+    var angle = Number(label.dataset.angleDeg);
+    var radius = Math.max(0, Number(label.dataset.labelRadius) || 0);
+    var gap = Math.max(0, Number(label.dataset.labelGap) || 0);
+    var sideBias = clamp(Number(label.dataset.labelSideBias) || 0, 0, 0.95);
+    if (!isFinite(angle)) continue;
+
+    var rad = (angle + yaw) * Math.PI / 180;
+    var ux = Math.sin(rad);
+    var uy = -Math.cos(rad);
+    var x = ux * radius;
+    var y = uy * radius;
+    var anchor = "middle";
+
+    if (ux > sideBias) {
+      x += gap;
+      anchor = "start";
+    } else if (ux < -sideBias) {
+      x -= gap;
+      anchor = "end";
+    } else {
+      y += (uy < 0 ? -gap : gap);
+    }
+
+    label.setAttribute("x", x.toFixed(3));
+    label.setAttribute("y", y.toFixed(3));
+    label.setAttribute("text-anchor", anchor);
+  }
 }
 
 // Поворачивает компас так, чтобы верх SVG всегда совпадал с текущим направлением взгляда камеры.
@@ -8106,6 +8210,7 @@ function updateBg360CompassRotation() {
   if (!group) return;
   var yaw = Number(bg360Runtime.yawDeg) || 0;
   group.setAttribute("transform", "rotate(" + yaw.toFixed(3) + ")");
+  updateBg360CompassLabels(yaw);
 }
 
 /**

@@ -93,7 +93,7 @@
       font-size: 12px;
       line-height: 1.25;
       text-align: left;
-      white-space: normal;
+      white-space: pre-line;
       overflow-wrap: anywhere;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
       pointer-events: auto;
@@ -437,6 +437,25 @@
     }
 
     .point-meta { color: var(--muted); }
+
+    .point-id-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+    }
+
+    .point-number {
+      min-width: 2em;
+      padding: 5px 7px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--accent);
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.1;
+    }
 
     textarea {
       min-height: 120px;
@@ -1604,7 +1623,9 @@
           id: String(p.id || ""),
           x: Number(p.x),
           y: Number(p.y),
-          type: normalizePointType(p.type)
+          type: normalizePointType(p.type),
+          // Текст компаса хранится в JSON явно: пустая строка означает, что подпись не рисуется.
+          text: String(p.text || "")
         };
         var target = buildPointTarget(p);
         if (target) mark.target = target;
@@ -1868,6 +1889,7 @@
           x: Number(m && m.x),
           y: Number(m && m.y),
           type: normalizePointType((m && (m.type || m.kind)) || "walk"),
+          text: String((m && m.text) || ""),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
@@ -2447,6 +2469,7 @@
         x: Number(uv.u.toFixed(4)),
         y: Number(uv.v.toFixed(4)),
         type: type,
+        text: "",
         targetType: "none",
         targetPanorama: "",
         targetScene: ""
@@ -2532,11 +2555,13 @@
      */
     function getOverlayMarkTargetLabel(point) {
       if (!point) return "";
+      var textLine = String(point.text || "");
       if (point.targetType === "360" && point.targetPanorama) {
-        return "Перейти 360: " + point.targetPanorama;
+        // Первая строка всегда отведена под text, даже если она пустая: так сразу видно, где подпись компаса не задана.
+        return textLine + "\nПерейти 360: " + point.targetPanorama;
       }
       if (point.targetType === "scene" && point.targetScene) {
-        return "Сценарий: " + point.targetScene;
+        return textLine + "\nСценарий: " + point.targetScene;
       }
       return "";
     }
@@ -2615,6 +2640,14 @@
         item.className = "point-item";
 
         var info = document.createElement("div");
+        var idRow = document.createElement("div");
+        idRow.className = "point-id-row";
+
+        var pointNumber = document.createElement("div");
+        pointNumber.className = "point-number";
+        pointNumber.textContent = String(idx + 1);
+        pointNumber.title = "Номер метки на сцене";
+
         var nameInput = document.createElement("input");
         nameInput.type = "text";
         nameInput.value = p.id;
@@ -2629,8 +2662,22 @@
         var meta = document.createElement("div");
         meta.className = "point-meta";
         meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType;
-        info.appendChild(nameInput);
+        idRow.appendChild(pointNumber);
+        idRow.appendChild(nameInput);
+        info.appendChild(idRow);
         info.appendChild(meta);
+
+        var compassTextInput = document.createElement("input");
+        compassTextInput.type = "text";
+        compassTextInput.value = p.text || "";
+        compassTextInput.placeholder = "text для компаса";
+        compassTextInput.title = "Подпись на компасе; пусто = без подписи";
+        compassTextInput.addEventListener("input", function () {
+          // Поле text управляет только подписью в компасе и не меняет ID или цель метки.
+          points[idx].text = compassTextInput.value;
+          updateExport();
+        });
+        info.appendChild(compassTextInput);
 
         var targetWrap = document.createElement("div");
         targetWrap.style.display = "grid";
@@ -4363,6 +4410,7 @@
      */
     function buildStory360DataText() {
       saveCurrentPanoramaToData();
+      story360Data = normalizeStory360Data(story360Data);
       return JSON.stringify(story360Data, null, 2).replace(/\n/g, "\r\n");
     }
 
@@ -4453,7 +4501,7 @@
     }
 
     /**
-     * Нормализует импортированный файл: у пространства всегда должен быть объект panoramas.
+     * Нормализует импортированный файл: у пространства всегда должен быть объект panoramas, а у меток — поле text для компаса.
      */
     function normalizeStory360Data(data) {
       var normalized = data && typeof data === "object" ? data : createEmptyStory360Data();
@@ -4469,6 +4517,15 @@
         if (!space.panoramas || typeof space.panoramas !== "object") {
           space.panoramas = space.scenes && typeof space.scenes === "object" ? space.scenes : {};
         }
+        Object.keys(space.panoramas).forEach(function (pid) {
+          var panorama = space.panoramas[pid];
+          if (!panorama || typeof panorama !== "object" || !Array.isArray(panorama.marks)) return;
+          panorama.marks.forEach(function (mark) {
+            if (!mark || typeof mark !== "object") return;
+            // Явная пустая строка делает формат предсказуемым: нет text — нет подписи на компасе.
+            mark.text = mark.text === undefined || mark.text === null ? "" : String(mark.text);
+          });
+        });
       });
       if (!normalized.version) normalized.version = 1;
       return normalized;

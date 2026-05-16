@@ -301,6 +301,15 @@ body {
   --bg360-compass-view-line-width: 2.15;
   --bg360-compass-view-line-dash: 4.6;
   --bg360-compass-view-line-gap: 4.3;
+  /* Подписи направлений компаса: размеры заданы в координатах SVG viewBox, как и геометрия компаса. */
+  --bg360-compass-label-enabled: 1;
+  --bg360-compass-label-font-size: 10;
+  --bg360-compass-label-gap: 3.6;
+  --bg360-compass-label-side-bias: 0.28;
+  --bg360-compass-label-opacity: 0.96;
+  --bg360-compass-label-color: rgb(220, 220, 220);
+  --bg360-compass-label-stroke: rgba(0, 0, 0, 0.62);
+  --bg360-compass-label-stroke-width: 2.2;
   --bg360-compass-padding: 4;
 
   /* =========================================================
@@ -559,6 +568,14 @@ body {
 }
 
 .bg360-compass-shape {
+  vector-effect: non-scaling-stroke;
+}
+
+.bg360-compass-label {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight: 700;
+  paint-order: stroke fill;
+  text-rendering: geometricPrecision;
   vector-effect: non-scaling-stroke;
 }
 

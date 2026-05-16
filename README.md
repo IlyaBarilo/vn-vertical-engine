@@ -351,7 +351,8 @@ The optional **`from360`** parameter is an alias for **`entry`**: it selects the
 Inside `story360.js`, every panorama can define `entries` for different incoming
 directions and `marks` with targets to another panorama or to a normal story
 scene. This keeps camera direction and navigation links out of the handwritten
-story text.
+story text. A mark's optional `text` field is used as its label on the 360
+compass; leave it empty to show no compass label.
 
 `story360.js` is self-contained for 360 panoramas: store the panorama package in
 the panorama `file` field. The editor generates internal background IDs by
