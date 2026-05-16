@@ -276,8 +276,8 @@ body {
   /* SVG-компас 360: прозрачность общая для всей группы, чтобы круг и стрелки не темнели на пересечениях. */
   --bg360-compass-enabled: 1;
   --bg360-compass-size-base: 200px; /* 118px; */
-  --bg360-compass-offset-left-base: -10px;
-  --bg360-compass-offset-bottom-base: -10px;
+  --bg360-compass-offset-left-base: 10px;
+  --bg360-compass-offset-bottom-base: 10px;
   --bg360-compass-size: calc(var(--bg360-compass-size-base) * var(--visualScale));
   --bg360-compass-offset-left: calc(var(--bg360-compass-offset-left-base) * var(--visualScale));
   --bg360-compass-offset-bottom: calc(var(--bg360-compass-offset-bottom-base) * var(--visualScale));
@@ -306,10 +306,12 @@ body {
   --bg360-compass-label-font-size: 10;
   --bg360-compass-label-gap: 3.6;
   --bg360-compass-label-side-bias: 0.28;
-  --bg360-compass-label-opacity: 0.96;
-  --bg360-compass-label-color: rgb(220, 220, 220);
-  --bg360-compass-label-stroke: rgba(0, 0, 0, 0.62);
-  --bg360-compass-label-stroke-width: 2.2;
+  --bg360-compass-label-wrap-chars: 6;
+  --bg360-compass-label-line-height: 1.08;
+  --bg360-compass-label-opacity: var(--bg360-compass-opacity);
+  --bg360-compass-label-color: var(--bg360-compass-arrow-color);
+  --bg360-compass-label-stroke: transparent;
+  --bg360-compass-label-stroke-width: 0;
   --bg360-compass-padding: 4;
 
   /* =========================================================

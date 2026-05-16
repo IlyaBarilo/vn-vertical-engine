@@ -7320,10 +7320,27 @@ function getBg360ScaledBaseCssPixel(baseVarName, fallbackPx) {
   }
 }
 
+// Читает CSS-переменную и разворачивает простую ссылку var(--name), чтобы настройки могли переиспользовать цвет/opacity стрелок.
+function readBg360CssCustomPropertyValue(varName) {
+  try {
+    var style = getComputedStyle(document.documentElement);
+    var raw = style.getPropertyValue(varName).trim();
+    for (var i = 0; i < 4; i++) {
+      var ref = raw.match(/^var\(\s*(--[a-z0-9_-]+)\s*(?:,\s*(.*))?\)$/i);
+      if (!ref) break;
+      var next = style.getPropertyValue(ref[1]).trim();
+      raw = next || String(ref[2] || "").trim();
+    }
+    return raw;
+  } catch (err) {
+    return "";
+  }
+}
+
 // Читает числовую CSS-настройку без единиц; используется для FOV, который не является CSS-длиной.
 function getBg360CssNumber(varName, fallbackValue) {
   try {
-    var raw = getComputedStyle(document.documentElement).getPropertyValue(varName);
+    var raw = readBg360CssCustomPropertyValue(varName);
     var value = Number(String(raw || "").trim());
     return isFinite(value) ? value : fallbackValue;
   } catch (err) {
@@ -7333,12 +7350,7 @@ function getBg360CssNumber(varName, fallbackValue) {
 
 // Преобразует CSS-цвет rgba()/rgb()/hex в параметры THREE-материала.
 function parseBg360CssColor(varName, fallbackColor, fallbackOpacity) {
-  var raw = "";
-  try {
-    raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  } catch (err) {
-    raw = "";
-  }
+  var raw = readBg360CssCustomPropertyValue(varName);
   var opacityFallback = typeof fallbackOpacity === "number" ? fallbackOpacity : 1;
 
   var rgba = raw.match(/^rgba?\(([^)]+)\)$/i);
@@ -7890,14 +7902,16 @@ function bg360PaintToSvgColorOpacity(paint) {
 function readBg360CompassConfig() {
   var minLen = Math.max(1, getBg360CssNumber("--bg360-compass-arrow-min-length", 25));
   var maxLen = Math.max(minLen, getBg360CssNumber("--bg360-compass-arrow-max-length", 47));
+  var compassOpacity = clamp(getBg360CssNumber("--bg360-compass-opacity", 0.62), 0.05, 1);
+  var arrowPaint = parseBg360CssColor("--bg360-compass-arrow-color", 0xdcdcdc, 1);
   return {
     enabled: getBg360CssNumber("--bg360-compass-enabled", 1) !== 0,
-    opacity: clamp(getBg360CssNumber("--bg360-compass-opacity", 0.62), 0.05, 1),
+    opacity: compassOpacity,
     circleRadius: Math.max(1, getBg360CssNumber("--bg360-compass-circle-radius", 14)),
     circleStrokeWidth: Math.max(0, getBg360CssNumber("--bg360-compass-circle-stroke-width", 2)),
     circleFillPaint: parseBg360CssColor("--bg360-compass-circle-fill", 0x505050, 1),
     circleStrokePaint: parseBg360CssColor("--bg360-compass-circle-stroke", 0xdcdcdc, 1),
-    arrowPaint: parseBg360CssColor("--bg360-compass-arrow-color", 0xdcdcdc, 1),
+    arrowPaint: arrowPaint,
     arrowMinLength: minLen,
     arrowMaxLength: maxLen,
     arrowRibbonHalfW: Math.max(0.5, getBg360CssNumber("--bg360-compass-arrow-ribbon-half-w", 3.2)),
@@ -7916,8 +7930,10 @@ function readBg360CompassConfig() {
     labelFontSize: Math.max(1, getBg360CssNumber("--bg360-compass-label-font-size", 7.4)),
     labelGap: Math.max(0, getBg360CssNumber("--bg360-compass-label-gap", 3.6)),
     labelSideBias: clamp(getBg360CssNumber("--bg360-compass-label-side-bias", 0.28), 0, 0.95),
-    labelOpacity: clamp(getBg360CssNumber("--bg360-compass-label-opacity", 0.96), 0.05, 1),
-    labelPaint: parseBg360CssColor("--bg360-compass-label-color", 0xdcdcdc, 1),
+    labelWrapChars: Math.max(1, Math.round(getBg360CssNumber("--bg360-compass-label-wrap-chars", 6))),
+    labelLineHeightMul: Math.max(0.8, getBg360CssNumber("--bg360-compass-label-line-height", 1.08)),
+    labelOpacity: clamp(getBg360CssNumber("--bg360-compass-label-opacity", compassOpacity), 0.05, 1),
+    labelPaint: parseBg360CssColor("--bg360-compass-label-color", arrowPaint.color, arrowPaint.opacity),
     labelStrokePaint: parseBg360CssColor("--bg360-compass-label-stroke", 0x000000, 0.62),
     labelStrokeWidth: Math.max(0, getBg360CssNumber("--bg360-compass-label-stroke-width", 2.2)),
     padding: Math.max(0, getBg360CssNumber("--bg360-compass-padding", 4))
@@ -8011,16 +8027,44 @@ function getBg360CompassLabelRadius(arrow, cfg) {
   return Math.max(0, (Number(arrow && arrow.drawLen) || 0) + extra);
 }
 
+// Делит подпись компаса на строки: после порога переносит только по ближайшему пробелу справа, длинные слова остаются целыми.
+function wrapBg360CompassLabelText(text, wrapChars) {
+  var limit = Math.max(1, Math.round(Number(wrapChars) || 10));
+  var source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  var sourceLines = source.split("\n");
+  var result = [];
+
+  for (var i = 0; i < sourceLines.length; i++) {
+    var rest = String(sourceLines[i] || "").trim();
+    if (!rest) continue;
+
+    while (rest.length > limit) {
+      var breakAt = rest.indexOf(" ", limit);
+      if (breakAt < 0) break;
+      var head = rest.slice(0, breakAt).trim();
+      if (head) result.push(head);
+      rest = rest.slice(breakAt).trim();
+    }
+    if (rest) result.push(rest);
+  }
+
+  return result;
+}
+
 // Добавляет горизонтальную подпись направления; координаты пересчитываются при каждом повороте компаса.
 function appendBg360CompassLabel(labelsGroup, arrow, cfg, labelPaint, labelStroke) {
   if (!labelsGroup || !arrow || !arrow.label) return;
+  var lines = wrapBg360CompassLabelText(arrow.label, cfg.labelWrapChars);
+  if (!lines.length) return;
+
   var text = document.createElementNS("http://www.w3.org/2000/svg", "text");
   text.classList.add("bg360-compass-label");
-  text.textContent = String(arrow.label);
   text.dataset.angleDeg = String(arrow.angleDeg);
   text.dataset.labelRadius = String(getBg360CompassLabelRadius(arrow, cfg));
   text.dataset.labelGap = String(cfg.labelGap);
   text.dataset.labelSideBias = String(cfg.labelSideBias);
+  text.dataset.labelLineHeight = String(cfg.labelFontSize * cfg.labelLineHeightMul);
+  text.dataset.labelLineCount = String(lines.length);
   text.setAttribute("font-size", String(cfg.labelFontSize));
   text.setAttribute("fill", labelPaint.rgb);
   text.setAttribute("fill-opacity", String(labelPaint.opacity));
@@ -8031,6 +8075,14 @@ function appendBg360CompassLabel(labelsGroup, arrow, cfg, labelPaint, labelStrok
   text.setAttribute("dominant-baseline", "middle");
   text.setAttribute("aria-hidden", "true");
   if (cfg.labelStrokeWidth <= 0) text.setAttribute("stroke", "none");
+
+  for (var i = 0; i < lines.length; i++) {
+    var tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+    tspan.textContent = lines[i];
+    tspan.dataset.lineIndex = String(i);
+    text.appendChild(tspan);
+  }
+
   labelsGroup.appendChild(text);
 }
 
@@ -8178,6 +8230,8 @@ function updateBg360CompassLabels(yawDeg) {
     var radius = Math.max(0, Number(label.dataset.labelRadius) || 0);
     var gap = Math.max(0, Number(label.dataset.labelGap) || 0);
     var sideBias = clamp(Number(label.dataset.labelSideBias) || 0, 0, 0.95);
+    var lineHeight = Math.max(1, Number(label.dataset.labelLineHeight) || 1);
+    var lineCount = Math.max(1, Math.round(Number(label.dataset.labelLineCount) || 1));
     if (!isFinite(angle)) continue;
 
     var rad = (angle + yaw) * Math.PI / 180;
@@ -8200,6 +8254,15 @@ function updateBg360CompassLabels(yawDeg) {
     label.setAttribute("x", x.toFixed(3));
     label.setAttribute("y", y.toFixed(3));
     label.setAttribute("text-anchor", anchor);
+
+    var lineNodes = label.querySelectorAll("tspan");
+    var centerOffset = (lineCount - 1) * 0.5;
+    for (var j = 0; j < lineNodes.length; j++) {
+      var lineIndex = Math.max(0, Number(lineNodes[j].dataset.lineIndex) || 0);
+      var lineY = y + (lineIndex - centerOffset) * lineHeight;
+      lineNodes[j].setAttribute("x", x.toFixed(3));
+      lineNodes[j].setAttribute("y", lineY.toFixed(3));
+    }
   }
 }
 
