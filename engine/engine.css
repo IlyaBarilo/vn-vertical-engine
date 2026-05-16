@@ -305,6 +305,7 @@ body {
   --bg360-compass-label-enabled: 1;
   --bg360-compass-label-font-size: 10;
   --bg360-compass-label-gap: 3.6;
+  --bg360-compass-label-anchor-offset: 2;
   --bg360-compass-label-side-bias: 0.28;
   --bg360-compass-label-wrap-chars: 6;
   --bg360-compass-label-line-height: 1.08;
@@ -571,6 +572,20 @@ body {
 
 .bg360-compass-shape {
   vector-effect: non-scaling-stroke;
+}
+
+.bg360-compass-click-target {
+  pointer-events: none;
+  cursor: default;
+}
+
+.bg360-marks.is-interactive .bg360-compass-click-target {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+
+.bg360-marks.is-interactive .bg360-compass-label.bg360-compass-click-target {
+  pointer-events: bounding-box;
 }
 
 .bg360-compass-label {

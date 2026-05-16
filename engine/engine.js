@@ -7109,6 +7109,30 @@ function bg360MarksHasAnyCompassMark(marks) {
   return false;
 }
 
+// Единая точка выбора метки: DOM-кнопки, WebGL hit-test и SVG-компас должны завершать ожидание одинаково.
+function activateBg360MarkById(markId, e) {
+  if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+  if (e && typeof e.preventDefault === "function") e.preventDefault();
+
+  var id = markId != null ? String(markId) : "";
+  if (!id) return false;
+  if (bg360MarksRuntime.locked || !bg360MarksRuntime.interactive) return false;
+
+  if (goto360Runtime.active) {
+    if (goto360Runtime.done) return false;
+    onGoto360SelectMark(id);
+    return true;
+  }
+
+  if (walk360Runtime.active) {
+    if (walk360Runtime.done) return false;
+    onWalk360SelectMark(id);
+    return true;
+  }
+
+  return false;
+}
+
 // Перерисовывает DOM-слой меток 360.
 function renderBg360Marks() {
   if (!elBg360Marks) return;
@@ -7196,18 +7220,9 @@ function renderBg360Marks() {
       }
     }
 
-    // Клик по метке разрешён только в интерактивном режиме walk360.
+    // Клик по метке разрешён только в интерактивном режиме ожидания walk360/goto360.
     btn.addEventListener("click", function (e) {
-      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
-      if (e && typeof e.preventDefault === "function") e.preventDefault();
-      if (!walk360Runtime.active && !goto360Runtime.active) return;
-      if (bg360MarksRuntime.locked) return;
-      if (!bg360MarksRuntime.interactive) return;
-      if (goto360Runtime.active) {
-        onGoto360SelectMark(mark.id);
-      } else {
-        onWalk360SelectMark(mark.id);
-      }
+      activateBg360MarkById(mark.id, e);
     });
 
     elBg360Marks.appendChild(btn);
@@ -7929,6 +7944,7 @@ function readBg360CompassConfig() {
     labelEnabled: getBg360CssNumber("--bg360-compass-label-enabled", 1) !== 0,
     labelFontSize: Math.max(1, getBg360CssNumber("--bg360-compass-label-font-size", 7.4)),
     labelGap: Math.max(0, getBg360CssNumber("--bg360-compass-label-gap", 3.6)),
+    labelAnchorOffset: getBg360CssNumber("--bg360-compass-label-anchor-offset", 0),
     labelSideBias: clamp(getBg360CssNumber("--bg360-compass-label-side-bias", 0.28), 0, 0.95),
     labelWrapChars: Math.max(1, Math.round(getBg360CssNumber("--bg360-compass-label-wrap-chars", 6))),
     labelLineHeightMul: Math.max(0.8, getBg360CssNumber("--bg360-compass-label-line-height", 1.08)),
@@ -8016,7 +8032,7 @@ function buildBg360CompassArrowData(compassCfg, navCfg) {
   return arrows;
 }
 
-// Считает радиус точки привязки подписи: текст отодвигается от наконечника стрелки или внешнего края точки.
+// Считает радиус точки привязки подписи: текст отодвигается от края направления и дополнительно смещается фиксированным сдвигом от центра.
 function getBg360CompassLabelRadius(arrow, cfg) {
   var extra = 0;
   if (arrow && arrow.kind === "sceneTarget") {
@@ -8024,7 +8040,8 @@ function getBg360CompassLabelRadius(arrow, cfg) {
   } else if (arrow && arrow.kind === "view") {
     extra = cfg.viewLineWidth * 0.5;
   }
-  return Math.max(0, (Number(arrow && arrow.drawLen) || 0) + extra);
+  var offset = cfg && isFinite(cfg.labelAnchorOffset) ? cfg.labelAnchorOffset : 0;
+  return Math.max(0, (Number(arrow && arrow.drawLen) || 0) + extra + offset);
 }
 
 // Делит подпись компаса на строки: после порога переносит только по ближайшему пробелу справа, длинные слова остаются целыми.
@@ -8051,6 +8068,27 @@ function wrapBg360CompassLabelText(text, wrapChars) {
   return result;
 }
 
+// Не даёт нажатию по компасу начинать вращение 360-сцены под SVG-элементом.
+function handleBg360CompassTargetPointerDown(e) {
+  if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+}
+
+// Клик по SVG-элементу компаса выбирает ту же метку, что и соответствующая стрелка/точка на сцене.
+function handleBg360CompassTargetClick(e) {
+  var el = e && e.currentTarget ? e.currentTarget : null;
+  activateBg360MarkById(el && el.dataset ? el.dataset.markId : "", e);
+}
+
+// Помечает нарисованный элемент компаса как кликабельную область конкретной метки.
+function markBg360CompassClickTarget(el, markId) {
+  var id = markId != null ? String(markId) : "";
+  if (!el || !id) return;
+  el.classList.add("bg360-compass-click-target");
+  el.dataset.markId = id;
+  el.addEventListener("pointerdown", handleBg360CompassTargetPointerDown);
+  el.addEventListener("click", handleBg360CompassTargetClick);
+}
+
 // Добавляет горизонтальную подпись направления; координаты пересчитываются при каждом повороте компаса.
 function appendBg360CompassLabel(labelsGroup, arrow, cfg, labelPaint, labelStroke) {
   if (!labelsGroup || !arrow || !arrow.label) return;
@@ -8059,10 +8097,12 @@ function appendBg360CompassLabel(labelsGroup, arrow, cfg, labelPaint, labelStrok
 
   var text = document.createElementNS("http://www.w3.org/2000/svg", "text");
   text.classList.add("bg360-compass-label");
+  markBg360CompassClickTarget(text, arrow.id);
   text.dataset.angleDeg = String(arrow.angleDeg);
   text.dataset.labelRadius = String(getBg360CompassLabelRadius(arrow, cfg));
   text.dataset.labelGap = String(cfg.labelGap);
   text.dataset.labelSideBias = String(cfg.labelSideBias);
+  text.dataset.labelFontSize = String(cfg.labelFontSize);
   text.dataset.labelLineHeight = String(cfg.labelFontSize * cfg.labelLineHeightMul);
   text.dataset.labelLineCount = String(lines.length);
   text.setAttribute("font-size", String(cfg.labelFontSize));
@@ -8146,6 +8186,7 @@ function appendBg360Compass() {
 
       var viewLine = document.createElementNS(ns, "line");
       viewLine.classList.add("bg360-compass-shape");
+      markBg360CompassClickTarget(viewLine, arrows[i].id);
       viewLine.setAttribute("x1", "0");
       viewLine.setAttribute("y1", String(-cfg.circleRadius));
       viewLine.setAttribute("x2", "0");
@@ -8172,6 +8213,7 @@ function appendBg360Compass() {
       var lineEnd = Math.max(cfg.circleRadius + cfg.sceneCircleRadius, arrows[i].drawLen - cfg.sceneCircleRadius);
       var sceneLine = document.createElementNS(ns, "line");
       sceneLine.classList.add("bg360-compass-shape");
+      markBg360CompassClickTarget(sceneLine, arrows[i].id);
       sceneLine.setAttribute("x1", "0");
       sceneLine.setAttribute("y1", String(-cfg.circleRadius));
       sceneLine.setAttribute("x2", "0");
@@ -8184,6 +8226,7 @@ function appendBg360Compass() {
 
       var sceneCircle = document.createElementNS(ns, "circle");
       sceneCircle.classList.add("bg360-compass-shape");
+      markBg360CompassClickTarget(sceneCircle, arrows[i].id);
       sceneCircle.setAttribute("cx", "0");
       sceneCircle.setAttribute("cy", String(-arrows[i].drawLen));
       sceneCircle.setAttribute("r", String(cfg.sceneCircleRadius));
@@ -8201,6 +8244,7 @@ function appendBg360Compass() {
 
     var path = document.createElementNS(ns, "path");
     path.classList.add("bg360-compass-shape");
+    markBg360CompassClickTarget(path, arrows[i].id);
     path.setAttribute("d", buildBg360CompassArrowPath(arrows[i].drawLen, cfg));
     path.setAttribute("fill", arrowPaint.rgb);
     path.setAttribute("transform", "rotate(" + arrows[i].angleDeg.toFixed(3) + ")");
@@ -8230,6 +8274,7 @@ function updateBg360CompassLabels(yawDeg) {
     var radius = Math.max(0, Number(label.dataset.labelRadius) || 0);
     var gap = Math.max(0, Number(label.dataset.labelGap) || 0);
     var sideBias = clamp(Number(label.dataset.labelSideBias) || 0, 0, 0.95);
+    var fontSize = Math.max(1, Number(label.dataset.labelFontSize) || Number(label.getAttribute("font-size")) || 1);
     var lineHeight = Math.max(1, Number(label.dataset.labelLineHeight) || 1);
     var lineCount = Math.max(1, Math.round(Number(label.dataset.labelLineCount) || 1));
     if (!isFinite(angle)) continue;
@@ -8240,6 +8285,8 @@ function updateBg360CompassLabels(yawDeg) {
     var x = ux * radius;
     var y = uy * radius;
     var anchor = "middle";
+    var centerOffset = (lineCount - 1) * 0.5;
+    var blockHalfHeight = ((lineCount - 1) * lineHeight + fontSize) * 0.5;
 
     if (ux > sideBias) {
       x += gap;
@@ -8248,7 +8295,8 @@ function updateBg360CompassLabels(yawDeg) {
       x -= gap;
       anchor = "end";
     } else {
-      y += (uy < 0 ? -gap : gap);
+      // Для верхних/нижних подписей gap считается до края текстового блока, а не до его центра.
+      y += (uy < 0 ? -1 : 1) * (gap + blockHalfHeight);
     }
 
     label.setAttribute("x", x.toFixed(3));
@@ -8256,7 +8304,6 @@ function updateBg360CompassLabels(yawDeg) {
     label.setAttribute("text-anchor", anchor);
 
     var lineNodes = label.querySelectorAll("tspan");
-    var centerOffset = (lineCount - 1) * 0.5;
     for (var j = 0; j < lineNodes.length; j++) {
       var lineIndex = Math.max(0, Number(lineNodes[j].dataset.lineIndex) || 0);
       var lineY = y + (lineIndex - centerOffset) * lineHeight;
@@ -9730,11 +9777,7 @@ function handleBg360PointerUpLike(e) {
   ) {
     var pickId = pickBg360NavArrowMarkId(e.clientX, e.clientY);
     if (pickId) {
-      if (goto360Runtime.active && !goto360Runtime.done) {
-        onGoto360SelectMark(pickId);
-      } else if (walk360Runtime.active && !walk360Runtime.done) {
-        onWalk360SelectMark(pickId);
-      }
+      activateBg360MarkById(pickId, null);
     }
   }
   bg360Runtime.pointerTravelSum = 0;
