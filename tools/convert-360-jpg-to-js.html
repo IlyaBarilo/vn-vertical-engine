@@ -404,7 +404,42 @@
       return type || "unknown";
     }
 
-    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1; кнопки скачивания растра включаются только при загруженном источнике.
+    // Форматирует числовое качество в проценты; старые пакеты без качества показываются как отсутствие данных.
+    function formatQualityLabel(value) {
+      if (value === null || value === undefined || value === "") return "не указано";
+      var number = Number(value);
+      return isFinite(number) ? Math.round(number * 100) + "%" : "не указано";
+    }
+
+    // Собирает человекочитаемую сводку о том, как JS-пакет был сохранён; все поля опциональны для совместимости со старыми файлами.
+    function formatPackMetaSummary(packMeta) {
+      if (!packMeta || typeof packMeta !== "object") return "";
+      var settings = packMeta.settings && typeof packMeta.settings === "object" ? packMeta.settings : {};
+      var actualType = packMeta.actualType || packMeta.type || settings.actualFormat || settings.format || "";
+      var requestedType = settings.requestedFormat || packMeta.requestedType || "";
+      var parts = [];
+
+      if (packMeta.mode || settings.mode) parts.push("режим " + (packMeta.mode || settings.mode));
+      if (actualType) parts.push("формат " + formatMimeLabel(actualType));
+      if (requestedType && requestedType !== actualType) parts.push("запрошен " + formatMimeLabel(requestedType));
+      if (packMeta.width && packMeta.height) parts.push("кадр " + packMeta.width + "x" + packMeta.height);
+      if (packMeta.size) parts.push("изображение " + formatBytes(packMeta.size));
+
+      var quality = packMeta.quality !== undefined ? packMeta.quality : settings.quality;
+      if (quality !== undefined && quality !== null && quality !== "") parts.push("качество " + formatQualityLabel(quality));
+
+      var targetHeightLabel = packMeta.targetHeightLabel || settings.targetHeightLabel || "";
+      if (!targetHeightLabel && settings.requestedTargetHeight !== undefined && settings.requestedTargetHeight !== null) {
+        targetHeightLabel = settings.requestedTargetHeight === "source" ? "исходная" : settings.requestedTargetHeight + " px";
+      }
+      if (targetHeightLabel) parts.push("целевая высота " + targetHeightLabel);
+      if (packMeta.generatedAt) parts.push("дата " + packMeta.generatedAt);
+      if (Array.isArray(packMeta.warnings) && packMeta.warnings.length) parts.push("предупреждение: " + packMeta.warnings.join(" "));
+
+      return parts.length ? "JS-пакет сохранён: " + parts.join(", ") + "." : "";
+    }
+
+    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1; если источник — JS-пакет, добавляет найденные метаданные сохранения.
     function updateImageInfo(meta) {
       if (!meta) {
         imageInfoEl.textContent = "Файл еще не выбран.";
@@ -422,6 +457,12 @@
         "кадр: " + meta.width + "x" + meta.height + ", " +
         "ratio: " + ratio.toFixed(4) + " " +
         (ratioOk ? "<span class='ok'>(OK ~ 2:1)</span>" : "<span class='warn'>(не похоже на 2:1)</span>");
+      var packSummary = formatPackMetaSummary(meta.packMeta);
+      if (packSummary) {
+        imageInfoEl.innerHTML += "<br>" + escapeHtml(packSummary);
+      } else if (meta.fromPack) {
+        imageInfoEl.innerHTML += "<br>Метаданные сохранения в JS не найдены: это допустимо для старых пакетов.";
+      }
       imageInfoEl.className = "hint";
       btnDownloadImageNormal.disabled = false;
       btnDownloadImageMobile.disabled = false;
@@ -484,8 +525,103 @@
       return joined;
     }
 
+    // Находит JS-объект после указанного объявления, не выполняя код пакета; строки и вложенные скобки учитываются вручную.
+    function extractObjectLiteralAfter(text, startRe) {
+      var source = String(text || "");
+      var match = source.match(startRe);
+      if (!match) return "";
+      var p = match.index + match[0].length;
+      while (p < source.length && /\s/.test(source.charAt(p))) p++;
+      if (source.charAt(p) !== "{") return "";
+
+      var start = p;
+      var depth = 0;
+      var quote = "";
+      var escapeNext = false;
+      for (; p < source.length; p++) {
+        var c = source.charAt(p);
+        if (quote) {
+          if (escapeNext) {
+            escapeNext = false;
+          } else if (c === "\\") {
+            escapeNext = true;
+          } else if (c === quote) {
+            quote = "";
+          }
+          continue;
+        }
+        if (c === "'" || c === "\"") {
+          quote = c;
+          continue;
+        }
+        if (c === "{") depth++;
+        if (c === "}") {
+          depth--;
+          if (depth === 0) return source.slice(start, p + 1);
+        }
+      }
+      return "";
+    }
+
+    // Декодирует простые строковые литералы из старого packMeta без выполнения пользовательского JS.
+    function decodeSimpleJsString(value) {
+      return String(value || "")
+        .replace(/\\r/g, "\r")
+        .replace(/\\n/g, "\n")
+        .replace(/\\'/g, "'")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\");
+    }
+
+    // Читает одно поле из старого packMeta, где ключи были без кавычек, а mode мог ссылаться на переменную packMode.
+    function readLegacyPackMetaValue(text, fieldName, packMode) {
+      var re = new RegExp(fieldName + "\\s*:\\s*(packMode|null|-?\\d+(?:\\.\\d+)?|'((?:\\\\.|[^'])*)'|\"((?:\\\\.|[^\"])*)\")");
+      var match = String(text || "").match(re);
+      if (!match) return undefined;
+      var raw = match[1];
+      if (raw === "packMode") return packMode || "";
+      if (raw === "null") return null;
+      if (/^-?\d/.test(raw)) return Number(raw);
+      return decodeSimpleJsString(match[2] || match[3] || "");
+    }
+
+    // Достаёт старые плоские метаданные из packMeta; если их нет, возвращает null и не мешает загрузке data-url.
+    function extractLegacyPackMetaFromPackJs(jsText) {
+      var text = String(jsText || "");
+      var packModeMatch = text.match(/var\s+packMode\s*=\s*(['"])((?:\\.|(?!\1).)*)\1/);
+      var packMode = packModeMatch ? decodeSimpleJsString(packModeMatch[2]) : "";
+      var fields = [
+        "generatedAt", "mode", "sourceName", "sourceType", "sourceSize",
+        "type", "size", "width", "height", "quality", "targetHeight", "targetHeightLabel"
+      ];
+      var meta = { schema: "vn360-pack-meta-v1" };
+      var found = false;
+      fields.forEach(function(fieldName) {
+        var value = readLegacyPackMetaValue(text, fieldName, packMode);
+        if (value !== undefined) {
+          meta[fieldName] = value;
+          found = true;
+        }
+      });
+      return found ? meta : null;
+    }
+
+    // Извлекает необязательные метаданные сохранения из JS-пакета; новые пакеты читаются как JSON, старые — по отдельным полям.
+    function extractPackMetaFromPackJs(jsText) {
+      var text = String(jsText || "");
+      var objectText = extractObjectLiteralAfter(text, /var\s+packMeta\s*=/);
+      if (objectText) {
+        try {
+          return JSON.parse(objectText);
+        } catch (e) {
+          // Старый packMeta не был JSON-литералом, поэтому ниже читаем только известные безопасные поля.
+        }
+      }
+      return extractLegacyPackMetaFromPackJs(text);
+    }
+
     // Читает data-url в Image и возвращает те же поля, что readImageFile, для общей ветки «источник загружен».
-    function decodeImageFromDataUrl(dataUrl, displayName) {
+    function decodeImageFromDataUrl(dataUrl, displayName, packMeta) {
       return new Promise(function(resolve, reject) {
         var img = new Image();
         img.onload = function() {
@@ -496,7 +632,9 @@
               size: getDataUrlByteSize(dataUrl),
               type: getDataUrlMime(dataUrl) || "image/jpeg",
               width: img.naturalWidth || img.width || 0,
-              height: img.naturalHeight || img.height || 0
+              height: img.naturalHeight || img.height || 0,
+              fromPack: true,
+              packMeta: packMeta || null
             },
             image: img
           });
@@ -598,12 +736,17 @@
         title: title,
         dataUrl: encoded.dataUrl,
         type: encoded.type,
+        requestedType: settings.type,
         sourceType: loadedMeta.type || "image/jpeg",
         sourceName: loadedMeta.name,
         sourceSize: loadedMeta.size,
+        sourceWidth: sourceWidth,
+        sourceHeight: sourceHeight,
         width: targetWidth,
         height: targetHeight,
         quality: settings.quality,
+        requestedQuality: settings.quality,
+        requestedTargetHeight: settings.targetHeight,
         targetHeight: useSourceSize ? null : requestedHeight,
         targetHeightLabel: useSourceSize ? "исходная" : requestedHeight + " px",
         imageBytes: getDataUrlByteSize(encoded.dataUrl),
@@ -695,12 +838,58 @@
       }
     }
 
+    // Собирает сериализуемые метаданные JS-пакета: фактический результат canvas и исходные настройки экспорта хранятся отдельно.
+    function buildPackMeta(variant) {
+      var quality = variant.quality === null || variant.quality === undefined
+        ? null
+        : Number(Number(variant.quality).toFixed(2));
+      var requestedTargetHeight = variant.requestedTargetHeight === undefined
+        ? variant.targetHeight
+        : variant.requestedTargetHeight;
+
+      return {
+        schema: "vn360-pack-meta-v2",
+        converter: "tools/convert-360-jpg-to-js.html",
+        generatedAt: new Date().toISOString(),
+        mode: String(variant.mode || ""),
+        sourceName: String(variant.sourceName || ""),
+        sourceType: String(variant.sourceType || "image/jpeg"),
+        sourceSize: Number(variant.sourceSize || 0),
+        sourceWidth: Number(variant.sourceWidth || 0),
+        sourceHeight: Number(variant.sourceHeight || 0),
+        type: String(variant.type || "image/jpeg"),
+        format: formatMimeLabel(variant.type || "image/jpeg"),
+        size: Number(variant.imageBytes || 0),
+        width: Number(variant.width || 0),
+        height: Number(variant.height || 0),
+        quality: quality,
+        targetHeight: variant.targetHeight === null ? null : Number(variant.targetHeight || 0),
+        targetHeightLabel: String(variant.targetHeightLabel || ""),
+        settings: {
+          mode: String(variant.mode || ""),
+          requestedFormat: String(variant.requestedType || variant.type || "image/jpeg"),
+          actualFormat: String(variant.type || "image/jpeg"),
+          quality: quality,
+          requestedQuality: quality,
+          requestedTargetHeight: requestedTargetHeight === "source" ? "source" : (requestedTargetHeight === null ? null : Number(requestedTargetHeight || 0)),
+          targetHeightLabel: String(variant.targetHeightLabel || ""),
+          imageSmoothing: true,
+          imageSmoothingQuality: "high",
+          jpgBackground: "#000"
+        },
+        warnings: Array.isArray(variant.warnings) ? variant.warnings.slice() : []
+      };
+    }
+
     // Собирает итоговый текст -360.js: ключ берется из пути самого пакета, без ручного дублирования story.js.
     function buildPackJs(variant) {
       var chunks = chunkString(variant.dataUrl, 16384);
       var chunkLines = chunks.map(function(part) {
         return "    '" + jsStringLiteral(part) + "'";
       }).join(",\n");
+      var packMetaLines = JSON.stringify(buildPackMeta(variant), null, 4).split("\n").map(function(line, index) {
+        return (index === 0 ? "  var packMeta = " : "  ") + line;
+      }).join("\n") + ";";
 
       return [
         "(function() {",
@@ -740,10 +929,11 @@
         "  }",
         "  function registerPackKey(key, dataUrl, meta) {",
         "    if (!key) return;",
+        "    var mode = meta && meta.mode ? meta.mode : packMode;",
         "    window.VN360_PACKS_VARIANTS[key] = window.VN360_PACKS_VARIANTS[key] || {};",
         "    window.VN360_PACKS_META_VARIANTS[key] = window.VN360_PACKS_META_VARIANTS[key] || {};",
-        "    window.VN360_PACKS_VARIANTS[key][meta.mode] = dataUrl;",
-        "    window.VN360_PACKS_META_VARIANTS[key][meta.mode] = meta;",
+        "    window.VN360_PACKS_VARIANTS[key][mode] = dataUrl;",
+        "    if (meta) window.VN360_PACKS_META_VARIANTS[key][mode] = meta;",
         "  }",
         "  var scriptUrl = getPackScriptUrl();",
         "  var relativeScriptUrl = getRelativePackUrl(scriptUrl);",
@@ -754,20 +944,7 @@
         chunkLines,
         "  ].join('');",
         "",
-        "  var packMeta = {",
-        "    generatedAt: '" + new Date().toISOString() + "',",
-        "    mode: packMode,",
-        "    sourceName: '" + jsStringLiteral(variant.sourceName || "") + "',",
-        "    sourceType: '" + jsStringLiteral(variant.sourceType || "image/jpeg") + "',",
-        "    sourceSize: " + Number(variant.sourceSize || 0) + ",",
-        "    type: '" + jsStringLiteral(variant.type || "image/jpeg") + "',",
-        "    size: " + Number(variant.imageBytes || 0) + ",",
-        "    width: " + Number(variant.width || 0) + ",",
-        "    height: " + Number(variant.height || 0) + ",",
-        "    quality: " + (variant.quality === null ? "null" : Number(variant.quality || 0).toFixed(2)) + ",",
-        "    targetHeight: " + (variant.targetHeight === null ? "null" : Number(variant.targetHeight || 0)) + ",",
-        "    targetHeightLabel: '" + jsStringLiteral(variant.targetHeightLabel || "") + "'",
-        "  };",
+        packMetaLines,
         "",
         "  var allKeys = [];",
         "  addPackKey(allKeys, scriptUrl);",
@@ -999,13 +1176,18 @@
         Promise.resolve().then(function() {
           var jsText = String(reader.result || "");
           var dataUrl = extractDataUrlFromPackJs(jsText);
-          return decodeImageFromDataUrl(dataUrl, file.name + " (из JS)");
+          var packMeta = extractPackMetaFromPackJs(jsText);
+          return decodeImageFromDataUrl(dataUrl, file.name + " (из JS)", packMeta);
         }).then(function(result) {
           loadedDataUrl = result.dataUrl;
           loadedMeta = result.meta;
           loadedImage = result.image;
           updateImageInfo(loadedMeta);
-          statusEl.innerHTML = "<span class='ok'>Изображение извлечено из пакета. Можно генерировать JS.</span>";
+          var packSummary = formatPackMetaSummary(loadedMeta.packMeta);
+          statusEl.innerHTML = "<span class='ok'>Изображение извлечено из пакета. Можно генерировать JS.</span>" +
+            (packSummary
+              ? " " + escapeHtml(packSummary)
+              : " Метаданные сохранения отсутствуют, пакет старого формата принят.");
         }).catch(function(err) {
           loadedDataUrl = "";
           loadedMeta = null;

@@ -10070,21 +10070,58 @@ function getBg360PackLookupKeys(sourceUrl) {
   return result;
 }
 
-// Достаёт data-url только из variant-хранилища нового JS-пакета.
-function readBg360PackDataUrlByKey(key, quality) {
-  var variants = window.VN360_PACKS_VARIANTS;
-  var normalizedQuality = resolveBg360EffectiveQuality(quality);
+// Возвращает зарегистрированные хранилища 360-паков: новое variant-хранилище и legacy-карту старых пакетов, если она есть.
+function getBg360PackStores() {
+  var stores = [];
+  if (window.VN360_PACKS_VARIANTS && typeof window.VN360_PACKS_VARIANTS === "object") {
+    stores.push(window.VN360_PACKS_VARIANTS);
+  }
+  if (window.VN360_PACKS && typeof window.VN360_PACKS === "object") {
+    stores.push(window.VN360_PACKS);
+  }
+  return stores;
+}
 
-  if (normalizedQuality && variants && variants[key] && typeof variants[key][normalizedQuality] === "string") {
-    return variants[key][normalizedQuality];
+// Достаёт data-url из записи пака; для нового формата качество строгое, legacy-записи могут быть одной строкой без normal/mobile.
+function readBg360PackDataUrlFromEntry(entry, normalizedQuality, strictQuality) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return "";
+
+  if (normalizedQuality && typeof entry[normalizedQuality] === "string") {
+    return entry[normalizedQuality];
+  }
+  if (typeof entry.dataUrl === "string") return entry.dataUrl;
+
+  if (!strictQuality) {
+    if (typeof entry.normal === "string") return entry.normal;
+    if (typeof entry.mobile === "string") return entry.mobile;
+    var keys = Object.keys(entry);
+    for (var i = 0; i < keys.length; i++) {
+      if (typeof entry[keys[i]] === "string") return entry[keys[i]];
+    }
   }
   return "";
 }
 
+// Достаёт data-url из нового variant-хранилища или legacy-карты; meta-поля не обязательны для работы старых пакетов.
+function readBg360PackDataUrlByKey(key, quality) {
+  var normalizedQuality = resolveBg360EffectiveQuality(quality);
+  var variants = window.VN360_PACKS_VARIANTS;
+  var found = variants && typeof variants === "object"
+    ? readBg360PackDataUrlFromEntry(variants[key], normalizedQuality, true)
+    : "";
+  if (found) return found;
+
+  var legacy = window.VN360_PACKS;
+  return legacy && typeof legacy === "object"
+    ? readBg360PackDataUrlFromEntry(legacy[key], normalizedQuality, false)
+    : "";
+}
+
 // Пытается найти data-url 360-пакета по JS-пути из file=... и выбранному normal/mobile.
 function resolveBg360PackDataUrl(sourceUrl, quality) {
-  var variants = window.VN360_PACKS_VARIANTS;
-  if (!variants || typeof variants !== "object") return "";
+  var packStores = getBg360PackStores();
+  if (!packStores.length) return "";
 
   var lookupKeys = getBg360PackLookupKeys(sourceUrl);
   for (var i = 0; i < lookupKeys.length; i++) {
@@ -10092,14 +10129,16 @@ function resolveBg360PackDataUrl(sourceUrl, quality) {
     if (found) return found;
   }
 
-  // Последний шанс: нормализуем ключи из пака и сравниваем с целевым URL.
+  // Последний шанс: нормализуем ключи из всех известных хранилищ пака и сравниваем с целевым URL.
   var normalizedSource = normalizeAssetUrl(sourceUrl);
-  var allKeys = Object.keys(variants);
-  for (var j = 0; j < allKeys.length; j++) {
-    var key = allKeys[j];
-    if (normalizeAssetUrl(key) === normalizedSource) {
-      var value = readBg360PackDataUrlByKey(key, quality);
-      if (value) return value;
+  for (var s = 0; s < packStores.length; s++) {
+    var allKeys = Object.keys(packStores[s]);
+    for (var j = 0; j < allKeys.length; j++) {
+      var key = allKeys[j];
+      if (normalizeAssetUrl(key) === normalizedSource) {
+        var value = readBg360PackDataUrlByKey(key, quality);
+        if (value) return value;
+      }
     }
   }
 

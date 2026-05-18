@@ -2024,8 +2024,9 @@
 
     /**
      * Загружает texture из URL или data-url; общий путь для обычных картинок и JS-паков.
+     * details добавляет к статусу сведения о сохранении пака, если они есть в новом JS-формате.
      */
-    function loadTextureUrl(textureUrl, label) {
+    function loadTextureUrl(textureUrl, label, details) {
       if (!textureUrl || !window.THREE || !sphereMesh) return;
       var loader = new window.THREE.TextureLoader();
       loader.load(
@@ -2037,7 +2038,9 @@
           sphereTexture = tex;
           sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
           sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
-          setStatus("Панорама загружена: " + (label || textureUrl), false);
+          var statusText = "Панорама загружена: " + (label || textureUrl);
+          if (details) statusText += ". " + details;
+          setStatus(statusText, false);
         },
         undefined,
         function () {
@@ -2081,15 +2084,103 @@
     }
 
     /**
+     * Возвращает все поддержанные карты данных: новый variant-формат и старую VN360_PACKS без обязательных метаданных.
+     */
+    function getPackVariantStores() {
+      var stores = [];
+      if (window.VN360_PACKS_VARIANTS && typeof window.VN360_PACKS_VARIANTS === "object") {
+        stores.push(window.VN360_PACKS_VARIANTS);
+      }
+      if (window.VN360_PACKS && typeof window.VN360_PACKS === "object") {
+        stores.push(window.VN360_PACKS);
+      }
+      return stores;
+    }
+
+    /**
+     * Возвращает карты метаданных, если пакет их зарегистрировал; старые JS-файлы спокойно работают без этих карт.
+     */
+    function getPackMetaStores() {
+      var stores = [];
+      if (window.VN360_PACKS_META_VARIANTS && typeof window.VN360_PACKS_META_VARIANTS === "object") {
+        stores.push(window.VN360_PACKS_META_VARIANTS);
+      }
+      if (window.VN360_PACKS_META && typeof window.VN360_PACKS_META === "object") {
+        stores.push(window.VN360_PACKS_META);
+      }
+      return stores;
+    }
+
+    /**
      * Выбирает пригодную картинку из структуры JS-пака: normal, mobile или первый найденный вариант.
      */
     function pickPackDataUrl(pack) {
       if (typeof pack === "string") return pack;
       if (!pack || typeof pack !== "object") return "";
+      if (typeof pack.dataUrl === "string") return pack.dataUrl;
       if (pack.normal) return pack.normal;
       if (pack.mobile) return pack.mobile;
       var keys = Object.keys(pack);
       return keys.length ? pack[keys[0]] : "";
+    }
+
+    /**
+     * Выбирает метаданные из структуры JS-пака: объект целиком, normal/mobile или первый объект-вариант.
+     */
+    function pickPackMeta(pack) {
+      if (!pack || typeof pack !== "object") return null;
+      if (pack.schema || pack.settings || pack.type || pack.generatedAt || pack.width || pack.height) return pack;
+      if (pack.normal && typeof pack.normal === "object") return pack.normal;
+      if (pack.mobile && typeof pack.mobile === "object") return pack.mobile;
+      var keys = Object.keys(pack);
+      for (var i = 0; i < keys.length; i++) {
+        if (pack[keys[i]] && typeof pack[keys[i]] === "object") return pack[keys[i]];
+      }
+      return null;
+    }
+
+    /**
+     * Переводит MIME-тип пака в короткую подпись для строки статуса.
+     */
+    function formatPackMimeLabel(mime) {
+      var type = String(mime || "").toLowerCase();
+      if (type === "image/jpeg") return "JPG";
+      if (type === "image/webp") return "WebP";
+      if (type === "image/png") return "PNG";
+      return type || "unknown";
+    }
+
+    /**
+     * Форматирует качество пака в проценты, если оно было сохранено в метаданных.
+     */
+    function formatPackQualityLabel(value) {
+      if (value === null || value === undefined || value === "") return "";
+      var number = Number(value);
+      return isFinite(number) ? Math.round(number * 100) + "%" : "";
+    }
+
+    /**
+     * Собирает короткую сводку по настройкам, с которыми JS-пакет был сохранён.
+     */
+    function formatLoadedPackMetaSummary(meta) {
+      if (!meta || typeof meta !== "object") return "";
+      var settings = meta.settings && typeof meta.settings === "object" ? meta.settings : {};
+      var actualType = meta.actualType || meta.type || settings.actualFormat || settings.format || "";
+      var quality = meta.quality !== undefined ? meta.quality : settings.quality;
+      var targetHeightLabel = meta.targetHeightLabel || settings.targetHeightLabel || "";
+      var parts = [];
+
+      if (meta.mode || settings.mode) parts.push("режим " + (meta.mode || settings.mode));
+      if (actualType) parts.push("формат " + formatPackMimeLabel(actualType));
+      if (meta.width && meta.height) parts.push("кадр " + meta.width + "x" + meta.height);
+      var qualityLabel = formatPackQualityLabel(quality);
+      if (qualityLabel) parts.push("качество " + qualityLabel);
+      if (!targetHeightLabel && settings.requestedTargetHeight !== undefined && settings.requestedTargetHeight !== null) {
+        targetHeightLabel = settings.requestedTargetHeight === "source" ? "исходная" : settings.requestedTargetHeight + " px";
+      }
+      if (targetHeightLabel) parts.push("целевая высота " + targetHeightLabel);
+
+      return parts.length ? "Сохранено в JS: " + parts.join(", ") : "";
     }
 
     /**
@@ -2125,10 +2216,9 @@
     }
 
     /**
-     * Ищет data-url после загрузки JS-пакета; путь в story360 хранится от корня проекта, а редактор открыт из tools.
+     * Ищет значение в картах пака по проектному пути, URL из tools и соседнему normal/mobile имени.
      */
-    function resolveLoadedPackDataUrl(path) {
-      var variants = window.VN360_PACKS_VARIANTS || {};
+    function resolveLoadedPackValue(path, stores, pickValue) {
       var raw = String(path || "").trim();
       var toolUrl = toToolRelativeUrl(raw);
       var candidates = [];
@@ -2143,30 +2233,48 @@
         addSiblingPackCandidate(candidates, candidate);
       });
 
-      for (var c = 0; c < candidates.length; c++) {
-        var exact = pickPackDataUrl(variants[candidates[c]]);
-        if (exact) return exact;
+      for (var s = 0; s < stores.length; s++) {
+        for (var c = 0; c < candidates.length; c++) {
+          var exact = pickValue(stores[s][candidates[c]]);
+          if (exact) return exact;
+        }
       }
 
       var normalizedCandidates = candidates.map(normalizePackLookupText).filter(Boolean);
       var baseNames = normalizedCandidates.map(function (candidate) {
         return candidate.split("/").pop();
       }).filter(Boolean);
-      var keys = Object.keys(variants);
-      for (var i = 0; i < keys.length; i++) {
-        var key = String(keys[i] || "");
-        var normalizedKey = normalizePackLookupText(key);
-        var matched = normalizedCandidates.some(function (candidate) {
-          return normalizedKey === candidate || normalizedKey.slice(-candidate.length) === candidate || candidate.slice(-normalizedKey.length) === normalizedKey;
-        }) || baseNames.some(function (baseName) {
-          return baseName && normalizedKey.split("/").pop() === baseName;
-        });
-        if (matched) {
-          var dataUrl = pickPackDataUrl(variants[key]);
-          if (dataUrl) return dataUrl;
+      for (var si = 0; si < stores.length; si++) {
+        var keys = Object.keys(stores[si]);
+        for (var i = 0; i < keys.length; i++) {
+          var key = String(keys[i] || "");
+          var normalizedKey = normalizePackLookupText(key);
+          var matched = normalizedCandidates.some(function (candidate) {
+            return normalizedKey === candidate || normalizedKey.slice(-candidate.length) === candidate || candidate.slice(-normalizedKey.length) === normalizedKey;
+          }) || baseNames.some(function (baseName) {
+            return baseName && normalizedKey.split("/").pop() === baseName;
+          });
+          if (matched) {
+            var value = pickValue(stores[si][key]);
+            if (value) return value;
+          }
         }
       }
-      return "";
+      return null;
+    }
+
+    /**
+     * Ищет data-url после загрузки JS-пакета; путь в story360 хранится от корня проекта, а редактор открыт из tools.
+     */
+    function resolveLoadedPackDataUrl(path) {
+      return resolveLoadedPackValue(path, getPackVariantStores(), pickPackDataUrl) || "";
+    }
+
+    /**
+     * Ищет необязательные метаданные JS-пакета теми же ключами, что и изображение.
+     */
+    function resolveLoadedPackMeta(path) {
+      return resolveLoadedPackValue(path, getPackMetaStores(), pickPackMeta);
     }
 
     /**
@@ -2187,7 +2295,7 @@
             setStatus("JS-пакет загружен, но data-url не найден: " + value, true);
             return;
           }
-          loadTextureUrl(dataUrl, value);
+          loadTextureUrl(dataUrl, value, formatLoadedPackMetaSummary(resolveLoadedPackMeta(value)));
         }).catch(function (err) {
           setStatus(err && err.message ? err.message : "Не удалось загрузить JS-пакет.", true);
         });
