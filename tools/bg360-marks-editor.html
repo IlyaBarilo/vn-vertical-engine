@@ -311,6 +311,25 @@
       z-index: 13;
     }
 
+    .focus-entry-reticle.is-selected-focus {
+      border-color: rgba(255, 218, 128, 0.98);
+      background: rgba(66, 48, 10, 0.9);
+      box-shadow: 0 0 0 1px rgba(255, 218, 128, 0.42), 0 2px 14px rgba(0, 0, 0, 0.48);
+      z-index: 12;
+    }
+
+    .focus-entry-reticle.is-selected-focus::before,
+    .focus-entry-reticle.is-selected-focus::after {
+      background: rgba(255, 229, 156, 0.98);
+    }
+
+    .focus-entry-caption.is-selected-focus {
+      border-color: rgba(255, 218, 128, 0.92);
+      background: rgba(42, 31, 9, 0.97);
+      color: #ffe8b4;
+      z-index: 13;
+    }
+
     /* Ряд подписи и кнопки: при нехватке ширины текст переносится на следующие строки (без многоточия и без лимита числа строк). */
     .focus-entry-caption-row {
       display: flex;
@@ -361,9 +380,96 @@
       background: rgba(10, 22, 36, 0.8);
       max-height: 220px;
       overflow-y: auto;
-      white-space: pre-wrap;
+      white-space: normal;
       overflow-wrap: anywhere;
       font-variant-numeric: tabular-nums;
+    }
+
+    .focus-entry-list {
+      display: grid;
+      gap: 5px;
+    }
+
+    .focus-entry-list-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: start;
+      padding: 5px 6px;
+      border-radius: 5px;
+      border: 1px solid rgba(82, 166, 214, 0.18);
+      background: rgba(18, 35, 54, 0.64);
+      color: #bdd8ef;
+      cursor: pointer;
+    }
+
+    .focus-entry-list-row:hover {
+      border-color: rgba(132, 190, 235, 0.45);
+      background: rgba(22, 45, 70, 0.72);
+    }
+
+    .focus-entry-list-row.is-selected {
+      border-color: rgba(255, 218, 128, 0.85);
+      background: rgba(58, 45, 16, 0.8);
+      color: #ffe8b4;
+    }
+
+    .focus-entry-list-row.is-scene {
+      border-color: rgba(255, 218, 128, 0.48);
+      background: rgba(70, 54, 14, 0.66);
+      color: #ffe7a6;
+    }
+
+    .focus-entry-list-row.is-scene .focus-entry-list-meta {
+      color: #e6c46a;
+    }
+
+    .focus-entry-list-row.is-scene.is-selected {
+      border-color: rgba(255, 235, 154, 0.92);
+      background: rgba(92, 68, 18, 0.86);
+      color: #fff0bd;
+    }
+
+    .focus-entry-list-row.is-warning {
+      border-color: rgba(220, 90, 90, 0.5);
+      background: rgba(82, 24, 30, 0.66);
+      color: #ffd2d2;
+    }
+
+    .focus-entry-list-row.is-warning.is-selected {
+      border-color: rgba(255, 184, 120, 0.86);
+      background: rgba(92, 44, 20, 0.82);
+      color: #ffe0c2;
+    }
+
+    .focus-entry-list-main {
+      min-width: 0;
+    }
+
+    .focus-entry-list-title {
+      font-weight: 700;
+    }
+
+    .focus-entry-list-meta {
+      margin-top: 2px;
+      color: #8fb9d7;
+    }
+
+    .focus-entry-list-row.is-warning .focus-entry-list-meta {
+      color: #ffc0c0;
+    }
+
+    .focus-entry-list-delete {
+      width: auto;
+      min-width: 0;
+      padding: 3px 7px;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    .focus-entry-list-note {
+      margin-top: 7px;
+      color: #8fb9d7;
     }
 
     .row {
@@ -986,6 +1092,9 @@
      * его прицел на превью рисуется увеличенным, чтобы быстро настраивать цепочку фокусов.
      */
     var editorOverlayHighlightSourceEntryKey = null;
+
+    /** Ключ entries, выбранный пользователем в списке фокусов для быстрой визуальной проверки на превью. */
+    var selectedFocusEntryKey = null;
 
     /**
      * Стрелки к меткам 360: геометрия в WebGL (billboard-лента + треугольник), капа надира как в движке.
@@ -2767,14 +2876,6 @@
           renamePoint(idx, nameInput.value);
         });
 
-        var meta = document.createElement("div");
-        meta.className = "point-meta";
-        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType;
-        idRow.appendChild(pointNumber);
-        idRow.appendChild(nameInput);
-        info.appendChild(idRow);
-        info.appendChild(meta);
-
         var compassTextInput = document.createElement("input");
         compassTextInput.type = "text";
         compassTextInput.value = p.text || "";
@@ -2785,7 +2886,16 @@
           points[idx].text = compassTextInput.value;
           updateExport();
         });
-        info.appendChild(compassTextInput);
+
+        var meta = document.createElement("div");
+        meta.className = "point-meta";
+        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType;
+        // В карточке метки сначала показываем пользовательскую подпись text, а технический id оставляем ниже.
+        idRow.appendChild(pointNumber);
+        idRow.appendChild(compassTextInput);
+        info.appendChild(idRow);
+        info.appendChild(meta);
+        info.appendChild(nameInput);
 
         var targetWrap = document.createElement("div");
         targetWrap.style.display = "grid";
@@ -3398,12 +3508,78 @@
     }
 
     /**
-     * Текстовый список фокусов в сайдбаре: default, сценарные from=<sceneId> и ключи панорам-источников.
+     * Возвращает текстовую пометку для фокуса, который движок больше не сможет выбрать при переходе между 360-панорамами.
+     */
+    function getFocusEntryUsageWarning(entryKey, entry) {
+      if (entryKey === "default" || isStory360ScenarioEntry(entry)) return "";
+      var ids = getCurrentStory360Ids();
+      var sourceIds = getPanoramaIdSetForSpace(ids.spaceId);
+      if (!sourceIds[entryKey]) return " [источник не найден]";
+      if (!isBulkEntryKeyUsedByMarks(ids.spaceId, ids.panoramaId, entryKey)) return " [нет перехода]";
+      return "";
+    }
+
+    /**
+     * Разрешает удаление только безопасных фокусов: сценарных входов и 360-ключей, которые сейчас не читаются переходами.
+     */
+    function isFocusEntryDeletable(entryKey, entry) {
+      if (entryKey === "default") return false;
+      if (isStory360ScenarioEntry(entry)) return true;
+      return !!getFocusEntryUsageWarning(entryKey, entry);
+    }
+
+    /**
+     * Запоминает выбранный пользователем фокус и перерисовывает список с оверлеем, чтобы выбранная точка была видна.
+     */
+    function selectFocusEntry(entryKey) {
+      selectedFocusEntryKey = String(entryKey || "");
+      renderFocusEntriesSidebar();
+      renderOverlayMarks();
+    }
+
+    /**
+     * Удаляет фокус текущей панорамы из entries, не трогая default и активные переходы между 360-панорамами.
+     */
+    function deleteFocusEntryFromCurrentPanorama(entryKey) {
+      var key = String(entryKey || "").trim();
+      if (!key || key === "default") {
+        setStatus("Базовый фокус default удалить нельзя.", true);
+        return;
+      }
+
+      var ids = getCurrentStory360Ids();
+      var space = story360Data.spaces && story360Data.spaces[ids.spaceId];
+      var pano = space && space.panoramas ? space.panoramas[ids.panoramaId] : null;
+      if (!pano || !pano.entries || !Object.prototype.hasOwnProperty.call(pano.entries, key)) {
+        setStatus("Фокус entries[" + key + "] не найден.", true);
+        renderFocusEntriesSidebar();
+        return;
+      }
+
+      var entry = pano.entries[key];
+      if (!isFocusEntryDeletable(key, entry)) {
+        setStatus("Фокус entries[" + key + "] используется переходом 360; удаление отменено.", true);
+        return;
+      }
+
+      delete pano.entries[key];
+      delete editorEntryFocusWorld[key];
+      if (String(selectedFocusEntryKey || "") === key) selectedFocusEntryKey = null;
+      persistEditorDraft();
+      updateExport();
+      setStatus("Удалён фокус entries[" + key + "].", false);
+    }
+
+    /**
+     * Список фокусов в сайдбаре: строка выбирает фокус на превью, кнопка удаляет только безопасные entries.
      */
     function renderFocusEntriesSidebar() {
       var el = document.getElementById("focusEntriesList");
       if (!el) return;
       var merged = getMergedEntriesForOverlay();
+      if (selectedFocusEntryKey && !Object.prototype.hasOwnProperty.call(merged, selectedFocusEntryKey)) {
+        selectedFocusEntryKey = null;
+      }
       var keys = Object.keys(merged).sort(function (a, b) {
         if (a === "default") return -1;
         if (b === "default") return 1;
@@ -3411,28 +3587,96 @@
       });
       var uvNote = currentPanoramaUsesEntryUvFocus() ? "Семантика чисел: UV развёртки." : "Семантика чисел: доли yaw/pitch камеры.";
       var fpCount = {};
-      var lines = [];
-      keys.forEach(function (entryKey) {
+      var rows = keys.map(function (entryKey) {
         var entry = merged[entryKey];
         var pair = readEntryFocusPair(entry);
-        if (!pair) {
-          lines.push(entryKey + ": нет focusX/focusY");
-          return;
+        if (pair) {
+          var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
+          fpCount[fp] = (fpCount[fp] || 0) + 1;
         }
-        var fp = pair.focusX.toFixed(4) + "|" + pair.focusY.toFixed(4);
-        fpCount[fp] = (fpCount[fp] || 0) + 1;
         var label = getFocusEntryDisplayLabel(entryKey, entry, false);
-        lines.push(label + " → focusX=" + pair.focusX.toFixed(4) + " focusY=" + pair.focusY.toFixed(4));
+        var usageWarning = getFocusEntryUsageWarning(entryKey, entry);
+        var isSceneEntry = isStory360ScenarioEntry(entry);
+        var isDeletable = isFocusEntryDeletable(entryKey, entry);
+        var sortGroup = !isSceneEntry && isDeletable ? 0 : (isSceneEntry && isDeletable ? 1 : 2);
+        return {
+          entryKey: entryKey,
+          entry: entry,
+          pair: pair,
+          label: label,
+          usageWarning: usageWarning,
+          isSceneEntry: isSceneEntry,
+          isDeletable: isDeletable,
+          sortGroup: sortGroup
+        };
+      }).sort(function (a, b) {
+        // Порядок чистки: сначала лишние 360-фокусы, затем сценарные from=, потом рабочие и default.
+        if (a.sortGroup !== b.sortGroup) return a.sortGroup - b.sortGroup;
+        if (a.entryKey === "default") return -1;
+        if (b.entryKey === "default") return 1;
+        return String(a.entryKey).localeCompare(String(b.entryKey));
       });
       var hasOverlap = Object.keys(fpCount).some(function (k) {
         return fpCount[k] > 1;
       });
-      var tail = "\n\n" + uvNote;
-      if (hasOverlap) {
-        tail +=
-          "\nСовпадающие координаты: на превью несколько прицелов рядом (смещение только для отображения).";
-      }
-      el.textContent = lines.join("\n") + tail;
+      el.innerHTML = "";
+
+      var list = document.createElement("div");
+      list.className = "focus-entry-list";
+      rows.forEach(function (row) {
+        var rowEl = document.createElement("div");
+        rowEl.className = "focus-entry-list-row";
+        rowEl.setAttribute("role", "button");
+        rowEl.tabIndex = 0;
+        rowEl.setAttribute("data-focus-entry", String(row.entryKey));
+        if (String(selectedFocusEntryKey || "") === String(row.entryKey)) rowEl.classList.add("is-selected");
+        if (row.isSceneEntry) rowEl.classList.add("is-scene");
+        if (row.usageWarning) rowEl.classList.add("is-warning");
+        rowEl.addEventListener("click", function () {
+          selectFocusEntry(row.entryKey);
+        });
+        rowEl.addEventListener("keydown", function (ev) {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          ev.preventDefault();
+          selectFocusEntry(row.entryKey);
+        });
+
+        var main = document.createElement("div");
+        main.className = "focus-entry-list-main";
+        var title = document.createElement("div");
+        title.className = "focus-entry-list-title";
+        title.textContent = row.label + row.usageWarning;
+        var meta = document.createElement("div");
+        meta.className = "focus-entry-list-meta";
+        meta.textContent = row.pair
+          ? "focusX=" + row.pair.focusX.toFixed(4) + " focusY=" + row.pair.focusY.toFixed(4)
+          : "нет focusX/focusY";
+        main.appendChild(title);
+        main.appendChild(meta);
+        rowEl.appendChild(main);
+
+        if (row.isDeletable) {
+          var delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "danger focus-entry-list-delete";
+          delBtn.textContent = "Удалить";
+          delBtn.title = "Удалить этот focus entry из текущей панорамы";
+          delBtn.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            deleteFocusEntryFromCurrentPanorama(row.entryKey);
+          });
+          rowEl.appendChild(delBtn);
+        }
+
+        list.appendChild(rowEl);
+      });
+      el.appendChild(list);
+
+      var note = document.createElement("div");
+      note.className = "focus-entry-list-note";
+      note.textContent = uvNote + (hasOverlap ? " Совпадающие координаты: прицелы смещены только в подписях." : "");
+      el.appendChild(note);
     }
 
     /**
@@ -3553,6 +3797,9 @@
         var isNavSourceHighlight =
           !!editorOverlayHighlightSourceEntryKey &&
           String(editorOverlayHighlightSourceEntryKey) === String(it.entryKey);
+        var isSelectedFocus =
+          !!selectedFocusEntryKey &&
+          String(selectedFocusEntryKey) === String(it.entryKey);
         // Увеличенный прицел ~48px в диаметре: подпись якорим дальше (44px), иначе при scale(2) лезет на круг.
         cap.style.transform = isNavSourceHighlight
           ? "translate(44px, -50%) scale(2)"
@@ -3587,6 +3834,13 @@
         ) {
           reticle.classList.add("is-active-drag");
           cap.classList.add("is-active-drag");
+        }
+        // Выделение из списка фокусов подсвечивает ту же точку на превью, но не меняет её координаты.
+        if (isSelectedFocus) {
+          reticle.classList.add("is-selected-focus");
+          cap.classList.add("is-selected-focus");
+          reticle.title = (reticle.title ? reticle.title + " " : "") + "Выбран в списке фокусов.";
+          cap.title = reticle.title;
         }
         // Увеличенный прицел для слота «приход с только что покинутой панорамы» (тот же ключ, что в entries).
         if (isNavSourceHighlight) {

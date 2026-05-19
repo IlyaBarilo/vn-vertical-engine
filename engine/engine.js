@@ -7055,17 +7055,10 @@ function bg360IsSceneTargetMark(mark) {
   return mark.targetScene !== undefined && mark.targetScene !== null && String(mark.targetScene || "").trim() !== "";
 }
 
-// Возвращает подпись для scene-метки: явный label/name/title важнее служебного id сцены, как в редакторе 360-меток.
+// Возвращает экранную подпись scene-метки из того же text, который используется в компасе; id сцены остаётся только служебной целью перехода.
 function bg360GetSceneTargetLabel(mark) {
   if (!mark || typeof mark !== "object") return "";
-  var explicitLabel = String(mark.label || "").trim();
-  if (explicitLabel) return explicitLabel;
-  var markId = String(mark.id || "").trim();
-  if (markId) return markId;
-  var target = mark.target && String(mark.target.type || "").toLowerCase() === "scene" ? mark.target : null;
-  var sceneId = target ? String(target.sceneId || target.scene || "").trim() : String(mark.targetScene || "").trim();
-  if (sceneId) return "Сценарий: " + sceneId;
-  return "";
+  return bg360GetCompassMarkLabel(mark);
 }
 
 // Возвращает текст направления для компаса: пустой text намеренно скрывает подпись у этой метки.
