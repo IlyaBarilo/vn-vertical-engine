@@ -9693,6 +9693,85 @@ function getBg360PinchDistance() {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+var bg360DragLocalRayScratch = null;
+var bg360DragWorldRayScratch = null;
+
+// Возвращает локальный луч камеры из экранной точки canvas; так drag зависит от FOV и размера окна, а не от фиксированного коэффициента.
+function getBg360LocalRayFromClientPoint(clientX, clientY) {
+  if (!window.THREE || !elBg360 || !bg360Runtime.camera) return null;
+  var rect = elBg360.getBoundingClientRect();
+  var width = rect.width || elBg360.clientWidth || 0;
+  var height = rect.height || elBg360.clientHeight || 0;
+  if (!(width > 0) || !(height > 0)) return null;
+
+  var ndcX = ((clientX - rect.left) / width) * 2 - 1;
+  var ndcY = 1 - ((clientY - rect.top) / height) * 2;
+  var fovDeg = typeof bg360Runtime.fovDeg === "number" && isFinite(bg360Runtime.fovDeg)
+    ? bg360Runtime.fovDeg
+    : bg360Runtime.camera.fov;
+  var fovRad = window.THREE.MathUtils.degToRad(clamp(fovDeg || 70, BG_360_FOV_MIN, BG_360_FOV_MAX));
+  var tanHalfFov = Math.tan(fovRad / 2);
+  var aspect = bg360Runtime.camera.aspect || (width / height) || 1;
+
+  if (!bg360DragLocalRayScratch) bg360DragLocalRayScratch = new window.THREE.Vector3();
+  return bg360DragLocalRayScratch.set(ndcX * tanHalfFov * aspect, ndcY * tanHalfFov, -1).normalize();
+}
+
+// Запоминает направление точки панорамы под указателем в мировых координатах, чтобы следующий шаг drag держал её под курсором.
+function getBg360WorldRayFromClientPoint(clientX, clientY) {
+  var localRay = getBg360LocalRayFromClientPoint(clientX, clientY);
+  if (!localRay || !bg360Runtime.camera) return null;
+
+  if (!bg360DragWorldRayScratch) bg360DragWorldRayScratch = new window.THREE.Vector3();
+  bg360Runtime.camera.updateMatrixWorld(true);
+  return bg360DragWorldRayScratch.copy(localRay).applyQuaternion(bg360Runtime.camera.quaternion).normalize();
+}
+
+// Подбирает ближайший эквивалент угла к текущему, чтобы yaw/pitch не прыгали при переходе через ±180°.
+function normalizeBg360AngleRadNear(angleRad, referenceRad) {
+  var fullTurn = Math.PI * 2;
+  while (angleRad - referenceRad > Math.PI) angleRad -= fullTurn;
+  while (angleRad - referenceRad < -Math.PI) angleRad += fullTurn;
+  return angleRad;
+}
+
+// Пересчитывает yaw/pitch так, чтобы точка панорамы из предыдущей позиции указателя оказалась под новой позицией указателя.
+function applyBg360ProjectedDrag(prevClientX, prevClientY, nextClientX, nextClientY) {
+  if (!window.THREE || !bg360Runtime.camera) return false;
+  var anchorDir = getBg360WorldRayFromClientPoint(prevClientX, prevClientY);
+  if (!anchorDir) return false;
+  var localRay = getBg360LocalRayFromClientPoint(nextClientX, nextClientY);
+  if (!localRay) return false;
+
+  var currentPitchRad = window.THREE.MathUtils.degToRad(bg360Runtime.pitchDeg || 0);
+  var currentYawRad = window.THREE.MathUtils.degToRad(bg360Runtime.yawDeg || 0);
+  var localPitchPlane = Math.sqrt(localRay.y * localRay.y + localRay.z * localRay.z);
+  if (!(localPitchPlane > 1e-6)) return false;
+
+  var pitchBase = Math.atan2(localRay.z, localRay.y);
+  var pitchCosArg = clamp(anchorDir.y / localPitchPlane, -1, 1);
+  var pitchOffset = Math.acos(pitchCosArg);
+  var pitchA = normalizeBg360AngleRadNear(pitchOffset - pitchBase, currentPitchRad);
+  var pitchB = normalizeBg360AngleRadNear(-pitchOffset - pitchBase, currentPitchRad);
+  var pitchRad = Math.abs(pitchA - currentPitchRad) <= Math.abs(pitchB - currentPitchRad) ? pitchA : pitchB;
+  pitchRad = window.THREE.MathUtils.degToRad(clamp(window.THREE.MathUtils.radToDeg(pitchRad), -85, 85));
+
+  var sinPitch = Math.sin(pitchRad);
+  var cosPitch = Math.cos(pitchRad);
+  var pitchedX = localRay.x;
+  var pitchedZ = sinPitch * localRay.y + cosPitch * localRay.z;
+  var yawPlane = pitchedX * pitchedX + pitchedZ * pitchedZ;
+  if (!(yawPlane > 1e-8)) return false;
+
+  var yawCos = (anchorDir.x * pitchedX + anchorDir.z * pitchedZ) / yawPlane;
+  var yawSin = (anchorDir.x * pitchedZ - anchorDir.z * pitchedX) / yawPlane;
+  var yawRad = normalizeBg360AngleRadNear(Math.atan2(yawSin, yawCos), currentYawRad);
+
+  bg360Runtime.yawDeg = window.THREE.MathUtils.radToDeg(yawRad);
+  bg360Runtime.pitchDeg = clamp(window.THREE.MathUtils.radToDeg(pitchRad), -85, 85);
+  return true;
+}
+
 // Обрабатывает pointerdown для 360: старт drag и фиксация двух пальцев для pinch.
 function handleBg360PointerDown(e) {
   if (!bg360Runtime.active || !elBg360) return;
@@ -9731,15 +9810,17 @@ function handleBg360PointerMove(e) {
     }
     bg360Runtime.pinchDistance = newDistance;
   } else if (bg360Runtime.dragPointerId === e.pointerId) {
-    var dx = e.clientX - bg360Runtime.dragLastX;
-    var dy = e.clientY - bg360Runtime.dragLastY;
+    var prevDragX = bg360Runtime.dragLastX;
+    var prevDragY = bg360Runtime.dragLastY;
+    var dx = e.clientX - prevDragX;
+    var dy = e.clientY - prevDragY;
     bg360Runtime.pointerTravelSum += Math.abs(dx) + Math.abs(dy);
+    // Двигаем камеру по экранной проекции: выбранная точка сферы остаётся под указателем при текущем FOV.
+    if (applyBg360ProjectedDrag(prevDragX, prevDragY, e.clientX, e.clientY)) {
+      updateBg360Camera();
+    }
     bg360Runtime.dragLastX = e.clientX;
     bg360Runtime.dragLastY = e.clientY;
-    // Инвертируем оси: движение воспринимается как «тяну сцену».
-    bg360Runtime.yawDeg = (bg360Runtime.yawDeg + dx * 0.12) % 360;
-    bg360Runtime.pitchDeg = clamp(bg360Runtime.pitchDeg + dy * 0.12, -85, 85);
-    updateBg360Camera();
   }
   e.preventDefault();
 }
