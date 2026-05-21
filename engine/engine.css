@@ -2530,25 +2530,12 @@ body {
   cursor: zoom-in !important;
 }
 
-/* Рамка персонажа рисуется отдельно от img: JS ставит ее по DOM-прямоугольнику картинки, а при доступном canvas уточняет по alpha-области PNG. */
 .graphContainer .mermaid .node .cew::before {
-  content: "" !important;
-  position: absolute !important;
-  left: var(--char-frame-left, 0px) !important;
-  top: var(--char-frame-top, 0px) !important;
-  width: var(--char-frame-width, 100%) !important;
-  height: var(--char-frame-height, 100%) !important;
-  border: 1px solid rgba(120,120,120,0.55) !important;
-  border-radius: 7px !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
-  box-sizing: border-box !important;
-  opacity: 1 !important;
-  pointer-events: none !important;
-  z-index: 2 !important;
+  content: none !important;
 }
 
 .graphContainer .mermaid .node .cew.char-frame-ready::before {
-  opacity: 1 !important;
+  content: none !important;
 }
 
 .graphContainer .mermaid .node .cew:hover {
@@ -2557,8 +2544,7 @@ body {
 }
 
 .graphContainer .mermaid .node .cew:hover::before {
-  border-color: rgba(90,90,90,0.7) !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
+  content: none !important;
 }
 
 .graphContainer .mermaid .node .bgl {
@@ -2703,16 +2689,18 @@ body {
   background-color: transparent !important;
 }
 
-/* У персонажей рамку рисует .cew::before, поэтому сам img остается прозрачным и не дает лишних серых полей. */
+/* Рамка персонажа находится прямо на img, поэтому она всегда совпадает с границей прозрачного файла. */
 .graphContainer .mermaid .node .char-emotion-thumbnail {
-  border: none !important;
-  box-shadow: none !important;
+  border: 1px solid rgba(120,120,120,0.55) !important;
+  border-radius: 7px !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
   background-color: transparent !important;
+  box-sizing: border-box !important;
 }
 
 .graphContainer .mermaid .node .char-emotion-thumbnail:hover {
-  border: none !important;
-  box-shadow: none !important;
+  border: 1px solid rgba(90,90,90,0.7) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
   transform: none !important;
 }
 

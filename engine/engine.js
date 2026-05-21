@@ -2566,119 +2566,7 @@ function hydrateOptimizedRasterGraphThumbnails(root) {
   }
 }
 
-var graphCharacterFrameBoundsCache = Object.create(null);
-
-// Считает видимую область прозрачного спрайта персонажа через canvas, чтобы рамка на графе не обводила пустой прозрачный холст.
-function getGraphCharacterVisibleBounds(img) {
-  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
-
-  var src = normalizeAssetUrl(img.currentSrc || img.src || "");
-  var cacheKey = src + "|" + img.naturalWidth + "x" + img.naturalHeight;
-  if (graphCharacterFrameBoundsCache[cacheKey]) {
-    return graphCharacterFrameBoundsCache[cacheKey];
-  }
-
-  var maxSide = 512;
-  var sampleScale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-  var sampleWidth = Math.max(1, Math.round(img.naturalWidth * sampleScale));
-  var sampleHeight = Math.max(1, Math.round(img.naturalHeight * sampleScale));
-  var canvas = document.createElement("canvas");
-  canvas.width = sampleWidth;
-  canvas.height = sampleHeight;
-
-  var ctx;
-  try {
-    ctx = canvas.getContext("2d", { willReadFrequently: true });
-  } catch (e) {
-    ctx = canvas.getContext("2d");
-  }
-  if (!ctx) return null;
-
-  try {
-    ctx.clearRect(0, 0, sampleWidth, sampleHeight);
-    ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
-    var pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
-    var minX = sampleWidth;
-    var minY = sampleHeight;
-    var maxX = -1;
-    var maxY = -1;
-    var alphaThreshold = 32;
-    var colorThreshold = 26;
-    var cornerIndexes = [
-      3,
-      (sampleWidth - 1) * 4 + 3,
-      ((sampleHeight - 1) * sampleWidth) * 4 + 3,
-      ((sampleHeight - 1) * sampleWidth + sampleWidth - 1) * 4 + 3
-    ];
-    var opaqueCorners = 0;
-    var bgR = 0;
-    var bgG = 0;
-    var bgB = 0;
-
-    for (var ci = 0; ci < cornerIndexes.length; ci++) {
-      var alphaIndex = cornerIndexes[ci];
-      if (pixels[alphaIndex] < 220) continue;
-      opaqueCorners++;
-      bgR += pixels[alphaIndex - 3];
-      bgG += pixels[alphaIndex - 2];
-      bgB += pixels[alphaIndex - 1];
-    }
-
-    // Иногда оптимизированный WebP хранит фон непрозрачным однотонным цветом; тогда alpha не помогает и нужен отсев по цвету углов.
-    var useCornerColorMask = opaqueCorners >= 3;
-    if (useCornerColorMask) {
-      bgR /= opaqueCorners;
-      bgG /= opaqueCorners;
-      bgB /= opaqueCorners;
-    }
-
-    for (var y = 0; y < sampleHeight; y++) {
-      for (var x = 0; x < sampleWidth; x++) {
-        var pixelIndex = (y * sampleWidth + x) * 4;
-        var alpha = pixels[pixelIndex + 3];
-        var isVisiblePixel = false;
-
-        if (useCornerColorMask) {
-          var dr = pixels[pixelIndex] - bgR;
-          var dg = pixels[pixelIndex + 1] - bgG;
-          var db = pixels[pixelIndex + 2] - bgB;
-          isVisiblePixel = Math.sqrt(dr * dr + dg * dg + db * db) > colorThreshold;
-        } else {
-          isVisiblePixel = alpha > alphaThreshold;
-        }
-
-        if (!isVisiblePixel) continue;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-
-    if (maxX < minX || maxY < minY) return null;
-
-    // Небольшой запас оставляет рамку визуально спокойной и не прижимает ее вплотную к волосам, рукам и теням.
-    var padX = Math.max(1, Math.round((maxX - minX + 1) * 0.03));
-    var padY = Math.max(1, Math.round((maxY - minY + 1) * 0.02));
-    minX = Math.max(0, minX - padX);
-    minY = Math.max(0, minY - padY);
-    maxX = Math.min(sampleWidth - 1, maxX + padX);
-    maxY = Math.min(sampleHeight - 1, maxY + padY);
-
-    var bounds = {
-      left: minX / sampleWidth,
-      top: minY / sampleHeight,
-      width: (maxX - minX + 1) / sampleWidth,
-      height: (maxY - minY + 1) / sampleHeight
-    };
-    graphCharacterFrameBoundsCache[cacheKey] = bounds;
-    return bounds;
-  } catch (e) {
-    return null;
-  }
-}
-
-// Переносит найденную alpha-область спрайта в координаты миниатюры на графе; если canvas недоступен, рамка берется с реального DOM-размера img.
+// Переносит реальный DOM-прямоугольник img в координаты миниатюры: рамка живет на самом img, а эти координаты нужны для счетчика в углу картинки.
 function applyGraphCharacterVisibleFrame(img) {
   var wrap = img && img.closest ? img.closest(".cew") : null;
   if (!wrap || !img.complete || !img.naturalWidth || !img.naturalHeight) return;
@@ -2695,13 +2583,12 @@ function applyGraphCharacterVisibleFrame(img) {
   var imageTop = (imgRect.top - wrapRect.top) * scaleY;
   var renderedWidth = imgRect.width * scaleX;
   var renderedHeight = imgRect.height * scaleY;
-  var bounds = getGraphCharacterVisibleBounds(img);
 
-  // При неудаче alpha-чтения не растягиваем рамку на всю ячейку: используем фактический прямоугольник img.
-  var frameLeft = bounds ? imageLeft + bounds.left * renderedWidth : imageLeft;
-  var frameTop = bounds ? imageTop + bounds.top * renderedHeight : imageTop;
-  var frameWidth = bounds ? bounds.width * renderedWidth : renderedWidth;
-  var frameHeight = bounds ? bounds.height * renderedHeight : renderedHeight;
+  // Не анализируем alpha-канал: прозрачные поля являются частью файла, а счетчик должен стоять в углу прямоугольника img.
+  var frameLeft = imageLeft;
+  var frameTop = imageTop;
+  var frameWidth = renderedWidth;
+  var frameHeight = renderedHeight;
 
   frameLeft = Math.max(0, Math.min(wrapWidth - 1, frameLeft));
   frameTop = Math.max(0, Math.min(wrapHeight - 1, frameTop));
