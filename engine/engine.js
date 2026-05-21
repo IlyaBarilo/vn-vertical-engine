@@ -3270,6 +3270,8 @@ var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
 var vnAutosaveTimer = null;
 var vnAutosaveBgScrollRestorePending = null;
 var vnAutosaveStory360RestorePending = null;
+// Активная 360-команда нужна автосейву, чтобы отличать обычный шаг сцены от временного шага из menu/if.
+var vnAutosaveActive360Action = null;
 // Последний успешно показанный фон/видео для восстановления «унаследованного» визуала
 // в сценах, где нет собственного bg (например, menu/text после перехода).
 var vnAutosaveLastVisualSnapshot = null;
@@ -3528,6 +3530,46 @@ function buildStory360ViewRestoreSnapshot(source) {
   return hasAny ? out : null;
 }
 
+// Запоминает активную 360-команду на время асинхронного ожидания, чтобы автосейв мог восстановить шаг из pendingActions.
+function rememberActive360ActionForAutosave(action, fromPending, sceneActionIndex, resumeActionIndex) {
+  if (!action || (action.type !== "goto360" && action.type !== "walk360")) {
+    vnAutosaveActive360Action = null;
+    return;
+  }
+
+  vnAutosaveActive360Action = {
+    type: action.type,
+    fromPending: !!fromPending,
+    sceneActionIndex: typeof sceneActionIndex === "number" && isFinite(sceneActionIndex) ? sceneActionIndex : -1,
+    resumeActionIndex: typeof resumeActionIndex === "number" && isFinite(resumeActionIndex) ? resumeActionIndex : state.actionIndex,
+    action: JSON.parse(JSON.stringify(action))
+  };
+}
+
+// Очищает привязку активной 360-команды, чтобы завершённый переход не влиял на следующий автосейв.
+function clearActive360ActionForAutosave(actionType) {
+  if (!vnAutosaveActive360Action) return;
+  if (actionType && vnAutosaveActive360Action.type !== actionType) return;
+  vnAutosaveActive360Action = null;
+}
+
+// Возвращает индекс, с которого нужно продолжать сцену: pending-360 не откатывается к menu, а обычный 360 — к своей строке.
+function getActive360PersistActionIndexForAutosave(actionType, fallbackActionIndex) {
+  var info = vnAutosaveActive360Action;
+  if (info && info.type === actionType) {
+    if (info.fromPending) return info.resumeActionIndex;
+    if (info.sceneActionIndex >= 0) return info.sceneActionIndex;
+  }
+  return fallbackActionIndex > 0 ? fallbackActionIndex - 1 : fallbackActionIndex;
+}
+
+// Кладёт в слот копию pending goto360, чтобы после F5 продолжить выбранный пункт меню без повторного показа menu.
+function buildPending360ResumeActionForAutosave(actionType) {
+  var info = vnAutosaveActive360Action;
+  if (!info || info.type !== actionType || !info.fromPending || !info.action) return null;
+  return JSON.parse(JSON.stringify(info.action));
+}
+
 // Сохраняет текущее положение игрока внутри story360/goto360: пространство, панораму и ракурс камеры.
 function captureStory360SnapshotForAutosave(bgScrollSnapshot) {
   if (!goto360Runtime || !goto360Runtime.active || goto360Runtime.done) return null;
@@ -3536,7 +3578,7 @@ function captureStory360SnapshotForAutosave(bgScrollSnapshot) {
   var panoramaId = String(goto360Runtime.panoramaId || "").trim();
   if (!spaceId || !panoramaId) return null;
 
-  return {
+  var snapshot = {
     active: true,
     spaceId: spaceId,
     panoramaId: panoramaId,
@@ -3546,6 +3588,9 @@ function captureStory360SnapshotForAutosave(bgScrollSnapshot) {
     buttonText: String(goto360Runtime.buttonText || ""),
     view: buildStory360ViewRestoreSnapshot(bgScrollSnapshot || captureBg360ViewSnapshotForAutosave())
   };
+  var resumeAction = buildPending360ResumeActionForAutosave("goto360");
+  if (resumeAction) snapshot.resumeAction = resumeAction;
+  return snapshot;
 }
 
 // Восстанавливает позицию left/right/center по inline left из setCharacter (35% / 65% / 50%).
@@ -3706,13 +3751,14 @@ function buildAutosavePayload(opts) {
     // walk360 — это асинхронное ожидание: пока игрок не выбрал метку, сохраняем саму команду,
     // иначе после F5 сценарий перескочит к следующему действию и может преждевременно открыть menu.
     if (walk360Runtime && walk360Runtime.active && persistActionIndex > 0) {
-      persistActionIndex = persistActionIndex - 1;
+      persistActionIndex = getActive360PersistActionIndexForAutosave("walk360", persistActionIndex);
     } else if (goto360Runtime && goto360Runtime.active && persistActionIndex > 0) {
-      // goto360 тоже остаётся на одном действии, пока игрок ходит внутри 360-пространства.
-      persistActionIndex = persistActionIndex - 1;
+      // goto360 тоже остаётся на одном действии, но pending-ветку menu нужно продолжать после самого menu.
+      persistActionIndex = getActive360PersistActionIndexForAutosave("goto360", persistActionIndex);
     } else if (persistActionIndex > 0 && (state.waitingNext || choicesVisible)) {
       persistActionIndex = persistActionIndex - 1;
     }
+    persistActionIndex = clamp(persistActionIndex, 0, scene.actions.length);
   }
 
   var flagsForDisk = normalizeVNInteractionFlagsForPersist(
@@ -3895,6 +3941,33 @@ function buildStory360RestorePendingFromAutosave(story360Snap, bgScrollSnap) {
     titleText: String(story360Snap.titleText || ""),
     buttonText: String(story360Snap.buttonText || ""),
     view: view
+  };
+}
+
+// Достаёт сохранённый pending goto360; для старых слотов умеет собрать минимальный шаг из самой story360-панорамы.
+function buildStory360ResumeActionFromAutosave(story360Snap, allowSynthetic) {
+  if (!story360Snap || typeof story360Snap !== "object" || story360Snap.active !== true) return null;
+
+  var savedAction = story360Snap.resumeAction && typeof story360Snap.resumeAction === "object"
+    ? story360Snap.resumeAction
+    : null;
+  if (savedAction && savedAction.type === "goto360") {
+    return JSON.parse(JSON.stringify(savedAction));
+  }
+  if (!allowSynthetic) return null;
+
+  var spaceId = String(story360Snap.spaceId || "").trim();
+  var panoramaId = String(story360Snap.panoramaId || "").trim();
+  if (!spaceId || !panoramaId) return null;
+
+  return {
+    type: "goto360",
+    spaceId: spaceId,
+    panoramaId: panoramaId,
+    entry: String(story360Snap.entryId || "default") || "default",
+    result: String(story360Snap.resultVar || ""),
+    text: String(story360Snap.titleText || ""),
+    button: String(story360Snap.buttonText || "")
   };
 }
 
@@ -4084,6 +4157,8 @@ function tryApplyAutosave() {
   state.inGame = false;
   state.inVideo = false;
   state.currentGame = null;
+  // Runtime-очередь не хранится в localStorage; при восстановлении собираем её заново только для pending goto360.
+  state.pendingActions = [];
   suppressAutoRunOnce = false;
 
   hideChoices();
@@ -4165,9 +4240,21 @@ function tryApplyAutosave() {
 
   console.log("[AUTOSAVE] restored", data.sceneId, data.actionIndex);
   // Перед runCurrent передаём startGoto360 текущую панораму story360; иначе команда откроет стартовый узел.
+  var story360RestorePending = buildStory360RestorePendingFromAutosave(data.story360, data.bgScroll);
+  var restoreActionIsGoto360 = !!(restoreAction && restoreAction.type === "goto360");
+  var story360ResumeAction = story360RestorePending
+    ? buildStory360ResumeActionFromAutosave(data.story360, !restoreActionIsGoto360)
+    : null;
+  if (story360ResumeAction) {
+    // Старые слоты могли указывать прямо на menu; перескакиваем за него и запускаем сохранённый 360-шаг из pendingActions.
+    if (restoreAction && restoreAction.type === "choice" && restoreScene && Array.isArray(restoreScene.actions)) {
+      state.actionIndex = clamp((parseInt(data.actionIndex, 10) || 0) + 1, 0, restoreScene.actions.length);
+    }
+    state.pendingActions = [story360ResumeAction];
+  }
   vnAutosaveStory360RestorePending =
-    restoreAction && restoreAction.type === "goto360"
-      ? buildStory360RestorePendingFromAutosave(data.story360, data.bgScroll)
+    story360RestorePending && (restoreActionIsGoto360 || story360ResumeAction)
+      ? story360RestorePending
       : null;
   vnAutosaveBgScrollRestorePending =
     data.bg && data.bgScroll && typeof data.bgScroll === "object"
@@ -4312,6 +4399,8 @@ function restart() {
   state.waitingNext = false;
   state.nextLocked = false;
   state.inVideo = false;
+  // При рестарте временные ветки menu/if пересобираются заново из сценария, старую очередь нельзя переносить.
+  state.pendingActions = [];
 
   hideChoices();
   reset360InteractionStateForRestart("restart");
@@ -4455,8 +4544,11 @@ if (state.sceneId === 'scene_02') {
 
     var actionIndexBeforeInc = state.actionIndex;
     var action = null;
+    // Флаг нужен автосейву: временные действия из menu/if не имеют собственного индекса в scene.actions.
+    var actionFromPending = false;
     if (Array.isArray(state.pendingActions) && state.pendingActions.length > 0) {
       action = state.pendingActions.shift();
+      actionFromPending = true;
     } else {
       action = scene.actions[actionIndexBeforeInc];
       if (isVisualBatchCandidate(action)) {
@@ -4481,6 +4573,9 @@ if (state.sceneId === 'scene_02') {
     if (!action || !action.type) continue;
 
     var shouldWait = executeAction(action);
+    if (shouldWait === "async" && (action.type === "walk360" || action.type === "goto360")) {
+      rememberActive360ActionForAutosave(action, actionFromPending, actionFromPending ? -1 : actionIndexBeforeInc, state.actionIndex);
+    }
 
     console.log('[FLOW] runCurrent:after executeAction', {
       sceneId: state.sceneId,
@@ -6252,6 +6347,7 @@ function cancelWalk360IfActive(reason) {
 
 // Сбрасывает 360-ожидание без runCurrent: при рестарте сценарий сам заново дойдёт до нужной команды.
 function reset360InteractionStateForRestart(reason) {
+  clearActive360ActionForAutosave();
   walk360Runtime.active = false;
   walk360Runtime.bgId = null;
   walk360Runtime.resultVar = "";
@@ -9165,6 +9261,7 @@ function finishWalk360(selectedId, targetScene) {
   walk360Runtime.active = false;
   walk360Runtime.bgId = null;
   walk360Runtime.resultVar = "";
+  clearActive360ActionForAutosave("walk360");
   var target = String(targetScene || "").trim();
   if (target) {
     if (state.sceneMap && state.sceneMap[target]) {
@@ -9381,6 +9478,7 @@ function finishGoto360(targetScene) {
   goto360Runtime.resultVar = "";
   goto360Runtime.titleText = "";
   goto360Runtime.buttonText = "";
+  clearActive360ActionForAutosave("goto360");
 
   var target = String(targetScene || "").trim();
   if (target) {
