@@ -1085,6 +1085,9 @@ var showingGames = false;
 // Переменная для хранения текущего кода графа
 var currentMermaidCode = "";
 
+// Номер активного рендера графа: устаревшие async-ответы Mermaid не должны менять DOM и panzoom.
+var graphRenderSequence = 0;
+
 var currentMermaidVariants = {
   full: {
     fullCode: "",
@@ -1194,6 +1197,11 @@ function setStatsView(view) {
   currentStatsView = view || "text";
   currentStateKey = getPanzoomStateKeyForView(currentStatsView);
   isGraphView = currentStateKey !== null;
+
+  if (!isGraphView) {
+    // При уходе с графа отменяем незавершённые Mermaid-render/restore, чтобы они не меняли скрытый DOM.
+    graphRenderSequence++;
+  }
 
   showingGraph = isGraphView;
   showingGames = (currentStatsView === "games");
@@ -2558,6 +2566,184 @@ function hydrateOptimizedRasterGraphThumbnails(root) {
   }
 }
 
+var graphCharacterFrameBoundsCache = Object.create(null);
+
+// Считает видимую область прозрачного спрайта персонажа через canvas, чтобы рамка на графе не обводила пустой прозрачный холст.
+function getGraphCharacterVisibleBounds(img) {
+  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+
+  var src = normalizeAssetUrl(img.currentSrc || img.src || "");
+  var cacheKey = src + "|" + img.naturalWidth + "x" + img.naturalHeight;
+  if (graphCharacterFrameBoundsCache[cacheKey]) {
+    return graphCharacterFrameBoundsCache[cacheKey];
+  }
+
+  var maxSide = 512;
+  var sampleScale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  var sampleWidth = Math.max(1, Math.round(img.naturalWidth * sampleScale));
+  var sampleHeight = Math.max(1, Math.round(img.naturalHeight * sampleScale));
+  var canvas = document.createElement("canvas");
+  canvas.width = sampleWidth;
+  canvas.height = sampleHeight;
+
+  var ctx;
+  try {
+    ctx = canvas.getContext("2d", { willReadFrequently: true });
+  } catch (e) {
+    ctx = canvas.getContext("2d");
+  }
+  if (!ctx) return null;
+
+  try {
+    ctx.clearRect(0, 0, sampleWidth, sampleHeight);
+    ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
+    var pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    var minX = sampleWidth;
+    var minY = sampleHeight;
+    var maxX = -1;
+    var maxY = -1;
+    var alphaThreshold = 32;
+    var colorThreshold = 26;
+    var cornerIndexes = [
+      3,
+      (sampleWidth - 1) * 4 + 3,
+      ((sampleHeight - 1) * sampleWidth) * 4 + 3,
+      ((sampleHeight - 1) * sampleWidth + sampleWidth - 1) * 4 + 3
+    ];
+    var opaqueCorners = 0;
+    var bgR = 0;
+    var bgG = 0;
+    var bgB = 0;
+
+    for (var ci = 0; ci < cornerIndexes.length; ci++) {
+      var alphaIndex = cornerIndexes[ci];
+      if (pixels[alphaIndex] < 220) continue;
+      opaqueCorners++;
+      bgR += pixels[alphaIndex - 3];
+      bgG += pixels[alphaIndex - 2];
+      bgB += pixels[alphaIndex - 1];
+    }
+
+    // Иногда оптимизированный WebP хранит фон непрозрачным однотонным цветом; тогда alpha не помогает и нужен отсев по цвету углов.
+    var useCornerColorMask = opaqueCorners >= 3;
+    if (useCornerColorMask) {
+      bgR /= opaqueCorners;
+      bgG /= opaqueCorners;
+      bgB /= opaqueCorners;
+    }
+
+    for (var y = 0; y < sampleHeight; y++) {
+      for (var x = 0; x < sampleWidth; x++) {
+        var pixelIndex = (y * sampleWidth + x) * 4;
+        var alpha = pixels[pixelIndex + 3];
+        var isVisiblePixel = false;
+
+        if (useCornerColorMask) {
+          var dr = pixels[pixelIndex] - bgR;
+          var dg = pixels[pixelIndex + 1] - bgG;
+          var db = pixels[pixelIndex + 2] - bgB;
+          isVisiblePixel = Math.sqrt(dr * dr + dg * dg + db * db) > colorThreshold;
+        } else {
+          isVisiblePixel = alpha > alphaThreshold;
+        }
+
+        if (!isVisiblePixel) continue;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+
+    // Небольшой запас оставляет рамку визуально спокойной и не прижимает ее вплотную к волосам, рукам и теням.
+    var padX = Math.max(1, Math.round((maxX - minX + 1) * 0.03));
+    var padY = Math.max(1, Math.round((maxY - minY + 1) * 0.02));
+    minX = Math.max(0, minX - padX);
+    minY = Math.max(0, minY - padY);
+    maxX = Math.min(sampleWidth - 1, maxX + padX);
+    maxY = Math.min(sampleHeight - 1, maxY + padY);
+
+    var bounds = {
+      left: minX / sampleWidth,
+      top: minY / sampleHeight,
+      width: (maxX - minX + 1) / sampleWidth,
+      height: (maxY - minY + 1) / sampleHeight
+    };
+    graphCharacterFrameBoundsCache[cacheKey] = bounds;
+    return bounds;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Переносит найденную alpha-область спрайта в координаты миниатюры на графе; если canvas недоступен, рамка берется с реального DOM-размера img.
+function applyGraphCharacterVisibleFrame(img) {
+  var wrap = img && img.closest ? img.closest(".cew") : null;
+  if (!wrap || !img.complete || !img.naturalWidth || !img.naturalHeight) return;
+
+  var wrapRect = wrap.getBoundingClientRect();
+  var imgRect = img.getBoundingClientRect();
+  var wrapWidth = wrap.offsetWidth || 0;
+  var wrapHeight = wrap.offsetHeight || 0;
+  if (!wrapWidth || !wrapHeight || !wrapRect.width || !wrapRect.height || !imgRect.width || !imgRect.height) return;
+
+  var scaleX = wrapWidth / wrapRect.width;
+  var scaleY = wrapHeight / wrapRect.height;
+  var imageLeft = (imgRect.left - wrapRect.left) * scaleX;
+  var imageTop = (imgRect.top - wrapRect.top) * scaleY;
+  var renderedWidth = imgRect.width * scaleX;
+  var renderedHeight = imgRect.height * scaleY;
+  var bounds = getGraphCharacterVisibleBounds(img);
+
+  // При неудаче alpha-чтения не растягиваем рамку на всю ячейку: используем фактический прямоугольник img.
+  var frameLeft = bounds ? imageLeft + bounds.left * renderedWidth : imageLeft;
+  var frameTop = bounds ? imageTop + bounds.top * renderedHeight : imageTop;
+  var frameWidth = bounds ? bounds.width * renderedWidth : renderedWidth;
+  var frameHeight = bounds ? bounds.height * renderedHeight : renderedHeight;
+
+  frameLeft = Math.max(0, Math.min(wrapWidth - 1, frameLeft));
+  frameTop = Math.max(0, Math.min(wrapHeight - 1, frameTop));
+  frameWidth = Math.max(1, Math.min(wrapWidth - frameLeft, frameWidth));
+  frameHeight = Math.max(1, Math.min(wrapHeight - frameTop, frameHeight));
+
+  wrap.style.setProperty("--char-frame-left", frameLeft.toFixed(1) + "px");
+  wrap.style.setProperty("--char-frame-top", frameTop.toFixed(1) + "px");
+  wrap.style.setProperty("--char-frame-width", frameWidth.toFixed(1) + "px");
+  wrap.style.setProperty("--char-frame-height", frameHeight.toFixed(1) + "px");
+  wrap.classList.add("char-frame-ready");
+}
+
+// Подключает расчет рамок к миниатюрам персонажей после Mermaid-render и после возможной подстановки webp-версии изображения.
+function hydrateGraphCharacterFrames(root) {
+  var host = root || mermaidGraph;
+  if (!host) return;
+
+  var thumbs = host.querySelectorAll(".char-emotion-thumbnail");
+  if (!thumbs || !thumbs.length) return;
+
+  function scheduleFrameUpdate(img) {
+    requestAnimationFrame(function() {
+      applyGraphCharacterVisibleFrame(img);
+    });
+  }
+
+  for (var i = 0; i < thumbs.length; i++) {
+    (function(img) {
+      if (!img.getAttribute("data-vnv-char-frame-bound")) {
+        img.setAttribute("data-vnv-char-frame-bound", "1");
+        img.addEventListener("load", function() {
+          scheduleFrameUpdate(img);
+        });
+      }
+      if (img.complete && img.naturalWidth && img.naturalHeight) {
+        scheduleFrameUpdate(img);
+      }
+    })(thumbs[i]);
+  }
+}
+
 function isVideoAssetPath(path) {
   return /\.(mp4|webm)$/i.test(String(path || ""));
 }
@@ -2569,6 +2755,23 @@ function getBackgroundAssetPrimaryPath(assetEntry) {
     return assetEntry.file;
   }
   return "";
+}
+
+// Возвращает CSS-класс формы превью фона на графе: wide-фоны рисуются широкой рамкой,
+// остальные растровые фоны — вертикальной рамкой, как сцены в новелле.
+function getGraphBackgroundFrameClass(assetEntry) {
+  var src = getBackgroundAssetPrimaryPath(assetEntry);
+  var entry = assetEntry && typeof assetEntry === "object" ? assetEntry : null;
+
+  if (entry && entry.scroll) {
+    return "graph-frame-wide";
+  }
+
+  if (/(^|[-_])wide(?=[-_.]|$)/i.test(String(src || ""))) {
+    return "graph-frame-wide";
+  }
+
+  return "graph-frame-portrait";
 }
 
 // Возвращает путь аудио-ассета: старые сценарии хранят строку, новые с volume — объект.
@@ -13059,6 +13262,8 @@ function toggleSettingsPanel() {
 function showSettingsPanel() {
   if (!elSettingsPanel) return;
   if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
+    // Окно статистики скрывается без setStatsView, поэтому отдельно отменяем отложенный рендер графа.
+    graphRenderSequence++;
     elStatsPanel.classList.add("hidden");
   }
   renderSettingsPanel();
@@ -13113,6 +13318,8 @@ function tryResumeNovelAfterStatsClose(reason) {
 }
 
 function hideStatsPanel() {
+  // Закрытие панели не меняет currentStatsView, но все отложенные операции графа уже неактуальны.
+  graphRenderSequence++;
   elStatsPanel.classList.add("hidden");
   tryResumeNovelAfterStatsClose("hideStatsPanel");
 }
@@ -15239,7 +15446,7 @@ function buildMermaidGraph(story, unreachableList, options) {
           var bgAsset = (story.assets && story.assets.backgrounds && bg360.id) ? story.assets.backgrounds[bg360.id] : null;
           var bg360AssetQuality = getBackgroundAssetQuality(bgAsset) || "auto";
 
-          label += "<span class='scene-bg-frame " + sceneBg360CountClass + "'>" +
+          label += "<span class='scene-bg-frame scene-bg360-frame " + sceneBg360CountClass + "'>" +
                   "<img " +
                   "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + sceneBg360CountClass + "' " +
                   "data-id='" + safeBg360Id + "' " +
@@ -15307,7 +15514,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         panoLabel += "<div class='scene-bg-images-container " + panoImgClass + " story360-graph-preview'>";
 
         if (isBg360PackScriptPath(panoNode.file)) {
-          panoLabel += "<span class='scene-bg-frame " + panoImgClass + "'>" +
+          panoLabel += "<span class='scene-bg-frame scene-bg360-frame " + panoImgClass + "'>" +
             "<img " +
             "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + panoImgClass + "' " +
             "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
@@ -15757,7 +15964,7 @@ function buildBackgroundsGraph(story, options) {
 
       if (!imgSrc) continue;
 
-      bgImagesHtml += "<span class='bgw " + imgCountClass + "'>" +
+      bgImagesHtml += "<span class='bgw " + getGraphBackgroundFrameClass(backgrounds[imgBgId]) + " " + imgCountClass + "'>" +
         "<img src='" + imgSrc + "'" + getGraphRasterImgDataAttr(allUniqueBgs[imgBgId]) + " " +
         "class='bgi " + imgCountClass + "' " +
         "title='" + safeImgBgId + "' alt='' />" +
@@ -15799,7 +16006,7 @@ function buildBackgroundsGraph(story, options) {
       var bg360UseCount = backgroundCounts[bg360Id] || 0;
       var bg360AssetQuality = getBackgroundAssetQuality(backgrounds[bg360Id]) || "auto";
 
-      bg360Html += "<span class='bgw " + bg360CountClass + "'>" +
+      bg360Html += "<span class='bgw bg360w " + bg360CountClass + "'>" +
         "<img " +
         "class='bgi bg360-graph-thumbnail " + bg360CountClass + "' " +
         "data-bg360-src='" + safeBg360Src + "' " +
@@ -17247,8 +17454,13 @@ function applyPanzoomState(savedState) {
   updatePanzoomTransform();
 }
 
-function restorePanzoomWhenGraphReady(stateKey, attempt) {
+// Восстанавливает panzoom только для актуального рендера: старые таймеры не должны трогать новый SVG.
+function restorePanzoomWhenGraphReady(stateKey, attempt, renderSequence) {
   attempt = attempt || 0;
+
+  if (renderSequence !== graphRenderSequence) return;
+  if (getPanzoomStateKeyForView(currentStatsView) !== stateKey) return;
+  if (elStatsPanel && elStatsPanel.classList.contains("hidden")) return;
 
   var svg = mermaidGraph ? mermaidGraph.querySelector("svg") : null;
   var images = mermaidGraph ? mermaidGraph.querySelectorAll("img") : [];
@@ -17266,13 +17478,17 @@ function restorePanzoomWhenGraphReady(stateKey, attempt) {
   // но не блокируем восстановление навсегда
   if ((!svg || hasPendingImages) && attempt < 12) {
     setTimeout(function() {
-      restorePanzoomWhenGraphReady(stateKey, attempt + 1);
+      restorePanzoomWhenGraphReady(stateKey, attempt + 1, renderSequence);
     }, 50);
     return;
   }
 
   requestAnimationFrame(function() {
+    if (renderSequence !== graphRenderSequence) return;
     requestAnimationFrame(function() {
+      if (renderSequence !== graphRenderSequence) return;
+      if (getPanzoomStateKeyForView(currentStatsView) !== stateKey) return;
+
       if (graphContainer) {
         forceRedraw(graphContainer);
       }
@@ -17281,6 +17497,8 @@ function restorePanzoomWhenGraphReady(stateKey, attempt) {
 
       // Контрольный повтор после redraw/layout
       setTimeout(function() {
+        if (renderSequence !== graphRenderSequence) return;
+        if (getPanzoomStateKeyForView(currentStatsView) !== stateKey) return;
         applyPanzoomState(savedPanzoomByView[stateKey]);
       }, 40);
     });
@@ -17637,10 +17855,16 @@ function shouldUseCompactMermaid(fullCode, stats) {
   return false;
 }
 
-function renderMermaidGraph() {
-  if (!window.STORY) return;
-  if (!currentMermaidCode) return;
-  if (!mermaidGraph) return;
+// Рендерит Mermaid в DOM как один атомарный async-проход: старые проходы отбрасываются по graphRenderSequence,
+// чтобы при частых входах/выходах из вкладки графа не смешивались размеры старого SVG и нового foreignObject.
+function renderMermaidGraph(renderSequence) {
+  if (!window.STORY) return Promise.resolve(false);
+  if (!currentMermaidCode) return Promise.resolve(false);
+  if (!mermaidGraph) return Promise.resolve(false);
+
+  if (!renderSequence) {
+    renderSequence = ++graphRenderSequence;
+  }
 
   var variant = getMermaidVariantForStatsView(currentStatsView);
   var renderQueue = [];
@@ -17654,7 +17878,7 @@ function renderMermaidGraph() {
     renderQueue.push(currentMermaidCode);
   }
 
-  if (!renderQueue.length) return;
+  if (!renderQueue.length) return Promise.resolve(false);
 
   function clearMermaidContainer() {
     while (mermaidGraph.firstChild) {
@@ -17663,6 +17887,14 @@ function renderMermaidGraph() {
     mermaidGraph.removeAttribute('data-processed');
     mermaidGraph.removeAttribute('data-mermaid-svg');
     mermaidGraph.removeAttribute('data-mermaid-type');
+  }
+
+  // Проверяет, можно ли ещё применять результат текущего async-рендера к DOM.
+  function isRenderOutdated() {
+    if (renderSequence !== graphRenderSequence) return true;
+    if (getPanzoomStateKeyForView(currentStatsView) === null) return true;
+    if (elStatsPanel && elStatsPanel.classList.contains("hidden")) return true;
+    return false;
   }
 
   function hasMermaidRenderError() {
@@ -17674,62 +17906,66 @@ function renderMermaidGraph() {
 
   function tryRenderFromQueue(index) {
     var code = renderQueue[index];
-    if (!code || !window.mermaid) return;
+    if (!code || !window.mermaid) return Promise.resolve(false);
+    if (isRenderOutdated()) return Promise.resolve(false);
 
     clearMermaidContainer();
-    mermaidGraph.textContent = code;
 
-    setTimeout(function() {
-      try {
-        window.mermaid.init({
-          maxTextSize: 350000,
-          maxEdges: 5000,
-          theme: 'default',
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: true,
-            curve: 'basis',
-            padding: 4,
-            nodeSpacing: 60,
-            rankSpacing: 100,
-            borderRadius: 10
-          },
-          securityLevel: 'loose',
-          startOnLoad: false
-        }, mermaidGraph);
-      } catch (e) {
-        console.error("Mermaid init/render error:", e);
-        if (index + 1 < renderQueue.length) {
-          console.warn("[GRAPH] Full render failed, trying compact fallback.");
-          tryRenderFromQueue(index + 1);
+    return window.mermaid.render("vn-graph-" + renderSequence + "-" + index, code, mermaidGraph)
+      .then(function(result) {
+        if (isRenderOutdated()) return false;
+
+        clearMermaidContainer();
+        mermaidGraph.innerHTML = result && result.svg ? result.svg : "";
+
+        if (result && typeof result.bindFunctions === "function") {
+          result.bindFunctions(mermaidGraph);
         }
-        return;
-      }
 
-      setTimeout(function() {
         if (!hasMermaidRenderError()) {
           hydrateBg360GraphThumbnails(mermaidGraph);
           hydrateOptimizedRasterGraphThumbnails(mermaidGraph);
+          hydrateGraphCharacterFrames(mermaidGraph);
         }
+
         if (hasMermaidRenderError() && index + 1 < renderQueue.length) {
           console.warn("[GRAPH] Full render produced Mermaid error, trying compact fallback.");
-          tryRenderFromQueue(index + 1);
+          return tryRenderFromQueue(index + 1);
         }
-      }, 120);
-    }, 50);
+
+        return !hasMermaidRenderError();
+      })
+      .catch(function(e) {
+        console.error("Mermaid render error:", e);
+        if (index + 1 < renderQueue.length) {
+          console.warn("[GRAPH] Full render failed, trying compact fallback.");
+          return tryRenderFromQueue(index + 1);
+        }
+        if (!isRenderOutdated()) {
+          clearMermaidContainer();
+          mermaidGraph.textContent =
+            (t("mermaidScriptError") || "Mermaid render failed") +
+            "\n" +
+            (e && e.message ? e.message : String(e));
+        }
+        return false;
+      });
   }
 
-  ensureMermaidScriptLoaded()
+  return ensureMermaidScriptLoaded()
     .then(function() {
-      tryRenderFromQueue(0);
+      configureMermaidLibrary();
+      return tryRenderFromQueue(0);
     })
     .catch(function(err) {
+      if (isRenderOutdated()) return false;
       console.error("[GRAPH] " + (t("mermaidScriptError") || "Mermaid load failed"), err);
       clearMermaidContainer();
       mermaidGraph.textContent =
         (t("mermaidScriptError") || "Mermaid load failed") +
         "\n" +
         (err && err.message ? err.message : String(err));
+      return false;
     });
 }
 
@@ -17740,10 +17976,14 @@ function renderMermaidGraph() {
  * раскладка foreignObject и визуальный размер узлов при повторных рефрешах.
  */
 function renderGraphViewWithPanzoomLifecycle(stateKey) {
-  if (!stateKey) return;
+  if (!stateKey) return Promise.resolve(false);
+  var renderSequence = ++graphRenderSequence;
   neutralizePanzoomForRender();
-  renderMermaidGraph();
-  restorePanzoomWhenGraphReady(stateKey);
+  return renderMermaidGraph(renderSequence).then(function(rendered) {
+    if (!rendered || renderSequence !== graphRenderSequence) return false;
+    restorePanzoomWhenGraphReady(stateKey, 0, renderSequence);
+    return true;
+  });
 }
 
 function debugCharacterGraphLayout() {
