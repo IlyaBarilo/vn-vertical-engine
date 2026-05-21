@@ -17298,13 +17298,37 @@ var panzoomState = {
   startX: 0,
   startY: 0,
   startTranslateX: 0,
-  startTranslateY: 0
+  startTranslateY: 0,
+  activePointers: {},
+  activePointerId: null,
+  isPinching: false,
+  pinchStartDistance: 0,
+  pinchStartScale: 1,
+  pinchStartTranslateX: 0,
+  pinchStartTranslateY: 0,
+  pinchStartContentX: 0,
+  pinchStartContentY: 0
 };
 
 var savedPanzoomByView = {
   "graph-full": null,
   "graph-resources": null
 };
+
+// Сбрасывает только текущий жест pan/pinch, не трогая уже выбранный масштаб и смещение графа.
+function resetPanzoomGestureState() {
+  panzoomState.isPanning = false;
+  panzoomState.panMode = "none";
+  panzoomState.activePointers = {};
+  panzoomState.activePointerId = null;
+  panzoomState.isPinching = false;
+  panzoomState.pinchStartDistance = 0;
+  panzoomState.pinchStartScale = panzoomState.scale;
+  panzoomState.pinchStartTranslateX = panzoomState.translateX;
+  panzoomState.pinchStartTranslateY = panzoomState.translateY;
+  panzoomState.pinchStartContentX = 0;
+  panzoomState.pinchStartContentY = 0;
+}
 
 function getPanzoomStateKeyForView(view) {
   if (view === "graph-full" || view === "full") return "graph-full";
@@ -17335,8 +17359,7 @@ function applyPanzoomState(savedState) {
   panzoomState.scale = (typeof savedState.scale === "number") ? savedState.scale : panzoomState.fitScale;
   panzoomState.translateX = (typeof savedState.translateX === "number") ? savedState.translateX : 0;
   panzoomState.translateY = (typeof savedState.translateY === "number") ? savedState.translateY : 0;
-  panzoomState.isPanning = false;
-  panzoomState.panMode = "none";
+  resetPanzoomGestureState();
 
   updatePanzoomTransform();
 }
@@ -17415,8 +17438,7 @@ function neutralizePanzoomForRender() {
   panzoomState.scale = 1;
   panzoomState.translateX = 0;
   panzoomState.translateY = 0;
-  panzoomState.isPanning = false;
-  panzoomState.panMode = 'none';
+  resetPanzoomGestureState();
 
   if (panzoomContent) {
     panzoomContent.style.transform = 'translate(0px, 0px) scale(1)';
@@ -17480,8 +17502,7 @@ function fitGraphToViewport() {
   panzoomState.scale = fitScale;
   panzoomState.translateX = offsetX - bbox.x * fitScale;
   panzoomState.translateY = offsetY - bbox.y * fitScale;
-  panzoomState.isPanning = false;
-  panzoomState.panMode = 'none';
+  resetPanzoomGestureState();
 
   updatePanzoomTransform();
 
@@ -17516,7 +17537,7 @@ function resetPanzoom() {
 function zoom(delta, mouseX, mouseY) {
   var oldScale = panzoomState.scale;
   var newScale = panzoomState.scale * (1 + delta * 0.1);
-  newScale = Math.max(panzoomState.minScale, Math.min(panzoomState.maxScale, newScale));
+  newScale = clampPanzoomScale(newScale);
   
   if (newScale === oldScale) return;
   
@@ -17534,38 +17555,176 @@ function zoom(delta, mouseX, mouseY) {
   updatePanzoomTransform();
 }
 
+// Ограничивает масштаб графа общими пределами panzoom, чтобы wheel, кнопки и pinch вели себя одинаково.
+function clampPanzoomScale(scale) {
+  return Math.max(panzoomState.minScale, Math.min(panzoomState.maxScale, scale));
+}
+
+// Меняет масштаб вокруг экранной точки; если точка не передана, используется центр видимой области графа.
+function applyPanzoomScaleAtClientPoint(newScale, clientX, clientY) {
+  var oldScale = panzoomState.scale;
+  var rect;
+  var focusX;
+  var focusY;
+  var contentX;
+  var contentY;
+
+  newScale = clampPanzoomScale(newScale);
+  if (newScale === oldScale) return false;
+
+  if (panzoomWrapper) {
+    rect = panzoomWrapper.getBoundingClientRect();
+    focusX = (typeof clientX === "number") ? clientX : rect.left + rect.width / 2;
+    focusY = (typeof clientY === "number") ? clientY : rect.top + rect.height / 2;
+    contentX = (focusX - rect.left - panzoomState.translateX) / oldScale;
+    contentY = (focusY - rect.top - panzoomState.translateY) / oldScale;
+
+    panzoomState.translateX = focusX - rect.left - contentX * newScale;
+    panzoomState.translateY = focusY - rect.top - contentY * newScale;
+  }
+
+  panzoomState.scale = newScale;
+  updatePanzoomTransform();
+  return true;
+}
+
+// Возвращает активные указатели panzoom в стабильном порядке, чтобы два пальца давали предсказуемый pinch.
+function getPanzoomPointerList() {
+  var pointers = panzoomState.activePointers || {};
+  return Object.keys(pointers).sort().map(function(pointerId) {
+    return pointers[pointerId];
+  }).filter(Boolean);
+}
+
+// Считает центр и расстояние между первыми двумя активными указателями для жеста pinch-to-zoom.
+function getPanzoomPinchMetrics() {
+  var pointers = getPanzoomPointerList();
+  var first;
+  var second;
+  var dx;
+  var dy;
+
+  if (pointers.length < 2) return null;
+
+  first = pointers[0];
+  second = pointers[1];
+  dx = second.x - first.x;
+  dy = second.y - first.y;
+
+  return {
+    distance: Math.sqrt(dx * dx + dy * dy),
+    centerX: (first.x + second.x) / 2,
+    centerY: (first.y + second.y) / 2
+  };
+}
+
+// Начинает обычное перемещение графа одним указателем, сохраняя текущий translate как базу жеста.
+function startPanzoomDrag(pointer, mode) {
+  if (!pointer) return;
+
+  panzoomState.isPanning = true;
+  panzoomState.isPinching = false;
+  panzoomState.panMode = mode || "touch";
+  panzoomState.activePointerId = pointer.id;
+  panzoomState.startX = pointer.x;
+  panzoomState.startY = pointer.y;
+  panzoomState.startTranslateX = panzoomState.translateX;
+  panzoomState.startTranslateY = panzoomState.translateY;
+}
+
+// Фиксирует начальные параметры pinch: дистанцию пальцев и точку графа под центром жеста.
+function startPanzoomPinch(metrics) {
+  var rect;
+  var centerX;
+  var centerY;
+
+  if (!panzoomWrapper || !metrics || metrics.distance <= 0) return;
+
+  rect = panzoomWrapper.getBoundingClientRect();
+  if (!rect.width || !rect.height || !panzoomState.scale) return;
+
+  centerX = metrics.centerX - rect.left;
+  centerY = metrics.centerY - rect.top;
+
+  panzoomState.isPanning = false;
+  panzoomState.isPinching = true;
+  panzoomState.panMode = "pinch";
+  panzoomState.activePointerId = null;
+  panzoomState.pinchStartDistance = metrics.distance;
+  panzoomState.pinchStartScale = panzoomState.scale;
+  panzoomState.pinchStartTranslateX = panzoomState.translateX;
+  panzoomState.pinchStartTranslateY = panzoomState.translateY;
+  panzoomState.pinchStartContentX = (centerX - panzoomState.translateX) / panzoomState.scale;
+  panzoomState.pinchStartContentY = (centerY - panzoomState.translateY) / panzoomState.scale;
+}
+
+// Применяет текущий pinch: масштабирует вокруг начальной точки графа и одновременно следует за центром пальцев.
+function updatePanzoomPinch() {
+  var metrics = getPanzoomPinchMetrics();
+  var rect;
+  var centerX;
+  var centerY;
+  var ratio;
+  var newScale;
+
+  if (!metrics || metrics.distance <= 0 || !panzoomWrapper) return;
+  if (!panzoomState.isPinching || !panzoomState.pinchStartDistance) {
+    startPanzoomPinch(metrics);
+  }
+  if (!panzoomState.isPinching || !panzoomState.pinchStartDistance) return;
+
+  rect = panzoomWrapper.getBoundingClientRect();
+  centerX = metrics.centerX - rect.left;
+  centerY = metrics.centerY - rect.top;
+  ratio = metrics.distance / panzoomState.pinchStartDistance;
+  newScale = clampPanzoomScale(panzoomState.pinchStartScale * ratio);
+
+  panzoomState.scale = newScale;
+  panzoomState.translateX = centerX - panzoomState.pinchStartContentX * newScale;
+  panzoomState.translateY = centerY - panzoomState.pinchStartContentY * newScale;
+  updatePanzoomTransform();
+}
+
 function initPanzoom() {
   if (!panzoomWrapper || !panzoomContent) return;
 
   var container = document.getElementById("graphContainer");
-  var activePointerId = null;
 
   // Для тача/пера отключаем нативный pan браузера
+  // Два пальца обрабатываем сами: системный zoom страницы здесь мешал бы управлению графом.
   panzoomWrapper.style.touchAction = 'none';
 
   panzoomWrapper.addEventListener('pointerdown', function(e) {
-    if (!e.isPrimary) return;
-
     // Разрешаем мышь: левая (0) и средняя (1)
     // touch/pen тоже разрешаем
     var isMouse = e.pointerType === 'mouse';
+    var pointer;
+    var pinchMetrics;
     if (isMouse && e.button !== 0 && e.button !== 1) return;
 
     e.preventDefault();
 
-    activePointerId = e.pointerId;
-    panzoomState.isPanning = true;
-    panzoomState.panMode = isMouse ? (e.button === 1 ? 'middle' : 'left') : 'touch';
-    panzoomState.startX = e.clientX;
-    panzoomState.startY = e.clientY;
-    panzoomState.startTranslateX = panzoomState.translateX;
-    panzoomState.startTranslateY = panzoomState.translateY;
+    pointer = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      pointerType: e.pointerType,
+      button: e.button
+    };
+    panzoomState.activePointers[e.pointerId] = pointer;
 
     if (panzoomWrapper.setPointerCapture) {
-      panzoomWrapper.setPointerCapture(e.pointerId);
+      try { panzoomWrapper.setPointerCapture(e.pointerId); } catch (err) {}
     }
 
-    container.classList.add('panning');
+    if (getPanzoomPointerList().length >= 2) {
+      pinchMetrics = getPanzoomPinchMetrics();
+      startPanzoomPinch(pinchMetrics);
+    } else {
+      startPanzoomDrag(pointer, isMouse ? (e.button === 1 ? 'middle' : 'left') : 'touch');
+    }
+
+    if (container) container.classList.add('panning');
   });
 
   // Блокируем стандартное поведение на нажатие колесика
@@ -17588,13 +17747,27 @@ function initPanzoom() {
   });
 
   panzoomWrapper.addEventListener('pointermove', function(e) {
-    if (!panzoomState.isPanning) return;
-    if (e.pointerId !== activePointerId) return;
+    var pointer = panzoomState.activePointers[e.pointerId];
+    var dx;
+    var dy;
+
+    if (!pointer) return;
 
     e.preventDefault();
 
-    var dx = e.clientX - panzoomState.startX;
-    var dy = e.clientY - panzoomState.startY;
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+
+    if (getPanzoomPointerList().length >= 2) {
+      updatePanzoomPinch();
+      return;
+    }
+
+    if (!panzoomState.isPanning) return;
+    if (e.pointerId !== panzoomState.activePointerId) return;
+
+    dx = e.clientX - panzoomState.startX;
+    dy = e.clientY - panzoomState.startY;
 
     panzoomState.translateX = panzoomState.startTranslateX + dx;
     panzoomState.translateY = panzoomState.startTranslateY + dy;
@@ -17602,13 +17775,36 @@ function initPanzoom() {
     updatePanzoomTransform();
   });
 
+  // Завершает один указатель; если после pinch остался один палец, сразу переводит его в обычный pan.
   function stopPan(e) {
-    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    var pointer = panzoomState.activePointers[e.pointerId];
+    var remainingPointers;
+    var remaining;
 
-    panzoomState.isPanning = false;
-    panzoomState.panMode = 'none';
-    activePointerId = null;
-    container.classList.remove('panning');
+    if (!pointer) return;
+
+    e.preventDefault();
+
+    if (panzoomWrapper.releasePointerCapture) {
+      try { panzoomWrapper.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+
+    delete panzoomState.activePointers[e.pointerId];
+    remainingPointers = getPanzoomPointerList();
+
+    if (remainingPointers.length >= 2) {
+      startPanzoomPinch(getPanzoomPinchMetrics());
+      return;
+    }
+
+    if (remainingPointers.length === 1) {
+      remaining = remainingPointers[0];
+      startPanzoomDrag(remaining, remaining.pointerType === 'mouse' ? 'left' : 'touch');
+      return;
+    }
+
+    resetPanzoomGestureState();
+    if (container) container.classList.remove('panning');
   }
 
   panzoomWrapper.addEventListener('pointerup', stopPan);
@@ -17622,63 +17818,25 @@ function initPanzoom() {
     e.preventDefault();
 
     var delta = e.deltaY > 0 ? -1 : 1;
-    var oldScale = panzoomState.scale;
-    var newScale = panzoomState.scale * (delta > 0 ? 1.2 : 0.83);
-    newScale = Math.max(panzoomState.minScale, Math.min(panzoomState.maxScale, newScale));
-
-    if (newScale === oldScale) return;
-
-    var rect = panzoomWrapper.getBoundingClientRect();
-    var mouseXRatio = (e.clientX - rect.left - panzoomState.translateX) / oldScale;
-    var mouseYRatio = (e.clientY - rect.top - panzoomState.translateY) / oldScale;
-
-    panzoomState.translateX = e.clientX - rect.left - mouseXRatio * newScale;
-    panzoomState.translateY = e.clientY - rect.top - mouseYRatio * newScale;
-    panzoomState.scale = newScale;
-
-    updatePanzoomTransform();
+    applyPanzoomScaleAtClientPoint(panzoomState.scale * (delta > 0 ? 1.2 : 0.83), e.clientX, e.clientY);
   }, { passive: false });
 
   // ОСТАВИТЬ существующие click на кнопках
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', function() {
-      var oldScale = panzoomState.scale;
-      var newScale = Math.min(panzoomState.maxScale, oldScale * 1.3);
-      if (newScale === oldScale) return;
-
       var rect = panzoomWrapper.getBoundingClientRect();
       var centerX = rect.left + rect.width / 2;
       var centerY = rect.top + rect.height / 2;
-
-      var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
-      var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
-
-      panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
-      panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
-      panzoomState.scale = newScale;
-
-      updatePanzoomTransform();
+      applyPanzoomScaleAtClientPoint(panzoomState.scale * 1.3, centerX, centerY);
     });
   }
 
   if (zoomOutBtn) {
     zoomOutBtn.addEventListener('click', function() {
-      var oldScale = panzoomState.scale;
-      var newScale = Math.max(panzoomState.minScale, oldScale / 1.3);
-      if (newScale === oldScale) return;
-
       var rect = panzoomWrapper.getBoundingClientRect();
       var centerX = rect.left + rect.width / 2;
       var centerY = rect.top + rect.height / 2;
-
-      var mouseXRatio = (centerX - rect.left - panzoomState.translateX) / oldScale;
-      var mouseYRatio = (centerY - rect.top - panzoomState.translateY) / oldScale;
-
-      panzoomState.translateX = centerX - rect.left - mouseXRatio * newScale;
-      panzoomState.translateY = centerY - rect.top - mouseYRatio * newScale;
-      panzoomState.scale = newScale;
-
-      updatePanzoomTransform();
+      applyPanzoomScaleAtClientPoint(panzoomState.scale / 1.3, centerX, centerY);
     });
   }
 

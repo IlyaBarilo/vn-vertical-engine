@@ -1721,6 +1721,13 @@ body {
   overflow: hidden;
   position: relative;
   touch-action: none;
+  -ms-touch-action: none;
+  overscroll-behavior: contain;
+}
+
+/* Вложенные SVG/foreignObject-элементы графа тоже не должны отдавать pinch браузеру. */
+.panzoom-wrapper * {
+  touch-action: none;
 }
 
 /* Контент для панорамирования */
