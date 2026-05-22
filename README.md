@@ -186,8 +186,8 @@ making it easier to find unused media, repeated resources, and asset-heavy
 parts of the story.
 
 <p align="center">
-<img src="docs/stat/stat-graph-1.jpg" width="600">
-<img src="docs/stat/stat-graph-2-resources.jpg" width="600">
+<img src="docs/stat/stat-graph-1.webp" width="600">
+<img src="docs/stat/stat-graph-2-resources.webp" width="600">
 </p>
 
 The games view helps debug mini-games directly inside the engine: launch a
