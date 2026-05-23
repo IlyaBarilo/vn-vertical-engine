@@ -9,14 +9,15 @@ The main idea is simple:
 
 1. first, come up with the story;
 2. then build a draft script;
-3. then decide whether you need mini-games at all;
-4. if you do, add them in the right places;
+3. then decide whether you need 360 scenes or mini-games at all;
+4. use optional tools only where they make the project clearer;
 5. after that, connect, test, and refine everything together.
 
 When downloading a release, use the full ZIP archive if you want to run the
-included demo as-is. Use the `-update` ZIP archive when copying a new engine
-version over an existing novel; it does not include `assets/`, `story.js`, or
-root `story-example.js`. The update archive keeps a reference example in
+included demo as-is, including demo media, 360 panorama packages, mini-games,
+and tools. Use the `-update` ZIP archive when copying a new engine version over
+an existing novel; it does not include `assets/`, `story.js`, or root
+`story-example.js`. The update archive keeps a reference example in
 `docs/examples/story-example.js`.
 
 ---
@@ -24,11 +25,16 @@ root `story-example.js`. The update archive keeps a reference example in
 ## Important
 
 Mini-games are **not a required part** of a visual novel.
+360 spaces and authoring tools are optional too.
+
+The main story remains a plain text script in `story.js`. You can write and
+edit it in any text editor without special authoring software.
 
 You can work like this:
 
 - first create the idea and a draft script for the novel;
 - fully build the story **without mini-games**;
+- add 360 scenes only where free exploration helps the location or learning task;
 - mark places where a mini-game could strengthen a scene;
 - add one or more mini-games later;
 - or skip mini-games entirely if needed.
@@ -45,6 +51,7 @@ First, define the foundation of the project:
 - who the main character is;
 - what the key scenes are;
 - where the choices will appear;
+- whether any location should be explored as a 360 scene;
 - what the final effect should be: learning, atmosphere, demonstration, or an interactive story.
 
 At this stage, you do not need to think about code, and you do not need to create mini-games yet.
@@ -56,6 +63,10 @@ At this stage, you do not need to think about code, and you do not need to creat
 In this project, your script is stored in `story.js` as a text block called `window.STORY_TEXT`.
 If `story.js` does not exist yet, the engine loads `story-example.js` so the demo can start.
 Start your own novel by copying `story-example.js` to `story.js`, then edit `story.js`.
+
+For larger 360 routes, keep the main story in `story.js` and store the panorama
+map in an optional `story360.js` file, usually generated with
+`tools/scene360-editor.html`.
 
 The minimum structure looks like this:
 
@@ -103,6 +114,23 @@ At first, make exactly this kind of draft:
 - the overall story structure.
 
 Do not polish everything immediately. The important thing is to quickly assemble the framework.
+
+---
+
+## Optional. Add 360 scenes and authoring tools when needed
+
+Use 360 scenes when the player should look around a place, choose a direction,
+or move through a connected space rather than only read a static scene.
+
+Useful local tools:
+
+- `tools/scene360-editor.html` — build `story360.js`, place markers, and define panorama links visually;
+- `tools/convert-360-img-to-js.html` — convert panorama images into offline JS packages;
+- `tools/media-focus-editor.html` — tune focus points for media-heavy scenes;
+- `tools/game-tester.html` — test mini-games before connecting them to the story.
+
+These tools are helpers, not a replacement for the story text. Start with the
+story structure first, then add 360 navigation only where it clearly helps.
 
 ---
 
@@ -163,7 +191,9 @@ Once the idea has been selected, attach the `SPEC-GAME.md` file to the request a
 Prompt #2:
 
 ```text
-You are a senior HTML5 game developer and UX designer of vertical touch games. Create a complete mini-game based on idea #<number>. The game must fully comply with the attached SPEC-GAME.md specification. Do not simplify or ignore the specification requirements. Implement it carefully as a finished working result.
+Create a mini-game about <TOPIC> in the style of <STYLE>, where the player must <WHAT THE PLAYER DOES>.
+
+When developing the game, you must use the attached SPEC-GAME.md specification file.
 ```
 
 Why this matters:
@@ -176,7 +206,7 @@ Why this matters:
 
 ## Step 6. Test the mini-game separately
 
-Before connecting it to the visual novel, it is convenient to test the game separately through `game-tester.html`.
+Before connecting it to the visual novel, it is convenient to test the game separately through `tools/game-tester.html`.
 
 What to check:
 
@@ -236,9 +266,11 @@ This helps you see:
 - broken transitions;
 - unnecessary branches;
 - scenes that cannot be reached;
-- overly complex or confusing structural parts.
+- overly complex or confusing structural parts;
+- resource usage and repeated assets;
+- mini-game launches and returned `gameResult` values.
 
-This is especially useful after adding mini-games and new branching.
+This is especially useful after adding 360 scenes, mini-games, and new branching.
 
 ---
 
@@ -248,14 +280,18 @@ A good practical loop looks like this:
 
 1. story idea;
 2. draft `story.js`;
-3. decision on whether mini-games are needed;
-4. mini-game ideas;
-5. mini-game implementation according to `SPEC-GAME.md`;
-6. connection to the script;
-7. graph and branching check;
-8. refinement of text, scenes, and games.
+3. optional 360 places and media focus checks;
+4. decision on whether mini-games are needed;
+5. mini-game ideas;
+6. mini-game implementation according to `SPEC-GAME.md`;
+7. connection to the script;
+8. graph, resource, and branching check;
+9. refinement of text, scenes, 360 routes, and games.
 
 This is safer and more convenient than trying to generate games first and only then figuring out where to place them.
+
+Story progress is saved automatically in the browser, so regular reloads during
+testing do not erase the current playthrough.
 
 ---
 
@@ -265,11 +301,12 @@ If you need the shortest version:
 
 1. come up with the story;
 2. sketch the script;
-3. decide whether mini-games are needed;
-4. if they are needed, ask for ideas first, then create the game according to the specification;
-5. test the game separately;
-6. connect it in `story.js`;
-7. check the graph and branching.
+3. decide whether 360 scenes or mini-games are needed;
+4. if 360 scenes are needed, prepare `story360.js` with the local tools;
+5. if mini-games are needed, ask for ideas first, then create the game according to the specification;
+6. test the game separately;
+7. connect it in `story.js`;
+8. check the graph, resources, games view, and branching.
 
 ---
 
@@ -278,6 +315,7 @@ If you need the shortest version:
 For scripts:
 
 - `SPEC-STORY.md` — if you want to generate or refine the script structure.
+- optional `story360.js` — if you want to refine an existing 360 route.
 
 For mini-games:
 
@@ -296,6 +334,7 @@ A good start in this project usually looks like this:
 
 - **first the story**;
 - **then the script structure**;
+- **then optional 360 locations, if exploration helps the project**;
 - **then the decision whether mini-games are needed**;
 - **then the mini-games themselves, if they are truly useful**.
 
