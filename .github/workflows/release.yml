@@ -77,6 +77,7 @@ jobs:
           mkdir -p "build/$APP_NAME/lib"
           mkdir -p "build/$APP_NAME/engine"
           mkdir -p "build/$APP_NAME/tools"
+          mkdir -p "build/$APP_NAME/docs"
           mkdir -p "build/$APP_NAME/docs/examples"
           mkdir -p "build/$APP_NAME/docs/specs"
 
@@ -101,6 +102,11 @@ jobs:
           [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/docs/examples/"
           [ -f docs/specs/SPEC-STORY.md ] && cp docs/specs/SPEC-STORY.md "build/$APP_NAME/docs/specs/"
           [ -f docs/specs/SPEC-GAME.md ] && cp docs/specs/SPEC-GAME.md "build/$APP_NAME/docs/specs/"
+          [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
+          [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
+          [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
+          [ -d docs/stat ] && cp -a docs/stat "build/$APP_NAME/docs/"
+          [ -d docs/tools ] && cp -a docs/tools "build/$APP_NAME/docs/"
 
           [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
           [ -f lib/jsrsasign-all-min.js ] && cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"

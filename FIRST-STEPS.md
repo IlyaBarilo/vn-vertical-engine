@@ -17,8 +17,8 @@ When downloading a release, use the full ZIP archive if you want to run the
 included demo as-is, including demo media, 360 panorama packages, mini-games,
 and tools. Use the `-update` ZIP archive when copying a new engine version over
 an existing novel; it does not include `assets/`, `story.js`, or root
-`story-example.js`. The update archive keeps a reference example in
-`docs/examples/story-example.js`.
+`story-example.js`. Inside the update archive, the current example is available
+as `docs/examples/story-example.js`.
 
 ---
 

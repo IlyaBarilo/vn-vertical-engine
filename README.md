@@ -242,8 +242,6 @@ This engine is suitable for:
     │    ├── games/                 ← mini-game screenshots
     │    ├── stat/                  ← statistics and graph screenshots
     │    ├── tools/                 ← authoring tool screenshots
-    │    ├── examples/
-    │    │    └── story-example.js  ← reference copy in update archives
     │    └── specs/
     │         ├── SPEC-STORY.md      ← story scripting specification
     │         └── SPEC-GAME.md       ← mini-game integration specification
@@ -265,8 +263,8 @@ This engine is suitable for:
 
 In update release archives, `assets/`, `story.js`, and the root `story-example.js`
 are not included, so copying an update over an existing novel does not touch
-its media files or story. A fresh reference example is included as
-`docs/examples/story-example.js`.
+its media files or story. During release packaging, a fresh reference example is
+copied into the update archive as `docs/examples/story-example.js`.
 
 ---
 
@@ -285,7 +283,8 @@ Release assets include two ZIP variants:
 Use the full archive to run the included demo as-is, including 360 scenes and
 mini-game examples. Use the update archive when copying a new engine version
 over an existing novel without touching its media files or story.
-The update archive keeps the current example in `docs/examples/story-example.js`.
+Inside the update archive, the current example is available as
+`docs/examples/story-example.js`.
 
 2.  Extract the archive.
 
@@ -351,8 +350,8 @@ Replace `500` and `800` with your desired values (in pixels).
 
 Your working script is stored in `story.js` as a text block.
 The included demo script is stored in root `story-example.js` and is used only
-when `story.js` is absent. Update archives keep their reference copy in
-`docs/examples/story-example.js`.
+when `story.js` is absent. During release packaging, update archives receive a
+reference copy at `docs/examples/story-example.js`.
 
 Example:
 
