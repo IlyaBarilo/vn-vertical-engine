@@ -65,9 +65,13 @@ window.STORY_TEXT = `
 title = Demo Story
 startScene = intro
 lang = en
+mode = release
+autosave = true
+transition = fade
+transitionMs = 180
 
 [bg]
-hall file=assets/backgrounds/bg_hall.jpg
+hall file=assets/backgrounds/bg_hall.jpg scroll focusx=0.5
 
 [char]
 anna emotion=neutral file=assets/characters/anna.png name="Анна" color=#0F0
@@ -114,9 +118,14 @@ anna: "Привет!"
 title = Demo Story
 startScene = intro
 lang = en
+mode = release
 window = vertical
+autosave = true
+transition = fade
+transitionMs = 180
 bg360Quality = auto
 engine.optimized = auto
+engine.loadsafe = true
 ```
 
 Поддерживаемые поля:
@@ -151,6 +160,19 @@ scene intro
 lang = en
 lang = ru
 ```
+
+### `mode`
+
+Режим исполнения истории.
+
+```text
+mode = debug
+mode = release
+```
+
+`debug` используется по умолчанию и удобен при разработке: кнопка статистики
+доступна в интерфейсе. `release` предназначен для публичной сборки и скрывает
+кнопку статистики.
 
 ### `window`
 
@@ -204,6 +226,44 @@ engine.loadsafe = false
 структуру сценария. `false` можно использовать только осознанно, когда нужно
 разрешить восстановление даже после изменений текста истории.
 
+### `autosave`
+
+Включает или отключает автоматическое локальное сохранение прогресса.
+
+```text
+autosave = true
+autosave = false
+```
+
+Если параметр не задан, автосохранение включено. `false` удобно для коротких
+тестов, когда каждый запуск должен начинаться с первой сцены.
+
+### `transition`
+
+Глобальный визуальный переход при смене фона.
+
+```text
+transition = fade
+transition = black
+transition = white
+transition = instant
+transition = none
+```
+
+Переход можно переопределить для конкретной команды `bg` через
+`transition=<тип>`.
+
+### `transitionMs`
+
+Длительность глобального перехода в миллисекундах.
+
+```text
+transitionMs = 180
+```
+
+Значение должно быть числом `>= 0`. Для отдельной команды `bg` можно указать
+`transitionMs=<ms>`.
+
 ### Параметры интерфейса
 
 Эти поля не меняют логику сценария, но управляют отображением:
@@ -211,6 +271,8 @@ engine.loadsafe = false
 ```text
 topSpacing = 500
 bottomSpacing = 800
+leftSpacing = 0
+rightSpacing = 0
 blurBackground = true
 blurStrength = 50
 blurBrightness = 0.9
@@ -220,6 +282,8 @@ blurOpacity = 0.95
 Поддерживаемые поля:
 - `topSpacing`
 - `bottomSpacing`
+- `leftSpacing`
+- `rightSpacing`
 - `blurBackground`
 - `blurStrength`
 - `blurBrightness`
@@ -229,7 +293,7 @@ blurOpacity = 0.95
 
 ## 🖼 Секция `[bg]`
 
-Описывает фоновые изображения.
+Описывает фоновые изображения, видео-фоны и 360-панорамы.
 
 Формат:
 
@@ -244,6 +308,8 @@ blurOpacity = 0.95
 [bg]
 campusHall file=assets/backgrounds/bg_campus_hall.jpg
 libraryEvening file=assets/backgrounds/bg_library_evening.jpg
+wideCafe file=assets/backgrounds/cafe-wide.jpg scroll focusx=0.47 focusy=0.5 scale=1
+labVideo file=assets/backgrounds/lab.mp4 fallbackimage=assets/backgrounds/lab.jpg volume=0.0
 ```
 
 Использование в сцене:
@@ -251,6 +317,19 @@ libraryEvening file=assets/backgrounds/bg_library_evening.jpg
 ```text
 bg campusHall
 ```
+
+Поддерживаемые параметры:
+
+- `file` — обязательный путь к изображению, видео или JS-пакету 360.
+- `fallback`, `fallbackimage` или `poster` — изображение-заглушка для видео-фона.
+- `volume` — громкость видео-фона от `0` до `1`; обычно для фона используют `0.0`.
+- `scroll` — включает горизонтальное перетаскивание широкого изображения или видео.
+- `focusx` и `focusy` — точка композиционного фокуса от `0` до `1` или слова `left`/`center`/`right`, `top`/`center`/`bottom`.
+- `scale` — визуальное увеличение медиа; можно указать число больше `0` или имя переменной.
+- `360`, `quality`, `focusz`, `fov`, `userfocus` — параметры 360-фона.
+
+Эти же параметры можно переопределять в команде `bg`, если один и тот же ресурс
+нужно показать с другим кадрированием в разных сценах.
 
 Для 360-фонов нужно указывать JS-пакет, а не исходное изображение:
 
@@ -429,18 +508,29 @@ video intro skip=false skipText="Пропустить" fit=contain
 
 ```text
 [game]
-<gameId> file=<path>
+<gameId> file=<path> title="<title>" description="<description>" cover=<path>
 ```
 
 Расширенный пример:
 
 ```text
 [game]
-coffeeRush file=assets/games/coffee_rush.html
-spaceDebris file=assets/games/space_debris.html
+coffeeRush file=assets/games/coffee_rush.html title="Coffee Rush" description="Лови заказы и избегай ошибок." cover=assets/games/coffee_rush.jpg
+spaceDebris file=assets/games/space_debris.html title="Космические обломки" description="Проведи спутник через опасную зону." cover=assets/games/space_debris.jpg
 ```
 
 Игра вызывается в сцене через команду `game`.
+
+Поддерживаемые поля:
+
+- `file` — обязательный путь к HTML-файлу мини-игры.
+- `title` — человекочитаемое название для списка игр и графа ресурсов.
+- `description` — короткое описание для встроенного списка игр.
+- `cover` — изображение-превью; также принимаются алиасы `coverimage`, `thumbnail` и `logo`.
+
+Данные конкретного запуска не хранятся в `[game]`: параметры вроде `difficulty`,
+`targetScore` или `data` задаются в команде `game` и уходят в мини-игру через
+сообщение `gameInit`.
 
 ---
 
@@ -524,6 +614,17 @@ scene intro
 ```text
 bg campusHall
 ```
+
+Команда может временно переопределить параметры ресурса из `[bg]`:
+
+```text
+bg wideCafe scroll focusx=0.47 focusy=0.5 scale=1.1
+bg campusHall transition=fade transitionMs=180
+bg campus360 360 quality=mobile focusx=0.25 focusy=0.43 focusz=0
+```
+
+`transition` и `transitionMs` действуют только на текущую смену фона. Если они
+не указаны, используются значения из `[meta]`.
 
 ---
 
@@ -832,7 +933,12 @@ game spaceDebris difficulty=2 result=spaceResult
 
 ```text
 game gameCoffeeRush difficulty=3 result=resultGame speed=2 targetScore=10
+game wordSearch difficulty=3 result=searchResult data="theme=algorithms"
 ```
+
+Все параметры команды, кроме `result`, передаются в мини-игру как поля
+сообщения `gameInit`. Так можно передавать сложность, лимиты, тему, набор слов
+или другой короткий конфиг конкретного запуска.
 
 ### Правила
 
@@ -890,7 +996,7 @@ bgmDay file=assets/audio/day.mp3
 resultGame = 0
 
 [game]
-gameCoffeeRush file=assets/games/coffee_rush.html
+gameCoffeeRush file=assets/games/coffee_rush.html title="Coffee Rush" description="Лови заказы и избегай ошибок." cover=assets/games/coffee_rush.jpg
 
 [scene]
 scene intro
