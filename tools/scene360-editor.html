@@ -483,6 +483,19 @@
       gap: 8px;
     }
 
+    .panorama-select-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .panorama-select-row button {
+      width: auto;
+      min-width: 96px;
+      white-space: nowrap;
+    }
+
     label {
       font-size: 12px;
       color: var(--muted);
@@ -505,6 +518,11 @@
       background: #2a3350;
     }
     button:hover { filter: brightness(1.08); }
+    button:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+    button:disabled:hover { filter: none; }
     button.danger { background: #4a2d36; border-color: #703d4b; color: #ffd6df; }
     button.good { background: #223a32; border-color: #35584d; color: #d6ffee; }
 
@@ -738,7 +756,10 @@
 
       <div class="row">
         <label for="panoramaSelect">Панорамы в текущем файле</label>
-        <select id="panoramaSelect"></select>
+        <div class="panorama-select-row">
+          <select id="panoramaSelect"></select>
+          <button id="backPanoramaBtn" type="button" disabled>Назад</button>
+        </div>
       </div>
 
       <div class="row two">
@@ -1000,6 +1021,7 @@
     var savePanoramaBtn = document.getElementById("savePanoramaBtn");
     var deletePanoramaBtn = document.getElementById("deletePanoramaBtn");
     var panoramaSelect = document.getElementById("panoramaSelect");
+    var backPanoramaBtn = document.getElementById("backPanoramaBtn");
     var spaceIdInput = document.getElementById("spaceIdInput");
     var panoramaIdInput = document.getElementById("panoramaIdInput");
     var bgIdInput = document.getElementById("bgIdInput");
@@ -1241,6 +1263,8 @@
     var suppressEditorAutosave = false;
     // Ссылка на панораму, которую сейчас редактируем в story360Data (нужна для корректного переименования по полям ID).
     var currentEditingPanoramaRef = { spaceId: "main360", panoramaId: "start" };
+    // Стек пользовательских переходов между панорамами; служебные загрузки после импорта в него не попадают.
+    var editorPanoramaBackStack = [];
 
     /**
      * Приводит тип метки к поддержанному значению; неизвестные старые значения безопасно считаем walk.
@@ -1364,6 +1388,7 @@
         spaceId: normalizeId(spaceId, "main360"),
         panoramaId: normalizeId(panoramaId, "start")
       };
+      updateBackPanoramaButton();
     }
 
     /**
@@ -1373,6 +1398,130 @@
       if (!a || !b) return false;
       return String(a.spaceId || "") === String(b.spaceId || "") &&
         String(a.panoramaId || "") === String(b.panoramaId || "");
+    }
+
+    /**
+     * Создаёт нормализованную ссылку на панораму для истории переходов редактора.
+     */
+    function normalizePanoramaRef(spaceId, panoramaId) {
+      return {
+        spaceId: normalizeId(spaceId, "main360"),
+        panoramaId: normalizeId(panoramaId, "start")
+      };
+    }
+
+    /**
+     * Проверяет, есть ли панорама в рабочих данных; отсутствующие ссылки из истории пропускаются.
+     */
+    function panoramaRefExists(ref) {
+      if (!ref) return false;
+      var normalized = normalizePanoramaRef(ref.spaceId, ref.panoramaId);
+      var space = story360Data.spaces && story360Data.spaces[normalized.spaceId];
+      return !!(space && space.panoramas &&
+        Object.prototype.hasOwnProperty.call(space.panoramas, normalized.panoramaId));
+    }
+
+    /**
+     * Формирует короткую подпись ссылки на панораму для статуса и подсказки кнопки возврата.
+     */
+    function formatPanoramaRef(ref) {
+      if (!ref) return "";
+      var normalized = normalizePanoramaRef(ref.spaceId, ref.panoramaId);
+      return normalized.spaceId + "." + normalized.panoramaId;
+    }
+
+    /**
+     * Удаляет из истории конкретную панораму после удаления или перед заменой ссылки.
+     */
+    function removeEditorPanoramaBackRef(ref) {
+      if (!ref) return;
+      editorPanoramaBackStack = editorPanoramaBackStack.filter(function (item) {
+        return !isSamePanoramaRef(item, ref);
+      });
+      updateBackPanoramaButton();
+    }
+
+    /**
+     * Обновляет ссылки в истории после переименования панорамы, чтобы кнопка "Назад" не вела на старый ID.
+     */
+    function replaceEditorPanoramaBackRef(oldRef, newRef) {
+      if (!oldRef || !newRef) return;
+      var normalizedNew = normalizePanoramaRef(newRef.spaceId, newRef.panoramaId);
+      var compacted = [];
+      editorPanoramaBackStack.forEach(function (item) {
+        var next = isSamePanoramaRef(item, oldRef)
+          ? { spaceId: normalizedNew.spaceId, panoramaId: normalizedNew.panoramaId }
+          : normalizePanoramaRef(item.spaceId, item.panoramaId);
+        if (!compacted.length || !isSamePanoramaRef(compacted[compacted.length - 1], next)) {
+          compacted.push(next);
+        }
+      });
+      editorPanoramaBackStack = compacted;
+      updateBackPanoramaButton();
+    }
+
+    /**
+     * Добавляет предыдущую панораму в стек возврата только для реальных пользовательских переходов.
+     */
+    function pushEditorPanoramaBackRef(ref) {
+      if (!ref) return;
+      var normalized = normalizePanoramaRef(ref.spaceId, ref.panoramaId);
+      if (!panoramaRefExists(normalized)) return;
+      editorPanoramaBackStack = editorPanoramaBackStack.filter(function (item) {
+        return !isSamePanoramaRef(item, normalized);
+      });
+      editorPanoramaBackStack.push(normalized);
+      while (editorPanoramaBackStack.length > 50) editorPanoramaBackStack.shift();
+      updateBackPanoramaButton();
+    }
+
+    /**
+     * Достаёт из истории последнюю существующую панораму, пропуская удалённые и текущую.
+     */
+    function popExistingEditorPanoramaBackRef() {
+      var current = getCurrentStory360Ids();
+      while (editorPanoramaBackStack.length > 0) {
+        var ref = editorPanoramaBackStack.pop();
+        if (panoramaRefExists(ref) && !isSamePanoramaRef(ref, current)) {
+          updateBackPanoramaButton();
+          return ref;
+        }
+      }
+      updateBackPanoramaButton();
+      return null;
+    }
+
+    /**
+     * Обновляет состояние кнопки возврата без изменения истории.
+     */
+    function updateBackPanoramaButton() {
+      if (!backPanoramaBtn) return;
+      var current = getCurrentStory360Ids();
+      var target = null;
+      for (var i = editorPanoramaBackStack.length - 1; i >= 0; i--) {
+        if (panoramaRefExists(editorPanoramaBackStack[i]) &&
+            !isSamePanoramaRef(editorPanoramaBackStack[i], current)) {
+          target = editorPanoramaBackStack[i];
+          break;
+        }
+      }
+      backPanoramaBtn.disabled = !target;
+      backPanoramaBtn.title = target ? ("Вернуться к " + formatPanoramaRef(target)) : "Нет предыдущей панорамы";
+      backPanoramaBtn.setAttribute("aria-label", target ? backPanoramaBtn.title : "Нет предыдущей панорамы");
+    }
+
+    /**
+     * Возвращает редактор к предыдущей открытой панораме и перед переходом сохраняет текущие правки.
+     */
+    function goBackToPreviousPanorama() {
+      var target = popExistingEditorPanoramaBackRef();
+      if (!target) {
+        setStatus("Нет предыдущей панорамы для возврата.", true);
+        return;
+      }
+      saveCurrentPanoramaToData();
+      loadPanoramaFromData(target.spaceId, target.panoramaId, "default", { recordHistory: false });
+      setStatus("Открыта предыдущая панорама: " + formatPanoramaRef(target), false);
     }
 
     /**
@@ -1541,6 +1690,7 @@
     function resetEditorStateForImport() {
       suppressEditorAutosave = true;
       try {
+        editorPanoramaBackStack = [];
         story360Data = createEmptyStory360Data();
         points = [];
         fixedFocus = { x: 0.5, y: 0.5 };
@@ -1598,6 +1748,7 @@
       var space = ensureSpace(ids.spaceId);
       space.panoramas[ids.panoramaId] = snapshot;
       fillMissingPanoramaAssetPaths(ids.spaceId, space.panoramas[ids.panoramaId].file);
+      if (isRename) replaceEditorPanoramaBackRef(previous, ids);
       setCurrentEditingPanoramaRef(ids.spaceId, ids.panoramaId);
       if (refreshList !== false) refreshPanoramaSelect();
       persistEditorDraft();
@@ -1621,7 +1772,7 @@
         refreshPanoramaSelect();
         var current = draft.current || getFirstPanoramaRef();
         if (current && current.spaceId && current.panoramaId) {
-          loadPanoramaFromData(current.spaceId, current.panoramaId);
+          loadPanoramaFromData(current.spaceId, current.panoramaId, "default", { recordHistory: false });
           return true;
         }
       } catch (e) {
@@ -1873,19 +2024,20 @@
         removed = true;
         if (Object.keys(panoramas).length === 0) delete story360Data.spaces[sid];
       }
+      if (removed) removeEditorPanoramaBackRef({ spaceId: sid, panoramaId: pid });
 
       persistEditorDraft();
       refreshPanoramaSelect();
 
       if (removed && nextPid && story360Data.spaces[sid] && story360Data.spaces[sid].panoramas[nextPid]) {
-        loadPanoramaFromData(sid, nextPid, "default");
+        loadPanoramaFromData(sid, nextPid, "default", { recordHistory: false });
         setStatus("Панорама удалена.", false);
         return;
       }
 
       var ref = getFirstPanoramaRef();
       if (ref) {
-        loadPanoramaFromData(ref.spaceId, ref.panoramaId, "default");
+        loadPanoramaFromData(ref.spaceId, ref.panoramaId, "default", { recordHistory: false });
         setStatus(removed ? "Панорама удалена." : "Текущая панорама не была в данных — показана другая.", false);
         return;
       }
@@ -1917,7 +2069,10 @@
      * Обновляет выпадающий список панорам из текущего story360Data.
      */
     function refreshPanoramaSelect() {
-      if (!panoramaSelect) return;
+      if (!panoramaSelect) {
+        updateBackPanoramaButton();
+        return;
+      }
       var current = getCurrentStory360Ids();
       panoramaSelect.innerHTML = "";
       var spaces = story360Data.spaces || {};
@@ -1937,6 +2092,7 @@
         empty.textContent = "Нет сохранённых панорам";
         panoramaSelect.appendChild(empty);
       }
+      updateBackPanoramaButton();
     }
 
     /**
@@ -1963,27 +2119,35 @@
     /**
      * Загружает панораму из story360Data в форму редактора.
      */
-    function loadPanoramaFromData(spaceId, panoramaId, entryId) {
+    function loadPanoramaFromData(spaceId, panoramaId, entryId, options) {
+      var loadOptions = options || {};
+      var targetRef = normalizePanoramaRef(spaceId, panoramaId);
+      var targetSpaceId = targetRef.spaceId;
+      var targetPanoramaId = targetRef.panoramaId;
       var prevSnap = getCurrentStory360Ids();
-      var space = story360Data.spaces && story360Data.spaces[spaceId];
-      var panorama = space && space.panoramas && space.panoramas[panoramaId];
+      var space = story360Data.spaces && story360Data.spaces[targetSpaceId];
+      var panorama = space && space.panoramas && space.panoramas[targetPanoramaId];
       if (!panorama) {
-        setStatus("Панорама не найдена: " + spaceId + "." + panoramaId, true);
+        setStatus("Панорама не найдена: " + targetSpaceId + "." + targetPanoramaId, true);
         return;
+      }
+      // История пополняется только после проверки цели, чтобы "Назад" не вел на ошибочные переходы.
+      if (loadOptions.recordHistory !== false && !isSamePanoramaRef(prevSnap, targetRef)) {
+        pushEditorPanoramaBackRef(prevSnap);
       }
 
       editorOverlayHighlightSourceEntryKey = null;
       if (
-        String(prevSnap.spaceId) === String(normalizeId(spaceId, "main360")) &&
-        String(prevSnap.panoramaId) !== String(normalizeId(panoramaId, "start"))
+        String(prevSnap.spaceId) === String(targetSpaceId) &&
+        String(prevSnap.panoramaId) !== String(targetPanoramaId)
       ) {
         editorOverlayHighlightSourceEntryKey = String(prevSnap.panoramaId);
       }
 
-      spaceIdInput.value = spaceId;
-      panoramaIdInput.value = panoramaId;
-      setCurrentEditingPanoramaRef(spaceId, panoramaId);
-      assetPathInput.value = getPanoramaAssetPath(panorama) || inferPanoramaAssetPath(spaceId, panoramaId);
+      spaceIdInput.value = targetSpaceId;
+      panoramaIdInput.value = targetPanoramaId;
+      setCurrentEditingPanoramaRef(targetSpaceId, targetPanoramaId);
+      assetPathInput.value = getPanoramaAssetPath(panorama) || inferPanoramaAssetPath(targetSpaceId, targetPanoramaId);
       if (assetPathInput.value && !getPanoramaAssetPath(panorama)) panorama.file = assetPathInput.value;
       refreshGeneratedBgId();
 
@@ -2023,7 +2187,7 @@
 
       try {
         console.info("[bg360-editor] loadPanoramaFromData", {
-          целеваяПанорама: spaceId + "." + panoramaId,
+          целеваяПанорама: targetSpaceId + "." + targetPanoramaId,
           arrivalKey: requestedEntry,
           ключиВEntries: entries && typeof entries === "object" ? Object.keys(entries) : [],
           фокусСценария_default: { focusX: fixedFocus.x, focusY: fixedFocus.y, источник: defaultEntryRaw ? "entries.default" : "fallback 0.5/0.5" },
@@ -2061,7 +2225,7 @@
       updateExport();
       refreshPanoramaSelect();
       if (assetPathInput.value) {
-        setStatus("Данные панорамы загружены, загружаю изображение: " + spaceId + "." + panoramaId, false);
+        setStatus("Данные панорамы загружены, загружаю изображение: " + targetSpaceId + "." + targetPanoramaId, false);
         loadAssetPath(assetPathInput.value);
       } else {
         setStatus("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь JS-пакета или картинки.", true);
@@ -4987,7 +5151,7 @@
           refreshPanoramaSelect();
           var first = getFirstPanoramaRef();
           if (first) {
-            loadPanoramaFromData(first.spaceId, first.panoramaId);
+            loadPanoramaFromData(first.spaceId, first.panoramaId, "default", { recordHistory: false });
           } else {
             setStatus("story360 загружен, но панорам пока нет.", false);
           }
@@ -5225,6 +5389,10 @@
 
       deletePanoramaBtn.addEventListener("click", function () {
         deleteCurrentPanorama();
+      });
+
+      backPanoramaBtn.addEventListener("click", function () {
+        goBackToPreviousPanorama();
       });
 
       panoramaSelect.addEventListener("change", function () {
@@ -5887,7 +6055,7 @@
     function refreshAfterBulkEdit() {
       refreshPanoramaSelect();
       var cur = getCurrentStory360Ids();
-      loadPanoramaFromData(cur.spaceId, cur.panoramaId, "default");
+      loadPanoramaFromData(cur.spaceId, cur.panoramaId, "default", { recordHistory: false });
       renderFocusEntriesSidebar();
     }
 
