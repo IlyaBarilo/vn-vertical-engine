@@ -95,6 +95,20 @@ Also supports horizontal mode:
 
 ---
 
+### 🖥 Interactive Display
+
+The same project runs on a vertical touch display. These real installation
+photos show the visual novel interface, built-in mini-game launcher, and story
+graph view on an interactive TV.
+
+<p align="center">
+<img src="docs/kiosk/kiosk_first.webp" width="260">
+<img src="docs/kiosk/kiosk_game.webp" width="260">
+<img src="docs/kiosk/kiosk_graph.webp" width="260">
+</p>
+
+---
+
 ### 🌐 360 Spaces
 
 The engine can render 360 backgrounds, place interactive markers inside the
@@ -242,6 +256,7 @@ This engine is suitable for:
     │    ├── demo/images/           ← visual novel screenshots
     │    ├── 360/                   ← 360 screenshots and panorama examples
     │    ├── games/                 ← mini-game screenshots
+    │    ├── kiosk/                 ← real interactive display photos
     │    ├── stat/                  ← statistics and graph screenshots
     │    ├── tools/                 ← authoring tool screenshots
     │    └── specs/

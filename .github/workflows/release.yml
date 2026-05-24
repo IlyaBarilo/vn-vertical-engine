@@ -105,6 +105,7 @@ jobs:
           [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
           [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
           [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
+          [ -d docs/kiosk ] && cp -a docs/kiosk "build/$APP_NAME/docs/"
           [ -d docs/stat ] && cp -a docs/stat "build/$APP_NAME/docs/"
           [ -d docs/tools ] && cp -a docs/tools "build/$APP_NAME/docs/"
 
