@@ -922,7 +922,7 @@ function parseActionParamsFromText(rawText) {
 }
 
 // Разбирает команду bg360marks: bgId, набор меток в скобках и опции вроде lines.
-// Формат метки: (id, x, y, type[, targetScene]), где view — экранная обзорная метка без стрелки перехода.
+// Формат метки: (id, x, y, type[, targetScene|file]), где view — обзорная метка; photo — путь к изображению в 5-м поле.
 // Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk, scene_hall) (mark2, 0.50, 0.20, walk, ) lines
 function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("bg360marks".length).trim();
@@ -966,8 +966,8 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
       addParseError(lineNumber, originalLine, 'bg360marks: x/y должны быть числами 0..1', true);
       return null;
     }
-    if (kind !== "walk" && kind !== "walk2" && kind !== "walk3" && kind !== "text" && kind !== "view") {
-      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk, walk2, walk3, text или view', true);
+    if (kind !== "walk" && kind !== "walk2" && kind !== "walk3" && kind !== "text" && kind !== "view" && kind !== "photo") {
+      addParseError(lineNumber, originalLine, 'bg360marks: type должен быть walk, walk2, walk3, text, view или photo', true);
       return null;
     }
     // Варианты walk2/walk3 считаем алиасами обычного walk, чтобы рантайм обрабатывал их идентично.
@@ -975,7 +975,17 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
       kind = "walk";
     }
 
-    marks.push({ id: markId, x: x, y: y, kind: kind, targetScene: targetScene });
+    var markObj = { id: markId, x: x, y: y, kind: kind, targetScene: targetScene };
+    if (kind === "photo") {
+      var photoFile = targetSceneRaw;
+      if (!photoFile) {
+        addParseError(lineNumber, originalLine, 'bg360marks: для photo укажите путь к файлу в 5-м поле', true);
+        return null;
+      }
+      markObj.targetScene = null;
+      markObj.images = [{ file: photoFile, caption: "" }];
+    }
+    marks.push(markObj);
   }
 
   // Опции ищем только вне скобок, чтобы id метки случайно не включил режим линий.

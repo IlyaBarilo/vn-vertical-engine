@@ -166,6 +166,20 @@
             </div>
           </div>
         </div>
+
+        <!-- Просмотр фото с 360-меток: поверх диалога, ниже gameModal. -->
+        <div id="bg360PhotoViewer" class="bg360-photo-viewer hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Просмотр изображения">
+          <div class="bg360-photo-viewer-backdrop" data-bg360-photo-dismiss="1"></div>
+          <div class="bg360-photo-viewer-panel">
+            <div class="bg360-photo-viewer-header">
+              <button type="button" class="bg360-photo-viewer-close" data-bg360-photo-close="1" aria-label="Закрыть">×</button>
+            </div>
+            <div class="bg360-photo-viewer-stage">
+              <div id="bg360PhotoViewerTrack" class="bg360-photo-viewer-track"></div>
+            </div>
+            <div id="bg360PhotoViewerCaption" class="bg360-photo-viewer-caption hidden"></div>
+          </div>
+        </div>
         
       </div>
     </div>

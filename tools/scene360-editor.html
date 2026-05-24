@@ -208,6 +208,22 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(246, 198, 76, 0.4);
     }
 
+    .mark-dot.photo {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .mark-dot.photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+    }
+
     /* Точки входа (entries): превью направления фокуса; положение правится перетаскиванием прицела/подписи. */
     .focus-entry-reticle {
       position: absolute;
@@ -831,6 +847,7 @@
           <option value="walk">walk</option>
           <option value="text">text</option>
           <option value="view">view</option>
+          <option value="photo">photo</option>
         </select>
       </div>
 
@@ -1243,7 +1260,7 @@
 
     var points = [];
     /** Единый список типов меток, чтобы форма создания и карточки существующих меток не расходились. */
-    var pointTypeOptions = ["walk", "text", "view"];
+    var pointTypeOptions = ["walk", "text", "view", "photo"];
     var pointCounter = 1;
     var tempProjectVec = null;
     var tempCameraDir = null;
@@ -1272,6 +1289,31 @@
     function normalizePointType(value) {
       var type = String(value || "walk").trim().toLowerCase();
       return pointTypeOptions.indexOf(type) >= 0 ? type : "walk";
+    }
+
+    /**
+     * Нормализует images[] photo-метки при импорте story360 в редактор.
+     */
+    function normalizeEditorPhotoImages(mark) {
+      if (!mark || typeof mark !== "object") return [];
+      var raw = mark.images !== undefined ? mark.images : (mark.image !== undefined ? mark.image : mark.photo);
+      var list = [];
+      if (Array.isArray(raw)) {
+        raw.forEach(function (item) {
+          if (typeof item === "string") {
+            var f = String(item || "").trim();
+            if (f) list.push({ file: f, caption: "" });
+          } else if (item && typeof item === "object") {
+            var file = String(item.file || item.src || item.path || "").trim();
+            var cap = String(item.caption || item.text || "").trim();
+            if (file) list.push({ file: file, caption: cap });
+          }
+        });
+      } else if (typeof raw === "string") {
+        var one = String(raw || "").trim();
+        if (one) list.push({ file: one, caption: "" });
+      }
+      return list;
     }
 
     /**
@@ -1931,6 +1973,20 @@
         }
         var target = buildPointTarget(p);
         if (target) mark.target = target;
+        if (normalizePointType(p.type) === "photo") {
+          mark.type = "photo";
+          var photoLabel = String(p.label || "").trim();
+          if (photoLabel) mark.label = photoLabel;
+          var photoImages = Array.isArray(p.photoImages) ? p.photoImages : [];
+          mark.images = photoImages.map(function (img) {
+            return {
+              file: String((img && img.file) || "").trim(),
+              caption: String((img && img.caption) || "").trim()
+            };
+          }).filter(function (img) {
+            return !!img.file;
+          });
+        }
         return mark;
       });
 
@@ -2208,7 +2264,9 @@
           visibleIf: readMarkVisibleIf(m),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
-          targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
+          targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : "",
+          label: String((m && (m.label || m.title || m.name)) || ""),
+          photoImages: normalizeEditorPhotoImages(m)
         };
       }).filter(function (p) {
         return isFinite(p.x) && isFinite(p.y);
@@ -3125,6 +3183,49 @@
         });
         targetWrap.appendChild(pointTypeSelect);
 
+        if (currentPointType === "photo") {
+          var photoLabelInput = document.createElement("input");
+          photoLabelInput.type = "text";
+          photoLabelInput.placeholder = "Название на сцене (label)";
+          photoLabelInput.value = p.label || "";
+          photoLabelInput.addEventListener("input", function () {
+            points[idx].label = photoLabelInput.value;
+            updateExport();
+            renderOverlayMarks();
+          });
+          targetWrap.appendChild(photoLabelInput);
+
+          var photoFileInput = document.createElement("input");
+          photoFileInput.type = "text";
+          photoFileInput.placeholder = "Путь к изображению (images[0].file)";
+          var photoList = Array.isArray(p.photoImages) ? p.photoImages : [];
+          photoFileInput.value = photoList.length ? String(photoList[0].file || "") : "";
+          photoFileInput.addEventListener("input", function () {
+            var file = String(photoFileInput.value || "").trim();
+            if (!file) {
+              points[idx].photoImages = [];
+            } else {
+              var prevCap = photoList.length ? String(photoList[0].caption || "") : "";
+              points[idx].photoImages = [{ file: file, caption: prevCap }];
+            }
+            updateExport();
+            renderOverlayMarks();
+          });
+          targetWrap.appendChild(photoFileInput);
+
+          var photoItemCaptionInput = document.createElement("input");
+          photoItemCaptionInput.type = "text";
+          photoItemCaptionInput.placeholder = "Подпись под изображением в viewer (caption)";
+          photoItemCaptionInput.value = photoList.length ? String(photoList[0].caption || "") : "";
+          photoItemCaptionInput.addEventListener("input", function () {
+            var file = photoFileInput.value.trim();
+            if (!file) return;
+            points[idx].photoImages = [{ file: file, caption: photoItemCaptionInput.value }];
+            updateExport();
+          });
+          targetWrap.appendChild(photoItemCaptionInput);
+        }
+
         var visibleIfInput = document.createElement("input");
         visibleIfInput.type = "text";
         visibleIfInput.placeholder = "visibleIf: doorOpened && !alarmOn";
@@ -3273,8 +3374,16 @@
       var ids = getCurrentStory360Ids();
       var bgId = refreshGeneratedBgId();
       var marksPart = points.map(function (p) {
+        var pType = normalizePointType(p.type);
+        if (pType === "photo") {
+          var firstFile = "";
+          if (Array.isArray(p.photoImages) && p.photoImages[0]) {
+            firstFile = String(p.photoImages[0].file || "").trim();
+          }
+          return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", photo, " + (firstFile || "assets/path.webp") + ")";
+        }
         var sceneTarget = (p.targetType === "scene" && p.targetScene) ? ", " + p.targetScene : "";
-        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + normalizePointType(p.type) + sceneTarget + ")";
+        return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + pType + sceneTarget + ")";
       }).join(" ");
 
       var lines = [];
@@ -4918,13 +5027,44 @@
           var pointType = normalizePointType(p.type);
 
           var el = document.createElement("div");
-          el.className = "mark-dot" + (pointType === "text" ? " text" : "") + (pointType === "view" ? " view" : "");
+          el.className =
+            "mark-dot" +
+            (pointType === "text" ? " text" : "") +
+            (pointType === "view" ? " view" : "") +
+            (pointType === "photo" ? " photo" : "");
           if (String(p.targetType || "").trim().toLowerCase() === "scene") el.classList.add("scene-target");
           el.style.left = pos.x + "px";
           el.style.top = pos.y + "px";
-          el.textContent = String(index + 1);
+          if (pointType === "photo") {
+            var photoList = Array.isArray(p.photoImages) ? p.photoImages : [];
+            var thumb = photoList.length ? String(photoList[0].file || "").trim() : "";
+            if (thumb) {
+              var img = document.createElement("img");
+              img.alt = "";
+              img.draggable = false;
+              img.src = thumb;
+              el.appendChild(img);
+            } else {
+              el.textContent = "🖼";
+            }
+          } else {
+            el.textContent = String(index + 1);
+          }
           el.dataset.markIndex = String(index);
           marksOverlay.appendChild(el);
+
+          if (pointType === "photo") {
+            var photoSceneLabel = String(p.label || "").trim();
+            if (photoSceneLabel) {
+              var photoLabelEl = document.createElement("div");
+              photoLabelEl.className = "mark-action";
+              photoLabelEl.style.left = pos.x + "px";
+              photoLabelEl.style.top = pos.y + "px";
+              photoLabelEl.textContent = photoSceneLabel;
+              photoLabelEl.style.pointerEvents = "none";
+              marksOverlay.appendChild(photoLabelEl);
+            }
+          }
 
           var targetLabel = getOverlayMarkTargetLabel(p);
           if (targetLabel) {
@@ -5554,16 +5694,15 @@
     }
 
     /**
-     * При открытии страницы через file:// часть браузеров пишет в консоль про «opaque origins»;
-     * локальный HTTP-сервер убирает эти ограничения для превью и скриптов.
+     * Подсказка для file://: движок и редактор рассчитаны на офлайн-открытие; пути к ассетам — относительно корня репозитория.
      */
     function appendFileProtocolTipIfNeeded() {
       if (String(window.location.protocol || "").toLowerCase() !== "file:") return;
       if (!statusBox) return;
-      var needle = "npx serve";
+      var needle = "file://";
       if (String(statusBox.textContent || "").indexOf(needle) !== -1) return;
       var tip =
-        "[Режим file://] Чтобы не было лишних предупреждений в консоли, откройте редактор через локальный сервер из корня репозитория, например: npx serve . — затем в браузере tools/bg360-marks-editor.html";
+        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo — относительные, например assets/360/…. Предупреждения про iframe в консоли можно игнорировать.";
       statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
     }
 

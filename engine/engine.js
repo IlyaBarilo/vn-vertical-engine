@@ -820,6 +820,9 @@ var elBgVideo = document.getElementById("bgVideoLayer");
 var elBg360 = document.getElementById("bg360Layer");
 var elBg360Hold = null;
 var elBg360Marks = document.getElementById("bg360MarksLayer");
+var elBg360PhotoViewer = document.getElementById("bg360PhotoViewer");
+var elBg360PhotoViewerTrack = document.getElementById("bg360PhotoViewerTrack");
+var elBg360PhotoViewerCaption = document.getElementById("bg360PhotoViewerCaption");
 var elBgScrollHint = document.getElementById("bgScrollHint");
 var elChar = document.getElementById("charLayer");
 var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
@@ -1603,6 +1606,32 @@ var bg360MarksRuntime = {
   locked: false,
   interactive: false
 };
+
+// Runtime просмотра изображений с photo-меток: карусель peek, zoom/pan и заморозка 360.
+var bg360PhotoViewerRuntime = {
+  active: false,
+  markId: "",
+  images: [],
+  index: 0,
+  slideStates: [],
+  was360Interactive: true,
+  carouselDrag: null,
+  slideGesture: null,
+  pinchPointers: {},
+  pinchStartDistance: null,
+  pinchStartScale: 1,
+  layoutWidth: 0,
+  slideStepPx: 0,
+  photoViewerReady: false,
+  /** Блокирует click сразу после pan, чтобы жест не закрывал viewer. */
+  suppressUiClickUntil: 0
+};
+
+var BG360_PHOTO_ZOOM_MIN = 0.3;
+var BG360_PHOTO_ZOOM_MAX = 4;
+
+// Инициализация обработчиков viewer — только после объявления bg360PhotoViewerRuntime.
+setupBg360PhotoViewer();
 
 // Runtime walk360: активен, пока игрок не выберет метку или не выйдет кнопкой.
 var walk360Runtime = {
@@ -6566,6 +6595,7 @@ function extractBgIdFromRef(ref) {
 
 // Полный сброс меток при любом новом bg: это освобождает hit-test и убирает старые метки.
 function resetBg360MarksOnNewBackground() {
+  closeBg360PhotoViewer("bg_change");
   bg360MarksRuntime.bgId = null;
   bg360MarksRuntime.marks = [];
   bg360MarksRuntime.lines = false;
@@ -6583,6 +6613,7 @@ function cancelWalk360IfActive(reason) {
 
 // Сбрасывает 360-ожидание без runCurrent: при рестарте сценарий сам заново дойдёт до нужной команды.
 function reset360InteractionStateForRestart(reason) {
+  closeBg360PhotoViewer(reason || "restart");
   clearActive360ActionForAutosave();
   walk360Runtime.active = false;
   walk360Runtime.bgId = null;
@@ -6655,6 +6686,7 @@ function applyBg360Marks(action) {
       kind: normalizeBg360MarkKind(m.kind || m.type || "walk"),
       label: String(labelRaw || "").trim(),
       text: String(textRaw || "").trim(),
+      images: normalizeBg360PhotoImages(m),
       visibleIf: getStory360MarkVisibleIf(m),
       // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
       targetScene: targetSceneRaw || null,
@@ -7155,7 +7187,7 @@ function normalizeStory360Target(mark, defaultSpaceId) {
 // Приводит тип 360-метки к поддержанным вариантам: walk рисует стрелку, text/view остаются экранными метками без WebGL-стрелок.
 function normalizeBg360MarkKind(kind) {
   var value = String(kind || "walk").toLowerCase();
-  if (value === "text" || value === "view") return value;
+  if (value === "text" || value === "view" || value === "photo") return value;
   return "walk";
 }
 
@@ -7177,6 +7209,7 @@ function normalizeStory360Marks(spaceId, panorama) {
       kind: kind,
       label: String(readStory360Field(mark, ["label", "title", "name"]) || "").trim(),
       text: String(readStory360Field(mark, ["text"]) || "").trim(),
+      images: normalizeBg360PhotoImages(mark),
       visibleIf: getStory360MarkVisibleIf(mark),
       target: normalizeStory360Target(mark, spaceId)
     });
@@ -7493,11 +7526,649 @@ function bg360IsViewMark(mark) {
   return !!(mark && typeof mark === "object" && String(mark.kind || "").toLowerCase() === "view");
 }
 
+// Проверяет, что метка открывает просмотр изображений, а не навигацию walk360/goto360.
+function bg360IsPhotoMark(mark) {
+  return !!(mark && typeof mark === "object" && String(mark.kind || "").toLowerCase() === "photo");
+}
+
+// Нормализует список изображений photo-метки в массив { file, caption }.
+function normalizeBg360PhotoImages(mark) {
+  if (!mark || typeof mark !== "object") return [];
+  var raw = readStory360Field(mark, ["images", "image", "photos", "photo"]);
+  var list = [];
+  if (Array.isArray(raw)) {
+    for (var i = 0; i < raw.length; i++) {
+      var item = raw[i];
+      if (typeof item === "string") {
+        var onlyFile = String(item || "").trim();
+        if (onlyFile) list.push({ file: onlyFile, caption: "" });
+      } else if (item && typeof item === "object") {
+        var file = String(readStory360Field(item, ["file", "src", "path", "url"]) || "").trim();
+        var cap = String(readStory360Field(item, ["caption", "text"]) || "").trim();
+        if (file) list.push({ file: file, caption: cap });
+      }
+    }
+  } else if (typeof raw === "string") {
+    var one = String(raw || "").trim();
+    if (one) list.push({ file: one, caption: "" });
+  }
+  return list;
+}
+
+// Возвращает true, если среди меток есть хотя бы одна photo — слой поднимается над диалогом.
+function bg360MarksHasPhotoMarks(marks) {
+  if (!Array.isArray(marks)) return false;
+  for (var i = 0; i < marks.length; i++) {
+    if (bg360IsPhotoMark(marks[i]) && normalizeBg360PhotoImages(marks[i]).length) return true;
+  }
+  return false;
+}
+
+// Ищет метку по id в текущем runtime.
+function findBg360MarkById(markId) {
+  var id = markId != null ? String(markId) : "";
+  if (!id || !Array.isArray(bg360MarksRuntime.marks)) return null;
+  for (var i = 0; i < bg360MarksRuntime.marks.length; i++) {
+    var mark = bg360MarksRuntime.marks[i];
+    if (mark && String(mark.id || "") === id) return mark;
+  }
+  return null;
+}
+
+// Подпись под изображением в viewer: только caption элемента images[].
+function getBg360PhotoViewerCaption(mark, imageIndex) {
+  if (!mark || typeof mark !== "object") return "";
+  var images = normalizeBg360PhotoImages(mark);
+  var idx = Math.max(0, Math.min(images.length - 1, Number(imageIndex) || 0));
+  if (!images[idx]) return "";
+  return String(images[idx].caption || "").trim();
+}
+
+// Название photo-метки на сцене 360 (рядом с превью); пустое — подпись не рисуется.
+function bg360GetPhotoMarkLabel(mark) {
+  if (!mark || typeof mark !== "object") return "";
+  return String(mark.label || "").trim();
+}
+
+// Создаёт пустое состояние zoom/pan для одного слайда карусели.
+function createBg360PhotoSlideState() {
+  return {
+    naturalW: 0,
+    naturalH: 0,
+    fitScale: 1,
+    scale: 1,
+    tx: 0,
+    ty: 0,
+    loaded: false
+  };
+}
+
+// Возвращает DOM-элементы слайда по индексу.
+function getBg360PhotoSlideElements(slideIndex) {
+  if (!elBg360PhotoViewerTrack) return null;
+  var slide = elBg360PhotoViewerTrack.querySelector('.bg360-photo-viewer-slide[data-slide-index="' + slideIndex + '"]');
+  if (!slide) return null;
+  return {
+    slide: slide,
+    viewport: slide.querySelector(".bg360-photo-slide-viewport"),
+    inner: slide.querySelector(".bg360-photo-slide-inner"),
+    img: slide.querySelector("img")
+  };
+}
+
+// Применяет transform zoom/pan: inner якорится в центре viewport, tx/ty смещают от центра.
+function applyBg360PhotoSlideTransform(slideIndex) {
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!parts || !parts.inner || !st) return;
+  parts.inner.style.transform =
+    "translate(calc(-50% + " + st.tx + "px), calc(-50% + " + st.ty + "px)) scale(" + st.scale + ")";
+}
+
+// Ограничивает смещение, чтобы при увеличении не уводить картинку за пределы viewport слайда.
+function clampBg360PhotoSlidePan(slideIndex) {
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!parts || !parts.viewport || !st || !st.naturalW || !st.naturalH) return;
+  var rect = parts.viewport.getBoundingClientRect();
+  var imgW = st.naturalW * st.scale;
+  var imgH = st.naturalH * st.scale;
+  var maxTx = Math.max(0, (imgW - rect.width) * 0.5);
+  var maxTy = Math.max(0, (imgH - rect.height) * 0.5);
+  st.tx = clamp(st.tx, -maxTx, maxTx);
+  st.ty = clamp(st.ty, -maxTy, maxTy);
+}
+
+// Считает масштаб вписывания с учётом области слайда и блока подписи.
+function computeBg360PhotoFitScale(slideIndex) {
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!parts || !parts.viewport || !st || !st.naturalW || !st.naturalH) return 1;
+  var rect = parts.viewport.getBoundingClientRect();
+  var availW = Math.max(1, rect.width);
+  var availH = Math.max(1, rect.height);
+  return Math.min(availW / st.naturalW, availH / st.naturalH);
+}
+
+// Сбрасывает zoom/pan активного слайда к вписыванию в экран.
+function resetBg360PhotoSlideView(slideIndex, keepScaleBounds) {
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!st) return;
+  st.fitScale = computeBg360PhotoFitScale(slideIndex);
+  if (!isFinite(st.fitScale) || st.fitScale <= 0) st.fitScale = 1;
+  st.scale = st.fitScale;
+  st.tx = 0;
+  st.ty = 0;
+  if (keepScaleBounds) clampBg360PhotoSlidePan(slideIndex);
+  applyBg360PhotoSlideTransform(slideIndex);
+}
+
+// Обновляет подпись под каруселью для текущего индекса.
+function updateBg360PhotoViewerCaption(mark, imageIndex) {
+  if (!elBg360PhotoViewerCaption) return;
+  var text = getBg360PhotoViewerCaption(mark, imageIndex);
+  if (!text) {
+    elBg360PhotoViewerCaption.textContent = "";
+    elBg360PhotoViewerCaption.classList.add("hidden");
+    return;
+  }
+  elBg360PhotoViewerCaption.textContent = text;
+  elBg360PhotoViewerCaption.classList.remove("hidden");
+}
+
+// Пересчитывает шаг карусели peek и смещение track.
+function layoutBg360PhotoViewerCarousel(animate) {
+  if (!elBg360PhotoViewerTrack || !elBg360PhotoViewer) return;
+  var stage = elBg360PhotoViewer.querySelector(".bg360-photo-viewer-stage");
+  if (!stage) return;
+  var stageRect = stage.getBoundingClientRect();
+  var stageW = Math.max(1, stageRect.width);
+  var count = bg360PhotoViewerRuntime.images.length;
+  var isSingle = count <= 1;
+  if (elBg360PhotoViewer) {
+    elBg360PhotoViewer.classList.toggle("is-single-slide", isSingle);
+  }
+
+  var slideW = isSingle ? stageW : stageW * 0.78;
+  var gap = isSingle ? 0 : stageW * 0.024;
+  var step = slideW + gap;
+  bg360PhotoViewerRuntime.layoutWidth = stageW;
+  bg360PhotoViewerRuntime.slideStepPx = step;
+
+  elBg360PhotoViewer.style.setProperty("--bg360-photo-slide-width", (slideW / stageW * 100) + "%");
+
+  var index = clamp(bg360PhotoViewerRuntime.index, 0, Math.max(0, count - 1));
+  bg360PhotoViewerRuntime.index = index;
+
+  var offset = isSingle ? 0 : (stageW * 0.5 - (index * step + slideW * 0.5));
+  if (bg360PhotoViewerRuntime.carouselDrag && bg360PhotoViewerRuntime.carouselDrag.active) {
+    offset += bg360PhotoViewerRuntime.carouselDrag.deltaX;
+  }
+
+  elBg360PhotoViewerTrack.classList.toggle("is-dragging", !!(bg360PhotoViewerRuntime.carouselDrag && bg360PhotoViewerRuntime.carouselDrag.active));
+  if (isSingle) {
+    elBg360PhotoViewerTrack.style.transition = "none";
+    elBg360PhotoViewerTrack.style.transform = "";
+  } else if (animate !== false && !(bg360PhotoViewerRuntime.carouselDrag && bg360PhotoViewerRuntime.carouselDrag.active)) {
+    elBg360PhotoViewerTrack.style.transition = "transform 0.32s ease";
+    elBg360PhotoViewerTrack.style.transform = "translateX(" + offset + "px)";
+  } else {
+    elBg360PhotoViewerTrack.style.transition = "none";
+    elBg360PhotoViewerTrack.style.transform = "translateX(" + offset + "px)";
+  }
+
+  var slides = elBg360PhotoViewerTrack.querySelectorAll(".bg360-photo-viewer-slide");
+  for (var i = 0; i < slides.length; i++) {
+    slides[i].classList.toggle("is-active", i === index);
+  }
+}
+
+// Переключает активный слайд карусели с анимацией.
+function setBg360PhotoViewerIndex(nextIndex, animate) {
+  var count = bg360PhotoViewerRuntime.images.length;
+  if (!count) return;
+  var idx = clamp(Math.round(Number(nextIndex) || 0), 0, count - 1);
+  if (idx === bg360PhotoViewerRuntime.index) {
+    layoutBg360PhotoViewerCarousel(animate);
+    return;
+  }
+  bg360PhotoViewerRuntime.index = idx;
+  resetBg360PhotoSlideView(idx, false);
+  var mark = findBg360MarkById(bg360PhotoViewerRuntime.markId);
+  updateBg360PhotoViewerCaption(mark, idx);
+  layoutBg360PhotoViewerCarousel(animate !== false);
+}
+
+// Строит DOM карусели по списку images.
+function renderBg360PhotoViewerSlides(images) {
+  if (!elBg360PhotoViewerTrack) return;
+  while (elBg360PhotoViewerTrack.firstChild) {
+    elBg360PhotoViewerTrack.removeChild(elBg360PhotoViewerTrack.firstChild);
+  }
+  bg360PhotoViewerRuntime.slideStates = [];
+  for (var i = 0; i < images.length; i++) {
+    var src = String(images[i].file || "");
+    bg360PhotoViewerRuntime.slideStates.push(createBg360PhotoSlideState());
+
+    var slide = document.createElement("div");
+    slide.className = "bg360-photo-viewer-slide";
+    slide.dataset.slideIndex = String(i);
+
+    var viewport = document.createElement("div");
+    viewport.className = "bg360-photo-slide-viewport";
+    viewport.dataset.slideIndex = String(i);
+
+    var inner = document.createElement("div");
+    inner.className = "bg360-photo-slide-inner";
+
+    var img = document.createElement("img");
+    img.alt = "";
+    img.draggable = false;
+    img.decoding = "async";
+    img.loading = i === 0 ? "eager" : "lazy";
+    (function (slideIndex, imgEl, filePath) {
+      if (!filePath) return;
+      assignRasterImageToElement(imgEl, filePath, {
+        onLoad: function () {
+          var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+          if (!st) return;
+          st.naturalW = imgEl.naturalWidth || imgEl.width || 0;
+          st.naturalH = imgEl.naturalHeight || imgEl.height || 0;
+          st.loaded = true;
+          if (slideIndex === bg360PhotoViewerRuntime.index) {
+            resetBg360PhotoSlideView(slideIndex, false);
+            layoutBg360PhotoViewerCarousel(false);
+          }
+        }
+      });
+    })(i, img, src);
+
+    inner.appendChild(img);
+    viewport.appendChild(inner);
+    slide.appendChild(viewport);
+    elBg360PhotoViewerTrack.appendChild(slide);
+  }
+}
+
+// Замораживает 360 и показывает viewer с каруселью peek.
+function openBg360PhotoViewer(mark) {
+  if (!mark || !bg360IsPhotoMark(mark)) return false;
+  if (!elBg360PhotoViewer || !elBg360PhotoViewerTrack) return false;
+  if (!bg360Runtime.active) return false;
+  if (bg360MarksRuntime.locked) return false;
+
+  var images = normalizeBg360PhotoImages(mark);
+  if (!images.length) {
+    console.warn("[bg360-photo] mark has no images", mark.id);
+    return false;
+  }
+
+  bg360PhotoViewerRuntime.active = true;
+  bg360PhotoViewerRuntime.markId = String(mark.id || "");
+  bg360PhotoViewerRuntime.images = images;
+  bg360PhotoViewerRuntime.index = 0;
+  bg360PhotoViewerRuntime.carouselDrag = null;
+  bg360PhotoViewerRuntime.slideGesture = null;
+
+  bg360PhotoViewerRuntime.was360Interactive = !!bg360Runtime.interactive;
+  bg360Runtime.interactive = false;
+  if (elBg360) elBg360.classList.add("is-photo-viewer-open");
+
+  renderBg360PhotoViewerSlides(images);
+  updateBg360PhotoViewerCaption(mark, 0);
+
+  elBg360PhotoViewer.classList.remove("hidden");
+  elBg360PhotoViewer.setAttribute("aria-hidden", "false");
+  if (elBg360Marks) elBg360Marks.classList.add("is-photo-viewer-open");
+
+  requestAnimationFrame(function () {
+    resetBg360PhotoSlideView(0, false);
+    layoutBg360PhotoViewerCarousel(false);
+    requestAnimationFrame(function () {
+      layoutBg360PhotoViewerCarousel(true);
+    });
+  });
+  return true;
+}
+
+// Закрывает viewer и возвращает управление 360 без завершения walk360/goto360.
+function closeBg360PhotoViewer(reason) {
+  if (!bg360PhotoViewerRuntime.active) return;
+  bg360PhotoViewerRuntime.active = false;
+  bg360PhotoViewerRuntime.markId = "";
+  bg360PhotoViewerRuntime.images = [];
+  bg360PhotoViewerRuntime.index = 0;
+  bg360PhotoViewerRuntime.slideStates = [];
+  bg360PhotoViewerRuntime.carouselDrag = null;
+  bg360PhotoViewerRuntime.slideGesture = null;
+  bg360PhotoViewerRuntime.pinchPointers = {};
+  bg360PhotoViewerRuntime.pinchStartDistance = null;
+
+  if (elBg360PhotoViewer) {
+    elBg360PhotoViewer.classList.remove("is-single-slide");
+    elBg360PhotoViewer.classList.add("hidden");
+    elBg360PhotoViewer.setAttribute("aria-hidden", "true");
+  }
+  if (elBg360PhotoViewerTrack) {
+    while (elBg360PhotoViewerTrack.firstChild) elBg360PhotoViewerTrack.removeChild(elBg360PhotoViewerTrack.firstChild);
+    elBg360PhotoViewerTrack.style.transform = "";
+    elBg360PhotoViewerTrack.style.transition = "";
+  }
+  if (elBg360PhotoViewerCaption) {
+    elBg360PhotoViewerCaption.textContent = "";
+    elBg360PhotoViewerCaption.classList.add("hidden");
+  }
+  if (elBg360Marks) elBg360Marks.classList.remove("is-photo-viewer-open");
+
+  if (bg360Runtime.active) {
+    bg360Runtime.interactive = bg360PhotoViewerRuntime.was360Interactive;
+  }
+  if (elBg360) elBg360.classList.remove("is-photo-viewer-open");
+
+  if (reason) {
+    // Причина только для отладки; на геймплей не влияет.
+  }
+}
+
+// Проверяет, выходит ли изображение за границы viewport по ширине или высоте.
+function bg360PhotoSlideOverflowsViewport(slideIndex) {
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!parts || !parts.viewport || !st || !st.loaded || !st.naturalW || !st.naturalH) return false;
+  var rect = parts.viewport.getBoundingClientRect();
+  var imgW = st.naturalW * st.scale;
+  var imgH = st.naturalH * st.scale;
+  return imgW > rect.width + 0.5 || imgH > rect.height + 0.5;
+}
+
+// True, если слайд можно перетаскивать: любая сторона не влезает в viewport (после zoom или при обрезке).
+function bg360PhotoSlideAllowsPan(slideIndex) {
+  return bg360PhotoSlideOverflowsViewport(slideIndex);
+}
+
+// Масштабирует активный слайд вокруг точки pinch/wheel с ограничением 0.3..4 относительно fit.
+function applyBg360PhotoZoomAt(slideIndex, nextScale, focalX, focalY) {
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!parts || !parts.viewport || !st) return;
+  var fit = st.fitScale > 0 ? st.fitScale : 1;
+  var minS = fit * BG360_PHOTO_ZOOM_MIN;
+  var maxS = fit * BG360_PHOTO_ZOOM_MAX;
+  var prevScale = st.scale;
+  var scale = clamp(nextScale, minS, maxS);
+
+  var rect = parts.viewport.getBoundingClientRect();
+  var cx = rect.left + rect.width * 0.5;
+  var cy = rect.top + rect.height * 0.5;
+  var fx = isFinite(focalX) ? focalX : cx;
+  var fy = isFinite(focalY) ? focalY : cy;
+  var ratio = prevScale > 0 ? scale / prevScale : 1;
+  st.tx = (st.tx + (fx - cx)) * ratio - (fx - cx);
+  st.ty = (st.ty + (fy - cy)) * ratio - (fy - cy);
+  st.scale = scale;
+  clampBg360PhotoSlidePan(slideIndex);
+  applyBg360PhotoSlideTransform(slideIndex);
+}
+
+// Обработчик load/resize: пересчитать fit у видимого слайда.
+function handleBg360PhotoViewerResize() {
+  if (!bg360PhotoViewerRuntime.active) return;
+  var idx = bg360PhotoViewerRuntime.index;
+  resetBg360PhotoSlideView(idx, true);
+  layoutBg360PhotoViewerCarousel(false);
+}
+
+// Закрытие по клику на backdrop, пустую область stage/viewport или кнопку ✕.
+function handleBg360PhotoViewerUiClick(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+  if (Date.now() < (bg360PhotoViewerRuntime.suppressUiClickUntil || 0)) return;
+  var t = e.target;
+  if (!t) return;
+  if (t.closest && t.closest("[data-bg360-photo-close]")) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeBg360PhotoViewer("ui");
+    return;
+  }
+  if (t.getAttribute && t.getAttribute("data-bg360-photo-dismiss") === "1") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeBg360PhotoViewer("ui");
+    return;
+  }
+  if (t.classList && (
+    t.classList.contains("bg360-photo-viewer-backdrop") ||
+    t.classList.contains("bg360-photo-viewer-stage") ||
+    t.classList.contains("bg360-photo-slide-viewport")
+  )) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeBg360PhotoViewer("ui");
+  }
+}
+
+// Считает число активных указателей pinch-трекера viewer.
+function getBg360PhotoPinchPointerCount() {
+  var n = 0;
+  var map = bg360PhotoViewerRuntime.pinchPointers;
+  for (var key in map) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) n++;
+  }
+  return n;
+}
+
+// Дистанция между двумя указателями для pinch-zoom слайда.
+function getBg360PhotoPinchDistance() {
+  var pts = [];
+  var map = bg360PhotoViewerRuntime.pinchPointers;
+  for (var key in map) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) pts.push(map[key]);
+  }
+  if (pts.length < 2) return null;
+  var dx = pts[0].x - pts[1].x;
+  var dy = pts[0].y - pts[1].y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Pointer-жесты: листание peek-карусели или pan/zoom активного слайда.
+function handleBg360PhotoViewerPointerDown(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+  var slideIndex = bg360PhotoViewerRuntime.index;
+  var parts = getBg360PhotoSlideElements(slideIndex);
+  if (!parts || !parts.viewport) return;
+  if (!parts.viewport.contains(e.target) && e.target !== parts.viewport) {
+    return;
+  }
+
+  bg360PhotoViewerRuntime.pinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  if (getBg360PhotoPinchPointerCount() >= 2) {
+    bg360PhotoViewerRuntime.pinchStartDistance = getBg360PhotoPinchDistance();
+    var stPinch = bg360PhotoViewerRuntime.slideStates[slideIndex];
+    bg360PhotoViewerRuntime.pinchStartScale = stPinch ? stPinch.scale : 1;
+    bg360PhotoViewerRuntime.carouselDrag = null;
+    bg360PhotoViewerRuntime.slideGesture = null;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
+  var st = bg360PhotoViewerRuntime.slideStates[slideIndex];
+  if (!st) return;
+
+  if (bg360PhotoSlideAllowsPan(slideIndex)) {
+    bg360PhotoViewerRuntime.slideGesture = {
+      mode: "pan",
+      slideIndex: slideIndex,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTx: st.tx,
+      startTy: st.ty
+    };
+    parts.viewport.classList.add("is-panning");
+    if (parts.viewport.setPointerCapture) {
+      try { parts.viewport.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
+  if (bg360PhotoViewerRuntime.images.length > 1) {
+    bg360PhotoViewerRuntime.carouselDrag = {
+      active: true,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      deltaX: 0
+    };
+    if (elBg360PhotoViewerTrack && elBg360PhotoViewerTrack.setPointerCapture) {
+      try { elBg360PhotoViewerTrack.setPointerCapture(e.pointerId); } catch (err2) {}
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function handleBg360PhotoViewerPointerMove(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+
+  if (bg360PhotoViewerRuntime.pinchPointers[e.pointerId]) {
+    bg360PhotoViewerRuntime.pinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  }
+
+  if (getBg360PhotoPinchPointerCount() >= 2 && bg360PhotoViewerRuntime.pinchStartDistance) {
+    var dist = getBg360PhotoPinchDistance();
+    if (dist && dist > 0) {
+      var idx = bg360PhotoViewerRuntime.index;
+      var st = bg360PhotoViewerRuntime.slideStates[idx];
+      if (st) {
+        var midX = 0;
+        var midY = 0;
+        var count = 0;
+        for (var key in bg360PhotoViewerRuntime.pinchPointers) {
+          if (!Object.prototype.hasOwnProperty.call(bg360PhotoViewerRuntime.pinchPointers, key)) continue;
+          midX += bg360PhotoViewerRuntime.pinchPointers[key].x;
+          midY += bg360PhotoViewerRuntime.pinchPointers[key].y;
+          count++;
+        }
+        midX /= count;
+        midY /= count;
+        var scaleFactor = dist / bg360PhotoViewerRuntime.pinchStartDistance;
+        applyBg360PhotoZoomAt(idx, bg360PhotoViewerRuntime.pinchStartScale * scaleFactor, midX, midY);
+      }
+    }
+    e.preventDefault();
+    return;
+  }
+
+  var pan = bg360PhotoViewerRuntime.slideGesture;
+  if (pan && pan.mode === "pan" && pan.pointerId === e.pointerId) {
+    var st = bg360PhotoViewerRuntime.slideStates[pan.slideIndex];
+    if (!st) return;
+    st.tx = pan.startTx + (e.clientX - pan.startX);
+    st.ty = pan.startTy + (e.clientY - pan.startY);
+    clampBg360PhotoSlidePan(pan.slideIndex);
+    applyBg360PhotoSlideTransform(pan.slideIndex);
+    e.preventDefault();
+    return;
+  }
+
+  var drag = bg360PhotoViewerRuntime.carouselDrag;
+  if (drag && drag.active && drag.pointerId === e.pointerId) {
+    drag.deltaX = e.clientX - drag.startX;
+    layoutBg360PhotoViewerCarousel(false);
+    e.preventDefault();
+  }
+}
+
+function handleBg360PhotoViewerPointerUp(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+
+  delete bg360PhotoViewerRuntime.pinchPointers[e.pointerId];
+  if (getBg360PhotoPinchPointerCount() < 2) {
+    bg360PhotoViewerRuntime.pinchStartDistance = null;
+  }
+
+  var pan = bg360PhotoViewerRuntime.slideGesture;
+  if (pan && pan.pointerId === e.pointerId) {
+    var parts = getBg360PhotoSlideElements(pan.slideIndex);
+    if (parts && parts.viewport && parts.viewport.releasePointerCapture) {
+      try { parts.viewport.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+    if (parts && parts.viewport) parts.viewport.classList.remove("is-panning");
+    var panTravel = Math.abs(e.clientX - pan.startX) + Math.abs(e.clientY - pan.startY);
+    if (panTravel > 6) {
+      bg360PhotoViewerRuntime.suppressUiClickUntil = Date.now() + 400;
+    }
+    bg360PhotoViewerRuntime.slideGesture = null;
+    e.preventDefault();
+    return;
+  }
+
+  var drag = bg360PhotoViewerRuntime.carouselDrag;
+  if (drag && drag.pointerId === e.pointerId) {
+    if (elBg360PhotoViewerTrack && elBg360PhotoViewerTrack.releasePointerCapture) {
+      try { elBg360PhotoViewerTrack.releasePointerCapture(e.pointerId); } catch (err2) {}
+    }
+    var step = bg360PhotoViewerRuntime.slideStepPx || 1;
+    var threshold = Math.max(48, step * 0.18);
+    var delta = drag.deltaX || 0;
+    if (delta > threshold) {
+      setBg360PhotoViewerIndex(bg360PhotoViewerRuntime.index - 1, true);
+    } else if (delta < -threshold) {
+      setBg360PhotoViewerIndex(bg360PhotoViewerRuntime.index + 1, true);
+    } else {
+      layoutBg360PhotoViewerCarousel(true);
+    }
+    bg360PhotoViewerRuntime.carouselDrag = null;
+    e.preventDefault();
+  }
+}
+
+// Колесо мыши меняет масштаб активного слайда.
+function handleBg360PhotoViewerWheel(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+  var idx = bg360PhotoViewerRuntime.index;
+  var st = bg360PhotoViewerRuntime.slideStates[idx];
+  if (!st) return;
+  var fit = st.fitScale > 0 ? st.fitScale : 1;
+  var factor = e.deltaY > 0 ? 0.92 : 1.08;
+  applyBg360PhotoZoomAt(idx, st.scale * factor, e.clientX, e.clientY);
+  e.preventDefault();
+}
+
+// Escape закрывает просмотр, не трогая сюжетное видео.
+function handleBg360PhotoViewerKeydown(e) {
+  if (!bg360PhotoViewerRuntime.active) return;
+  if ((e.key || "") === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeBg360PhotoViewer("escape");
+  }
+}
+
+// Один раз вешает обработчики viewer.
+function setupBg360PhotoViewer() {
+  if (!bg360PhotoViewerRuntime || bg360PhotoViewerRuntime.photoViewerReady) return;
+  if (!elBg360PhotoViewer) return;
+  bg360PhotoViewerRuntime.photoViewerReady = true;
+
+  elBg360PhotoViewer.addEventListener("click", handleBg360PhotoViewerUiClick);
+  elBg360PhotoViewer.addEventListener("pointerdown", handleBg360PhotoViewerPointerDown);
+  elBg360PhotoViewer.addEventListener("pointermove", handleBg360PhotoViewerPointerMove);
+  elBg360PhotoViewer.addEventListener("pointerup", handleBg360PhotoViewerPointerUp);
+  elBg360PhotoViewer.addEventListener("pointercancel", handleBg360PhotoViewerPointerUp);
+  elBg360PhotoViewer.addEventListener("wheel", handleBg360PhotoViewerWheel, { passive: false });
+
+  window.addEventListener("resize", handleBg360PhotoViewerResize);
+  document.addEventListener("keydown", handleBg360PhotoViewerKeydown, true);
+}
+
 // Проверяет, что метка участвует в навигации WebGL-стрелками: scene-выходы намеренно исключены и рисуются отдельной DOM-меткой.
 function bg360IsDirectionalMark(mark) {
   if (!mark || typeof mark !== "object") return false;
   var kind = String(mark.kind || "").toLowerCase();
-  if (kind === "text" || kind === "view") return false;
+  if (kind === "text" || kind === "view" || kind === "photo") return false;
   if (bg360IsSceneTargetMark(mark)) return false;
   var x = Number(mark.x);
   var y = Number(mark.y);
@@ -7530,7 +8201,14 @@ function activateBg360MarkById(markId, e) {
 
   var id = markId != null ? String(markId) : "";
   if (!id) return false;
-  if (bg360MarksRuntime.locked || !bg360MarksRuntime.interactive) return false;
+  if (bg360MarksRuntime.locked) return false;
+
+  var markEarly = findBg360MarkById(id);
+  if (markEarly && bg360IsPhotoMark(markEarly)) {
+    return openBg360PhotoViewer(markEarly);
+  }
+
+  if (!bg360MarksRuntime.interactive) return false;
 
   if (goto360Runtime.active) {
     if (goto360Runtime.done) return false;
@@ -7553,8 +8231,10 @@ function renderBg360Marks() {
 
   // Скрываем слой полностью, если меток нет.
   var hasMarks = Array.isArray(bg360MarksRuntime.marks) && bg360MarksRuntime.marks.length > 0;
+  var hasPhotoMarks = bg360MarksHasPhotoMarks(bg360MarksRuntime.marks);
   elBg360Marks.classList.toggle("hidden", !hasMarks);
   elBg360Marks.classList.toggle("is-interactive", !!(hasMarks && bg360MarksRuntime.interactive && !bg360MarksRuntime.locked));
+  elBg360Marks.classList.toggle("has-photo-marks", hasPhotoMarks);
 
   while (elBg360Marks.firstChild) elBg360Marks.removeChild(elBg360Marks.firstChild);
   if (!hasMarks) {
@@ -7592,10 +8272,11 @@ function renderBg360Marks() {
   bg360MarksRuntime.marks.forEach(function (mark, index) {
     var isSceneTarget = bg360IsSceneTargetMark(mark);
     var isViewMark = bg360IsViewMark(mark);
+    var isPhotoMark = bg360IsPhotoMark(mark);
     if (bg360MarksRuntime.lines && !useWebglNavArrows) {
       var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.classList.add("bg360-mark-line");
-      if (isSceneTarget || isViewMark) line.classList.add("hidden");
+      if (isSceneTarget || isViewMark || isPhotoMark) line.classList.add("hidden");
       line.dataset.markId = mark.id;
       line.dataset.markLineIndex = String(index);
       linesLayer.appendChild(line);
@@ -7605,12 +8286,14 @@ function renderBg360Marks() {
       return;
     }
     if (isViewMark) return;
+    if (isPhotoMark && !normalizeBg360PhotoImages(mark).length) return;
 
     var btn = document.createElement("div");
     btn.className = "bg360-mark";
     if (mark.kind === "text") btn.classList.add("kind-text");
+    if (isPhotoMark) btn.classList.add("kind-photo");
     if (isSceneTarget) btn.classList.add("kind-scene-target");
-    if (bg360MarksRuntime.locked) btn.classList.add("is-locked");
+    if (bg360MarksRuntime.locked && !isPhotoMark) btn.classList.add("is-locked");
 
     // Сохраняем исходные UV-координаты метки (0..1), чтобы в каждом кадре
     // проецировать её в экранную позицию согласно текущему углу камеры.
@@ -7634,8 +8317,43 @@ function renderBg360Marks() {
       }
     }
 
-    // Клик по метке разрешён только в интерактивном режиме ожидания walk360/goto360.
+    if (isPhotoMark) {
+      var photoImages = normalizeBg360PhotoImages(mark);
+      var thumbSrc = photoImages.length ? String(photoImages[0].file || "") : "";
+      if (thumbSrc) {
+        var thumbImg = document.createElement("img");
+        thumbImg.className = "bg360-mark-photo-thumb";
+        thumbImg.alt = "";
+        thumbImg.draggable = false;
+        thumbImg.decoding = "async";
+        thumbImg.loading = "lazy";
+        assignRasterImageToElement(thumbImg, thumbSrc, {});
+        btn.appendChild(thumbImg);
+      } else {
+        var thumbFallback = document.createElement("span");
+        thumbFallback.className = "bg360-mark-photo-fallback";
+        thumbFallback.textContent = "🖼";
+        thumbFallback.setAttribute("aria-hidden", "true");
+        btn.appendChild(thumbFallback);
+      }
+      var photoLabelText = bg360GetPhotoMarkLabel(mark);
+      if (photoLabelText) {
+        var photoLabel = document.createElement("div");
+        photoLabel.className = "bg360-photo-mark-label";
+        // Подпись на сцене: клик по тексту открывает тот же viewer, что и по превью.
+        photoLabel.textContent = photoLabelText;
+        btn.appendChild(photoLabel);
+      }
+    }
+
+    // Клик: photo открывает viewer всегда; остальные метки — только в walk360/goto360.
     btn.addEventListener("click", function (e) {
+      if (isPhotoMark) {
+        if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+        if (e && typeof e.preventDefault === "function") e.preventDefault();
+        openBg360PhotoViewer(mark);
+        return;
+      }
       activateBg360MarkById(mark.id, e);
     });
 
@@ -10494,6 +11212,7 @@ function renderBg360Frame() {
 
 // Останавливает 360-режим и скрывает canvas-слой.
 function disableBg360Renderer() {
+  closeBg360PhotoViewer("disable_360");
   // Каждое отключение инвалидирует старые async onload, чтобы они не вернули уже сброшенный фон.
   bg360Runtime.loadSeq++;
   bg360Runtime.textureReadyLoadSeq = 0;
