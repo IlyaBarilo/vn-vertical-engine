@@ -1622,13 +1622,13 @@ var bg360PhotoViewerRuntime = {
   slideGesture: null,
   pinchPointers: {},
   pinchStartDistance: null,
-  pinchStartScale: 1,
+  pinchStartZoom: 1,
   photoViewerReady: false,
   /** Блокирует click сразу после pan, чтобы жест не сработал как клик по кнопке. */
   suppressUiClickUntil: 0
 };
 
-var BG360_PHOTO_ZOOM_MIN = 0.3;
+var BG360_PHOTO_ZOOM_MIN = 1;
 var BG360_PHOTO_ZOOM_MAX = 4;
 
 // Инициализация обработчиков viewer — только после объявления bg360PhotoViewerRuntime.
@@ -7591,13 +7591,15 @@ function bg360GetPhotoMarkLabel(mark) {
   return String(mark.label || "").trim();
 }
 
-// Создаёт пустое состояние zoom/pan текущего кадра.
+// Создаёт пустое состояние zoom/pan: 100% = базовая рамка при открытии, zoom 1..4.
 function createBg360PhotoSlideState() {
   return {
     naturalW: 0,
     naturalH: 0,
-    fitScale: 1,
-    scale: 1,
+    baseViewportW: 0,
+    baseViewportH: 0,
+    baseFitScale: 1,
+    zoom: 1,
     tx: 0,
     ty: 0,
     loaded: false
@@ -7608,10 +7610,73 @@ function createBg360PhotoSlideState() {
 function getBg360PhotoViewerElements() {
   if (!elBg360PhotoViewport || !elBg360PhotoInner || !elBg360PhotoImg) return null;
   return {
+    media: elBg360PhotoViewport.parentElement,
     viewport: elBg360PhotoViewport,
     inner: elBg360PhotoInner,
     img: elBg360PhotoImg
   };
+}
+
+// Синхронизирует ширину области фото и подписи: подпись не раздувает карточку шире кадра.
+function applyBg360PhotoViewerFrameWidth(vpW) {
+  var wPx = Math.max(1, Math.round(Number(vpW) || 1)) + "px";
+  var parts = getBg360PhotoViewerElements();
+  if (parts && parts.viewport) {
+    parts.viewport.style.width = wPx;
+    parts.viewport.style.maxWidth = wPx;
+  }
+  if (parts && parts.media) {
+    parts.media.style.width = wPx;
+    parts.media.style.maxWidth = wPx;
+  }
+  if (elBg360PhotoViewerCaption) {
+    if (elBg360PhotoViewerCaption.classList.contains("hidden")) {
+      elBg360PhotoViewerCaption.style.width = "";
+      elBg360PhotoViewerCaption.style.maxWidth = "";
+    } else {
+      elBg360PhotoViewerCaption.style.width = wPx;
+      elBg360PhotoViewerCaption.style.maxWidth = wPx;
+    }
+  }
+}
+
+// Текущий CSS-scale изображения: базовое вписывание × zoom (1 = 100%).
+function getBg360PhotoImageScale(st) {
+  if (!st) return 1;
+  var base = st.baseFitScale > 0 ? st.baseFitScale : 1;
+  var z = st.zoom > 0 ? st.zoom : 1;
+  return base * z;
+}
+
+// Доступное на stage место под область фото (без подписи).
+function getBg360PhotoStageImageLimits() {
+  var stage = elBg360PhotoViewer ? elBg360PhotoViewer.querySelector(".bg360-photo-viewer-stage") : null;
+  if (!stage) return { maxW: 1, maxH: 1 };
+  var stageRect = stage.getBoundingClientRect();
+  var hasCaption = !!(elBg360PhotoViewerCaption && !elBg360PhotoViewerCaption.classList.contains("hidden"));
+  var captionH = hasCaption ? (elBg360PhotoViewerCaption.offsetHeight || 0) : 0;
+  return {
+    maxW: stageRect.width * 0.92,
+    maxH: Math.max(64, stageRect.height * 0.9 - 12 - captionH)
+  };
+}
+
+// Сбрасывает inline-размеры карточки viewer при закрытии.
+function clearBg360PhotoViewerFrameSizes() {
+  var parts = getBg360PhotoViewerElements();
+  if (parts && parts.viewport) {
+    parts.viewport.style.width = "";
+    parts.viewport.style.height = "";
+    parts.viewport.style.maxWidth = "";
+  }
+  if (parts && parts.media) {
+    parts.media.style.width = "";
+    parts.media.style.maxWidth = "";
+  }
+  if (elBg360PhotoViewerCaption) {
+    elBg360PhotoViewerCaption.style.width = "";
+    elBg360PhotoViewerCaption.style.maxWidth = "";
+  }
 }
 
 // Применяет transform zoom/pan только к слою изображения (кнопки и подпись не масштабируются).
@@ -7619,8 +7684,9 @@ function applyBg360PhotoSlideTransform() {
   var parts = getBg360PhotoViewerElements();
   var st = bg360PhotoViewerRuntime.slideState;
   if (!parts || !parts.inner || !st) return;
+  var scale = getBg360PhotoImageScale(st);
   parts.inner.style.transform =
-    "translate(calc(-50% + " + st.tx + "px), calc(-50% + " + st.ty + "px)) scale(" + st.scale + ")";
+    "translate(calc(-50% + " + st.tx + "px), calc(-50% + " + st.ty + "px)) scale(" + scale + ")";
 }
 
 // Ограничивает смещение увеличенного кадра относительно viewport.
@@ -7629,36 +7695,33 @@ function clampBg360PhotoSlidePan() {
   var st = bg360PhotoViewerRuntime.slideState;
   if (!parts || !parts.viewport || !st || !st.naturalW || !st.naturalH) return;
   var rect = parts.viewport.getBoundingClientRect();
-  var imgW = st.naturalW * st.scale;
-  var imgH = st.naturalH * st.scale;
+  var scale = getBg360PhotoImageScale(st);
+  var imgW = st.naturalW * scale;
+  var imgH = st.naturalH * scale;
   var maxTx = Math.max(0, (imgW - rect.width) * 0.5);
   var maxTy = Math.max(0, (imgH - rect.height) * 0.5);
   st.tx = clamp(st.tx, -maxTx, maxTx);
   st.ty = clamp(st.ty, -maxTy, maxTy);
 }
 
-// Считает масштаб вписывания кадра в область просмотра (без подписи и кнопок).
-function computeBg360PhotoFitScale() {
+// Применяет zoom к размеру рамки (viewport): растёт до экрана, не меньше 100% базы.
+function applyBg360PhotoViewerZoomLayout() {
+  var st = bg360PhotoViewerRuntime.slideState;
   var parts = getBg360PhotoViewerElements();
-  var st = bg360PhotoViewerRuntime.slideState;
-  if (!parts || !parts.viewport || !st || !st.naturalW || !st.naturalH) return 1;
-  var rect = parts.viewport.getBoundingClientRect();
-  var availW = Math.max(1, rect.width);
-  var availH = Math.max(1, rect.height);
-  return Math.min(availW / st.naturalW, availH / st.naturalH);
-}
+  if (!st || !parts || !parts.viewport || !st.baseViewportW || !st.baseViewportH) return;
 
-// Сбрасывает zoom/pan к вписыванию в область просмотра.
-function resetBg360PhotoSlideView(keepScaleBounds) {
-  var st = bg360PhotoViewerRuntime.slideState;
-  if (!st) return;
-  st.fitScale = computeBg360PhotoFitScale();
-  if (!isFinite(st.fitScale) || st.fitScale <= 0) st.fitScale = 1;
-  st.scale = st.fitScale;
-  st.tx = 0;
-  st.ty = 0;
-  if (keepScaleBounds) clampBg360PhotoSlidePan();
+  st.zoom = clamp(st.zoom, BG360_PHOTO_ZOOM_MIN, BG360_PHOTO_ZOOM_MAX);
+  var limits = getBg360PhotoStageImageLimits();
+  var imgW = st.naturalW * st.baseFitScale * st.zoom;
+  var imgH = st.naturalH * st.baseFitScale * st.zoom;
+
+  var vpW = Math.min(Math.max(st.baseViewportW, imgW), limits.maxW);
+  var vpH = Math.min(Math.max(st.baseViewportH, imgH), limits.maxH);
+
+  applyBg360PhotoViewerFrameWidth(vpW);
+  parts.viewport.style.height = Math.round(vpH) + "px";
   applyBg360PhotoSlideTransform();
+  clampBg360PhotoSlidePan();
 }
 
 // Обновляет подпись под фото внутри общей рамки карточки.
@@ -7668,13 +7731,20 @@ function updateBg360PhotoViewerCaption(mark, imageIndex) {
   if (!text) {
     elBg360PhotoViewerCaption.textContent = "";
     elBg360PhotoViewerCaption.classList.add("hidden");
+    elBg360PhotoViewerCaption.style.width = "";
+    elBg360PhotoViewerCaption.style.maxWidth = "";
+    if (bg360PhotoViewerRuntime.active && bg360PhotoViewerRuntime.slideState && bg360PhotoViewerRuntime.slideState.loaded) {
+      requestAnimationFrame(function () {
+        layoutBg360PhotoViewerCard(false);
+      });
+    }
     return;
   }
   elBg360PhotoViewerCaption.textContent = text;
   elBg360PhotoViewerCaption.classList.remove("hidden");
   if (bg360PhotoViewerRuntime.active && bg360PhotoViewerRuntime.slideState && bg360PhotoViewerRuntime.slideState.loaded) {
     requestAnimationFrame(function () {
-      layoutBg360PhotoViewerCard();
+      layoutBg360PhotoViewerCard(false);
     });
   }
 }
@@ -7691,8 +7761,8 @@ function updateBg360PhotoViewerNavButtons() {
   }
 }
 
-// Подгоняет размер viewport под кадр и доступное место на экране (подпись — отдельно под фото).
-function layoutBg360PhotoViewerCard() {
+// Считает базовую рамку (100%) и применяет текущий zoom к viewport.
+function layoutBg360PhotoViewerCard(resetZoom) {
   if (!bg360PhotoViewerRuntime.active || !elBg360PhotoViewer) return;
   var stage = elBg360PhotoViewer.querySelector(".bg360-photo-viewer-stage");
   var st = bg360PhotoViewerRuntime.slideState;
@@ -7701,27 +7771,45 @@ function layoutBg360PhotoViewerCard() {
 
   var stageRect = stage.getBoundingClientRect();
   var maxW = stageRect.width * 0.92;
-  var maxH = stageRect.height * 0.9;
-  var captionReserve = 0;
-  if (elBg360PhotoViewerCaption && !elBg360PhotoViewerCaption.classList.contains("hidden")) {
-    captionReserve = elBg360PhotoViewerCaption.offsetHeight || 0;
-  }
-  maxH = Math.max(64, maxH - captionReserve - 12);
-
+  var maxH = stageRect.height * 0.9 - 12;
+  var hasCaption = !!(elBg360PhotoViewerCaption && !elBg360PhotoViewerCaption.classList.contains("hidden"));
   var aspect = st.naturalW / st.naturalH;
   var vpW;
   var vpH;
-  if (maxW / maxH > aspect) {
-    vpH = maxH;
-    vpW = vpH * aspect;
-  } else {
-    vpW = maxW;
-    vpH = vpW / aspect;
+
+  function computeBaseViewportSize(availH) {
+    var h = Math.max(64, availH);
+    if (maxW / h > aspect) {
+      vpH = h;
+      vpW = vpH * aspect;
+    } else {
+      vpW = maxW;
+      vpH = vpW / aspect;
+    }
   }
 
-  parts.viewport.style.width = Math.round(vpW) + "px";
-  parts.viewport.style.height = Math.round(vpH) + "px";
-  resetBg360PhotoSlideView(false);
+  computeBaseViewportSize(maxH);
+
+  if (hasCaption) {
+    applyBg360PhotoViewerFrameWidth(vpW);
+    var captionH = elBg360PhotoViewerCaption.offsetHeight || 0;
+    if (captionH > 0) {
+      computeBaseViewportSize(stageRect.height * 0.9 - captionH - 12);
+    }
+  }
+
+  st.baseViewportW = vpW;
+  st.baseViewportH = vpH;
+  st.baseFitScale = Math.min(vpW / st.naturalW, vpH / st.naturalH);
+  if (!isFinite(st.baseFitScale) || st.baseFitScale <= 0) st.baseFitScale = 1;
+
+  if (resetZoom) {
+    st.zoom = 1;
+    st.tx = 0;
+    st.ty = 0;
+  }
+
+  applyBg360PhotoViewerZoomLayout();
 }
 
 // Загружает одно изображение по индексу в единственный слой просмотра.
@@ -7739,7 +7827,7 @@ function renderBg360PhotoViewerImage(imageIndex) {
   st.loaded = false;
   st.naturalW = 0;
   st.naturalH = 0;
-  st.scale = 1;
+  st.zoom = 1;
   st.tx = 0;
   st.ty = 0;
   applyBg360PhotoSlideTransform();
@@ -7756,7 +7844,7 @@ function renderBg360PhotoViewerImage(imageIndex) {
       st.naturalW = elBg360PhotoImg.naturalWidth || elBg360PhotoImg.width || 0;
       st.naturalH = elBg360PhotoImg.naturalHeight || elBg360PhotoImg.height || 0;
       st.loaded = true;
-      layoutBg360PhotoViewerCard();
+      layoutBg360PhotoViewerCard(true);
     }
   });
 }
@@ -7809,7 +7897,7 @@ function openBg360PhotoViewer(mark) {
   if (elBg360Marks) elBg360Marks.classList.add("is-photo-viewer-open");
 
   requestAnimationFrame(function () {
-    layoutBg360PhotoViewerCard();
+    layoutBg360PhotoViewerCard(true);
   });
   return true;
 }
@@ -7836,10 +7924,7 @@ function closeBg360PhotoViewer(reason) {
   if (elBg360PhotoInner) {
     elBg360PhotoInner.style.transform = "";
   }
-  if (elBg360PhotoViewport) {
-    elBg360PhotoViewport.style.width = "";
-    elBg360PhotoViewport.style.height = "";
-  }
+  clearBg360PhotoViewerFrameSizes();
   if (elBg360PhotoViewerCaption) {
     elBg360PhotoViewerCaption.textContent = "";
     elBg360PhotoViewerCaption.classList.add("hidden");
@@ -7862,8 +7947,9 @@ function bg360PhotoSlideOverflowsViewport() {
   var st = bg360PhotoViewerRuntime.slideState;
   if (!parts || !parts.viewport || !st || !st.loaded || !st.naturalW || !st.naturalH) return false;
   var rect = parts.viewport.getBoundingClientRect();
-  var imgW = st.naturalW * st.scale;
-  var imgH = st.naturalH * st.scale;
+  var scale = getBg360PhotoImageScale(st);
+  var imgW = st.naturalW * scale;
+  var imgH = st.naturalH * scale;
   return imgW > rect.width + 0.5 || imgH > rect.height + 0.5;
 }
 
@@ -7872,34 +7958,33 @@ function bg360PhotoSlideAllowsPan() {
   return bg360PhotoSlideOverflowsViewport();
 }
 
-// Масштабирует кадр вокруг точки pinch/wheel; кнопки и подпись не участвуют.
-function applyBg360PhotoZoomAt(nextScale, focalX, focalY) {
+// Меняет zoom (1 = 100%, до 400%); рамка растёт/сжимается в пределах экрана, изображение обрезается при необходимости.
+function applyBg360PhotoZoomAt(nextZoom, focalX, focalY) {
   var parts = getBg360PhotoViewerElements();
   var st = bg360PhotoViewerRuntime.slideState;
   if (!parts || !parts.viewport || !st) return;
-  var fit = st.fitScale > 0 ? st.fitScale : 1;
-  var minS = fit * BG360_PHOTO_ZOOM_MIN;
-  var maxS = fit * BG360_PHOTO_ZOOM_MAX;
-  var prevScale = st.scale;
-  var scale = clamp(nextScale, minS, maxS);
+  var prevZoom = st.zoom;
+  var zoom = clamp(nextZoom, BG360_PHOTO_ZOOM_MIN, BG360_PHOTO_ZOOM_MAX);
 
   var rect = parts.viewport.getBoundingClientRect();
   var cx = rect.left + rect.width * 0.5;
   var cy = rect.top + rect.height * 0.5;
   var fx = isFinite(focalX) ? focalX : cx;
   var fy = isFinite(focalY) ? focalY : cy;
-  var ratio = prevScale > 0 ? scale / prevScale : 1;
+  var prevScale = st.baseFitScale * prevZoom;
+  var newScale = st.baseFitScale * zoom;
+  var ratio = prevScale > 0 ? newScale / prevScale : 1;
   st.tx = (st.tx + (fx - cx)) * ratio - (fx - cx);
   st.ty = (st.ty + (fy - cy)) * ratio - (fy - cy);
-  st.scale = scale;
-  clampBg360PhotoSlidePan();
-  applyBg360PhotoSlideTransform();
+  st.zoom = zoom;
+
+  applyBg360PhotoViewerZoomLayout();
 }
 
-// Обработчик resize: пересчитать размер карточки и fit.
+// Обработчик resize: пересчитать базовую рамку 100% и применить текущий zoom.
 function handleBg360PhotoViewerResize() {
   if (!bg360PhotoViewerRuntime.active) return;
-  layoutBg360PhotoViewerCard();
+  layoutBg360PhotoViewerCard(false);
 }
 
 // Клики: закрытие по backdrop (вне карточки), кнопки ✕ и листания.
@@ -7982,7 +8067,7 @@ function handleBg360PhotoViewerPointerDown(e) {
   if (getBg360PhotoPinchPointerCount() >= 2) {
     bg360PhotoViewerRuntime.pinchStartDistance = getBg360PhotoPinchDistance();
     var stPinch = bg360PhotoViewerRuntime.slideState;
-    bg360PhotoViewerRuntime.pinchStartScale = stPinch ? stPinch.scale : 1;
+    bg360PhotoViewerRuntime.pinchStartZoom = stPinch ? stPinch.zoom : 1;
     bg360PhotoViewerRuntime.slideGesture = null;
     e.preventDefault();
     e.stopPropagation();
@@ -8038,7 +8123,7 @@ function handleBg360PhotoViewerPointerMove(e) {
         midX /= count;
         midY /= count;
         var scaleFactor = dist / bg360PhotoViewerRuntime.pinchStartDistance;
-        applyBg360PhotoZoomAt(bg360PhotoViewerRuntime.pinchStartScale * scaleFactor, midX, midY);
+        applyBg360PhotoZoomAt(bg360PhotoViewerRuntime.pinchStartZoom * scaleFactor, midX, midY);
       }
     }
     e.preventDefault();
@@ -8089,7 +8174,7 @@ function handleBg360PhotoViewerWheel(e) {
   var st = bg360PhotoViewerRuntime.slideState;
   if (!st) return;
   var factor = e.deltaY > 0 ? 0.92 : 1.08;
-  applyBg360PhotoZoomAt(st.scale * factor, e.clientX, e.clientY);
+  applyBg360PhotoZoomAt(st.zoom * factor, e.clientX, e.clientY);
   e.preventDefault();
 }
 
