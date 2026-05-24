@@ -5937,7 +5937,7 @@ function resetCharacterVisualLayout(reason) {
     elCharFrame.style.width = "0px";
     elCharFrame.style.height = "0px";
     elCharFrame.style.transform = "translateX(-50%)";
-    elCharFrame.style.overflow = "hidden";
+    elCharFrame.style.overflow = "visible";
   }
   if (!elChar) return;
   elChar.classList.add("hidden");
@@ -14563,7 +14563,7 @@ function adjustCharacterScale(reason) {
       frame.style.width = "0px";
       frame.style.height = targetCharHeight + "px";
       frame.style.transform = "translateX(-50%)";
-      frame.style.overflow = "hidden";
+      frame.style.overflow = "visible";
     }
     char.style.left = "0";
     char.style.top = "0";
@@ -14627,7 +14627,8 @@ function adjustCharacterScale(reason) {
     frame.style.height = targetCharHeight + 'px';
     // В px-режиме рамка уже получает точный left; CSS translateX(-50%) нужен только для стартового percent-fallback.
     frame.style.transform = 'none';
-    frame.style.overflow = 'hidden';
+    // Рамка — только координатная система; focus может вывести изображение за её пределы без обрезки.
+    frame.style.overflow = 'visible';
     char.style.left = innerLeft + 'px';
     char.style.top = innerTop + 'px';
   } else {

@@ -876,16 +876,8 @@
     el.style.objectPosition = '50% 50%';
     el.style.transformOrigin = '50% 50%';
     el.style.transform = mirror ? 'scaleX(-1)' : '';
-    if (normalizePreviewMode(previewMode) === PREVIEW_MODE_CHARACTER && p.frameLeft !== undefined) {
-      // В режиме персонажа предпросмотр повторяет движок: стабильная рамка режет смещённое внутри изображение.
-      var clipTop = Math.max(0, p.frameTop - p.top);
-      var clipLeft = Math.max(0, p.frameLeft - p.left);
-      var clipRight = Math.max(0, (p.left + p.width) - (p.frameLeft + p.frameWidth));
-      var clipBottom = Math.max(0, (p.top + p.height) - (p.frameTop + p.frameHeight));
-      el.style.clipPath = 'inset(' + clipTop + 'px ' + clipRight + 'px ' + clipBottom + 'px ' + clipLeft + 'px)';
-    } else {
-      el.style.clipPath = '';
-    }
+    // Рамка персонажа — только координатная система, поэтому focus не должен обрезать изображение.
+    el.style.clipPath = '';
     syncMediaBounds(el, p, mirror);
     return p;
   }
@@ -902,11 +894,7 @@
     var p = getFocusPlacement(mediaEl, iw, ih, dw, dh, focusX, focusY, scaleVal, useContain, previewMode);
     ctx.save();
     ctx.beginPath();
-    if (normalizePreviewMode(previewMode) === PREVIEW_MODE_CHARACTER && p.frameLeft !== undefined) {
-      ctx.rect(p.frameLeft, p.frameTop, p.frameWidth, p.frameHeight);
-    } else {
-      ctx.rect(0, 0, dw, dh);
-    }
+    ctx.rect(0, 0, dw, dh);
     ctx.clip();
     try {
       if (mirror) {

@@ -1008,7 +1008,7 @@ body {
   transform: translateX(-50%);
   width: 0;
   height: 0;
-  overflow: hidden;
+  overflow: visible;
   z-index: 3;
   pointer-events: none;
 }
