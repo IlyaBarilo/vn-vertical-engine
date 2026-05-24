@@ -215,12 +215,29 @@
       border-radius: 8px;
       overflow: hidden;
       background: rgba(0, 0, 0, 0.45);
+      position: relative;
     }
 
     .mark-dot.photo img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      pointer-events: none;
+    }
+
+    .mark-dot.photo .photo-count-badge {
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      min-width: 16px;
+      padding: 1px 4px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.72);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: center;
       pointer-events: none;
     }
 
@@ -577,6 +594,40 @@
     }
 
     .point-meta { color: var(--muted); }
+
+    .photo-images-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .photo-image-row {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .photo-image-row-title {
+      font-size: 11px;
+      font-weight: 650;
+      color: var(--muted);
+    }
+
+    .photo-image-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .photo-image-row-actions button {
+      width: auto;
+      min-width: 0;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
 
     .point-id-row {
       display: grid;
@@ -2962,6 +3013,10 @@
         entry.wy = Number(worldPoint.y.toFixed(6));
         entry.wz = Number(worldPoint.z.toFixed(6));
       }
+      if (type === "photo") {
+        entry.label = "";
+        entry.photoImages = [{ file: "", caption: "" }];
+      }
       points.push(entry);
       pointCounter += 1;
 
@@ -3103,6 +3158,142 @@
     }
 
     /**
+     * Гарантирует массив photoImages у точки редактора.
+     */
+    function ensurePointPhotoImages(point) {
+      if (!point || typeof point !== "object") return [];
+      if (!Array.isArray(point.photoImages)) point.photoImages = [];
+      return point.photoImages;
+    }
+
+    /**
+     * Рисует редактор набора изображений photo-метки: file, caption, порядок и удаление.
+     */
+    function appendPhotoImagesEditor(container, point, pointIdx) {
+      var list = ensurePointPhotoImages(point);
+      if (!list.length) {
+        list.push({ file: "", caption: "" });
+      }
+
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "Несколько фото листаются в игре (peek-карусель). В bg360marks пути через |.";
+
+      var listEl = document.createElement("div");
+      listEl.className = "photo-images-list";
+
+      function commitPhotoList() {
+        points[pointIdx].photoImages = list
+          .map(function (item) {
+            return {
+              file: String((item && item.file) || "").trim(),
+              caption: String((item && item.caption) || "").trim()
+            };
+          })
+          .filter(function (item) {
+            return !!item.file;
+          });
+        updateExport();
+        renderOverlayMarks();
+      }
+
+      function renderPhotoImagesList() {
+        while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+        list.forEach(function (item, imageIdx) {
+          var row = document.createElement("div");
+          row.className = "photo-image-row";
+
+          var title = document.createElement("div");
+          title.className = "photo-image-row-title";
+          title.textContent = "Фото " + (imageIdx + 1);
+          row.appendChild(title);
+
+          var fileInput = document.createElement("input");
+          fileInput.type = "text";
+          fileInput.placeholder = "Путь к файлу (images[" + imageIdx + "].file)";
+          fileInput.value = String(item.file || "");
+          fileInput.addEventListener("input", function () {
+            list[imageIdx].file = fileInput.value;
+            commitPhotoList();
+          });
+          row.appendChild(fileInput);
+
+          var capInput = document.createElement("input");
+          capInput.type = "text";
+          capInput.placeholder = "Подпись в viewer (caption)";
+          capInput.value = String(item.caption || "");
+          capInput.addEventListener("input", function () {
+            list[imageIdx].caption = capInput.value;
+            commitPhotoList();
+          });
+          row.appendChild(capInput);
+
+          var actions = document.createElement("div");
+          actions.className = "photo-image-row-actions";
+
+          if (imageIdx > 0) {
+            var upBtn = document.createElement("button");
+            upBtn.type = "button";
+            upBtn.textContent = "↑";
+            upBtn.title = "Выше";
+            upBtn.addEventListener("click", function () {
+              var tmp = list[imageIdx - 1];
+              list[imageIdx - 1] = list[imageIdx];
+              list[imageIdx] = tmp;
+              renderPhotoImagesList();
+              commitPhotoList();
+            });
+            actions.appendChild(upBtn);
+          }
+
+          if (imageIdx < list.length - 1) {
+            var downBtn = document.createElement("button");
+            downBtn.type = "button";
+            downBtn.textContent = "↓";
+            downBtn.title = "Ниже";
+            downBtn.addEventListener("click", function () {
+              var tmpDown = list[imageIdx + 1];
+              list[imageIdx + 1] = list[imageIdx];
+              list[imageIdx] = tmpDown;
+              renderPhotoImagesList();
+              commitPhotoList();
+            });
+            actions.appendChild(downBtn);
+          }
+
+          var removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "danger";
+          removeBtn.textContent = "Удалить";
+          removeBtn.addEventListener("click", function () {
+            list.splice(imageIdx, 1);
+            if (!list.length) list.push({ file: "", caption: "" });
+            renderPhotoImagesList();
+            commitPhotoList();
+          });
+          actions.appendChild(removeBtn);
+
+          row.appendChild(actions);
+          listEl.appendChild(row);
+        });
+      }
+
+      var addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "good";
+      addBtn.textContent = "+ Добавить фото";
+      addBtn.addEventListener("click", function () {
+        list.push({ file: "", caption: "" });
+        renderPhotoImagesList();
+      });
+
+      renderPhotoImagesList();
+      container.appendChild(hint);
+      container.appendChild(listEl);
+      container.appendChild(addBtn);
+    }
+
+    /**
      * Рисует панель списка меток слева.
      */
     function renderPointsList() {
@@ -3195,35 +3386,7 @@
           });
           targetWrap.appendChild(photoLabelInput);
 
-          var photoFileInput = document.createElement("input");
-          photoFileInput.type = "text";
-          photoFileInput.placeholder = "Путь к изображению (images[0].file)";
-          var photoList = Array.isArray(p.photoImages) ? p.photoImages : [];
-          photoFileInput.value = photoList.length ? String(photoList[0].file || "") : "";
-          photoFileInput.addEventListener("input", function () {
-            var file = String(photoFileInput.value || "").trim();
-            if (!file) {
-              points[idx].photoImages = [];
-            } else {
-              var prevCap = photoList.length ? String(photoList[0].caption || "") : "";
-              points[idx].photoImages = [{ file: file, caption: prevCap }];
-            }
-            updateExport();
-            renderOverlayMarks();
-          });
-          targetWrap.appendChild(photoFileInput);
-
-          var photoItemCaptionInput = document.createElement("input");
-          photoItemCaptionInput.type = "text";
-          photoItemCaptionInput.placeholder = "Подпись под изображением в viewer (caption)";
-          photoItemCaptionInput.value = photoList.length ? String(photoList[0].caption || "") : "";
-          photoItemCaptionInput.addEventListener("input", function () {
-            var file = photoFileInput.value.trim();
-            if (!file) return;
-            points[idx].photoImages = [{ file: file, caption: photoItemCaptionInput.value }];
-            updateExport();
-          });
-          targetWrap.appendChild(photoItemCaptionInput);
+          appendPhotoImagesEditor(targetWrap, p, idx);
         }
 
         var visibleIfInput = document.createElement("input");
@@ -3376,11 +3539,15 @@
       var marksPart = points.map(function (p) {
         var pType = normalizePointType(p.type);
         if (pType === "photo") {
-          var firstFile = "";
-          if (Array.isArray(p.photoImages) && p.photoImages[0]) {
-            firstFile = String(p.photoImages[0].file || "").trim();
+          var photoFiles = [];
+          if (Array.isArray(p.photoImages)) {
+            p.photoImages.forEach(function (img) {
+              var file = String((img && img.file) || "").trim();
+              if (file) photoFiles.push(file);
+            });
           }
-          return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", photo, " + (firstFile || "assets/path.webp") + ")";
+          var photoPathField = photoFiles.length ? photoFiles.join("|") : "assets/path.webp";
+          return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", photo, " + photoPathField + ")";
         }
         var sceneTarget = (p.targetType === "scene" && p.targetScene) ? ", " + p.targetScene : "";
         return "(" + p.id + ", " + p.x.toFixed(4) + ", " + p.y.toFixed(4) + ", " + pType + sceneTarget + ")";
@@ -5044,6 +5211,12 @@
               img.draggable = false;
               img.src = thumb;
               el.appendChild(img);
+              if (photoList.length > 1) {
+                var countBadge = document.createElement("span");
+                countBadge.className = "photo-count-badge";
+                countBadge.textContent = String(photoList.length);
+                el.appendChild(countBadge);
+              }
             } else {
               el.textContent = "🖼";
             }

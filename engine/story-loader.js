@@ -922,7 +922,7 @@ function parseActionParamsFromText(rawText) {
 }
 
 // Разбирает команду bg360marks: bgId, набор меток в скобках и опции вроде lines.
-// Формат метки: (id, x, y, type[, targetScene|file]), где view — обзорная метка; photo — путь к изображению в 5-м поле.
+// Формат метки: (id, x, y, type[, targetScene|file]), где view — обзорная метка; photo — путь(и) к изображению в 5-м поле через |.
 // Пример: bg360marks bg360Campus (mark1, 0.30, 0.55, walk, scene_hall) (mark2, 0.50, 0.20, walk, ) lines
 function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
   var body = String(cleanLine || "").substring("bg360marks".length).trim();
@@ -977,13 +977,22 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
 
     var markObj = { id: markId, x: x, y: y, kind: kind, targetScene: targetScene };
     if (kind === "photo") {
-      var photoFile = targetSceneRaw;
-      if (!photoFile) {
+      var photoFileRaw = targetSceneRaw;
+      if (!photoFileRaw) {
         addParseError(lineNumber, originalLine, 'bg360marks: для photo укажите путь к файлу в 5-м поле', true);
         return null;
       }
       markObj.targetScene = null;
-      markObj.images = [{ file: photoFile, caption: "" }];
+      // Несколько файлов в legacy-формате разделяются символом |; подписи caption задаются только в story360 JSON.
+      markObj.images = String(photoFileRaw || "")
+        .split("|")
+        .map(function (part) { return String(part || "").trim(); })
+        .filter(function (part) { return !!part; })
+        .map(function (file) { return { file: file, caption: "" }; });
+      if (!markObj.images.length) {
+        addParseError(lineNumber, originalLine, 'bg360marks: для photo укажите хотя бы один путь к файлу в 5-м поле', true);
+        return null;
+      }
     }
     marks.push(markObj);
   }

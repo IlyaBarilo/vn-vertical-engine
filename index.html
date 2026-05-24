@@ -167,17 +167,23 @@
           </div>
         </div>
 
-        <!-- Просмотр фото с 360-меток: поверх диалога, ниже gameModal. -->
+        <!-- Просмотр фото с 360-меток: карточка по центру, затемнённый фон. -->
         <div id="bg360PhotoViewer" class="bg360-photo-viewer hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Просмотр изображения">
           <div class="bg360-photo-viewer-backdrop" data-bg360-photo-dismiss="1"></div>
-          <div class="bg360-photo-viewer-panel">
-            <div class="bg360-photo-viewer-header">
-              <button type="button" class="bg360-photo-viewer-close" data-bg360-photo-close="1" aria-label="Закрыть">×</button>
+          <div class="bg360-photo-viewer-stage">
+            <div class="bg360-photo-card">
+              <div class="bg360-photo-media">
+                <div id="bg360PhotoViewport" class="bg360-photo-slide-viewport">
+                  <div id="bg360PhotoInner" class="bg360-photo-slide-inner">
+                    <img id="bg360PhotoImg" alt="" draggable="false" decoding="async">
+                  </div>
+                </div>
+                <button type="button" class="bg360-photo-viewer-close" data-bg360-photo-close="1" aria-label="Закрыть">×</button>
+                <button type="button" class="bg360-photo-nav bg360-photo-nav-prev hidden" data-bg360-photo-prev="1" aria-label="Предыдущее фото">‹</button>
+                <button type="button" class="bg360-photo-nav bg360-photo-nav-next hidden" data-bg360-photo-next="1" aria-label="Следующее фото">›</button>
+              </div>
+              <div id="bg360PhotoViewerCaption" class="bg360-photo-viewer-caption hidden"></div>
             </div>
-            <div class="bg360-photo-viewer-stage">
-              <div id="bg360PhotoViewerTrack" class="bg360-photo-viewer-track"></div>
-            </div>
-            <div id="bg360PhotoViewerCaption" class="bg360-photo-viewer-caption hidden"></div>
           </div>
         </div>
         

@@ -208,6 +208,11 @@ body {
   --bg360-photo-mark-size: calc(var(--bg360-photo-mark-size-base) * var(--visualScale));
   --bg360-photo-close-size: calc(var(--bg360-photo-close-size-base) * var(--visualScale));
   --bg360-photo-close-border-width: calc(var(--bg360-photo-close-border-width-base) * var(--visualScale));
+  /* Отступы кнопок viewer от краёв области фото. */
+  --bg360-photo-control-inset-base: 14px;
+  --bg360-photo-nav-inset-x-base: 18px;
+  --bg360-photo-control-inset: calc(var(--bg360-photo-control-inset-base) * var(--visualScale));
+  --bg360-photo-nav-inset-x: calc(var(--bg360-photo-nav-inset-x-base) * var(--visualScale));
   --bg360-scene-mark-dot-inset: calc(var(--bg360-scene-mark-dot-inset-base) * var(--visualScale));
   --bg360-scene-mark-border-width: calc(var(--bg360-scene-mark-border-width-base) * var(--visualScale));
   --bg360-scene-mark-label-offset-x: calc(var(--bg360-scene-mark-label-offset-x-base) * var(--visualScale));
@@ -698,6 +703,22 @@ body {
   -webkit-user-select: none;
 }
 
+.bg360-mark-photo-count {
+  position: absolute;
+  right: calc(var(--bg360-photo-mark-size) * 0.04);
+  bottom: calc(var(--bg360-photo-mark-size) * 0.04);
+  min-width: calc(var(--bg360-photo-mark-size) * 0.34);
+  padding: calc(var(--bg360-photo-mark-size) * 0.04) calc(var(--bg360-photo-mark-size) * 0.08);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: calc(var(--bg360-photo-mark-size) * 0.22);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  pointer-events: none;
+}
+
 .bg360-photo-mark-label {
   position: absolute;
   left: 50%;
@@ -733,125 +754,64 @@ body {
   pointer-events: none;
 }
 
-/* Просмотр изображений с 360-меток: над ui-frame (40), ниже gameModal (60). */
+/* Просмотр изображений с 360-меток: карточка по центру на затемнённом фоне. */
 .bg360-photo-viewer {
   position: absolute;
   inset: 0;
   z-index: 55;
-  display: flex;
-  flex-direction: column;
   pointer-events: auto;
   touch-action: none;
+}
+
+.bg360-photo-viewer.hidden {
+  pointer-events: none;
 }
 
 .bg360-photo-viewer-backdrop {
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
 }
 
-.bg360-photo-viewer-panel {
-  position: relative;
+.bg360-photo-viewer-stage {
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
+  align-items: center;
+  justify-content: center;
   padding:
     max(0.5rem, env(safe-area-inset-top, 0px))
     max(0.5rem, env(safe-area-inset-right, 0px))
     max(0.5rem, env(safe-area-inset-bottom, 0px))
     max(0.5rem, env(safe-area-inset-left, 0px));
   box-sizing: border-box;
-  gap: 0.35rem;
-  /* Пропускаем клики сквозь пустые области панели к backdrop (закрытие фото). */
   pointer-events: none;
 }
 
-.bg360-photo-viewer-header {
-  flex: 0 0 auto;
+.bg360-photo-card {
+  position: relative;
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-height: var(--bg360-photo-close-size);
+  flex-direction: column;
+  max-width: min(94vw, 100%);
   pointer-events: auto;
-}
-
-.bg360-photo-viewer-close {
-  position: relative;
-  flex: 0 0 auto;
-  z-index: 3;
-  width: var(--bg360-photo-close-size);
-  height: var(--bg360-photo-close-size);
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  border-radius: 999px;
-  border: var(--bg360-photo-close-border-width) solid rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: calc(var(--bg360-photo-close-size) * var(--bg360-photo-close-glyph-scale));
-  line-height: 1;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  pointer-events: auto;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.bg360-photo-viewer-stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  border: var(--ui-border-width) solid rgba(255, 255, 255, 0.38);
+  border-radius: var(--control-radius);
+  background: rgba(0, 0, 0, 0.62);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
   overflow: hidden;
-  pointer-events: auto;
 }
 
-.bg360-photo-viewer-track {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  align-items: center;
-  will-change: transform;
-}
-
-.bg360-photo-viewer-track.is-dragging {
-  transition: none;
-}
-
-.bg360-photo-viewer-slide {
-  flex: 0 0 var(--bg360-photo-slide-width, 78%);
-  height: 100%;
-  padding: 0;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.55;
-  transition: opacity 0.22s ease;
-}
-
-.bg360-photo-viewer.is-single-slide .bg360-photo-viewer-slide {
-  flex: 0 0 100%;
-  opacity: 1;
-}
-
-.bg360-photo-viewer.is-single-slide .bg360-photo-viewer-track {
-  justify-content: center;
-  transform: none !important;
-}
-
-.bg360-photo-viewer-slide.is-active {
-  opacity: 1;
+.bg360-photo-media {
+  position: relative;
+  line-height: 0;
+  overflow: hidden;
 }
 
 .bg360-photo-slide-viewport {
   position: relative;
-  width: 100%;
-  height: 100%;
   overflow: hidden;
   touch-action: none;
   cursor: grab;
@@ -878,6 +838,69 @@ body {
   pointer-events: none;
 }
 
+.bg360-photo-viewer-close {
+  position: absolute;
+  top: var(--bg360-photo-control-inset);
+  right: var(--bg360-photo-control-inset);
+  z-index: 6;
+  width: var(--bg360-photo-close-size);
+  height: var(--bg360-photo-close-size);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 999px;
+  border: var(--bg360-photo-close-border-width) solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: calc(var(--bg360-photo-close-size) * var(--bg360-photo-close-glyph-scale));
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bg360-photo-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  transform: translateY(-50%);
+  width: var(--bg360-photo-close-size);
+  height: var(--bg360-photo-close-size);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 999px;
+  border: var(--bg360-photo-close-border-width) solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: calc(var(--bg360-photo-close-size) * 0.62);
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bg360-photo-nav-prev {
+  left: var(--bg360-photo-nav-inset-x);
+}
+
+.bg360-photo-nav-next {
+  right: var(--bg360-photo-nav-inset-x);
+}
+
+.bg360-photo-nav.hidden,
+.bg360-photo-viewer-close.hidden {
+  display: none;
+}
+
 .bg360-marks.is-photo-viewer-open .bg360-mark {
   visibility: hidden;
   pointer-events: none;
@@ -885,19 +908,17 @@ body {
 
 .bg360-photo-viewer-caption {
   flex: 0 0 auto;
-  max-height: 22vh;
-  margin-top: 0;
   padding: 0.5rem 0.65rem;
-  overflow: auto;
-  border-radius: var(--control-radius);
-  border: var(--ui-border-width) solid rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.62);
+  border-top: var(--ui-border-width) solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.94);
   font-size: var(--control-font-size);
   line-height: 1.45;
   text-align: center;
-  -webkit-overflow-scrolling: touch;
   pointer-events: auto;
+}
+
+.bg360-photo-viewer-caption.hidden {
+  display: none;
 }
 
 /* Подсказка появляется только у фонов, где сценарий разрешил горизонтальный скролл. */
