@@ -4826,14 +4826,24 @@ function onNext(e) {
     return;
   }
 
-  // Проверяем, не дошли ли мы до конца сценария
+  // Конец основной сцены не всегда означает конец выполнения: menu/if/goto360 могут держать продолжение в runtime-очереди.
   var scene = state.sceneMap[state.sceneId];
-  if (state.actionIndex >= scene.actions.length) {
+  var pendingActionsLen = Array.isArray(state.pendingActions) ? state.pendingActions.length : 0;
+  if (!scene || !Array.isArray(scene.actions)) {
+    console.log('[VN] Текущая сцена недоступна, игнорируем клик');
+    autosaveDebugLog("onNext:blocked", {
+      reason: "bad_scene",
+      sceneId: state.sceneId
+    });
+    return;
+  }
+  if (pendingActionsLen === 0 && state.actionIndex >= scene.actions.length) {
     console.log('[VN] Достигнут конец сценария, игнорируем клик');
     autosaveDebugLog("onNext:blocked", {
       reason: "past_end_of_scene",
       actionIndex: state.actionIndex,
-      actionsLen: scene && scene.actions ? scene.actions.length : -1
+      actionsLen: scene.actions.length,
+      pendingActionsLen: pendingActionsLen
     });
     return;
   }
