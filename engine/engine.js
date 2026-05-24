@@ -828,6 +828,7 @@ var elBg360PhotoViewerCaption = document.getElementById("bg360PhotoViewerCaption
 var elBg360PhotoPrev = null;
 var elBg360PhotoNext = null;
 var elBgScrollHint = document.getElementById("bgScrollHint");
+var elCharFrame = document.getElementById("charFrame");
 var elChar = document.getElementById("charLayer");
 var elStoryVideoOverlay = document.getElementById("storyVideoOverlay");
 var elStoryVideo = document.getElementById("storyVideoLayer");
@@ -837,6 +838,9 @@ var elStoryVideoSkipHint = document.getElementById("storyVideoSkipHint");
 
 // Жёстко скрываем персонажа на старте, чтобы не было первого "всплеска" когда появляется большого размера
 if (elChar) {
+  if (elCharFrame) {
+    elCharFrame.classList.add("hidden");
+  }
   elChar.classList.add("hidden");
   elChar.src = "";
   elChar.style.height = "0px";
@@ -1289,7 +1293,7 @@ function hideAllCharacters() {
     elChar.classList.add("hidden");
     elChar.src = "";
     elChar.removeAttribute('data-char-id');
-    elChar.style.height = "0px";
+    resetCharacterVisualLayout();
     
     // Логируем состояние ПОСЛЕ
     console.log('[Engine] hideAllCharacters - ПОСЛЕ скрытия:', {
@@ -1493,6 +1497,20 @@ var BG_MEDIA_SCALE_MIN = 0.05;
 var BG_MEDIA_SCALE_MAX = 8;
 var BG_360_FOV_MIN = 35;
 var BG_360_FOV_MAX = 90;
+// Персонаж по умолчанию живет в нижних 85% кадра; верхние 15% остаются служебной зоной композиции.
+var CHARACTER_WORK_HEIGHT_RATIO = 0.85;
+var CHARACTER_FOCUS_DEFAULTS = {
+  pos: "center",
+  focusX: 0.5,
+  focusY: 0.5,
+  scale: 1
+};
+var currentCharacterVisualOptions = {
+  pos: CHARACTER_FOCUS_DEFAULTS.pos,
+  focusX: CHARACTER_FOCUS_DEFAULTS.focusX,
+  focusY: CHARACTER_FOCUS_DEFAULTS.focusY,
+  scale: CHARACTER_FOCUS_DEFAULTS.scale
+};
 /**
  * Длительность «наезда» (сужение FOV) при goto360 между 360-панорамами, миллисекунды.
  * Загрузка новой сцены идёт параллельно; если текстура пришла раньше — WebGL-зум кадра останавливается,
@@ -2830,6 +2848,222 @@ function normalizeMediaScale(value, fallback) {
   return clamp(n, BG_MEDIA_SCALE_MIN, BG_MEDIA_SCALE_MAX);
 }
 
+// Для персонажа focusY инвертирован относительно фона: 0 — низ рабочей зоны, 1 — верхняя красная граница.
+function normalizeCharacterFocusY(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  var rawValue = typeof value === "string" ? value.trim() : value;
+  var textValue = typeof rawValue === "string" ? rawValue.toLowerCase() : rawValue;
+  if (textValue === "bottom" || textValue === "end") return 0;
+  if (textValue === "top" || textValue === "start") return 1;
+  if (textValue === "center" || textValue === "middle") return 0.5;
+
+  var numeric = Number(resolveMediaVariableValue(rawValue, "character focusY"));
+  if (!isFinite(numeric)) return fallback;
+  if (numeric > 1 && numeric <= 100) numeric = numeric / 100;
+  return clamp(numeric, 0, 1);
+}
+
+// Возвращает безопасные дефолты даже при раннем вызове до полной инициализации runtime-переменных.
+function getCharacterFocusDefaults() {
+  if (CHARACTER_FOCUS_DEFAULTS && typeof CHARACTER_FOCUS_DEFAULTS === "object") {
+    return CHARACTER_FOCUS_DEFAULTS;
+  }
+  return {
+    pos: "center",
+    focusX: 0.5,
+    focusY: 0.5,
+    scale: 1
+  };
+}
+
+// Приводит позицию персонажа к одному из трех слотов, чтобы расчет фокуса не зависел от CSS-строки left.
+function normalizeCharacterPosition(pos) {
+  var value = String(pos || "").trim().toLowerCase();
+  if (value === "left" || value === "right" || value === "center") return value;
+  return getCharacterFocusDefaults().pos;
+}
+
+// Собирает валидные настройки персонажа и подставляет прежние значения как fallback при частичном override.
+function normalizeCharacterFocusOptions(options, fallback) {
+  var base = fallback || getCharacterFocusDefaults();
+  var source = options || {};
+  var normalizedScale = normalizeMediaScale(source.scale, base.scale);
+
+  return {
+    pos: normalizeCharacterPosition(source.pos !== undefined ? source.pos : base.pos),
+    focusX: normalizeMediaFocus(source.focusX, base.focusX),
+    focusY: normalizeCharacterFocusY(source.focusY, base.focusY),
+    scale: normalizedScale === null ? base.scale : normalizedScale
+  };
+}
+
+// Сливает настройки так, чтобы show мог переопределить только нужные поля из описания персонажа.
+function mergeCharacterFocusOptions(baseOptions, overrideOptions) {
+  var merged = {};
+  var copyOption = function(source, key) {
+    if (source && source[key] !== undefined && source[key] !== null && source[key] !== "") {
+      merged[key] = source[key];
+    }
+  };
+
+  ["pos", "focusX", "focusY", "scale"].forEach(function(key) {
+    copyOption(baseOptions, key);
+  });
+  ["pos", "focusX", "focusY", "scale"].forEach(function(key) {
+    copyOption(overrideOptions, key);
+  });
+
+  return merged;
+}
+
+// Небольшая проверка нужна, чтобы visual-batch понимал: смена focus/scale тоже меняет видимый кадр.
+function areCharacterFocusOptionsEqual(a, b) {
+  if (!a || !b) return false;
+  return (
+    normalizeCharacterPosition(a.pos) === normalizeCharacterPosition(b.pos) &&
+    Math.abs(num(a.focusX, 0.5) - num(b.focusX, 0.5)) < 0.0001 &&
+    Math.abs(num(a.focusY, 0.5) - num(b.focusY, 0.5)) < 0.0001 &&
+    Math.abs(num(a.scale, 1) - num(b.scale, 1)) < 0.0001
+  );
+}
+
+// Округляет числа в диагностике, чтобы координаты читались в консоли без длинных дробей.
+function roundCharacterDebugNumber(value) {
+  return typeof value === "number" && isFinite(value) ? Math.round(value * 1000) / 1000 : value;
+}
+
+// Снимает DOMRect в простой объект; так браузерная консоль не покажет уже изменившийся live-объект.
+function getCharacterDebugRect(el) {
+  if (!el || typeof el.getBoundingClientRect !== "function") return null;
+  var rect = el.getBoundingClientRect();
+  return {
+    left: roundCharacterDebugNumber(rect.left),
+    top: roundCharacterDebugNumber(rect.top),
+    right: roundCharacterDebugNumber(rect.right),
+    bottom: roundCharacterDebugNumber(rect.bottom),
+    width: roundCharacterDebugNumber(rect.width),
+    height: roundCharacterDebugNumber(rect.height)
+  };
+}
+
+// Собирает полный снимок позиционирования персонажа для поиска редких гонок загрузки и неверного pos/focus.
+function getCharacterDebugSnapshot(extra) {
+  var frame = elCharFrame || document.getElementById("charFrame");
+  var char = elChar || document.getElementById("charLayer");
+  var frameComputed = frame && typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+    ? window.getComputedStyle(frame)
+    : null;
+  var computed = char && typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+    ? window.getComputedStyle(char)
+    : null;
+  var options = normalizeCharacterFocusOptions(
+    currentCharacterVisualOptions || CHARACTER_FOCUS_DEFAULTS,
+    CHARACTER_FOCUS_DEFAULTS
+  );
+
+  return {
+    timeMs: Date.now(),
+    perfMs: typeof performance !== "undefined" && performance.now ? roundCharacterDebugNumber(performance.now()) : null,
+    sceneId: typeof state !== "undefined" && state ? state.sceneId : null,
+    actionIndex: typeof state !== "undefined" && state ? state.actionIndex : null,
+    currentSceneId: typeof currentSceneId !== "undefined" ? currentSceneId : null,
+    charSeq: typeof __charSeq !== "undefined" ? __charSeq : null,
+    activeCharSeq: typeof __activeCharSeq !== "undefined" ? __activeCharSeq : null,
+    focusOptions: options,
+    extra: extra || {},
+    viewport: {
+      width: typeof window !== "undefined" ? window.innerWidth : null,
+      height: typeof window !== "undefined" ? window.innerHeight : null
+    },
+    novelWindow: elNovelWindow ? {
+      clientWidth: elNovelWindow.clientWidth,
+      clientHeight: elNovelWindow.clientHeight,
+      rect: getCharacterDebugRect(elNovelWindow)
+    } : null,
+    frame: frame ? {
+      hidden: frame.classList.contains("hidden"),
+      rect: getCharacterDebugRect(frame),
+      inlineStyle: {
+        left: frame.style.left,
+        top: frame.style.top,
+        right: frame.style.right,
+        bottom: frame.style.bottom,
+        width: frame.style.width,
+        height: frame.style.height,
+        transform: frame.style.transform,
+        overflow: frame.style.overflow
+      },
+      computedStyle: frameComputed ? {
+        left: frameComputed.left,
+        top: frameComputed.top,
+        right: frameComputed.right,
+        bottom: frameComputed.bottom,
+        width: frameComputed.width,
+        height: frameComputed.height,
+        transform: frameComputed.transform,
+        overflow: frameComputed.overflow,
+        display: frameComputed.display,
+        opacity: frameComputed.opacity
+      } : null
+    } : null,
+    char: char ? {
+      hidden: char.classList.contains("hidden"),
+      complete: !!char.complete,
+      naturalWidth: char.naturalWidth || 0,
+      naturalHeight: char.naturalHeight || 0,
+      offsetWidth: char.offsetWidth,
+      offsetHeight: char.offsetHeight,
+      datasetCharId: char.dataset ? char.dataset.charId || "" : "",
+      attrSrc: char.getAttribute("src") || "",
+      currentSrc: char.currentSrc || char.src || "",
+      rect: getCharacterDebugRect(char),
+      inlineStyle: {
+        left: char.style.left,
+        top: char.style.top,
+        right: char.style.right,
+        bottom: char.style.bottom,
+        width: char.style.width,
+        height: char.style.height,
+        maxHeight: char.style.maxHeight,
+        transform: char.style.transform
+      },
+      computedStyle: computed ? {
+        left: computed.left,
+        top: computed.top,
+        right: computed.right,
+        bottom: computed.bottom,
+        width: computed.width,
+        height: computed.height,
+        maxHeight: computed.maxHeight,
+        transform: computed.transform,
+        display: computed.display,
+        opacity: computed.opacity
+      } : null
+    } : null
+  };
+}
+
+// Единый лог персонажа: фильтруй консоль по "[CHAR DEBUG]" и присылай блоки вокруг неверного кадра.
+function logCharacterFocusDebug(label, extra) {
+  if (typeof window !== "undefined" && window.VN_CHAR_DEBUG === false) return;
+  console.log("[CHAR DEBUG] " + label, getCharacterDebugSnapshot(extra));
+}
+
+// Плоская строка нужна для копирования из консоли без раскрытия вложенных объектов Chrome.
+function logCharacterFrameLine(label, values) {
+  if (typeof window !== "undefined" && window.VN_CHAR_DEBUG === false) return;
+  var data = values || {};
+  var parts = [];
+  Object.keys(data).forEach(function(key) {
+    var value = data[key];
+    if (typeof value === "number" && isFinite(value)) {
+      value = roundCharacterDebugNumber(value);
+    }
+    parts.push(key + "=" + value);
+  });
+  console.log("[CHAR FRAME] " + label + " " + parts.join(" "));
+}
+
 // Нормализует focusZ в долю 0..1 для 360-зумирования.
 function normalizeMediaFocusZ(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -3385,7 +3619,9 @@ startLicensedEngine();
 // Состояние сценария живёт в памяти движка; в localStorage пишем с дебаунсом (редко перезаписываем диск),
 // плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
 var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
-var VN_AUTOSAVE_PAYLOAD_VERSION = 2;
+// Версия поднята после смены модели позиционирования персонажей:
+// старые autosave-слоты могли восстановить прежний pos/focus и снова сдвинуть персонажа.
+var VN_AUTOSAVE_PAYLOAD_VERSION = 3;
 var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
 var vnAutosaveTimer = null;
 var vnAutosaveBgScrollRestorePending = null;
@@ -3713,8 +3949,11 @@ function captureStory360SnapshotForAutosave(bgScrollSnapshot) {
   return snapshot;
 }
 
-// Восстанавливает позицию left/right/center по inline left из setCharacter (35% / 65% / 50%).
+// Возвращает слот персонажа из runtime-состояния; inline left теперь хранит px и не подходит для автосейва.
 function inferCharPositionForAutosave(el) {
+  if (currentCharacterVisualOptions && currentCharacterVisualOptions.pos) {
+    return normalizeCharacterPosition(currentCharacterVisualOptions.pos);
+  }
   if (!el || !el.style) return "center";
   var left = String(el.style.left || "").trim();
   if (left.indexOf("35") !== -1) return "left";
@@ -3732,25 +3971,47 @@ function captureCharacterSnapshotForAutosave() {
     hidden: false,
     src: normalizeAssetUrl(srcRaw),
     charId: elChar.dataset && elChar.dataset.charId ? String(elChar.dataset.charId) : "",
-    pos: inferCharPositionForAutosave(elChar)
+    pos: inferCharPositionForAutosave(elChar),
+    focusX: currentCharacterVisualOptions && typeof currentCharacterVisualOptions.focusX === "number" ? currentCharacterVisualOptions.focusX : 0.5,
+    focusY: currentCharacterVisualOptions && typeof currentCharacterVisualOptions.focusY === "number" ? currentCharacterVisualOptions.focusY : 0.5,
+    scale: currentCharacterVisualOptions && typeof currentCharacterVisualOptions.scale === "number" ? currentCharacterVisualOptions.scale : 1
   };
 }
 
 // Показывает или скрывает персонажа после восстановления автосейва (до runCurrent).
 function applyAutosaveCharacterSnapshot(ch) {
+  logCharacterFocusDebug("autosave:applyCharacterSnapshot:start", {
+    snapshot: ch
+  });
   if (!ch || typeof ch !== "object") return;
   if (ch.hidden) {
     hideAllCharacters();
+    logCharacterFocusDebug("autosave:applyCharacterSnapshot:hidden", {
+      snapshot: ch
+    });
     return;
   }
   var src = typeof ch.src === "string" ? ch.src.trim() : "";
   if (!src) {
     hideAllCharacters();
+    logCharacterFocusDebug("autosave:applyCharacterSnapshot:noSrc", {
+      snapshot: ch
+    });
     return;
   }
   var pos = ch.pos === "left" || ch.pos === "right" || ch.pos === "center" ? ch.pos : "center";
   var cid = typeof ch.charId === "string" && ch.charId ? ch.charId : null;
-  setCharacter(src, pos, cid, null);
+  logCharacterFocusDebug("autosave:applyCharacterSnapshot:setCharacter", {
+    snapshot: ch,
+    normalizedPos: pos,
+    charId: cid
+  });
+  setCharacter(src, pos, cid, null, {
+    pos: pos,
+    focusX: typeof ch.focusX === "number" ? ch.focusX : 0.5,
+    focusY: typeof ch.focusY === "number" ? ch.focusY : 0.5,
+    scale: typeof ch.scale === "number" ? ch.scale : 1
+  });
 }
 
 // Сохраняет текущую BGM так, чтобы после F5 кнопка unmute могла возобновить тот же трек.
@@ -5629,18 +5890,65 @@ function canCrossfadePreparedBackground(preparedBg) {
   );
 }
 
+function getCharacterSlotRatio(pos) {
+  var normalizedPos = normalizeCharacterPosition(pos);
+  if (normalizedPos === "left") return 0.35;
+  if (normalizedPos === "right") return 0.65;
+  return 0.5;
+}
+
+// Применяет только слот персонажа; итоговые px-координаты пересчитываются общей функцией focus/scale.
 function applyCharacterVisualPosition(pos) {
-  if (!elChar) return;
-  if (pos === "left") {
-    elChar.style.left = "35%";
-    elChar.style.transform = "translateX(-50%)";
-  } else if (pos === "right") {
-    elChar.style.left = "65%";
-    elChar.style.transform = "translateX(-50%)";
-  } else {
-    elChar.style.left = "50%";
-    elChar.style.transform = "translateX(-50%)";
+  currentCharacterVisualOptions = normalizeCharacterFocusOptions(
+    { pos: pos },
+    currentCharacterVisualOptions
+  );
+  logCharacterFocusDebug("applyVisualPosition", {
+    inputPos: pos,
+    normalizedOptions: currentCharacterVisualOptions
+  });
+  adjustCharacterScale("applyVisualPosition");
+}
+
+// Применяет focusX/focusY/scale и сохраняет нормализованное состояние для автосейва и resize.
+function applyCharacterFocusOptions(options, reason) {
+  var beforeOptions = currentCharacterVisualOptions;
+  currentCharacterVisualOptions = normalizeCharacterFocusOptions(
+    options || {},
+    currentCharacterVisualOptions || CHARACTER_FOCUS_DEFAULTS
+  );
+  logCharacterFocusDebug("applyFocusOptions", {
+    reason: reason || "",
+    inputOptions: options || {},
+    beforeOptions: beforeOptions,
+    normalizedOptions: currentCharacterVisualOptions
+  });
+  adjustCharacterScale(reason || "applyFocusOptions");
+}
+
+// Сбрасывает inline-позиционирование персонажа при hide, чтобы старые px-координаты не мигали при следующей загрузке.
+function resetCharacterVisualLayout(reason) {
+  currentCharacterVisualOptions = normalizeCharacterFocusOptions(CHARACTER_FOCUS_DEFAULTS, CHARACTER_FOCUS_DEFAULTS);
+  if (elCharFrame) {
+    elCharFrame.classList.add("hidden");
+    elCharFrame.style.left = "50%";
+    elCharFrame.style.top = "";
+    elCharFrame.style.bottom = "0";
+    elCharFrame.style.width = "0px";
+    elCharFrame.style.height = "0px";
+    elCharFrame.style.transform = "translateX(-50%)";
+    elCharFrame.style.overflow = "hidden";
   }
+  if (!elChar) return;
+  elChar.classList.add("hidden");
+  elChar.style.left = "0";
+  elChar.style.top = "0";
+  elChar.style.bottom = "auto";
+  elChar.style.width = "100%";
+  elChar.style.height = "0px";
+  elChar.style.maxHeight = "none";
+  elChar.style.transform = "";
+  logCharacterFocusDebug("resetLayout", { reason: reason || "" });
 }
 
 // Готовит финальное состояние фона из команды bg, но не меняет DOM до общего swap.
@@ -5705,7 +6013,8 @@ function prepareCharacterVisualAction(action) {
     };
   }
 
-  var src = resolveAsset(null, action.charId, action.emotion);
+  var charAssetInfo = resolveCharacterAssetInfo(action.charId, action.emotion);
+  var src = charAssetInfo.file;
   if (!src) {
     console.log('[VISUAL BATCH] char skipped: image not found', action);
     return { kind: "skip", changesVisual: false };
@@ -5720,11 +6029,26 @@ function prepareCharacterVisualAction(action) {
   var currentSrc = normalizeAssetUrl(elChar ? (elChar.getAttribute("src") || elChar.currentSrc || elChar.src || "") : "");
   var currentCharId = elChar && elChar.dataset ? elChar.dataset.charId : "";
   var hidden = !isElementVisibleForVisualTransition(elChar);
+  var focusOptions = mergeCharacterFocusOptions(charAssetInfo.focusOptions, action);
+  var normalizedFocusOptions = normalizeCharacterFocusOptions(focusOptions, CHARACTER_FOCUS_DEFAULTS);
   var changesVisual =
     hidden ||
     !currentSrc ||
     !imageUrlMatchesStoryCandidates(currentSrc, src) ||
-    currentCharId !== action.charId;
+    currentCharId !== action.charId ||
+    !areCharacterFocusOptionsEqual(normalizedFocusOptions, currentCharacterVisualOptions);
+
+  logCharacterFocusDebug("prepareVisualAction", {
+    action: action,
+    resolvedSrc: src,
+    assetFocusOptions: charAssetInfo.focusOptions,
+    actionFocusOptions: focusOptions,
+    normalizedFocusOptions: normalizedFocusOptions,
+    currentSrc: currentSrc,
+    currentCharId: currentCharId,
+    hidden: hidden,
+    changesVisual: changesVisual
+  });
 
   return {
     kind: "show",
@@ -5732,6 +6056,7 @@ function prepareCharacterVisualAction(action) {
     normalizedSrc: normalizedSrc,
     pos: action.pos,
     charId: action.charId,
+    focusOptions: normalizedFocusOptions,
     changesVisual: changesVisual
   };
 }
@@ -5807,6 +6132,10 @@ function applyPreparedBackgroundVisualState(preparedBg) {
 function applyPreparedCharacterVisualState(preparedChar) {
   if (!preparedChar || !elChar) return;
 
+  logCharacterFocusDebug("visualBatch:apply:start", {
+    preparedChar: preparedChar
+  });
+
   __activeCharSeq++;
   elChar.onload = null;
   elChar.onerror = null;
@@ -5815,23 +6144,50 @@ function applyPreparedCharacterVisualState(preparedChar) {
     elChar.classList.add("hidden");
     elChar.src = "";
     elChar.removeAttribute("data-char-id");
-    elChar.style.height = "0px";
+    resetCharacterVisualLayout("visualBatch:hide");
     return;
   }
 
   if (preparedChar.kind !== "show") return;
   if (areAllImageCandidatesFailed(preparedChar.src)) return;
 
-  applyCharacterVisualPosition(preparedChar.pos);
+  applyCharacterFocusOptions(
+    mergeCharacterFocusOptions({ pos: preparedChar.pos }, preparedChar.focusOptions),
+    "visualBatch:applyFocus"
+  );
   if (preparedChar.charId) {
     elChar.dataset.charId = preparedChar.charId;
   }
   elChar.style.maxHeight = "none";
-  assignRasterImageToElement(elChar, preparedChar.src, {});
+  assignRasterImageToElement(elChar, preparedChar.src, {
+    onLoad: function(loadedUrl) {
+      logCharacterFocusDebug("visualBatch:onLoad", {
+        preparedChar: preparedChar,
+        loadedUrl: loadedUrl
+      });
+      // Финальный пересчет после фактической загрузки нужен, если первый RAF сработал раньше natural-размеров.
+      adjustCharacterScale("visualBatch:onLoad");
+      requestAnimationFrame(function() {
+        adjustCharacterScale("visualBatch:onLoad:raf");
+      });
+    },
+    onAllFailed: function(failedSrc) {
+      logCharacterFocusDebug("visualBatch:onAllFailed", {
+        preparedChar: preparedChar,
+        failedSrc: failedSrc
+      });
+    }
+  });
+  if (elCharFrame) {
+    elCharFrame.classList.remove("hidden");
+  }
   elChar.classList.remove("hidden");
-  adjustCharacterScale();
+  logCharacterFocusDebug("visualBatch:afterSrcVisible", {
+    preparedChar: preparedChar
+  });
+  adjustCharacterScale("visualBatch:afterSrcVisible");
   requestAnimationFrame(function() {
-    adjustCharacterScale();
+    adjustCharacterScale("visualBatch:raf");
   });
 }
 
@@ -6366,11 +6722,16 @@ function executeAction(action) {
         if (char?.images) {
           console.log('[Engine CHAR] Available emotions:', Object.keys(char.images));
           console.log('[Engine CHAR] Requested emotion:', action.emotion);
-          console.log('[Engine CHAR] Image path:', char.images[action.emotion]);
+          console.log('[Engine CHAR] Image path:', getCharacterImagePath(char.images[action.emotion]));
         }
       }
 
-      const src = resolveAsset(null, action.charId, action.emotion);
+      const charAssetInfo = resolveCharacterAssetInfo(action.charId, action.emotion);
+      const src = charAssetInfo.file;
+      const charFocusOptions = normalizeCharacterFocusOptions(
+        mergeCharacterFocusOptions(charAssetInfo.focusOptions, action),
+        CHARACTER_FOCUS_DEFAULTS
+      );
       console.log('[Engine CHAR] Resolved src:', src);
 
       console.log('[SCRIPT FLOW] char action -> setCharacter', {
@@ -6378,7 +6739,8 @@ function executeAction(action) {
         action: action,
         resolvedSrc: src,
         pos: action.pos,
-        charId: action.charId
+        charId: action.charId,
+        focusOptions: charFocusOptions
       });
 
       // Если картинка не найдена — не показываем, но и не скрываем
@@ -6404,10 +6766,12 @@ function executeAction(action) {
       const currentSrc = elChar.getAttribute('src');
       const currentCharId = elChar.dataset.charId;
       const isHidden = elChar.classList.contains('hidden');
+      const focusAlreadyApplied = areCharacterFocusOptionsEqual(charFocusOptions, currentCharacterVisualOptions);
 
-      // Если персонаж уже видим с той же эмоцией - не нужно асинхронно ждать
-      if (currentSrc === src && !isHidden) {
+      // Если персонаж уже видим с тем же src и теми же focus/scale, загрузка и пересчет не нужны.
+      if (imageUrlMatchesStoryCandidates(currentSrc, src) && !isHidden && focusAlreadyApplied) {
         console.log('[Engine CHAR] Character already visible, continuing');
+        firstScreenMetrics.waitingForCharacter = false;
         return false;
       }
 
@@ -6448,7 +6812,7 @@ function executeAction(action) {
         });
 
         runCurrent();
-      });
+      }, charFocusOptions);
 
       console.log('[SCRIPT FLOW] char action(new) paused until image load', {
         sceneId: state.sceneId,
@@ -12115,7 +12479,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   // CSS должен работать сам через переменные
 }
 
-function setCharacter(src, pos, charId, done) {
+function setCharacter(src, pos, charId, done, focusOptions) {
   
   // В функции setCharacter, в самом начале добавьте:
   console.log('[setCharacter] ТЕКУЩИЙ ИНДЕКС В НАЧАЛЕ:', state.actionIndex);
@@ -12123,7 +12487,7 @@ function setCharacter(src, pos, charId, done) {
   console.log('[Engine setCharacter] START - src:', src, 'charId:', charId);
 
   console.log('[Engine setCharacter] START ==========');
-  console.log('[Engine setCharacter] Параметры:', { src, pos, charId });
+  console.log('[Engine setCharacter] Параметры:', { src, pos, charId, focusOptions });
   console.log('[Engine setCharacter] elChar ДО:', {
     классы: elChar.classList.toString(),
     src: elChar.src,
@@ -12142,7 +12506,7 @@ function setCharacter(src, pos, charId, done) {
   }
 
 
-  console.log('[Engine setCharacter] Called with:', { src, pos, charId });
+  console.log('[Engine setCharacter] Called with:', { src, pos, charId, focusOptions });
   console.log('[Engine setCharacter] elChar element:', elChar);
 
   const seq = ++__charSeq;
@@ -12172,7 +12536,16 @@ function setCharacter(src, pos, charId, done) {
     charId,
     currentSrc: elChar ? elChar.getAttribute('src') : null,
     hidden: elChar ? elChar.classList.contains('hidden') : null,
-    currentHeight: elChar ? elChar.style.height : null
+    currentHeight: elChar ? elChar.style.height : null,
+    focusOptions: focusOptions
+  });
+  logCharacterFocusDebug("setCharacter:start", {
+    seq: seq,
+    src: src,
+    pos: pos,
+    charId: charId,
+    focusOptions: focusOptions,
+    normalizedSrc: normalizedSrc
   });
 
 
@@ -12190,23 +12563,26 @@ function setCharacter(src, pos, charId, done) {
     elChar.classList.add("hidden");
     elChar.src = "";
     elChar.removeAttribute('data-char-id'); // очищаем ID персонажа
+    resetCharacterVisualLayout();
 
     if (done) done();
     return;
   }
 
-  // Это команда show - показываем персонажа
-  // Позиционирование можно применить заранее
-  if (pos === "left") {
-    elChar.style.left = "35%";
-    elChar.style.transform = "translateX(-50%)";
-  } else if (pos === "right") {
-    elChar.style.left = "65%";
-    elChar.style.transform = "translateX(-50%)";
-  } else {
-    elChar.style.left = "50%";
-    elChar.style.transform = "translateX(-50%)";
-  }
+  // Позиция, focus и scale применяются от дефолта, чтобы новый show не наследовал частичные параметры прошлого персонажа.
+  var normalizedCharacterFocusOptions = normalizeCharacterFocusOptions(
+    mergeCharacterFocusOptions({ pos: pos }, focusOptions),
+    CHARACTER_FOCUS_DEFAULTS
+  );
+  logCharacterFocusDebug("setCharacter:beforeApplyFocus", {
+    seq: seq,
+    src: src,
+    pos: pos,
+    charId: charId,
+    focusOptions: focusOptions,
+    normalizedFocusOptions: normalizedCharacterFocusOptions
+  });
+  applyCharacterFocusOptions(normalizedCharacterFocusOptions, "setCharacter");
 
 
 
@@ -12218,6 +12594,17 @@ function setCharacter(src, pos, charId, done) {
   // Если это тот же персонаж с той же эмоцией и он уже видим
   if (imageUrlMatchesStoryCandidates(currentSrc, src) && !elChar.classList.contains('hidden')) {
     console.log('[Engine setCharacter] Same image already visible, scheduling done asynchronously');
+    if (elCharFrame) {
+      elCharFrame.classList.remove("hidden");
+    }
+    logCharacterFocusDebug("setCharacter:sameImageVisible", {
+      seq: seq,
+      src: src,
+      currentSrc: currentSrc,
+      charId: charId,
+      currentCharId: currentCharId,
+      normalizedFocusOptions: normalizedCharacterFocusOptions
+    });
     if (done) setTimeout(done, 0);  // ← асинхронный вызов
     return;
   }
@@ -12232,7 +12619,17 @@ function setCharacter(src, pos, charId, done) {
       onLoad: function() {
         console.log('[Engine setCharacter] Emotion changed successfully:', src);
         console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
-        adjustCharacterScale();
+        logCharacterFocusDebug("setCharacter:emotionOnLoad", {
+          seq: seq,
+          src: src,
+          charId: charId,
+          normalizedFocusOptions: normalizedCharacterFocusOptions
+        });
+        if (elCharFrame) {
+          elCharFrame.classList.remove("hidden");
+        }
+        elChar.classList.remove("hidden");
+        adjustCharacterScale("setCharacter:emotionOnLoad");
         if (done) {
           console.log('[setCharacter] onload - ВЫЗЫВАЕМ done callback');
           done();
@@ -12261,6 +12658,9 @@ function setCharacter(src, pos, charId, done) {
   }
 
   // Скрываем до полной подготовки (только для нового персонажа)
+  if (elCharFrame) {
+    elCharFrame.classList.add("hidden");
+  }
   elChar.classList.add("hidden");
   elChar.style.height = "0px";
   elChar.style.maxHeight = "none";
@@ -12283,6 +12683,13 @@ function setCharacter(src, pos, charId, done) {
         hiddenBeforeShow: elChar.classList.contains('hidden'),
         heightBeforeScale: elChar.style.height
       });
+      logCharacterFocusDebug("setCharacter:onLoad:beforeGuards", {
+        seq: seq,
+        activeSeq: __activeCharSeq,
+        src: src,
+        charId: charId,
+        normalizedFocusOptions: normalizedCharacterFocusOptions
+      });
 
       if (seq !== __activeCharSeq) {
         console.warn('[CHAR FLOW] stale onload ignored', {
@@ -12299,10 +12706,19 @@ function setCharacter(src, pos, charId, done) {
         return;
       }
 
+      if (elCharFrame) {
+        elCharFrame.classList.remove("hidden");
+      }
       elChar.classList.remove("hidden");
-      adjustCharacterScale();
+      adjustCharacterScale("setCharacter:onLoad");
       requestAnimationFrame(function() {
-        adjustCharacterScale();
+        adjustCharacterScale("setCharacter:onLoad:raf");
+        logCharacterFocusDebug("setCharacter:onLoad:afterRaf", {
+          seq: seq,
+          src: src,
+          charId: charId,
+          normalizedFocusOptions: normalizedCharacterFocusOptions
+        });
         if (done) done();
       });
     },
@@ -12322,6 +12738,7 @@ function setCharacter(src, pos, charId, done) {
       elChar.classList.add("hidden");
       elChar.removeAttribute('src');
       elChar.removeAttribute('data-char-id');
+      resetCharacterVisualLayout();
 
       if (done) done();
     }
@@ -13777,6 +14194,40 @@ function playSfx(src, vol) {
 //                   ASSET RESOLVE
 // =========================================================
 
+// Достает путь картинки персонажа из старого string-формата и из возможного object-формата ассета.
+function getCharacterImagePath(imageEntry) {
+  if (typeof imageEntry === "string") return imageEntry;
+  if (imageEntry && typeof imageEntry === "object") {
+    return imageEntry.file || imageEntry.src || imageEntry.image || "";
+  }
+  return "";
+}
+
+// Собирает путь и настройки фокуса персонажа из [char]: общие поля, параметры эмоции и object-запись картинки.
+function resolveCharacterAssetInfo(charId, emotion) {
+  var result = {
+    file: "",
+    focusOptions: {}
+  };
+
+  if (!charId || !STORY || !STORY.assets || !STORY.assets.characters) return result;
+
+  var char = STORY.assets.characters[charId];
+  var emotionKey = emotion || "neutral";
+  if (!char || !char.images) return result;
+
+  var imageEntry = char.images[emotionKey];
+  result.file = getCharacterImagePath(imageEntry);
+  result.focusOptions = mergeCharacterFocusOptions(result.focusOptions, char);
+  result.focusOptions = mergeCharacterFocusOptions(result.focusOptions, imageEntry);
+
+  if (char.imageOptions && char.imageOptions[emotionKey]) {
+    result.focusOptions = mergeCharacterFocusOptions(result.focusOptions, char.imageOptions[emotionKey]);
+  }
+
+  return result;
+}
+
 function resolveAsset(ref, charId, emotion) {
   console.log('[Engine resolveAsset] Called with:', { ref, charId, emotion });
   
@@ -13789,7 +14240,7 @@ function resolveAsset(ref, charId, emotion) {
     
     if (char && char.images) {
       console.log('[Engine resolveAsset] Available emotions:', Object.keys(char.images));
-      const imagePath = char.images[emotion];
+      const imagePath = getCharacterImagePath(char.images[emotion]);
       console.log('[Engine resolveAsset] Found image path:', imagePath);
       
       if (imagePath) {
@@ -14064,9 +14515,10 @@ window.addEventListener("resize", function() {
 // =========================================================
 // ДИНАМИЧЕСКОЕ МАСШТАБИРОВАНИЕ ПЕРСОНАЖЕЙ
 // =========================================================
-function adjustCharacterScale() {
+function adjustCharacterScale(reason) {
 
   console.log('[CHAR SCALE] start', {
+    reason: reason || "",
     src: elChar ? (elChar.currentSrc || elChar.src) : null,
     hidden: elChar ? elChar.classList.contains('hidden') : null,
     styleHeightBefore: elChar ? elChar.style.height : null,
@@ -14075,22 +14527,187 @@ function adjustCharacterScale() {
     windowHeight: window.innerHeight
   });
 
+  var frame = elCharFrame || document.getElementById('charFrame');
   var char = document.getElementById('charLayer');
   if (!char) return;
   
   var availableHeight = elNovelWindow ? elNovelWindow.clientHeight : window.innerHeight;
+  var availableWidth = elNovelWindow ? elNovelWindow.clientWidth : window.innerWidth;
+  var focusOptions = normalizeCharacterFocusOptions(
+    currentCharacterVisualOptions || CHARACTER_FOCUS_DEFAULTS,
+    CHARACTER_FOCUS_DEFAULTS
+  );
+  currentCharacterVisualOptions = focusOptions;
 
-  // Максимальная высота персонажа внутри окна новеллы
-  var targetCharHeight = Math.max(0, availableHeight * 0.85);
+  // Базовая рамка персонажа равна нижним 85% кадра; scale умножает уже эту рамку.
+  var baseCharHeight = Math.max(0, availableHeight * CHARACTER_WORK_HEIGHT_RATIO);
+  var targetCharHeight = baseCharHeight * focusOptions.scale;
+  var naturalWidth = char.naturalWidth || 0;
+  var naturalHeight = char.naturalHeight || 0;
+  logCharacterFocusDebug("scale:start", {
+    reason: reason || "",
+    availableWidth: availableWidth,
+    availableHeight: availableHeight,
+    baseCharHeight: baseCharHeight,
+    targetCharHeight: targetCharHeight,
+    naturalWidth: naturalWidth,
+    naturalHeight: naturalHeight
+  });
   
-  // Применяем к персонажу
+  if (!naturalWidth || !naturalHeight || !availableWidth || !availableHeight) {
+    // До загрузки natural-размеров держим стабильную рамку в слоте; onload пересчитает точную ширину по aspect ratio.
+    if (frame) {
+      frame.style.left = (getCharacterSlotRatio(focusOptions.pos) * 100) + "%";
+      frame.style.top = Math.max(0, availableHeight - baseCharHeight) + "px";
+      frame.style.bottom = "auto";
+      frame.style.width = "0px";
+      frame.style.height = targetCharHeight + "px";
+      frame.style.transform = "translateX(-50%)";
+      frame.style.overflow = "hidden";
+    }
+    char.style.left = "0";
+    char.style.top = "0";
+    char.style.bottom = "auto";
+    char.style.width = "100%";
+    char.style.height = "100%";
+    char.style.transform = "";
+    char.style.maxHeight = "none";
+    logCharacterFocusDebug("scale:fallbackNoNaturalSize", {
+      reason: reason || "",
+      availableWidth: availableWidth,
+      availableHeight: availableHeight,
+      focusOptions: focusOptions,
+      frame: frame ? {
+        left: frame.style.left,
+        top: frame.style.top,
+        width: frame.style.width,
+        height: frame.style.height
+      } : null,
+      baseCharHeight: baseCharHeight,
+      targetCharHeight: targetCharHeight
+    });
+    logCharacterFrameLine("fallbackNoNaturalSize", {
+      reason: reason || "",
+      scene: state ? state.sceneId : "",
+      index: state ? state.actionIndex : "",
+      pos: focusOptions.pos,
+      focusX: focusOptions.focusX,
+      focusY: focusOptions.focusY,
+      scale: focusOptions.scale,
+      availableWidth: availableWidth,
+      availableHeight: availableHeight,
+      frameLeft: frame ? frame.style.left : "",
+      frameTop: frame ? frame.style.top : "",
+      frameWidth: frame ? frame.style.width : "",
+      frameHeight: frame ? frame.style.height : "",
+      naturalWidth: naturalWidth,
+      naturalHeight: naturalHeight
+    });
+    return;
+  }
+
+  var baseCharWidth = naturalWidth * (baseCharHeight / naturalHeight);
+  var targetCharWidth = baseCharWidth * focusOptions.scale;
+  var targetScale = targetCharHeight / naturalHeight;
+  var slotCenterX = availableWidth * getCharacterSlotRatio(focusOptions.pos);
+  var workCenterY = availableHeight - baseCharHeight / 2;
+  var frameLeft = slotCenterX - targetCharWidth / 2;
+  var frameTop = workCenterY - targetCharHeight / 2;
+  var innerLeft = (0.5 - focusOptions.focusX) * targetCharWidth;
+  var innerTop = (0.5 - focusOptions.focusY) * baseCharHeight;
+  var imageViewportLeft = frameLeft + innerLeft;
+  var imageViewportTop = frameTop + innerTop;
+
+  // Рамка всегда считается по полным габаритам файла; focus двигает только изображение внутри этой рамки.
+  if (frame) {
+    frame.style.left = frameLeft + 'px';
+    frame.style.top = frameTop + 'px';
+    frame.style.bottom = 'auto';
+    frame.style.width = targetCharWidth + 'px';
+    frame.style.height = targetCharHeight + 'px';
+    // В px-режиме рамка уже получает точный left; CSS translateX(-50%) нужен только для стартового percent-fallback.
+    frame.style.transform = 'none';
+    frame.style.overflow = 'hidden';
+    char.style.left = innerLeft + 'px';
+    char.style.top = innerTop + 'px';
+  } else {
+    // Fallback для старой разметки без charFrame: картинка получает абсолютные координаты сразу в окне.
+    char.style.left = imageViewportLeft + 'px';
+    char.style.top = imageViewportTop + 'px';
+  }
+  char.style.bottom = 'auto';
+  char.style.width = targetCharWidth + 'px';
   char.style.height = targetCharHeight + 'px';
+  char.style.transform = '';
 
   console.log('[CHAR SCALE] applied', {
+    reason: reason || "",
     src: char.currentSrc || char.src,
-    targetCharHeight,
+    baseCharHeight: baseCharHeight,
+    targetCharWidth: targetCharWidth,
+    targetCharHeight: targetCharHeight,
+    focusOptions: focusOptions,
+    frameLeft: frameLeft,
+    frameTop: frameTop,
+    innerLeft: innerLeft,
+    innerTop: innerTop,
+    imageViewportLeft: imageViewportLeft,
+    imageViewportTop: imageViewportTop,
     styleHeightAfter: char.style.height,
     offsetHeight: char.offsetHeight
+  });
+  logCharacterFocusDebug("scale:applied", {
+    reason: reason || "",
+    availableWidth: availableWidth,
+    availableHeight: availableHeight,
+    baseCharHeight: baseCharHeight,
+    targetCharWidth: targetCharWidth,
+    targetCharHeight: targetCharHeight,
+    frame: {
+      left: frameLeft,
+      top: frameTop,
+      width: targetCharWidth,
+      height: targetCharHeight,
+      slotCenterX: slotCenterX,
+      workCenterY: workCenterY
+    },
+    innerImage: {
+      left: innerLeft,
+      top: innerTop,
+      width: targetCharWidth,
+      height: targetCharHeight,
+      viewportLeft: imageViewportLeft,
+      viewportTop: imageViewportTop
+    },
+    slotCenterX: slotCenterX,
+    workCenterY: workCenterY,
+    targetScale: targetScale
+  });
+  logCharacterFrameLine("applied", {
+    reason: reason || "",
+    scene: state ? state.sceneId : "",
+    index: state ? state.actionIndex : "",
+    src: char.currentSrc || char.src || "",
+    pos: focusOptions.pos,
+    focusX: focusOptions.focusX,
+    focusY: focusOptions.focusY,
+    scale: focusOptions.scale,
+    availableWidth: availableWidth,
+    availableHeight: availableHeight,
+    naturalWidth: naturalWidth,
+    naturalHeight: naturalHeight,
+    frameLeft: frameLeft,
+    frameTop: frameTop,
+    frameWidth: targetCharWidth,
+    frameHeight: targetCharHeight,
+    innerLeft: innerLeft,
+    innerTop: innerTop,
+    imageViewportLeft: imageViewportLeft,
+    imageViewportTop: imageViewportTop,
+    charRectLeft: getCharacterDebugRect(char) ? getCharacterDebugRect(char).left : "",
+    charRectTop: getCharacterDebugRect(char) ? getCharacterDebugRect(char).top : "",
+    frameRectLeft: frame && getCharacterDebugRect(frame) ? getCharacterDebugRect(frame).left : "",
+    frameRectTop: frame && getCharacterDebugRect(frame) ? getCharacterDebugRect(frame).top : ""
   });
 
   // Сбрасываем max-height, чтобы не было конфликтов

@@ -721,21 +721,29 @@
   }
 
   /**
-   * По X повторяет computeFocusedMediaPosition из движка: выбранная точка исходника стремится к центру кадра.
+   * По X персонаж считается только от полной рамки изображения; прозрачность файла не влияет на focus.
    */
   function focusXToClampedLeft(focusX, metrics) {
-    if (!metrics || metrics.renderedWidth <= metrics.rectWidth) {
+    if (!metrics) return 0;
+    var fx = normalizeFocus(focusX);
+    if (normalizePreviewMode(metrics.previewMode) === PREVIEW_MODE_CHARACTER) {
+      return metrics.rectWidth / 2 - fx * metrics.renderedWidth;
+    }
+    if (metrics.renderedWidth <= metrics.rectWidth) {
       return (metrics.rectWidth - (metrics ? metrics.renderedWidth : 0)) / 2;
     }
-    var fx = normalizeFocus(focusX);
     var desiredHiddenLeft = fx * metrics.renderedWidth - metrics.rectWidth / 2;
     return -clamp(desiredHiddenLeft, 0, metrics.hiddenWidth);
   }
 
   /**
-   * Обратный расчёт для перетаскивания по X: смещение возвращается в композиционный focusX движка.
+   * Обратный расчёт для перетаскивания по X: у персонажа восстанавливаем точку исходника, которая стоит в центре слота.
    */
   function clampedLeftToFocusX(left, metrics) {
+    if (metrics && normalizePreviewMode(metrics.previewMode) === PREVIEW_MODE_CHARACTER) {
+      if (!metrics.renderedWidth || metrics.renderedWidth <= 1) return 0.5;
+      return clamp((metrics.rectWidth / 2 - left) / metrics.renderedWidth, 0, 1);
+    }
     if (!metrics || metrics.renderedWidth <= metrics.rectWidth || metrics.hiddenWidth <= 1) return 0.5;
     var hiddenLeft = clamp(-left, 0, metrics.hiddenWidth);
     return clamp((hiddenLeft + metrics.rectWidth / 2) / metrics.renderedWidth, 0, 1);
@@ -771,12 +779,19 @@
    */
   function getFocusPlacement(mediaEl, mediaW, mediaH, rectW, rectH, focusX, focusY, scaleVal, useContain, previewMode) {
     var m = getRenderedMetrics(mediaEl, mediaW, mediaH, rectW, rectH, scaleVal, useContain, previewMode);
-    return {
+    var placement = {
       width: m.renderedWidth,
       height: m.renderedHeight,
       left: focusXToClampedLeft(focusX, m),
       top: focusYToTop(focusY, m)
     };
+    if (normalizePreviewMode(previewMode) === PREVIEW_MODE_CHARACTER) {
+      placement.frameLeft = rectW / 2 - m.renderedWidth / 2;
+      placement.frameTop = rectH - m.workHeight / 2 - m.renderedHeight / 2;
+      placement.frameWidth = m.renderedWidth;
+      placement.frameHeight = m.renderedHeight;
+    }
+    return placement;
   }
 
   /**
@@ -785,11 +800,15 @@
   function syncMediaBounds(mediaEl, placement, mirror) {
     var bounds = mediaEl && mediaEl._boundsEl;
     if (!bounds || !placement) return;
+    var boundsLeft = placement.frameLeft !== undefined ? placement.frameLeft : placement.left;
+    var boundsTop = placement.frameTop !== undefined ? placement.frameTop : placement.top;
+    var boundsWidth = placement.frameWidth !== undefined ? placement.frameWidth : placement.width;
+    var boundsHeight = placement.frameHeight !== undefined ? placement.frameHeight : placement.height;
     bounds.style.display = 'block';
-    bounds.style.left = placement.left + 'px';
-    bounds.style.top = placement.top + 'px';
-    bounds.style.width = placement.width + 'px';
-    bounds.style.height = placement.height + 'px';
+    bounds.style.left = boundsLeft + 'px';
+    bounds.style.top = boundsTop + 'px';
+    bounds.style.width = boundsWidth + 'px';
+    bounds.style.height = boundsHeight + 'px';
     bounds.style.transformOrigin = '50% 50%';
     bounds.style.transform = mirror ? 'scaleX(-1)' : '';
   }
@@ -813,11 +832,16 @@
     }
     if (!placement || !rectW || !rectH) return;
 
+    var boundsLeft = placement.frameLeft !== undefined ? placement.frameLeft : placement.left;
+    var boundsTop = placement.frameTop !== undefined ? placement.frameTop : placement.top;
+    var boundsWidth = placement.frameWidth !== undefined ? placement.frameWidth : placement.width;
+    var boundsHeight = placement.frameHeight !== undefined ? placement.frameHeight : placement.height;
+
     deltas = {
-      top: topLimit - placement.top,
-      right: placement.left + placement.width - rectW,
-      bottom: placement.top + placement.height - rectH,
-      left: -placement.left
+      top: topLimit - boundsTop,
+      right: boundsLeft + boundsWidth - rectW,
+      bottom: boundsTop + boundsHeight - rectH,
+      left: -boundsLeft
     };
 
     for (var j = 0; j < indicators.length; j += 1) {
@@ -852,6 +876,16 @@
     el.style.objectPosition = '50% 50%';
     el.style.transformOrigin = '50% 50%';
     el.style.transform = mirror ? 'scaleX(-1)' : '';
+    if (normalizePreviewMode(previewMode) === PREVIEW_MODE_CHARACTER && p.frameLeft !== undefined) {
+      // В режиме персонажа предпросмотр повторяет движок: стабильная рамка режет смещённое внутри изображение.
+      var clipTop = Math.max(0, p.frameTop - p.top);
+      var clipLeft = Math.max(0, p.frameLeft - p.left);
+      var clipRight = Math.max(0, (p.left + p.width) - (p.frameLeft + p.frameWidth));
+      var clipBottom = Math.max(0, (p.top + p.height) - (p.frameTop + p.frameHeight));
+      el.style.clipPath = 'inset(' + clipTop + 'px ' + clipRight + 'px ' + clipBottom + 'px ' + clipLeft + 'px)';
+    } else {
+      el.style.clipPath = '';
+    }
     syncMediaBounds(el, p, mirror);
     return p;
   }
@@ -868,7 +902,11 @@
     var p = getFocusPlacement(mediaEl, iw, ih, dw, dh, focusX, focusY, scaleVal, useContain, previewMode);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, dw, dh);
+    if (normalizePreviewMode(previewMode) === PREVIEW_MODE_CHARACTER && p.frameLeft !== undefined) {
+      ctx.rect(p.frameLeft, p.frameTop, p.frameWidth, p.frameHeight);
+    } else {
+      ctx.rect(0, 0, dw, dh);
+    }
     ctx.clip();
     try {
       if (mirror) {

@@ -1000,18 +1000,29 @@ body {
   cursor: grabbing;
 }
 
-/* Персонаж */
-.char {
+/* Рамка персонажа: стабильная область полного изображения, внутри которой двигается сам спрайт. */
+.char-frame {
   position: absolute;
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
-  width: auto;
-  height: auto;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Персонаж */
+.char {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   object-position: center bottom;
   filter: drop-shadow(0 var(--char-shadow-y) var(--char-shadow-blur) var(--char-shadow-color));
-  z-index: 3;
   pointer-events: none;
   transition: opacity var(--visualTransitionMs, 110ms) ease;
 }
@@ -3065,6 +3076,7 @@ body {
 #bgVideoLayer,
 .story-video-overlay,
 .story-video-media,
+.char-frame,
 .char,
 .blur-bg-layer,
 .blur-bg-image,

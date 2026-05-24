@@ -1172,6 +1172,75 @@ function parseMediaFocusYOption(rawValue, lineNumber, line) {
   return null;
 }
 
+// Разбирает вертикальный фокус персонажа: 0 — нижняя граница рабочей зоны, 1 — верхняя красная граница.
+function parseCharacterFocusYOption(rawValue, lineNumber, line) {
+  var rawText = String(rawValue === undefined ? "" : rawValue).trim();
+  var value = rawText.toLowerCase();
+
+  if (value === "bottom" || value === "end") return 0;
+  if (value === "center" || value === "middle") return 0.5;
+  if (value === "top" || value === "start") return 1;
+
+  if (value !== "" && !isNaN(Number(value))) {
+    var numeric = Number(value);
+    if (numeric >= 0 && numeric <= 1) return numeric;
+    if (numeric >= 0 && numeric <= 100) return numeric / 100;
+  }
+
+  if (isSafeVariableReferenceValue(rawText)) return rawText;
+
+  addParseError(lineNumber, line, `Invalid character focusY value "${rawValue}". Use bottom/center/top, 0..1, 0..100 or variable name.`, true);
+  return null;
+}
+
+// Проверяет scale для медиа и персонажей: положительное число или имя переменной сценария.
+function parsePositiveScaleOption(rawValue, lineNumber, line, contextLabel) {
+  var parsedScale = Number(rawValue);
+  if (!isFinite(parsedScale) || parsedScale <= 0) {
+    if (isSafeVariableReferenceValue(rawValue)) {
+      return String(rawValue).trim();
+    }
+    addParseError(lineNumber, line, `Invalid ${contextLabel || "media"} scale "${rawValue}". Use a positive number or variable name.`, true);
+    return null;
+  }
+  return parsedScale;
+}
+
+// Собирает focusX/focusY/scale персонажа в целевой объект; focusY у персонажа считается от нижней рабочей границы вверх.
+function applyCharacterFocusArgs(target, args, lineNumber, line) {
+  if (!target || !args) return true;
+
+  var focusXRaw = args.focusX !== undefined ? args.focusX : args.focusx;
+  if (focusXRaw !== undefined) {
+    var parsedFocusX = parseMediaFocusOption(focusXRaw, lineNumber, line);
+    if (parsedFocusX === null) return false;
+    target.focusX = parsedFocusX;
+  }
+
+  var focusYRaw = args.focusY !== undefined ? args.focusY : args.focusy;
+  if (focusYRaw !== undefined) {
+    var parsedFocusY = parseCharacterFocusYOption(focusYRaw, lineNumber, line);
+    if (parsedFocusY === null) return false;
+    target.focusY = parsedFocusY;
+  }
+
+  if (args.scale !== undefined) {
+    var parsedScale = parsePositiveScaleOption(args.scale, lineNumber, line, "character");
+    if (parsedScale === null) return false;
+    target.scale = parsedScale;
+  }
+
+  return true;
+}
+
+// Помогает не создавать пустые option-объекты, если строка [char]/show не задает фокус или scale.
+function hasCharacterFocusArgs(args) {
+  return !!(
+    args &&
+    (args.focusX !== undefined || args.focusx !== undefined || args.focusY !== undefined || args.focusy !== undefined || args.scale !== undefined)
+  );
+}
+
 // Нормализует стартовый zoom для 360-фона в долю 0..1.
 // Значение можно задавать как 0..1 или как проценты 0..100.
 function parseMediaFocusZOption(rawValue, lineNumber, line) {
@@ -2016,9 +2085,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (args.name !== undefined) char.name = args.name;
       if (args.color !== undefined) char.color = args.color;
 
+      var charFocusTarget = char;
       if (args.file !== undefined) {
         var emotion = args.emotion || 'neutral';
         char.images[emotion] = args.file;
+        if (hasCharacterFocusArgs(args)) {
+          if (!char.imageOptions) char.imageOptions = {};
+          if (!char.imageOptions[emotion]) char.imageOptions[emotion] = {};
+          charFocusTarget = char.imageOptions[emotion];
+        }
+      } else if (args.emotion !== undefined && hasCharacterFocusArgs(args)) {
+        // Настройки без file позволяют дописать фокус к уже объявленной эмоции персонажа.
+        var focusEmotion = args.emotion || 'neutral';
+        if (!char.imageOptions) char.imageOptions = {};
+        if (!char.imageOptions[focusEmotion]) char.imageOptions[focusEmotion] = {};
+        charFocusTarget = char.imageOptions[focusEmotion];
+      }
+
+      if (hasCharacterFocusArgs(args) && !applyCharacterFocusArgs(charFocusTarget, args, lineNumber, line)) {
+        return true;
       }
 
       return true;
@@ -2128,7 +2213,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         
         if (keyParts.length >= 2) {
             const charId = keyParts[0]; // anna, igor
-            let propType = keyParts[1]; // image, name, color
+            let propType = String(keyParts[1] || '').toLowerCase(); // image, name, color, focusx, focusy, scale
             
             if (propType === 'file' || propType === 'src') {
               propType = 'image';
@@ -2162,6 +2247,25 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
             } else if (propType === 'color') {
                 story.assets.characters[charId].color = value;
                 console.log(`[Loader CHAR] Added color for ${charId}: ${value}`);
+            } else if (propType === 'focusx' || propType === 'focusy' || propType === 'scale') {
+                var oldStyleFocusArgs = {};
+                var oldStyleFocusTarget = story.assets.characters[charId];
+                var oldStyleFocusEmotion = keyParts[2] || null;
+                oldStyleFocusArgs[propType] = value;
+                if (oldStyleFocusEmotion) {
+                    // В старом формате "anna focusx smile = 0.5" задает параметры конкретной эмоции.
+                    if (!story.assets.characters[charId].imageOptions) {
+                        story.assets.characters[charId].imageOptions = {};
+                    }
+                    if (!story.assets.characters[charId].imageOptions[oldStyleFocusEmotion]) {
+                        story.assets.characters[charId].imageOptions[oldStyleFocusEmotion] = {};
+                    }
+                    oldStyleFocusTarget = story.assets.characters[charId].imageOptions[oldStyleFocusEmotion];
+                }
+                if (!applyCharacterFocusArgs(oldStyleFocusTarget, oldStyleFocusArgs, lineNumber, line)) {
+                    return;
+                }
+                console.log(`[Loader CHAR] Added focus option for ${charId}: ${propType} = ${value}`);
             }
         } else {
             console.warn(`[Loader CHAR] Invalid character format: ${key}`);
@@ -2892,27 +2996,57 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     
     // show [имя] [эмоция]
     if (cleanLine.startsWith('show ')) {
-      const parts = cleanLine.substring(5).trim().split(' ');
+      const parts = cleanLine.substring(5).trim().split(/\s+/);
       const charId = parts[0]; // anna, igor
 
       if (!charId) {
         addParseError(lineNumber, line, "No character name specified after 'show'", true);
       }
       
-      const emotion = parts[1] || 'neutral'; // neutral, smile и т.д.
+      var emotion = 'neutral'; // neutral, smile и т.д.
+      var paramStart = 1;
+      if (parts[1] && parts[1].indexOf('=') === -1) {
+        emotion = parts[1];
+        paramStart = 2;
+      }
+
+      var showParamTokens = parts.slice(paramStart);
+      var showParams = parseActionParams(showParamTokens);
+      var showPos = 'center';
+      for (var showTokenIndex = 0; showTokenIndex < showParamTokens.length; showTokenIndex++) {
+        var showBareToken = String(showParamTokens[showTokenIndex] || '').trim().toLowerCase();
+        if (showBareToken === 'left' || showBareToken === 'right' || showBareToken === 'center') {
+          showPos = showBareToken;
+        }
+      }
+      if (showParams.pos !== undefined) {
+        var explicitShowPos = String(showParams.pos || '').trim().toLowerCase();
+        if (explicitShowPos === 'left' || explicitShowPos === 'right' || explicitShowPos === 'center') {
+          showPos = explicitShowPos;
+        } else {
+          addParseError(lineNumber, line, `Invalid show pos "${showParams.pos}". Use left, center or right.`, true);
+          return;
+        }
+      }
       
       // Проверяем, существует ли персонаж в ассетах
       if (charId && story.assets && story.assets.characters && !story.assets.characters[charId]) {
         addParseError(lineNumber, line, `The character "${charId}" is not defined in the [char] section`, true);
       }
 
-      actions.push({
+      var charAction = {
         type: 'char',
         charId: charId || "unknown",
         emotion: emotion,
         src: null, // будет заполнено в executeAction через resolveAsset
-        pos: 'center'
-      });
+        pos: showPos
+      };
+      // Параметры show переопределяют настройки из [char] только для текущего показа.
+      if (!applyCharacterFocusArgs(charAction, showParams, lineNumber, line)) {
+        return;
+      }
+
+      actions.push(charAction);
       return;
     }
     
