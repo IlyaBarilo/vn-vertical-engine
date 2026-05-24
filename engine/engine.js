@@ -5146,10 +5146,7 @@ function resolveSafeIdentifier(name, vars) {
   if (name === "null") return null;
   if (name === "undefined") return undefined;
 
-  if (name === "window" || name === "document" || name === "globalThis" || name === "this") {
-    throw new Error("Global access is not allowed: " + name);
-  }
-  if (name === "__proto__" || name === "prototype" || name === "constructor") {
+  if (isUnsafeSafeExpressionIdentifier(name)) {
     throw new Error("Unsafe identifier is not allowed: " + name);
   }
 
@@ -5171,6 +5168,155 @@ function toFiniteNumber(value, context) {
 // Отдельная функция упрощает единые правила truthy/falsy для логических операторов.
 function isTruthyValue(value) {
   return !!value;
+}
+
+// Служебные литералы безопасного выражения не являются переменными сценария и не участвуют в проверке наличия vars.
+function isSafeExpressionLiteralIdentifier(name) {
+  return name === "true" || name === "false" || name === "null" || name === "undefined";
+}
+
+// Глобальные и прототипные имена запрещены в условиях так же, как в основном evaluator без eval.
+function isUnsafeSafeExpressionIdentifier(name) {
+  return (
+    name === "window" ||
+    name === "document" ||
+    name === "globalThis" ||
+    name === "this" ||
+    name === "__proto__" ||
+    name === "prototype" ||
+    name === "constructor"
+  );
+}
+
+// Проверяет грамматику безопасного выражения и собирает имена переменных без вычисления выражения.
+function validateAndCollectSafeExpressionIdentifiers(expression) {
+  var expr = String(expression || "").trim();
+  var identifiers = {};
+  if (!expr) {
+    return { ok: false, identifiers: [], error: "Empty expression" };
+  }
+
+  try {
+    var tokens = tokenizeSafeExpression(expr);
+    var cursor = 0;
+
+    function current() {
+      return tokens[cursor];
+    }
+
+    function consume(type, value) {
+      var token = current();
+      if (!token || token.type !== type || (value !== undefined && token.value !== value)) {
+        var actual = token ? (token.type + ":" + token.value) : "EOF";
+        throw new Error("Unexpected token: " + actual);
+      }
+      cursor += 1;
+      return token;
+    }
+
+    function match(type, value) {
+      var token = current();
+      if (!token || token.type !== type) return false;
+      if (value !== undefined && token.value !== value) return false;
+      cursor += 1;
+      return true;
+    }
+
+    function parseExpression() { parseLogicalOr(); }
+    function parseLogicalOr() {
+      parseLogicalAnd();
+      while (match("operator", "||")) parseLogicalAnd();
+    }
+    function parseLogicalAnd() {
+      parseEquality();
+      while (match("operator", "&&")) parseEquality();
+    }
+    function parseEquality() {
+      parseComparison();
+      while (true) {
+        if (match("operator", "==") || match("operator", "!=") || match("operator", "===") || match("operator", "!==")) {
+          parseComparison();
+        } else {
+          break;
+        }
+      }
+    }
+    function parseComparison() {
+      parseTerm();
+      while (true) {
+        if (match("operator", ">") || match("operator", ">=") || match("operator", "<") || match("operator", "<=")) {
+          parseTerm();
+        } else {
+          break;
+        }
+      }
+    }
+    function parseTerm() {
+      parseFactor();
+      while (true) {
+        if (match("operator", "+") || match("operator", "-")) {
+          parseFactor();
+        } else {
+          break;
+        }
+      }
+    }
+    function parseFactor() {
+      parseUnary();
+      while (true) {
+        if (match("operator", "*") || match("operator", "/") || match("operator", "%")) {
+          parseUnary();
+        } else {
+          break;
+        }
+      }
+    }
+    function parseUnary() {
+      if (match("operator", "!") || match("operator", "-")) {
+        parseUnary();
+        return;
+      }
+      parsePrimary();
+    }
+    function parsePrimary() {
+      var token = current();
+      if (!token) throw new Error("Unexpected end of expression");
+
+      if (match("paren", "(")) {
+        parseExpression();
+        consume("paren", ")");
+        return;
+      }
+
+      if (token.type === "number" || token.type === "string") {
+        cursor += 1;
+        return;
+      }
+
+      if (token.type === "identifier") {
+        if (isUnsafeSafeExpressionIdentifier(token.value)) {
+          throw new Error("Unsafe identifier is not allowed: " + token.value);
+        }
+        if (!isSafeExpressionLiteralIdentifier(token.value)) {
+          identifiers[token.value] = true;
+        }
+        cursor += 1;
+        return;
+      }
+
+      throw new Error("Unexpected token: " + token.type + ":" + token.value);
+    }
+
+    parseExpression();
+    consume("eof");
+    return { ok: true, identifiers: Object.keys(identifiers).sort(), error: "" };
+  } catch (e) {
+    return {
+      ok: false,
+      identifiers: [],
+      error: e && e.message ? e.message : String(e)
+    };
+  }
 }
 
 // =========================================================
@@ -6496,7 +6642,7 @@ function applyBg360Marks(action) {
 
   bg360MarksRuntime.bgId = bgId;
   bg360MarksRuntime.lines = !!(action && action.lines);
-  bg360MarksRuntime.marks = marks.map(function (m) {
+  var normalizedMarks = marks.map(function (m) {
     var targetSceneRaw = m && m.targetScene !== undefined && m.targetScene !== null
       ? String(m.targetScene).trim()
       : "";
@@ -6509,11 +6655,13 @@ function applyBg360Marks(action) {
       kind: normalizeBg360MarkKind(m.kind || m.type || "walk"),
       label: String(labelRaw || "").trim(),
       text: String(textRaw || "").trim(),
+      visibleIf: getStory360MarkVisibleIf(m),
       // Пустая сцена означает "переход не задан на метке", дальше отработает обычная логика.
       targetScene: targetSceneRaw || null,
       target: m && m.target ? m.target : null
     };
   });
+  bg360MarksRuntime.marks = filterStory360VisibleMarks(normalizedMarks, "bg360marks " + bgId);
   bg360MarksRuntime.locked = false;
   // Интерактивность включится только внутри walk360.
   bg360MarksRuntime.interactive = false;
@@ -6564,6 +6712,90 @@ function readStory360Field(source, fieldNames) {
     if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
   }
   return undefined;
+}
+
+// Приводит условие видимости метки scene360 к строке: пустое значение означает, что условия нет.
+function normalizeStory360VisibleIf(value) {
+  return String(value === undefined || value === null ? "" : value).trim();
+}
+
+// Старые списки переменных читаем как AND-условие, чтобы ручные/старые story360 продолжали работать предсказуемо.
+function buildStory360VisibleIfFromLegacyVars(value) {
+  if (value === undefined || value === null) return "";
+  var items = Array.isArray(value) ? value : String(value).split(/[,\s]+/);
+  var names = [];
+  for (var i = 0; i < items.length; i++) {
+    var name = String(items[i] || "").trim();
+    if (name) names.push(name);
+  }
+  return names.join(" && ");
+}
+
+// Читает условие видимости метки из visibleIf или совместимых старых полей vars/variables/var.
+function getStory360MarkVisibleIf(mark) {
+  if (!mark || typeof mark !== "object") return "";
+  var raw = readStory360Field(mark, ["visibleIf", "showIf", "condition"]);
+  var explicit = normalizeStory360VisibleIf(raw);
+  if (explicit) return explicit;
+
+  var legacyVars = readStory360Field(mark, ["vars", "variables", "var"]);
+  return normalizeStory360VisibleIf(buildStory360VisibleIfFromLegacyVars(legacyVars));
+}
+
+// Для visibleIf принимаем только true/false и числовые 1/0; остальные результаты считаются ложными.
+function coerceStory360VisibleIfResult(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (typeof value === "number" && isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return false;
+}
+
+// Вычисляет visibleIf без eval: если хотя бы одной переменной нет в vars, условие считается отсутствующим и метка показывается.
+function shouldShowStory360MarkByVisibleIf(mark, vars, contextLabel) {
+  var expression = getStory360MarkVisibleIf(mark);
+  if (!expression) return true;
+
+  var parsed = validateAndCollectSafeExpressionIdentifiers(expression);
+  if (!parsed.ok) {
+    console.warn("[story360] invalid visibleIf; mark hidden", {
+      context: contextLabel || "",
+      markId: mark && mark.id,
+      visibleIf: expression,
+      error: parsed.error
+    });
+    return false;
+  }
+
+  var names = parsed.identifiers || [];
+  for (var i = 0; i < names.length; i++) {
+    var key = names[i];
+    if (!vars || !Object.prototype.hasOwnProperty.call(vars, key)) {
+      return true;
+    }
+  }
+
+  try {
+    return coerceStory360VisibleIfResult(evaluateSafeExpression(expression, vars || {}));
+  } catch (e) {
+    console.warn("[story360] visibleIf evaluation failed; mark hidden", {
+      context: contextLabel || "",
+      markId: mark && mark.id,
+      visibleIf: expression,
+      error: e && e.message ? e.message : String(e)
+    });
+    return false;
+  }
+}
+
+// Отбрасывает только те метки, для которых существующее и безопасное условие явно дало false/0.
+function filterStory360VisibleMarks(marks, contextLabel) {
+  if (!Array.isArray(marks)) return [];
+  return marks.filter(function (mark) {
+    return shouldShowStory360MarkByVisibleIf(mark, state && state.vars ? state.vars : {}, contextLabel);
+  });
 }
 
 // Читает focus.* из entry или панорамы, если значение не задано плоским полем focusX/focusY/focusZ.
@@ -6945,6 +7177,7 @@ function normalizeStory360Marks(spaceId, panorama) {
       kind: kind,
       label: String(readStory360Field(mark, ["label", "title", "name"]) || "").trim(),
       text: String(readStory360Field(mark, ["text"]) || "").trim(),
+      visibleIf: getStory360MarkVisibleIf(mark),
       target: normalizeStory360Target(mark, spaceId)
     });
   }
@@ -7144,6 +7377,7 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
     options = applyStory360RestoreViewToMediaOptions(options, restoreViewOverride);
   }
   var marksNormalized = normalizeStory360Marks(spaceId, panorama);
+  var marksVisible = filterStory360VisibleMarks(marksNormalized, "story360 " + String(spaceId || "") + "." + String(panoramaId || ""));
 
   function commitGoto360StateAndStartLoad(isParallelZoom) {
     state.currentBgId = media.bgId;
@@ -7155,13 +7389,13 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
     if (!isParallelZoom) {
       bg360MarksRuntime.bgId = state.currentBgId;
       bg360MarksRuntime.lines = readStory360Field(panorama, ["lines"]) !== false;
-      bg360MarksRuntime.marks = marksNormalized;
+      bg360MarksRuntime.marks = marksVisible;
       bg360MarksRuntime.locked = false;
       bg360MarksRuntime.interactive = true;
     } else {
       bg360Runtime.pendingGoto360MarksPayload = {
         lines: readStory360Field(panorama, ["lines"]) !== false,
-        marks: marksNormalized
+        marks: marksVisible
       };
     }
 
@@ -7195,11 +7429,12 @@ function applyGoto360Panorama(spaceId, panoramaId, entryId, sourcePanoramaIdForE
         entryFocusAsPanoramaUv: !!panorama.entryFocusAsPanoramaUv
       });
       console.info(
-        "метки на новой панораме (id / uv / target)",
-        marksNormalized.map(function (m) {
+        "метки на новой панораме (id / uv / target / visibleIf)",
+        marksVisible.map(function (m) {
           return {
             id: m.id,
             uv: [m.x, m.y],
+            visibleIf: m.visibleIf || "",
             targetType: m.target ? m.target.type : null,
             targetPanorama: m.target && m.target.type === "360" ? m.target.panoramaId : null,
             targetEntryId: m.target && m.target.type === "360" ? m.target.entryId : null
@@ -13415,6 +13650,148 @@ function openStatsGame(item, difficulty) {
 }
 
 
+// Вспомогательные функции для статистики и проверки story360.
+// Собирает имена переменных, которые сценарий объявляет или может записать во время выполнения.
+function collectScenarioVariableNames(story) {
+  var names = {};
+
+  function addName(name) {
+    var key = String(name || "").trim();
+    if (isSafeScenarioVariableName(key)) names[key] = true;
+  }
+
+  if (story && story.vars && typeof story.vars === "object") {
+    Object.keys(story.vars).forEach(addName);
+  }
+
+  function visitActions(actions) {
+    if (!Array.isArray(actions)) return;
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      if (!action || typeof action !== "object") continue;
+
+      if (action.type === "set" && typeof action.expression === "string") {
+        var eqPos = action.expression.indexOf("=");
+        if (eqPos > 0) addName(action.expression.substring(0, eqPos));
+      }
+
+      if (action.result) addName(action.result);
+      if (action.resultVar) addName(action.resultVar);
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var c = 0; c < action.choices.length; c++) {
+          var choice = action.choices[c];
+          if (!choice || typeof choice !== "object") continue;
+          if (choice.set && typeof choice.set === "object") {
+            Object.keys(choice.set).forEach(addName);
+          }
+          visitActions(choice.actions);
+        }
+      }
+
+      if (action.type === "if_block") {
+        if (Array.isArray(action.branches)) {
+          for (var b = 0; b < action.branches.length; b++) {
+            visitActions(action.branches[b] && action.branches[b].actions);
+          }
+        }
+        visitActions(action.elseActions);
+      }
+    }
+  }
+
+  var scenes = story && story.scenes ? story.scenes : [];
+  for (var s = 0; s < scenes.length; s++) {
+    visitActions(scenes[s] && scenes[s].actions);
+  }
+
+  return names;
+}
+
+// Проверяет условия visibleIf в story360 для статистики; отсутствующие переменные фиксируются как справка, а не как ошибка.
+function analyzeStory360VisibilityConditions(story) {
+  var analysis = {
+    conditionCount: 0,
+    variables: {},
+    missingVariables: {},
+    invalidConditions: []
+  };
+  var knownVars = collectScenarioVariableNames(story);
+  var root = getStory360Root();
+  if (!root || !root.spaces || typeof root.spaces !== "object") return analysis;
+
+  var spaceIds = Object.keys(root.spaces).sort();
+  for (var si = 0; si < spaceIds.length; si++) {
+    var spaceId = spaceIds[si];
+    var panoramas = getStory360Panoramas(root.spaces[spaceId]);
+    if (!panoramas) continue;
+
+    var panoramaIds = Object.keys(panoramas).sort();
+    for (var pi = 0; pi < panoramaIds.length; pi++) {
+      var panoramaId = panoramaIds[pi];
+      var panorama = panoramas[panoramaId];
+      var marks = panorama && (panorama.marks || panorama.hotspots || panorama.points);
+      if (!Array.isArray(marks)) continue;
+
+      for (var mi = 0; mi < marks.length; mi++) {
+        var mark = marks[mi] || {};
+        var visibleIf = getStory360MarkVisibleIf(mark);
+        if (!visibleIf) continue;
+
+        analysis.conditionCount++;
+        var markId = String(mark.id || ("mark" + (mi + 1)));
+        var ref = String(spaceId) + "." + String(panoramaId) + "#" + markId;
+        var parsed = validateAndCollectSafeExpressionIdentifiers(visibleIf);
+        if (!parsed.ok) {
+          analysis.invalidConditions.push({
+            ref: ref,
+            expression: visibleIf,
+            error: parsed.error
+          });
+          continue;
+        }
+
+        var identifiers = parsed.identifiers || [];
+        for (var ii = 0; ii < identifiers.length; ii++) {
+          var name = identifiers[ii];
+          if (!analysis.variables[name]) analysis.variables[name] = [];
+          analysis.variables[name].push(ref);
+          if (!knownVars[name]) {
+            if (!analysis.missingVariables[name]) analysis.missingVariables[name] = [];
+            analysis.missingVariables[name].push(ref);
+          }
+        }
+      }
+    }
+  }
+
+  return analysis;
+}
+
+// Формирует текстовый блок статистики по visibleIf: отсутствующие переменные означают показ метки, а не ошибку выполнения.
+function formatStory360VisibilityConditionsStats(analysis) {
+  var text = "=== STORY360 CONDITIONS ===\n\n";
+  var info = analysis || analyzeStory360VisibilityConditions(STORY);
+  var variableNames = Object.keys(info.variables || {}).sort();
+  var missingNames = Object.keys(info.missingVariables || {}).sort();
+  var invalid = info.invalidConditions || [];
+
+  text += "Conditions: " + (info.conditionCount || 0) + "\n";
+  text += "Variables used: " + (variableNames.length ? variableNames.join(", ") : "(none)") + "\n";
+  text += "Missing variables: " + (missingNames.length ? missingNames.join(", ") : "(none)") + "\n";
+  if (missingNames.length) {
+    text += "Missing variables are treated as absent scene360 conditions; the corresponding marks stay visible.\n";
+  }
+  if (invalid.length) {
+    text += "\nInvalid conditions:\n";
+    for (var i = 0; i < invalid.length; i++) {
+      text += "- " + invalid[i].ref + ": " + invalid[i].expression + " (" + invalid[i].error + ")\n";
+    }
+  }
+  text += "\n";
+  return text;
+}
+
 // Генерация статистики по STORY.
 // Сделано так, чтобы потом легко дописывать новые показатели: просто добавляете новые строки в statsLines.
 function renderStats() {
@@ -13439,6 +13816,7 @@ function renderStats() {
       var textInfo = computeTextInfo(STORY);
       var reach = findUnreachableScenes(STORY);
       var cycles = findCyclesSCC(STORY);
+      var story360Visibility = analyzeStory360VisibilityConditions(STORY);
 
       // Получаем ошибки парсинга
       var parseErrors = window.PARSE_ERRORS || [];
@@ -13686,6 +14064,9 @@ function renderStats() {
           text += "- " + errors[i] + "\n";
         }
       }
+
+      text += "\n";
+      text += formatStory360VisibilityConditionsStats(story360Visibility);
 
 
       
@@ -14599,6 +14980,15 @@ function getStory360GraphRef(spaceId, panoramaId) {
   return String(spaceId || "").trim() + "." + String(panoramaId || "").trim();
 }
 
+// Подписывает ребро 360-графа именем метки и условием visibleIf, чтобы статистика показывала скрытую логику перехода.
+function formatStory360GraphMarkLabel(mark) {
+  if (!mark || typeof mark !== "object") return "";
+  var base = String(mark.label || mark.id || "").trim();
+  var visibleIf = getStory360MarkVisibleIf(mark);
+  if (!visibleIf) return base;
+  return base ? (base + " if " + visibleIf) : ("if " + visibleIf);
+}
+
 // Собирает все 360-панорамы, их превью и связи из story360.js и входы goto360 из обычного сценария.
 function buildStory360GraphData(story) {
   var result = {
@@ -14682,7 +15072,7 @@ function buildStory360GraphData(story) {
       var target = mark && mark.target ? mark.target : null;
       if (!target) continue;
 
-      var markLabel = mark.label || mark.id || "";
+      var markLabel = formatStory360GraphMarkLabel(mark);
       if (target.type === "360") {
         var targetSpace = target.spaceId || node.spaceId;
         var targetPanorama = target.panoramaId || "";
@@ -16477,6 +16867,13 @@ function validateStory(story) {
 
     }
 
+  }
+
+  var story360Visibility = analyzeStory360VisibilityConditions(story);
+  var invalidConditions = story360Visibility.invalidConditions || [];
+  for (var vi = 0; vi < invalidConditions.length; vi++) {
+    var item = invalidConditions[vi];
+    errors.push("Invalid story360 visibleIf at " + item.ref + ": " + item.error);
   }
 
   return errors;

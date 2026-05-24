@@ -1649,6 +1649,43 @@
     }
 
     /**
+     * Приводит условие видимости метки к строке для story360: пустая строка означает, что метка всегда видима.
+     */
+    function normalizeMarkVisibleIf(value) {
+      return String(value === undefined || value === null ? "" : value).trim();
+    }
+
+    /**
+     * Собирает старый список переменных в простое AND-условие, чтобы импортированные файлы не теряли настройки видимости.
+     */
+    function buildVisibleIfFromLegacyVars(value) {
+      var items = Array.isArray(value) ? value : String(value === undefined || value === null ? "" : value).split(/[,\s]+/);
+      var names = [];
+      items.forEach(function (item) {
+        var name = String(item || "").trim();
+        if (name) names.push(name);
+      });
+      return names.join(" && ");
+    }
+
+    /**
+     * Читает условие видимости из нового поля visibleIf или совместимого списка vars/variables/var.
+     */
+    function readMarkVisibleIf(mark) {
+      if (!mark || typeof mark !== "object") return "";
+      var raw = mark.visibleIf !== undefined ? mark.visibleIf : (mark.showIf !== undefined ? mark.showIf : mark.condition);
+      var explicit = normalizeMarkVisibleIf(raw);
+      if (explicit) return explicit;
+      var legacyVars =
+        mark.vars !== undefined
+          ? mark.vars
+          : mark.variables !== undefined
+            ? mark.variables
+            : mark.var;
+      return normalizeMarkVisibleIf(buildVisibleIfFromLegacyVars(legacyVars));
+    }
+
+    /**
      * Читает focusX/focusY из объекта entry: focus* / legacy x,y / вложенный focus — как у entries.default при загрузке панорамы.
      * Без учёта x,y именованные входы «откуда пришли» отбрасывались бы при collectCurrentPanorama → cloneNonDefaultEntriesFromPanorama.
      */
@@ -1736,6 +1773,11 @@
           // Текст компаса хранится в JSON явно: пустая строка означает, что подпись не рисуется.
           text: String(p.text || "")
         };
+        var visibleIf = normalizeMarkVisibleIf(p.visibleIf);
+        if (visibleIf) {
+          // Условие хранится только при явном вводе: отсутствие поля оставляет метку всегда видимой.
+          mark.visibleIf = visibleIf;
+        }
         var target = buildPointTarget(p);
         if (target) mark.target = target;
         return mark;
@@ -1999,6 +2041,7 @@
           y: Number(m && m.y),
           type: normalizePointType((m && (m.type || m.kind)) || "walk"),
           text: String((m && m.text) || ""),
+          visibleIf: readMarkVisibleIf(m),
           targetType: targetType,
           targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : ""
@@ -2687,6 +2730,7 @@
         y: Number(uv.v.toFixed(4)),
         type: type,
         text: "",
+        visibleIf: "",
         targetType: "none",
         targetPanorama: "",
         targetScene: ""
@@ -2773,12 +2817,14 @@
     function getOverlayMarkTargetLabel(point) {
       if (!point) return "";
       var textLine = String(point.text || "");
+      var visibleIfLine = normalizeMarkVisibleIf(point.visibleIf);
+      var conditionLine = visibleIfLine ? "\nif: " + visibleIfLine : "";
       if (point.targetType === "360" && point.targetPanorama) {
         // Первая строка всегда отведена под text, даже если она пустая: так сразу видно, где подпись компаса не задана.
-        return textLine + "\nПерейти 360: " + point.targetPanorama;
+        return textLine + "\nПерейти 360: " + point.targetPanorama + conditionLine;
       }
       if (point.targetType === "scene" && point.targetScene) {
-        return textLine + "\nСценарий: " + point.targetScene;
+        return textLine + "\nСценарий: " + point.targetScene + conditionLine;
       }
       return "";
     }
@@ -2889,7 +2935,10 @@
 
         var meta = document.createElement("div");
         meta.className = "point-meta";
-        meta.textContent = "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType;
+        var visibleIfForMeta = normalizeMarkVisibleIf(p.visibleIf);
+        meta.textContent =
+          "x=" + p.x.toFixed(4) + ", y=" + p.y.toFixed(4) + ", type=" + currentPointType +
+          (visibleIfForMeta ? ", if=" + visibleIfForMeta : "");
         // В карточке метки сначала показываем пользовательскую подпись text, а технический id оставляем ниже.
         idRow.appendChild(pointNumber);
         idRow.appendChild(compassTextInput);
@@ -2911,6 +2960,19 @@
           renderPointsList();
         });
         targetWrap.appendChild(pointTypeSelect);
+
+        var visibleIfInput = document.createElement("input");
+        visibleIfInput.type = "text";
+        visibleIfInput.placeholder = "visibleIf: doorOpened && !alarmOn";
+        visibleIfInput.setAttribute("aria-label", "Условие видимости метки");
+        visibleIfInput.value = normalizeMarkVisibleIf(p.visibleIf);
+        visibleIfInput.title = "Условие видимости: переменные, &&, ||, ! и скобки. Если переменной нет в сценарии, движок будет считать, что условия нет.";
+        visibleIfInput.addEventListener("input", function () {
+          // В редакторе сохраняем выражение как текст: вычисление и проверка переменных выполняются движком при показе сцены360.
+          points[idx].visibleIf = visibleIfInput.value;
+          updateExport();
+        });
+        targetWrap.appendChild(visibleIfInput);
 
         var targetType = document.createElement("select");
         [
@@ -4886,6 +4948,18 @@
             if (!mark || typeof mark !== "object") return;
             // Явная пустая строка делает формат предсказуемым: нет text — нет подписи на компасе.
             mark.text = mark.text === undefined || mark.text === null ? "" : String(mark.text);
+            var visibleIf = readMarkVisibleIf(mark);
+            if (visibleIf) {
+              // Совместимые поля списка переменных сводим к единому выражению, чтобы последующий экспорт был однозначным.
+              mark.visibleIf = visibleIf;
+            } else {
+              delete mark.visibleIf;
+            }
+            delete mark.vars;
+            delete mark.variables;
+            delete mark.var;
+            delete mark.showIf;
+            delete mark.condition;
           });
         });
       });
