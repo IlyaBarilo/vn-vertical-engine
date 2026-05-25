@@ -427,8 +427,9 @@
       <p class="hint">
         Перетащите файл в рамку. <strong>Alt</strong> + drop → оверлей. В рамке: перетаскивание
         левой кнопкой двигает focus (основной слой; <strong>Shift</strong> — оверлей). По X редактор
-        поджимает изображение к краям без пустых полей; focus ограничен 0..1. Y зависит от режима:
-        у фона сверху вниз, у персонажа снизу к границе красной области. Параметры в <code>#…</code> для закладки.
+        поджимает изображение к краям без пустых полей; focus ограничен 0..1. По Y у фонов 0 — верх кадра,
+        1 — низ кадра; у персонажей 0 — нижняя точка рабочей зоны, 1 — граница красной области сверху.
+        Параметры сохраняются в адресной строке после <code>#</code>, поэтому ссылку можно открыть с теми же настройками.
       </p>
 
       <fieldset>
@@ -475,15 +476,6 @@
         <div class="crop-panel" id="cropPanel">Нет загруженного медиа.</div>
       </fieldset>
 
-      <fieldset>
-        <legend>Экспорт</legend>
-        <label class="row check"><input type="checkbox" id="exportGuides" /> Включить сетку и оси в PNG</label>
-        <label class="row check"><input type="checkbox" id="export2x" checked /> Удвоить разрешение (чётче)</label>
-        <div class="btn-row">
-          <button type="button" id="btnExportPng">Скачать кадр PNG</button>
-          <button type="button" id="btnExportCharacterPng" disabled>Сохранить персонажа PNG</button>
-        </div>
-      </fieldset>
     </div>
 
     <div class="panel panel-right" id="panelRight">
@@ -880,102 +872,6 @@
     el.style.clipPath = '';
     syncMediaBounds(el, p, mirror);
     return p;
-  }
-
-  /**
-   * Рисует один слой (img/video) в canvas с тем же прямым focus-позиционированием, что и предпросмотр.
-   */
-  function drawLayerToCanvas(ctx, dw, dh, mediaEl, focusX, focusY, scaleVal, mirror, globalAlpha, useContain, previewMode) {
-    var iw = mediaEl.naturalWidth || mediaEl.videoWidth;
-    var ih = mediaEl.naturalHeight || mediaEl.videoHeight;
-    if (!iw || !ih) return;
-    var prevAlpha = ctx.globalAlpha;
-    ctx.globalAlpha = globalAlpha;
-    var p = getFocusPlacement(mediaEl, iw, ih, dw, dh, focusX, focusY, scaleVal, useContain, previewMode);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, dw, dh);
-    ctx.clip();
-    try {
-      if (mirror) {
-        ctx.translate(p.left + p.width / 2, p.top + p.height / 2);
-        ctx.scale(-1, 1);
-        ctx.drawImage(mediaEl, -p.width / 2, -p.height / 2, p.width, p.height);
-      } else {
-        ctx.drawImage(mediaEl, p.left, p.top, p.width, p.height);
-      }
-    } catch (err) {
-      console.warn('drawImage', err);
-    }
-    ctx.restore();
-    ctx.globalAlpha = prevAlpha;
-  }
-
-  /**
-   * Рисует красную верхнюю зону персонажа в экспортируемом PNG, если пользователь включает направляющие.
-   */
-  function drawCharacterLimitToCanvas(ctx, dw, dh, previewMode) {
-    if (normalizePreviewMode(previewMode) !== PREVIEW_MODE_CHARACTER) return;
-    var blockedH = Math.max(0, dh * CHARACTER_BLOCKED_TOP_RATIO);
-    if (blockedH <= 0) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, dw, blockedH);
-    ctx.clip();
-    ctx.fillStyle = 'rgba(255, 82, 82, 0.10)';
-    ctx.fillRect(0, 0, dw, blockedH);
-    ctx.strokeStyle = 'rgba(255, 82, 82, 0.48)';
-    ctx.lineWidth = 1;
-    for (var x = -blockedH; x < dw + blockedH; x += 12) {
-      ctx.beginPath();
-      ctx.moveTo(x, blockedH);
-      ctx.lineTo(x + blockedH, 0);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(255, 110, 110, 0.82)';
-    ctx.beginPath();
-    ctx.moveTo(0, blockedH);
-    ctx.lineTo(dw, blockedH);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  /**
-   * Накладывает линии сетки (трети + оси центра) и пользовательские направляющие в координатах логического кадра dw×dh.
-   */
-  function drawGuidesToCanvas(ctx, dw, dh) {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 1;
-    function vline(x) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, dh);
-      ctx.stroke();
-    }
-    function hline(y) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(dw, y);
-      ctx.stroke();
-    }
-    vline(dw / 3);
-    vline(2 * dw / 3);
-    hline(dh / 3);
-    hline(2 * dh / 3);
-    ctx.strokeStyle = 'rgba(107, 140, 255, 0.65)';
-    vline(dw / 2);
-    hline(dh / 2);
-    ctx.strokeStyle = 'rgba(255, 209, 102, 0.92)';
-    for (var i = 0; i < customGuides.length; i += 1) {
-      var guide = customGuides[i];
-      if (guide.axis === 'x') {
-        vline(clamp(guide.pos, 0, 1) * dw);
-      } else if (guide.axis === 'y') {
-        hline(clamp(guide.pos, 0, 1) * dh);
-      }
-    }
-    ctx.restore();
   }
 
   var viewport = document.getElementById('viewport');
@@ -1409,7 +1305,6 @@
     document.getElementById('overOpV').textContent = n.overOp.toFixed(2);
     layerOver.style.opacity = '1';
     document.getElementById('copyMainToOverlay').disabled = !mainFile;
-    document.getElementById('btnExportCharacterPng').disabled = !(n.previewMode === PREVIEW_MODE_CHARACTER && mainEl && mainEl.naturalWidth);
     viewport.classList.toggle('mode-character', n.previewMode === PREVIEW_MODE_CHARACTER);
 
     var rect = viewport.getBoundingClientRect();
@@ -1861,109 +1756,6 @@
       document.body.removeChild(ta);
     }
   }
-
-  /**
-   * Скачивает canvas как PNG через обычный браузерный download, не меняя исходный файл на диске.
-   */
-  function downloadCanvasAsPng(canvas, fileName) {
-    canvas.toBlob(function (blob) {
-      if (!blob) return;
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = fileName;
-      a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
-    }, 'image/png');
-  }
-
-  /**
-   * Меняет расширение исходника на .png и оставляет имя пригодным для download.
-   */
-  function makePngFileName(name) {
-    var clean = String(name || 'character').replace(/[\\/:*?"<>|]+/g, '_');
-    clean = clean.replace(/\.[^.]*$/, '');
-    return (clean || 'character') + '.png';
-  }
-
-  /**
-   * Сохраняет основной слой как готовый персонаж: вертикальный scale/focus запекается crop/pad,
-   * а по X текущая точка focusX становится центром прозрачного PNG для движка.
-   */
-  function exportCharacterPng() {
-    var n = readNums();
-    if (n.previewMode !== PREVIEW_MODE_CHARACTER) {
-      window.alert('Сохранение персонажа доступно только в режиме «Персонажи».');
-      return;
-    }
-    if (!mainEl || !mainEl.naturalWidth || !mainEl.naturalHeight) {
-      window.alert('Загрузите изображение в основной слой.');
-      return;
-    }
-
-    var iw = mainEl.naturalWidth;
-    var ih = mainEl.naturalHeight;
-    var rect = viewport.getBoundingClientRect();
-    var rw = rect.width || 1000;
-    var rh = rect.height || 1600;
-    var metrics = getRenderedMetrics(mainEl, iw, ih, rw, rh, n.mainSc, n.previewContain, PREVIEW_MODE_CHARACTER);
-    var placement = getFocusPlacement(mainEl, iw, ih, rw, rh, n.mainFx, n.mainFy, n.mainSc, n.previewContain, PREVIEW_MODE_CHARACTER);
-    var focusSourceX = iw * normalizeFocus(n.mainFx);
-    var halfWidth = Math.max(focusSourceX, iw - focusSourceX);
-    var outW = Math.max(1, Math.ceil(halfWidth * 2));
-    var outH = Math.max(1, Math.round(metrics.workHeight / metrics.scale));
-    var contentX = outW / 2 - focusSourceX;
-    var contentY = (placement.top - metrics.blockedTop) / metrics.scale;
-    var canvas = document.createElement('canvas');
-    var ctx;
-
-    canvas.width = outW;
-    canvas.height = outH;
-    ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, outW, outH);
-    ctx.save();
-    if (n.mainMirror) {
-      // Зеркало запекается в PNG, потому что у команды show нет отдельного ключа mirror.
-      ctx.translate(contentX + iw, contentY);
-      ctx.scale(-1, 1);
-      ctx.drawImage(mainEl, 0, 0, iw, ih);
-    } else {
-      ctx.drawImage(mainEl, contentX, contentY, iw, ih);
-    }
-    ctx.restore();
-    downloadCanvasAsPng(canvas, makePngFileName(mainFile && mainFile.name ? mainFile.name : mainName));
-  }
-
-  document.getElementById('btnExportPng').addEventListener('click', function () {
-    var rect = viewport.getBoundingClientRect();
-    var dw = Math.max(1, Math.round(rect.width));
-    var dh = Math.max(1, Math.round(rect.height));
-    var mult = document.getElementById('export2x').checked ? 2 : 1;
-    var outW = dw * mult;
-    var outH = dh * mult;
-    var canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.scale(mult, mult);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, dw, dh);
-    var n = readNums();
-    if (mainEl && (mainEl.naturalWidth || mainEl.videoWidth)) {
-      drawLayerToCanvas(ctx, dw, dh, mainEl, n.mainFx, n.mainFy, n.mainSc, n.mainMirror, 1, n.previewContain, n.previewMode);
-    }
-    if (overEl && (overEl.naturalWidth || overEl.videoWidth)) {
-      drawLayerToCanvas(ctx, dw, dh, overEl, n.overFx, n.overFy, n.overSc, n.overMirror, n.overOp, n.previewContain, n.previewMode);
-    }
-    if (document.getElementById('exportGuides').checked) {
-      drawCharacterLimitToCanvas(ctx, dw, dh, n.previewMode);
-      drawGuidesToCanvas(ctx, dw, dh);
-    }
-    downloadCanvasAsPng(canvas, 'media-focus-frame.png');
-  });
-
-  document.getElementById('btnExportCharacterPng').addEventListener('click', exportCharacterPng);
 
   /**
    * Перетаскивание мышью: X пересчитывается как focus движка, Y использует активную рабочую зону режима.
