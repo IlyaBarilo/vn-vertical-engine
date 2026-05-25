@@ -2346,6 +2346,15 @@ function isRasterImagePathForOptimization(path) {
   return true;
 }
 
+// Проверяет, что путь можно сохранить для гидрации миниатюр Mermaid: src может пропасть у любого обычного растрового файла.
+function isGraphRasterImagePath(path) {
+  var value = String(path || "").trim();
+  if (!value) return false;
+  if (/^data:/i.test(value)) return false;
+  if (/\.(mp4|webm|js)(\?|#|$)/i.test(value)) return false;
+  return /\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(value);
+}
+
 // Делит путь сценария на базу без расширения и хвост (?query/#hash).
 function splitStoryImagePathForOptimize(path) {
   var raw = String(path || "").trim();
@@ -2587,18 +2596,17 @@ function loadRasterImageResource(storyPath, handlers) {
   tryNext();
 }
 
-// Атрибут data-vnv-story-img для миниатюр графа: после Mermaid догружаем цепочку webp→исходник.
+// Атрибут data-vnv-story-img хранит исходный путь, чтобы после Mermaid восстановить src даже без optimized-режима.
 function getGraphRasterImgDataAttr(storyPath) {
   var story = String(storyPath || "").trim();
-  if (!story || !isEngineImageOptimizationEnabled() || !isRasterImagePathForOptimization(story)) {
+  if (!story || !isGraphRasterImagePath(story)) {
     return "";
   }
   return " data-vnv-story-img='" + escapeHtml(story) + "'";
 }
 
-// После отрисовки графа подставляет рабочий src для img с data-vnv-story-img.
-function hydrateOptimizedRasterGraphThumbnails(root) {
-  if (!isEngineImageOptimizationEnabled()) return;
+// После отрисовки графа всегда подставляет рабочий src: Mermaid может удалить src из HTML-лейбла.
+function hydrateRasterGraphThumbnails(root) {
   var host = root || mermaidGraph;
   if (!host) return;
 
@@ -19775,7 +19783,7 @@ function renderMermaidGraph(renderSequence) {
 
         if (!hasMermaidRenderError()) {
           hydrateBg360GraphThumbnails(mermaidGraph);
-          hydrateOptimizedRasterGraphThumbnails(mermaidGraph);
+          hydrateRasterGraphThumbnails(mermaidGraph);
           hydrateGraphCharacterFrames(mermaidGraph);
         }
 
