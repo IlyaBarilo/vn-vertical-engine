@@ -34,7 +34,7 @@
       height:100vh;
       padding:12px;
       display:grid;
-      grid-template-columns: 320px 360px minmax(320px,1fr);
+      grid-template-columns:minmax(560px, 760px) minmax(420px,1fr);
       gap:12px;
     }
 
@@ -76,6 +76,65 @@
       display:grid;
       gap:12px;
       align-content:stretch;
+    }
+
+    .workspace-panel{
+      min-width:0;
+    }
+
+    .workspace-header{
+      display:grid;
+      gap:12px;
+    }
+
+    .workspace-tabs{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0,1fr));
+      gap:4px;
+      padding:4px;
+      border-radius:14px;
+      background:rgba(255,255,255,.045);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .workspace-tab{
+      min-height:38px;
+      padding:8px 10px;
+      border-radius:10px;
+      color:var(--muted);
+      background:transparent;
+      font-size:13px;
+      font-weight:700;
+    }
+
+    .workspace-tab:hover{
+      transform:none;
+      background:rgba(255,255,255,.06);
+    }
+
+    .workspace-tab.active{
+      color:#091228;
+      background:var(--accent);
+    }
+
+    .workspace-body{
+      padding:0;
+      overflow:hidden;
+      display:block;
+    }
+
+    .workspace-pane{
+      min-height:0;
+      height:100%;
+      overflow:auto;
+      padding:12px;
+      display:none;
+      gap:12px;
+      align-content:start;
+    }
+
+    .workspace-pane.active{
+      display:grid;
     }
 
     .section{
@@ -169,6 +228,15 @@
     button.warn{background:var(--warn);color:#342300;font-weight:700}
     button.bad{background:var(--bad);color:#300808;font-weight:700}
 
+    @keyframes captureFlash{
+      0%{box-shadow:0 0 0 0 rgba(122,162,255,.55); filter:brightness(1.25)}
+      100%{box-shadow:0 0 0 12px rgba(122,162,255,0); filter:brightness(1)}
+    }
+
+    .visual-capture-flash{
+      animation:captureFlash .55s ease-out;
+    }
+
     .status{
       padding:10px 12px;
       border-radius:12px;
@@ -227,6 +295,32 @@
       align-items:flex-start;
       gap:12px;
       flex:0 0 auto;
+    }
+
+    .preview-title-side{
+      min-width:0;
+      display:grid;
+      gap:8px;
+    }
+
+    .preview-visual-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .preview-visual-actions button{
+      min-height:32px;
+      padding:7px 10px;
+      border-radius:10px;
+      font-size:12px;
+      line-height:1.2;
+    }
+
+    .preview-visual-actions button[aria-pressed="true"]{
+      background:var(--warn);
+      color:#342300;
+      font-weight:700;
     }
 
     .preview-meta{
@@ -289,8 +383,14 @@
       line-height:1.35;
     }
 
-    @media (max-width: 1280px){
-      .app{ grid-template-columns: 300px 330px minmax(280px,1fr); }
+    @media (max-width: 1500px){
+      body{overflow:auto}
+      .app{
+        height:auto;
+        min-height:100vh;
+        grid-template-columns:minmax(520px, 680px) minmax(420px,1fr);
+      }
+      .preview-panel{ min-height:70vh; }
     }
 
     @media (max-width: 1080px){
@@ -300,17 +400,13 @@
         min-height:100vh;
         grid-template-columns:1fr;
       }
+      .workspace-panel{ min-height:72vh; }
       .preview-panel{ min-height:70vh; }
     }
 
 
     .actions-log-body{
       align-content:start;
-    }
-
-    .actions-log-body .section:nth-last-child(2){
-      min-height:0;
-      height:auto;
     }
 
     .log{
@@ -361,191 +457,517 @@
       max-height:420px;
     }
 
+    .visual-actions{
+      grid-template-columns:repeat(3, minmax(0,1fr));
+    }
+
+    .visual-score{
+      font-weight:700;
+    }
+
+    .visual-score.ok{color:#d8ffe8}
+    .visual-score.warn{color:#ffe5ae}
+    .visual-score.err{color:#ffd6d6}
+
+    .visual-palette{
+      min-height:34px;
+      display:grid;
+      gap:10px;
+    }
+
+    .visual-palette-group{
+      display:grid;
+      gap:6px;
+    }
+
+    .visual-palette-title{
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.25;
+    }
+
+    .visual-palette-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+    }
+
+    .visual-swatch{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.28);
+      box-shadow:0 6px 14px rgba(0,0,0,.22);
+    }
+
+    .visual-swatch-label{
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.2;
+    }
+
+    .visual-palette-item{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 6px;
+      border-radius:12px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.07);
+    }
+
+    .visual-color-wheel{
+      display:grid;
+      gap:6px;
+      padding:8px;
+      border-radius:12px;
+      background:rgba(255,255,255,.035);
+      border:1px solid rgba(255,255,255,.07);
+    }
+
+    .visual-hue-bar{
+      height:10px;
+      display:flex;
+      overflow:hidden;
+      border-radius:999px;
+      background:#071020;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .visual-hue-segment{
+      min-width:8px;
+      height:100%;
+    }
+
+    .visual-palette-note{
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.3;
+    }
+
+    .visual-history{
+      display:grid;
+      gap:8px;
+    }
+
+    .visual-history-log{
+      min-height:112px;
+      height:112px;
+      font-size:11px;
+      line-height:1.45;
+    }
+
+    .visual-issue-grid{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0,1fr));
+      gap:8px;
+    }
+
+    .visual-issue-group{
+      min-width:0;
+      display:grid;
+      gap:6px;
+      align-content:start;
+    }
+
+    .visual-issue-log{
+      min-height:128px;
+      height:128px;
+      font-size:11px;
+      line-height:1.45;
+    }
+
+    @media (max-width: 1250px){
+      .visual-issue-grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    .visual-snapshots{
+      display:grid;
+      gap:8px;
+    }
+
+    .visual-snapshot{
+      display:grid;
+      grid-template-columns:96px 1fr;
+      gap:8px;
+      align-items:start;
+      padding:8px;
+      border-radius:12px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.07);
+      cursor:pointer;
+      transition:background .12s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+
+    .visual-snapshot.selected{
+      background:rgba(122,162,255,.12);
+      border-color:rgba(122,162,255,.62);
+      box-shadow:0 0 0 1px rgba(122,162,255,.18) inset;
+    }
+
+    .visual-shot-body{
+      min-width:0;
+      display:grid;
+      gap:6px;
+    }
+
+    .visual-shot-head{
+      min-width:0;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:8px;
+    }
+
+    .visual-shot-delete{
+      flex:0 0 auto;
+      min-width:30px;
+      min-height:28px;
+      padding:4px 8px;
+      border-radius:8px;
+      color:#ffd6d6;
+      background:rgba(255,133,133,.14);
+      border:1px solid rgba(255,133,133,.28);
+      font-size:14px;
+      line-height:1;
+    }
+
+    .visual-shot-delete:hover{
+      background:rgba(255,133,133,.24);
+    }
+
+    .visual-shot-thumb{
+      width:96px;
+      height:64px;
+      object-fit:contain;
+      border-radius:8px;
+      background:#070b16;
+      border:1px solid rgba(255,255,255,.08);
+      position:relative;
+      z-index:1;
+      transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+      transform-origin:left center;
+    }
+
+    .visual-shot-thumb:hover{
+      z-index:40;
+      transform:scale(5);
+      border-color:rgba(122,162,255,.75);
+      box-shadow:0 18px 46px rgba(0,0,0,.55);
+    }
+
+    .visual-shot-empty{
+      width:96px;
+      height:64px;
+      display:grid;
+      place-items:center;
+      border-radius:8px;
+      color:var(--muted);
+      background:#070b16;
+      border:1px solid rgba(255,255,255,.08);
+      font-size:11px;
+      text-align:center;
+    }
+
+    .visual-shot-title{
+      font-size:12px;
+      font-weight:700;
+      line-height:1.25;
+    }
+
+    .visual-shot-meta{
+      margin-top:4px;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.35;
+    }
+
+    .visual-shot-wheel{
+      min-width:0;
+      display:grid;
+      gap:4px;
+      align-self:stretch;
+    }
+
+    .visual-shot-wheel-text{
+      min-width:0;
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.25;
+    }
+
+    .visual-shot-wheel-text span{
+      display:block;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .visual-shot-hue-bar{
+      height:8px;
+      display:flex;
+      overflow:hidden;
+      border-radius:999px;
+      background:#071020;
+      border:1px solid rgba(255,255,255,.1);
+    }
+
+    .visual-shot-hue-segment{
+      min-width:5px;
+      height:100%;
+    }
+
   </style>
 </head>
 <body>
   <div class="app">
-    <section class="panel">
-      <div class="panel-header">
-        <h1 class="panel-title">Тестер мини-игр</h1>
-        <div class="panel-sub">
-          Оставлены только настройки виртуального разрешения. Предпросмотр автоматически вписывает игру в доступную область по центру с сохранением пропорций.
+    <section class="panel workspace-panel">
+      <div class="panel-header workspace-header">
+        <div>
+          <h1 class="panel-title">Тестер мини-игр</h1>
+          <div class="panel-sub">
+            Настройки, диагностика ввода и визуальный анализ собраны во вкладках. Предпросмотр игры остаётся рядом и вписывается в доступную область.
+          </div>
+        </div>
+        <div class="workspace-tabs" role="tablist" aria-label="Разделы тестера">
+          <button id="workspaceTabSetup" class="workspace-tab active" type="button" role="tab" aria-selected="true" aria-controls="workspaceSetup" data-workspace-tab="setup">Игра</button>
+          <button id="workspaceTabInput" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="workspaceInput" data-workspace-tab="input">Ввод</button>
+          <button id="workspaceTabVisual" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="workspaceVisual" data-workspace-tab="visual">Визуал</button>
         </div>
       </div>
-      <div class="panel-body">
-        <div class="section">
-          <h2>Игра и контракт</h2>
-          <label>
-            Путь к HTML мини-игры
-            <input id="gameUrl" type="text" placeholder="Например: games/coffee_rush.html" />
-          </label>
-          <label>
-            Локальный HTML-файл игры для диагностики (запуск сразу после выбора)
-            <input id="gameFile" type="file" accept=".html,.htm,text/html" />
-          </label>
-          <div class="small muted">
-            Используйте этот вариант для глубокой диагностики без сервера. Лучше всего подходит для игр, собранных в один HTML-файл.
-          </div>
-          <div class="grid two">
+      <div class="panel-body workspace-body">
+        <div id="workspaceSetup" class="workspace-pane active" role="tabpanel" aria-labelledby="workspaceTabSetup" data-workspace-pane="setup">
+          <div class="section">
+            <h2>Игра и контракт</h2>
             <label>
-              Game ID
-              <input id="gameId" type="text" value="coffeeRush" />
+              Путь к HTML мини-игры
+              <input id="gameUrl" type="text" placeholder="Например: games/coffee_rush.html" />
             </label>
             <label>
-              Difficulty
-              <input id="difficulty" type="number" min="0" step="1" value="3" />
+              Локальный HTML-файл игры для диагностики (запуск сразу после выбора)
+              <input id="gameFile" type="file" accept=".html,.htm,text/html" />
             </label>
-          </div>
-          <div class="pill-row">
-            <span class="pill">iframe</span>
-            <span class="pill">postMessage</span>
-            <span class="pill">auto fit</span>
-            <span class="pill">portrait</span>
-          </div>
-        </div>
-
-        <div class="section">
-          <h2>Виртуальное разрешение</h2>
-          <div class="grid two">
-            <label>
-              Виртуальная ширина, px
-              <input id="virtualWidth" type="number" min="120" step="1" value="360" />
-            </label>
-            <label>
-              Виртуальная высота, px
-              <input id="virtualHeight" type="number" min="200" step="1" value="640" />
-            </label>
-          </div>
-          <label>
-            Вертикальный пресет
-            <select id="resolutionPreset">
-              <option value="360x640">360 × 640</option>
-              <option value="390x844">390 × 844</option>
-              <option value="412x915">412 × 915</option>
-              <option value="720x1280">720 × 1280</option>
-              <option value="1080x1920">1080 × 1920</option>
-              <option value="1440x2560">1440 × 2560</option>
-              <option value="1720x1080">1720 × 1080</option>
-              <option value="2160x3840">2160 × 3840 (4K vertical)</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          <div class="muted">
-            Область просмотра заполняется максимально. Игра упирается в края preview по большей стороне и остаётся по центру без декоративной рамки.
-          </div>
-          <div class="info-grid">
-            <div class="info-card">
-              <div class="info-label">Автоматический scale</div>
-              <div class="info-value" id="fitScaleInfo">—</div>
+            <div class="small muted">
+              Используйте этот вариант для глубокой диагностики без сервера. Лучше всего подходит для игр, собранных в один HTML-файл.
             </div>
-            <div class="info-card">
-              <div class="info-label">Итоговый размер в области</div>
-              <div class="info-value" id="renderedSizeInfo">—</div>
+            <div class="grid two">
+              <label>
+                Game ID
+                <input id="gameId" type="text" value="coffeeRush" />
+              </label>
+              <label>
+                Difficulty
+                <input id="difficulty" type="number" min="0" step="1" value="3" />
+              </label>
+            </div>
+            <div class="pill-row">
+              <span class="pill">iframe</span>
+              <span class="pill">postMessage</span>
+              <span class="pill">auto fit</span>
+              <span class="pill">portrait</span>
             </div>
           </div>
-        </div>
 
-        <div class="section">
-          <h2>Payload для gameInit</h2>
-          <label>
-            JSON
-            <textarea id="payloadEditor">{
+          <div class="section">
+            <h2>Виртуальное разрешение</h2>
+            <div class="grid two">
+              <label>
+                Виртуальная ширина, px
+                <input id="virtualWidth" type="number" min="120" step="1" value="360" />
+              </label>
+              <label>
+                Виртуальная высота, px
+                <input id="virtualHeight" type="number" min="200" step="1" value="640" />
+              </label>
+            </div>
+            <label>
+              Вертикальный пресет
+              <select id="resolutionPreset">
+                <option value="360x640">360 × 640</option>
+                <option value="390x844">390 × 844</option>
+                <option value="412x915">412 × 915</option>
+                <option value="720x1280">720 × 1280</option>
+                <option value="1080x1920">1080 × 1920</option>
+                <option value="1440x2560">1440 × 2560</option>
+                <option value="1720x1080">1720 × 1080</option>
+                <option value="2160x3840">2160 × 3840 (4K vertical)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <div class="muted">
+              Область просмотра заполняется максимально. Игра упирается в края preview по большей стороне и остаётся по центру без декоративной рамки.
+            </div>
+            <div class="info-grid">
+              <div class="info-card">
+                <div class="info-label">Автоматический scale</div>
+                <div class="info-value" id="fitScaleInfo">—</div>
+              </div>
+              <div class="info-card">
+                <div class="info-label">Итоговый размер в области</div>
+                <div class="info-value" id="renderedSizeInfo">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Payload для gameInit</h2>
+            <label>
+              JSON
+              <textarea id="payloadEditor">{
   "type": "gameInit",
   "gameId": "coffeeRush",
   "difficulty": 3,
   "targetScore": 10
 }</textarea>
-          </label>
-          <div class="small muted">
-            <code>gameId</code> и <code>difficulty</code> синхронизируются автоматически.
-          </div>
-        </div>
-
-        <div class="section">
-          <h2>Лог сообщений</h2>
-          <div id="messageLog" class="log left-column-log"></div>
-        </div>
-
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h1 class="panel-title">Действия и диагностика</h1>
-        <div class="panel-sub">
-          Здесь находятся кнопки управления, статус и диагностика ввода. Лог сообщений перенесён в левую колонку.
-        </div>
-      </div>
-      <div class="panel-body actions-log-body">
-        <div class="section">
-          <h2>Управление</h2>
-          <div class="actions">
-            <button id="loadGameBtn" class="primary">Загрузить игру</button>
-            <button id="loadGameDiagBtn">Загрузить файл с диагностикой</button>
-            <button id="sendInitBtn">Отправить gameInit</button>
-            <button id="saveSettingsBtn" class="good">Сохранить настройки</button>
-            <button id="resetSettingsBtn" class="warn">Сбросить настройки</button>
-            <button id="recalcBtn">Пересчитать fit</button>
-            <button id="clearLogBtn" class="bad">Очистить лог</button>
-          </div>
-        </div>
-
-        <div class="section">
-          <h2>Статус</h2>
-          <div id="status" class="status">Готово к работе.</div>
-          <div class="small muted">
-            Проверяется строгий контракт: один <code>gameResult</code>, числовой <code>result</code>.
-          </div>
-        </div>
-
-
-
-
-        <div class="section">
-          <h2>Диагностика ввода</h2>
-
-          <div class="info-grid">
-            <div class="info-card">
-              <div class="info-label">Последняя цель</div>
-              <div class="info-value" id="diagTarget">—</div>
-            </div>
-            <div class="info-card">
-              <div class="info-label">Слушатели на пути события</div>
-              <div class="info-value" id="diagListeners">—</div>
+            </label>
+            <div class="small muted">
+              <code>gameId</code> и <code>difficulty</code> синхронизируются автоматически.
             </div>
           </div>
 
-          <div class="pill-row">
-            <span id="diagEvtPointerDown" class="pill diag-pill">pointerdown</span>
-            <span id="diagEvtPointerUp" class="pill diag-pill">pointerup</span>
-            <span id="diagEvtPointerCancel" class="pill diag-pill">pointercancel</span>
-            <span id="diagEvtMouseDown" class="pill diag-pill">mousedown</span>
-            <span id="diagEvtMouseUp" class="pill diag-pill">mouseup</span>
-            <span id="diagEvtTouchStart" class="pill diag-pill">touchstart</span>
-            <span id="diagEvtTouchEnd" class="pill diag-pill">touchend</span>
-            <span id="diagEvtClick" class="pill diag-pill">click</span>
+          <div class="section">
+            <h2>Лог сообщений</h2>
+            <div id="messageLog" class="log left-column-log"></div>
           </div>
-
-          <div id="diagRisk" class="status">Риск пока не оценён.</div>
-          <div id="diagNote" class="muted small">
-            Для глубокой диагностики без сервера загружайте игру через локальный HTML-файл.
-          </div>
-
-          <div id="diagEventLog" class="log diag-log"></div>
         </div>
 
+        <div id="workspaceInput" class="workspace-pane actions-log-body" role="tabpanel" aria-labelledby="workspaceTabInput" data-workspace-pane="input">
+          <div class="section">
+            <h2>Управление</h2>
+            <div class="actions">
+              <button id="loadGameBtn" class="primary">Загрузить игру</button>
+              <button id="loadGameDiagBtn">Загрузить файл с диагностикой</button>
+              <button id="sendInitBtn">Отправить gameInit</button>
+              <button id="saveSettingsBtn" class="good">Сохранить настройки</button>
+              <button id="resetSettingsBtn" class="warn">Сбросить настройки</button>
+              <button id="recalcBtn">Пересчитать fit</button>
+              <button id="clearLogBtn" class="bad">Очистить лог</button>
+            </div>
+          </div>
 
+          <div class="section status-section">
+            <h2>Статус</h2>
+            <div id="status" class="status">Готово к работе.</div>
+            <div class="small muted">
+              Проверяется строгий контракт: один <code>gameResult</code>, числовой <code>result</code>.
+            </div>
+          </div>
 
+          <div class="section">
+            <h2>Диагностика ввода</h2>
 
-        
+            <div class="info-grid">
+              <div class="info-card">
+                <div class="info-label">Последняя цель</div>
+                <div class="info-value" id="diagTarget">—</div>
+              </div>
+              <div class="info-card">
+                <div class="info-label">Слушатели на пути события</div>
+                <div class="info-value" id="diagListeners">—</div>
+              </div>
+            </div>
+
+            <div class="pill-row">
+              <span id="diagEvtPointerDown" class="pill diag-pill">pointerdown</span>
+              <span id="diagEvtPointerUp" class="pill diag-pill">pointerup</span>
+              <span id="diagEvtPointerCancel" class="pill diag-pill">pointercancel</span>
+              <span id="diagEvtMouseDown" class="pill diag-pill">mousedown</span>
+              <span id="diagEvtMouseUp" class="pill diag-pill">mouseup</span>
+              <span id="diagEvtTouchStart" class="pill diag-pill">touchstart</span>
+              <span id="diagEvtTouchEnd" class="pill diag-pill">touchend</span>
+              <span id="diagEvtClick" class="pill diag-pill">click</span>
+            </div>
+
+            <div id="diagRisk" class="status">Риск пока не оценён.</div>
+            <div id="diagNote" class="muted small">
+              Для глубокой диагностики без сервера загружайте игру через локальный HTML-файл.
+            </div>
+
+            <div id="diagEventLog" class="log diag-log"></div>
+          </div>
+        </div>
+
+        <div id="workspaceVisual" class="workspace-pane" role="tabpanel" aria-labelledby="workspaceTabVisual" data-workspace-pane="visual">
+          <div class="section">
+            <h2>Визуальный анализ</h2>
+            <div class="actions visual-actions">
+              <button id="captureVisualBtn" class="primary">Снимок состояния</button>
+              <button id="clearVisualBtn">Очистить анализ</button>
+              <button id="clearVisualHistoryBtn">Сбросить историю</button>
+            </div>
+            <div id="visualStatus" class="status">Загрузите локальный HTML-файл с диагностикой, чтобы включить визуальный анализ.</div>
+            <div class="info-grid">
+              <div class="info-card">
+                <div class="info-label">Читаемость</div>
+                <div class="info-value visual-score" id="visualReadability">—</div>
+              </div>
+              <div class="info-card">
+                <div class="info-label">Палитра</div>
+                <div class="info-value visual-score" id="visualPaletteScore">—</div>
+              </div>
+              <div class="info-card">
+                <div class="info-label">Touch-зоны</div>
+                <div class="info-value visual-score" id="visualTouchScore">—</div>
+              </div>
+              <div class="info-card">
+                <div class="info-label">UX-состояние</div>
+                <div class="info-value visual-score" id="visualUxScore">—</div>
+              </div>
+            </div>
+            <div>
+              <div class="info-label">Цвета текущего состояния</div>
+              <div id="visualPalette" class="visual-palette"></div>
+            </div>
+            <div id="visualIssues" class="visual-issue-grid">
+              <div class="visual-issue-group">
+                <div class="info-label">Читаемость и UX</div>
+                <div id="visualTextIssues" class="log visual-issue-log"></div>
+              </div>
+              <div class="visual-issue-group">
+                <div class="info-label">Цвета и круг</div>
+                <div id="visualPaletteIssues" class="log visual-issue-log"></div>
+              </div>
+              <div class="visual-issue-group">
+                <div class="info-label">Touch-зоны</div>
+                <div id="visualTouchIssues" class="log visual-issue-log"></div>
+              </div>
+            </div>
+            <div class="visual-history">
+              <div class="info-grid">
+                <div class="info-card">
+                  <div class="info-label">История снимков</div>
+                  <div class="info-value visual-score" id="visualHistoryScore">—</div>
+                </div>
+                <div class="info-card">
+                  <div class="info-label">Баланс цветов</div>
+                  <div class="info-value visual-score" id="visualHistoryBalance">—</div>
+                </div>
+              </div>
+              <div id="visualHistoryIssues" class="log visual-history-log"></div>
+            </div>
+            <div id="visualSnapshots" class="visual-snapshots"></div>
+            <div class="small muted">
+              Снимки и палитра работают над диагностической версией игры. Для 3D/WebGL диагностическая загрузка заранее включает сохранение буфера, поэтому после обновления тестера загрузите HTML-файл игры заново.
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
     <section class="panel preview-panel">
       <div class="preview-top">
-        <div>
-          <div class="panel-title" style="font-size:16px;">Предпросмотр игры</div>
-          <div class="panel-sub">Игра занимает максимум доступного места с сохранением пропорций.</div>
+        <div class="preview-title-side">
+          <div>
+            <div class="panel-title" style="font-size:16px;">Предпросмотр игры</div>
+            <div class="panel-sub">Игра занимает максимум доступного места с сохранением пропорций.</div>
+          </div>
+          <div class="preview-visual-actions">
+            <button id="previewCaptureVisualBtn" class="primary" type="button" title="Сделать ручной снимок визуального анализа. Горячая клавиша: PrtSc.">Снимок</button>
+            <button id="autoVisualCaptureBtn" type="button" aria-pressed="false" title="Делать снимки каждые 5 секунд до повторного нажатия.">Авто 5с</button>
+          </div>
         </div>
         <div id="viewerMeta" class="preview-meta">—</div>
       </div>
@@ -559,8 +981,11 @@
 
   <script>
     const STORAGE_KEY = 'vn-game-tester-settings-v4';
+    const AUTO_VISUAL_CAPTURE_INTERVAL_MS = 5000;
 
     const els = {
+      workspaceTabs: Array.from(document.querySelectorAll('[data-workspace-tab]')),
+      workspacePanes: Array.from(document.querySelectorAll('[data-workspace-pane]')),
       gameUrl: document.getElementById('gameUrl'),
       gameId: document.getElementById('gameId'),
       difficulty: document.getElementById('difficulty'),
@@ -595,10 +1020,30 @@
       diagEvtMouseUp: document.getElementById('diagEvtMouseUp'),
       diagEvtTouchStart: document.getElementById('diagEvtTouchStart'),
       diagEvtTouchEnd: document.getElementById('diagEvtTouchEnd'),
-      diagEvtClick: document.getElementById('diagEvtClick')
+      diagEvtClick: document.getElementById('diagEvtClick'),
+      captureVisualBtn: document.getElementById('captureVisualBtn'),
+      previewCaptureVisualBtn: document.getElementById('previewCaptureVisualBtn'),
+      autoVisualCaptureBtn: document.getElementById('autoVisualCaptureBtn'),
+      clearVisualBtn: document.getElementById('clearVisualBtn'),
+      clearVisualHistoryBtn: document.getElementById('clearVisualHistoryBtn'),
+      visualStatus: document.getElementById('visualStatus'),
+      visualReadability: document.getElementById('visualReadability'),
+      visualPaletteScore: document.getElementById('visualPaletteScore'),
+      visualTouchScore: document.getElementById('visualTouchScore'),
+      visualUxScore: document.getElementById('visualUxScore'),
+      visualPalette: document.getElementById('visualPalette'),
+      visualIssues: document.getElementById('visualIssues'),
+      visualTextIssues: document.getElementById('visualTextIssues'),
+      visualPaletteIssues: document.getElementById('visualPaletteIssues'),
+      visualTouchIssues: document.getElementById('visualTouchIssues'),
+      visualHistoryScore: document.getElementById('visualHistoryScore'),
+      visualHistoryBalance: document.getElementById('visualHistoryBalance'),
+      visualHistoryIssues: document.getElementById('visualHistoryIssues'),
+      visualSnapshots: document.getElementById('visualSnapshots')
     };
 
     let gameResultCount = 0;
+    let lastGameResult = null;
 
 
 
@@ -611,6 +1056,34 @@
       pendingClickTimer: 0,
       lines: []
     };
+
+    const visualDiag = {
+      ready: false,
+      firstActionCaptured: false,
+      pendingCaptureId: 0,
+      pendingTimer: 0,
+      autoTimer: 0,
+      autoCaptureEnabled: false,
+      selectedSnapshotId: '',
+      snapshots: []
+    };
+
+    // Переключает широкую рабочую колонку между настройками, диагностикой ввода и визуальным анализом.
+    function selectWorkspaceTab(name){
+      const target = String(name || 'setup');
+      els.workspaceTabs.forEach((tab) => {
+        const active = tab.dataset.workspaceTab === target;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+
+      els.workspacePanes.forEach((pane) => {
+        const active = pane.dataset.workspacePane === target;
+        pane.classList.toggle('active', active);
+      });
+
+      requestAnimationFrame(() => updateFramePresentation(false));
+    }
 
     function setDiagRisk(text, mode=''){
       els.diagRisk.textContent = text;
@@ -687,10 +1160,775 @@
       ].join(' · ');
     }
 
+    // Обновляет общий статус визуальной диагностики и подсвечивает серьёзность результата.
+    function setVisualStatus(text, mode=''){
+      els.visualStatus.textContent = text;
+      els.visualStatus.className = 'status' + (mode ? ' ' + mode : '');
+    }
+
+    // Записывает краткую оценку в карточку визуального анализа.
+    function setVisualScore(el, text, mode=''){
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'info-value visual-score' + (mode ? ' ' + mode : '');
+    }
+
+    // Возвращает человекочитаемое имя уровня проблемы для отчёта по снимку.
+    function visualModeLabel(mode){
+      if (mode === 'err') return 'критично';
+      if (mode === 'warn') return 'есть замечания';
+      if (mode === 'ok') return 'нормально';
+      return 'нет данных';
+    }
+
+    // Обновляет кнопку авто-съёмки в preview, чтобы было видно, включён ли интервал.
+    function updateVisualAutoCaptureButton(){
+      if (!els.autoVisualCaptureBtn) return;
+      const enabled = !!visualDiag.autoCaptureEnabled;
+      els.autoVisualCaptureBtn.textContent = enabled ? 'Стоп авто' : 'Авто 5с';
+      els.autoVisualCaptureBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      els.autoVisualCaptureBtn.title = enabled
+        ? 'Остановить автоматические снимки.'
+        : 'Делать снимки каждые 5 секунд до повторного нажатия.';
+    }
+
+    // Коротко подсвечивает кнопки снимка, чтобы было видно, что запрос кадра ушёл в iframe.
+    function flashVisualCaptureButtons(kind='manual'){
+      const buttons = [els.captureVisualBtn, els.previewCaptureVisualBtn];
+      if (kind === 'auto') buttons.push(els.autoVisualCaptureBtn);
+
+      buttons.filter(Boolean).forEach((button) => {
+        button.classList.remove('visual-capture-flash');
+        void button.offsetWidth;
+        button.classList.add('visual-capture-flash');
+        setTimeout(() => {
+          button.classList.remove('visual-capture-flash');
+        }, 620);
+      });
+    }
+
+    // Останавливает авто-съёмку и при необходимости сообщает об этом в статус визуального анализа.
+    function stopVisualAutoCapture(statusText=''){
+      if (visualDiag.autoTimer){
+        clearInterval(visualDiag.autoTimer);
+        visualDiag.autoTimer = 0;
+      }
+      visualDiag.autoCaptureEnabled = false;
+      updateVisualAutoCaptureButton();
+      if (statusText){
+        setVisualStatus(statusText, visualDiag.ready ? 'ok' : '');
+      }
+    }
+
+    // Запускает одиночный ручной снимок из вкладки, preview или горячей клавиши.
+    function requestManualVisualSnapshot(label='ручной снимок'){
+      return requestVisualSnapshot(label, false);
+    }
+
+    // Делает один авто-снимок, но не перебивает уже ожидающийся запрос.
+    function requestAutoVisualSnapshot(){
+      if (visualDiag.pendingCaptureId) return false;
+      return requestVisualSnapshot('авто 5с', true);
+    }
+
+    // Переключает автоматические снимки каждые 5 секунд до повторного нажатия.
+    function toggleVisualAutoCapture(){
+      if (visualDiag.autoCaptureEnabled){
+        stopVisualAutoCapture('Авто-снимки остановлены.');
+        return;
+      }
+
+      if (!visualDiag.ready){
+        updateVisualAutoCaptureButton();
+        setVisualStatus('Авто-снимки доступны после загрузки локального HTML-файла с диагностикой.', 'warn');
+        return;
+      }
+
+      visualDiag.autoCaptureEnabled = true;
+      updateVisualAutoCaptureButton();
+      setVisualStatus('Авто-снимки включены: каждые 5 секунд.', 'ok');
+      requestAutoVisualSnapshot();
+      visualDiag.autoTimer = setInterval(() => {
+        if (!visualDiag.ready){
+          stopVisualAutoCapture('');
+          return;
+        }
+        requestAutoVisualSnapshot();
+      }, AUTO_VISUAL_CAPTURE_INTERVAL_MS);
+    }
+
+    // Обрабатывает PrtSc как горячую клавишу ручного снимка, если браузер отдаёт событие странице.
+    function handleVisualCaptureHotkey(event){
+      if (!event || event.repeat) return;
+      if (event.key !== 'PrintScreen' && event.code !== 'PrintScreen') return;
+
+      event.preventDefault();
+      requestManualVisualSnapshot('PrtSc');
+    }
+
+    // Сбрасывает карточки визуальной диагностики при загрузке новой игры.
+    function resetVisualAnalysis(statusText){
+      stopVisualAutoCapture('');
+      visualDiag.ready = false;
+      visualDiag.firstActionCaptured = false;
+      visualDiag.pendingCaptureId = 0;
+      if (visualDiag.pendingTimer){
+        clearTimeout(visualDiag.pendingTimer);
+        visualDiag.pendingTimer = 0;
+      }
+      visualDiag.snapshots = [];
+      visualDiag.selectedSnapshotId = '';
+      setVisualStatus(statusText || 'Загрузите локальный HTML-файл с диагностикой, чтобы включить визуальный анализ.', '');
+      setVisualScore(els.visualReadability, '—', '');
+      setVisualScore(els.visualPaletteScore, '—', '');
+      setVisualScore(els.visualTouchScore, '—', '');
+      setVisualScore(els.visualUxScore, '—', '');
+      els.visualPalette.innerHTML = '';
+      renderVisualIssues([]);
+      renderVisualHistoryAnalysis();
+      els.visualSnapshots.innerHTML = '';
+    }
+
+    // Очищает только историю скриншотов, не сбрасывая текущие карточки визуального анализа.
+    function resetVisualSnapshotHistory(){
+      visualDiag.snapshots = [];
+      visualDiag.selectedSnapshotId = '';
+      els.visualSnapshots.innerHTML = '';
+      renderVisualHistoryAnalysis();
+      setVisualStatus('История снимков очищена. Текущий визуальный анализ оставлен.', visualDiag.ready ? 'ok' : '');
+    }
+
+    // Выбирает самый серьёзный уровень среди оценок одного снимка.
+    function getWorstVisualMode(scores){
+      const list = scores ? Object.values(scores) : [];
+      if (list.includes('err')) return 'err';
+      if (list.includes('warn')) return 'warn';
+      if (list.includes('ok')) return 'ok';
+      return '';
+    }
+
+    // Приводит новый и старый формат палитры к единой структуре для отрисовки.
+    function normalizeVisualPaletteInfo(source){
+      if (Array.isArray(source)){
+        return { dominant: source, accents: [], wheel: null, summary: '' };
+      }
+
+      const info = source && typeof source === 'object' ? source : {};
+      return {
+        dominant: Array.isArray(info.dominant) ? info.dominant : [],
+        accents: Array.isArray(info.accents) ? info.accents : [],
+        wheel: info.wheel || null,
+        summary: info.summary || ''
+      };
+    }
+
+    // Формирует короткий текст карточки палитры так, чтобы статус объяснял смысл анализа.
+    function visualPaletteScoreText(paletteInfo){
+      const info = normalizeVisualPaletteInfo(paletteInfo);
+      if (info.summary) return info.summary;
+      if (!info.dominant.length && !info.accents.length) return 'нет данных';
+      return info.dominant.length + ' осн. / ' + info.accents.length + ' акц.';
+    }
+
+    // Рисует один ряд цветовых образцов с процентом и сектором цветового круга.
+    function renderPaletteItems(items, limit){
+      const list = Array.isArray(items) ? items.slice(0, limit) : [];
+      if (!list.length){
+        return '<span class="muted small">нет данных</span>';
+      }
+
+      return list.map((item) => {
+        const hex = escapeHtml(item.hex || '#000000');
+        const percent = Number.isFinite(item.percent) ? item.percent.toFixed(1) + '%' : '';
+        const hueName = item.hueName ? escapeHtml(item.hueName) : '';
+        const title = hex + (percent ? ' ' + percent : '') + (hueName ? ' · ' + hueName : '');
+        return (
+          '<div class="visual-palette-item" title="' + escapeHtml(title) + '">' +
+            '<span class="visual-swatch" style="background:' + hex + '"></span>' +
+            '<span class="visual-swatch-label">' + hex + '<br>' + escapeHtml(percent || hueName) + (percent && hueName ? '<br>' + hueName : '') + '</span>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    // Рисует цветовой круг: не геометрию круга, а сжатую шкалу занятых hue-секторов и текстовую гармонию.
+    function renderColorWheel(wheel){
+      if (!wheel || !Array.isArray(wheel.sectors) || !wheel.sectors.length){
+        return (
+          '<div class="visual-color-wheel">' +
+            '<div class="visual-palette-title">Цветовой круг</div>' +
+            '<div class="visual-palette-note">Недостаточно насыщенных цветов для оценки гармонии.</div>' +
+          '</div>'
+        );
+      }
+
+      const segments = wheel.sectors.map((sector) => {
+        const weight = Number.isFinite(sector.percent) ? Math.max(8, Math.min(100, sector.percent)) : 12;
+        const color = escapeHtml(sector.color || ('hsl(' + Math.round(sector.hue || 0) + ', 90%, 55%)'));
+        const title = escapeHtml((sector.name || 'сектор') + ' · ' + weight.toFixed(1) + '%');
+        return '<span class="visual-hue-segment" style="background:' + color + ';flex:' + weight.toFixed(2) + ' 1 0" title="' + title + '"></span>';
+      }).join('');
+      const summary = wheel.summary || wheel.harmony || 'цветовой круг собран';
+
+      return (
+        '<div class="visual-color-wheel">' +
+          '<div class="visual-palette-title">Цветовой круг</div>' +
+          '<div class="visual-hue-bar">' + segments + '</div>' +
+          '<div class="visual-palette-note">' + escapeHtml(summary) + '</div>' +
+        '</div>'
+      );
+    }
+
+    // Пропускает в inline-style только цвета, которые генерирует сам анализ палитры.
+    function safeVisualCssColor(value, fallback){
+      const text = String(value || '').trim();
+      if (/^#[0-9a-f]{3,8}$/i.test(text)) return text;
+      if (/^hsl\(\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?%\s*,\s*\d+(?:\.\d+)?%\s*\)$/i.test(text)) return text;
+      return fallback;
+    }
+
+    // Строит компактные сегменты цветовой линии для строки снимка.
+    function renderSnapshotHueSegments(wheel){
+      const sectors = wheel && Array.isArray(wheel.sectors) ? wheel.sectors : [];
+      if (!sectors.length) return '';
+
+      const weights = sectors.map((sector) => Number.isFinite(sector.percent) ? Math.max(1, sector.percent) : 1);
+      const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+      return sectors.map((sector, index) => {
+        const hue = Number.isFinite(sector.hue) ? Math.round(sector.hue) : 220;
+        const color = safeVisualCssColor(sector.color || ('hsl(' + hue + ', 88%, 56%)'), '#33456f');
+        const weight = Math.max(6, weights[index] / total * 100);
+        const title = escapeHtml((sector.name || 'сектор') + ' · ' + weight.toFixed(1) + '%');
+        return '<span class="visual-shot-hue-segment" style="background:' + escapeHtml(color) + ';flex:' + weight.toFixed(2) + ' 1 0" title="' + title + '"></span>';
+      }).join('');
+    }
+
+    // Рисует компактную линию цветового круга для конкретного снимка истории.
+    function renderSnapshotColorWheel(snapshot){
+      const paletteInfo = normalizeVisualPaletteInfo(snapshot && (snapshot.paletteInfo || snapshot.palette || []));
+      const wheel = paletteInfo.wheel || null;
+      const sectors = wheel && Array.isArray(wheel.sectors) ? wheel.sectors : [];
+      if (!sectors.length){
+        return (
+          '<div class="visual-shot-wheel" title="Цветовой круг не собран">' +
+            '<div class="visual-shot-hue-bar"></div>' +
+            '<span class="visual-shot-wheel-text"><span>цветовой круг</span><span>нет данных</span></span>' +
+          '</div>'
+        );
+      }
+
+      const segments = renderSnapshotHueSegments(wheel);
+      const harmony = wheel.harmony || 'гармония не определена';
+      const sectorNames = sectors.map((sector) => sector.name).filter(Boolean).slice(0, 4).join(', ');
+      const title = (wheel.summary || harmony) + (sectorNames ? ' · ' + sectorNames : '');
+
+      return (
+        '<div class="visual-shot-wheel" title="' + escapeHtml(title) + '">' +
+          '<div class="visual-shot-hue-bar">' + segments + '</div>' +
+          '<span class="visual-shot-wheel-text">' +
+            '<span>' + escapeHtml(harmony) + '</span>' +
+            '<span>' + escapeHtml(sectorNames || 'секторы не выделены') + '</span>' +
+          '</span>' +
+        '</div>'
+      );
+    }
+
+    // Рисует доминирующие цвета, отдельные акценты игровых элементов и сводку по цветовому кругу.
+    function renderVisualPalette(paletteInfo){
+      const info = normalizeVisualPaletteInfo(paletteInfo);
+      if (!info.dominant.length && !info.accents.length){
+        els.visualPalette.innerHTML = '<span class="muted small">Палитра пока не собрана.</span>';
+        return;
+      }
+
+      els.visualPalette.innerHTML =
+        '<div class="visual-palette-group">' +
+          '<div class="visual-palette-title">Доминирующие цвета снимка</div>' +
+          '<div class="visual-palette-row">' + renderPaletteItems(info.dominant, 12) + '</div>' +
+        '</div>' +
+        '<div class="visual-palette-group">' +
+          '<div class="visual-palette-title">Акценты и вероятные игровые элементы</div>' +
+          '<div class="visual-palette-row">' + renderPaletteItems(info.accents, 12) + '</div>' +
+        '</div>' +
+        renderColorWheel(info.wheel);
+    }
+
+    // Формирует одну строку замечания по снимку с короткой причиной.
+    function formatVisualIssue(issue){
+      if (!issue) return '';
+      const level = issue.level === 'err' ? 'критично' : issue.level === 'warn' ? 'замечание' : 'инфо';
+      const scope = issue.scope ? '[' + issue.scope + '] ' : '';
+      return level + ': ' + scope + (issue.text || '');
+    }
+
+    // Определяет колонку замечаний, чтобы touch, палитра и текст не смешивались в одном журнале.
+    function visualIssueGroup(issue){
+      const scope = String(issue && issue.scope ? issue.scope : '').toLowerCase();
+      if (scope.includes('touch')) return 'touch';
+      if (scope.includes('палит') || scope.includes('цвет')) return 'palette';
+      return 'text';
+    }
+
+    // Заполняет один журнал замечаний и оставляет понятный пустой текст, если проблем в группе нет.
+    function setVisualIssueLog(el, issues, emptyText){
+      if (!el) return;
+      const lines = (issues || []).map(formatVisualIssue).filter(Boolean);
+      el.textContent = lines.length ? lines.join('\n') : emptyText;
+    }
+
+    // Раскладывает замечания визуального анализа по отдельным журналам: текст/UX, цвета, touch-зоны.
+    function renderVisualIssues(issues){
+      const groups = { text: [], palette: [], touch: [] };
+      (Array.isArray(issues) ? issues : []).forEach((issue) => {
+        groups[visualIssueGroup(issue)].push(issue);
+      });
+
+      setVisualIssueLog(els.visualTextIssues, groups.text, 'Замечаний по читаемости и UX нет.');
+      setVisualIssueLog(els.visualPaletteIssues, groups.palette, 'Замечаний по цветам нет.');
+      setVisualIssueLog(els.visualTouchIssues, groups.touch, 'Замечаний по touch-зонам нет.');
+    }
+
+    // Безопасно читает процентную метрику истории, чтобы старые снимки без новых полей не ломали расчёт.
+    function visualPercent(value){
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    // Возвращает пересчитываемый номер снимка для ссылок исторического анализа.
+    function visualSnapshotHistoryLabel(snapshot, index){
+      return '#' + (index + 1);
+    }
+
+    // Собирает числовые показатели снимка, по которым можно сравнивать цветовой баланс во времени.
+    function getVisualHistoryMetrics(snapshot, index){
+      const paletteInfo = normalizeVisualPaletteInfo(snapshot && (snapshot.paletteInfo || snapshot.palette || []));
+      const wheel = paletteInfo.wheel || {};
+      const sectors = Array.isArray(wheel.sectors) ? wheel.sectors : [];
+      const dominant = paletteInfo.dominant || [];
+      const accents = paletteInfo.accents || [];
+      const harmony = wheel.harmony || 'гармония не определена';
+      const sectorNames = sectors.map((sector) => sector.name).filter(Boolean);
+
+      return {
+        label: visualSnapshotHistoryLabel(snapshot, index),
+        warm: visualPercent(wheel.warmPercent),
+        cool: visualPercent(wheel.coolPercent),
+        neutral: visualPercent(wheel.neutralPercent),
+        topDominance: dominant[0] && Number.isFinite(dominant[0].percent) ? dominant[0].percent : 0,
+        accentCount: accents.length,
+        harmony,
+        complementary: /комплементар/i.test(harmony),
+        sectors: sectorNames,
+        scoreMode: getWorstVisualMode(snapshot && snapshot.scores)
+      };
+    }
+
+    // Считает самый заметный сдвиг между соседними снимками истории.
+    function getVisualHistoryTransitions(metrics){
+      const transitions = [];
+      for (let i = 1; i < metrics.length; i++){
+        const prev = metrics[i - 1];
+        const next = metrics[i];
+        const balanceJump = Math.max(
+          Math.abs(next.warm - prev.warm),
+          Math.abs(next.cool - prev.cool),
+          Math.abs(next.neutral - prev.neutral)
+        );
+        transitions.push({
+          prev,
+          next,
+          balanceJump,
+          warmJump: next.warm - prev.warm,
+          coolJump: next.cool - prev.cool,
+          neutralJump: next.neutral - prev.neutral,
+          dominanceJump: next.topDominance - prev.topDominance,
+          accentDrop: prev.accentCount - next.accentCount,
+          harmonyChanged: prev.harmony !== next.harmony,
+          complementaryChanged: prev.complementary !== next.complementary
+        });
+      }
+      return transitions;
+    }
+
+    // Формирует человекочитаемую строку изменения процентов между двумя состояниями.
+    function formatVisualHistoryDelta(value){
+      const rounded = Math.round(value);
+      return (rounded > 0 ? '+' : '') + rounded + '%';
+    }
+
+    // Оценивает историю снимков: резкие цветовые скачки, потерю акцентов и смену комплементарности.
+    function analyzeVisualHistory(){
+      const snapshots = visualDiag.snapshots.slice().reverse();
+      const metrics = snapshots.map(getVisualHistoryMetrics);
+      const transitions = getVisualHistoryTransitions(metrics);
+      const issues = [];
+      let mode = metrics.length >= 2 ? 'ok' : '';
+      let balanceSummary = metrics.length >= 2 ? 'стабильно' : 'нужно 2 снимка';
+
+      if (metrics.length < 2){
+        return {
+          mode,
+          count: metrics.length,
+          balanceSummary,
+          issues: ['Нужно минимум два снимка, чтобы сравнить динамику цветов и UI-состояний.']
+        };
+      }
+
+      const strongestBalance = transitions.slice().sort((a, b) => b.balanceJump - a.balanceJump)[0];
+      const strongestDominance = transitions.slice().sort((a, b) => b.dominanceJump - a.dominanceJump)[0];
+      const strongestAccentDrop = transitions.slice().sort((a, b) => b.accentDrop - a.accentDrop)[0];
+      const harmonyChanges = transitions.filter((item) => item.harmonyChanged);
+      const complementaryChanges = transitions.filter((item) => item.complementaryChanged);
+
+      if (strongestBalance && strongestBalance.balanceJump >= 45){
+        mode = 'err';
+        balanceSummary = 'скачок ' + Math.round(strongestBalance.balanceJump) + '%';
+        issues.push(
+          'критично: цветовой баланс резко изменился между "' + strongestBalance.prev.label + '" и "' + strongestBalance.next.label +
+          '" (тёплые ' + formatVisualHistoryDelta(strongestBalance.warmJump) +
+          ', холодные ' + formatVisualHistoryDelta(strongestBalance.coolJump) +
+          ', нейтральные ' + formatVisualHistoryDelta(strongestBalance.neutralJump) + ').'
+        );
+      } else if (strongestBalance && strongestBalance.balanceJump >= 28){
+        mode = mode === 'err' ? mode : 'warn';
+        balanceSummary = 'сдвиг ' + Math.round(strongestBalance.balanceJump) + '%';
+        issues.push(
+          'замечание: заметный сдвиг цветового баланса между "' + strongestBalance.prev.label + '" и "' + strongestBalance.next.label +
+          '" (тёплые ' + formatVisualHistoryDelta(strongestBalance.warmJump) +
+          ', холодные ' + formatVisualHistoryDelta(strongestBalance.coolJump) +
+          ', нейтральные ' + formatVisualHistoryDelta(strongestBalance.neutralJump) + ').'
+        );
+      } else {
+        balanceSummary = 'Δ до ' + Math.round(strongestBalance ? strongestBalance.balanceJump : 0) + '%';
+      }
+
+      if (strongestDominance && strongestDominance.dominanceJump >= 22){
+        mode = mode === 'err' ? mode : 'warn';
+        issues.push(
+          'замечание: доминирующий фон вырос на ' + Math.round(strongestDominance.dominanceJump) +
+          '% между "' + strongestDominance.prev.label + '" и "' + strongestDominance.next.label +
+          '"; экран мог стать темнее или однотоннее.'
+        );
+      }
+
+      if (strongestAccentDrop && strongestAccentDrop.accentDrop >= 5){
+        mode = mode === 'err' ? mode : 'warn';
+        issues.push(
+          'замечание: количество акцентных цветов упало с ' + strongestAccentDrop.prev.accentCount +
+          ' до ' + strongestAccentDrop.next.accentCount + ' между "' + strongestAccentDrop.prev.label +
+          '" и "' + strongestAccentDrop.next.label + '".'
+        );
+      }
+
+      if (complementaryChanges.length){
+        mode = mode === 'err' ? mode : 'warn';
+        const change = complementaryChanges[0];
+        issues.push(
+          'замечание: комплементарность ' + (change.next.complementary ? 'появилась' : 'исчезла') +
+          ' между "' + change.prev.label + '" и "' + change.next.label +
+          '" (' + change.prev.harmony + ' → ' + change.next.harmony + ').'
+        );
+      } else if (harmonyChanges.length > 1){
+        mode = mode === 'err' ? mode : 'warn';
+        issues.push('замечание: гармония менялась несколько раз; проверьте, не скачет ли визуальный стиль между состояниями.');
+      }
+
+      if (!issues.length){
+        const last = metrics[metrics.length - 1];
+        issues.push(
+          'История выглядит стабильной: баланс менялся умеренно, текущая гармония — ' +
+          last.harmony + ', акцентных цветов — ' + last.accentCount + '.'
+        );
+      }
+
+      return {
+        mode,
+        count: metrics.length,
+        balanceSummary,
+        issues: issues.slice(0, 6)
+      };
+    }
+
+    // Рисует сводку по истории снимков и показывает, где цветовой стиль резко менялся во времени.
+    function renderVisualHistoryAnalysis(){
+      if (!els.visualHistoryScore || !els.visualHistoryBalance || !els.visualHistoryIssues) return;
+      const analysis = analyzeVisualHistory();
+      const countText = analysis.count + ' снимк.' + (analysis.mode ? ' · ' + visualModeLabel(analysis.mode) : '');
+      setVisualScore(els.visualHistoryScore, countText, analysis.mode || '');
+      setVisualScore(els.visualHistoryBalance, analysis.balanceSummary, analysis.mode || '');
+      els.visualHistoryIssues.textContent = analysis.issues.join('\n');
+    }
+
+    // Разрешает показывать только bitmap-миниатюры, собранные как безопасный data:image URL.
+    function getSafeVisualDataUrl(value){
+      const text = String(value || '');
+      if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=]+$/i.test(text)){
+        return text;
+      }
+      return '';
+    }
+
+    // Создаёт устойчивый идентификатор снимка для удаления из истории после любой перерисовки.
+    function createVisualSnapshotId(){
+      return Date.now().toString(36) + '-' + Math.random().toString(16).slice(2);
+    }
+
+    // Возвращает пересчитываемый номер снимка: самый ранний в текущей истории всегда #1.
+    function getVisualSnapshotNumber(snapshot){
+      const index = visualDiag.snapshots.indexOf(snapshot);
+      return index === -1 ? 0 : visualDiag.snapshots.length - index;
+    }
+
+    // Находит снимок истории по устойчивому идентификатору.
+    function findVisualSnapshot(snapshotId){
+      const id = String(snapshotId || '');
+      return visualDiag.snapshots.find((snapshot) => snapshot && snapshot.snapshotId === id) || null;
+    }
+
+    // Показывает в верхних блоках визуального анализа данные именно выбранного снимка.
+    function renderVisualSnapshotDetails(snapshot){
+      if (!snapshot){
+        setVisualScore(els.visualReadability, '—', '');
+        setVisualScore(els.visualPaletteScore, '—', '');
+        setVisualScore(els.visualTouchScore, '—', '');
+        setVisualScore(els.visualUxScore, '—', '');
+        els.visualPalette.innerHTML = '<span class="muted small">Выберите снимок в истории.</span>';
+        renderVisualIssues([]);
+        return;
+      }
+
+      const scores = snapshot.scores || {};
+      const readability = snapshot.text || {};
+      const paletteInfo = normalizeVisualPaletteInfo(snapshot.paletteInfo || snapshot.palette || []);
+      const touch = snapshot.touch || {};
+      const ux = snapshot.ux || {};
+      const issues = Array.isArray(snapshot.issues) ? snapshot.issues : [];
+      const textTotal = Number.isFinite(readability.total) ? readability.total : 0;
+      const readabilityText = textTotal
+        ? textTotal + ' текст. / ' + (readability.bad || 0) + ' крит.'
+        : ux.hasText ? 'DOM-текст есть' : 'текст не найден';
+
+      setVisualScore(
+        els.visualReadability,
+        readabilityText,
+        scores.readability || ''
+      );
+      setVisualScore(
+        els.visualPaletteScore,
+        visualPaletteScoreText(paletteInfo),
+        scores.palette || ''
+      );
+      setVisualScore(
+        els.visualTouchScore,
+        (touch.small || 0) + ' малых / ' + (touch.edge || 0) + ' у края',
+        scores.touch || ''
+      );
+      setVisualScore(
+        els.visualUxScore,
+        ux.summary || 'нет данных',
+        scores.ux || ''
+      );
+
+      renderVisualPalette(paletteInfo);
+      renderVisualIssues(issues);
+    }
+
+    // Выбирает снимок в истории, подсвечивает строку и показывает его палитру/круг/замечания.
+    function selectVisualSnapshot(snapshotId, announce=false){
+      const snapshot = findVisualSnapshot(snapshotId);
+      if (!snapshot) return false;
+
+      visualDiag.selectedSnapshotId = snapshot.snapshotId;
+      renderVisualSnapshotDetails(snapshot);
+      renderVisualSnapshotsList();
+
+      if (announce){
+        const number = getVisualSnapshotNumber(snapshot);
+        setVisualStatus('Выбран снимок #' + number + ': ' + (snapshot.label || 'состояние') + '.', getWorstVisualMode(snapshot.scores));
+      }
+      return true;
+    }
+
+    // Удаляет один снимок из истории и сразу пересчитывает исторический анализ по оставшимся кадрам.
+    function deleteVisualSnapshot(snapshotId){
+      const id = String(snapshotId || '');
+      const deletedIndex = visualDiag.snapshots.findIndex((snapshot) => snapshot && snapshot.snapshotId === id);
+      if (deletedIndex === -1) return;
+      const wasSelected = visualDiag.selectedSnapshotId === id;
+      visualDiag.snapshots = visualDiag.snapshots.filter((snapshot) => snapshot && snapshot.snapshotId !== id);
+
+      if (wasSelected){
+        const nextSelected = visualDiag.snapshots[Math.min(deletedIndex, visualDiag.snapshots.length - 1)] || null;
+        visualDiag.selectedSnapshotId = nextSelected ? nextSelected.snapshotId : '';
+        renderVisualSnapshotDetails(nextSelected);
+      }
+
+      renderVisualSnapshotsList();
+      renderVisualHistoryAnalysis();
+      setVisualStatus('Снимок удалён из истории. Анализ истории пересчитан.', visualDiag.ready ? 'ok' : '');
+    }
+
+    // Отрисовывает список сохранённых состояний с миниатюрами, если bitmap удалось снять.
+    function renderVisualSnapshotsList(){
+      if (!visualDiag.snapshots.length){
+        els.visualSnapshots.innerHTML = '';
+        return;
+      }
+
+      const total = visualDiag.snapshots.length;
+      els.visualSnapshots.innerHTML = visualDiag.snapshots.map((snapshot, index) => {
+        const number = total - index;
+        const numberLabel = '#' + number;
+        const mode = getWorstVisualMode(snapshot.scores);
+        const label = escapeHtml(snapshot.label || ('Снимок ' + number));
+        const createdAt = snapshot.createdAt ? new Date(snapshot.createdAt).toLocaleTimeString() : '—';
+        const viewport = snapshot.viewport
+          ? snapshot.viewport.width + ' × ' + snapshot.viewport.height
+          : '—';
+        const safeDataUrl = snapshot.bitmap ? getSafeVisualDataUrl(snapshot.bitmap.dataUrl) : '';
+        const thumb = safeDataUrl
+          ? '<img class="visual-shot-thumb" alt="" src="' + safeDataUrl + '">'
+          : '<div class="visual-shot-empty">без bitmap</div>';
+        const snapshotId = escapeHtml(snapshot.snapshotId || '');
+        const selectedClass = snapshot.snapshotId === visualDiag.selectedSnapshotId ? ' selected' : '';
+        const selectedText = snapshot.snapshotId === visualDiag.selectedSnapshotId ? ' · выбран' : '';
+
+        return (
+          '<div class="visual-snapshot' + selectedClass + '" data-snapshot-id="' + snapshotId + '">' +
+            thumb +
+            '<div class="visual-shot-body">' +
+              '<div class="visual-shot-head">' +
+                '<div class="visual-shot-title">' + numberLabel + ' · ' + label + '</div>' +
+                '<button class="visual-shot-delete" type="button" data-delete-snapshot="' + snapshotId + '" title="Удалить снимок из истории">×</button>' +
+              '</div>' +
+              '<div class="visual-shot-meta">' +
+                createdAt + ' · ' + viewport + ' · ' + visualModeLabel(mode) + selectedText +
+              '</div>' +
+              renderSnapshotColorWheel(snapshot) +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    // Применяет результаты снимка к карточкам, палитре, замечаниям и таймлайну состояний.
+    function renderVisualSnapshot(snapshot){
+      snapshot.snapshotId = snapshot.snapshotId || createVisualSnapshotId();
+
+      visualDiag.snapshots.unshift(snapshot);
+      visualDiag.snapshots = visualDiag.snapshots.slice(0, 12);
+      visualDiag.selectedSnapshotId = snapshot.snapshotId;
+      renderVisualSnapshotDetails(snapshot);
+      renderVisualSnapshotsList();
+      renderVisualHistoryAnalysis();
+
+      const worstMode = getWorstVisualMode(snapshot.scores || {});
+      setVisualStatus(
+        'Снимок "' + (snapshot.label || 'текущее состояние') + '" обработан: ' + visualModeLabel(worstMode) + '.',
+        worstMode
+      );
+    }
+
+    // Запрашивает у диагностического iframe новый визуальный снимок состояния.
+    function requestVisualSnapshot(label, automatic=false){
+      if (!els.gameFrame.contentWindow){
+        if (!automatic) setVisualStatus('iframe ещё не готов для визуального анализа.', 'warn');
+        return false;
+      }
+
+      if (!visualDiag.ready){
+        if (!automatic) {
+          setVisualStatus('Визуальный анализ доступен после загрузки локального HTML-файла с диагностикой.', 'warn');
+        }
+        return false;
+      }
+
+      const captureId = Date.now() + '-' + Math.random().toString(16).slice(2);
+      visualDiag.pendingCaptureId = captureId;
+      setVisualStatus('Запрашиваю снимок состояния…', 'warn');
+
+      if (visualDiag.pendingTimer){
+        clearTimeout(visualDiag.pendingTimer);
+      }
+      visualDiag.pendingTimer = setTimeout(() => {
+        if (visualDiag.pendingCaptureId === captureId){
+          setVisualStatus('Снимок не вернулся. Возможно, игра блокирует доступ к bitmap или ещё загружается.', 'warn');
+        }
+      }, 1800);
+
+      els.gameFrame.contentWindow.postMessage({
+        type: 'testerVisualCapture',
+        captureId,
+        label: label || 'текущее состояние',
+        result: lastGameResult
+      }, '*');
+      flashVisualCaptureButtons(label === 'авто 5с' ? 'auto' : 'manual');
+
+      return true;
+    }
+
+    // Принимает визуальный снимок из iframe и завершает ожидание ответа.
+    function handleVisualSnapshotMessage(data){
+      if (!data || data.kind !== 'visualSnapshot') return false;
+
+      if (visualDiag.pendingTimer){
+        clearTimeout(visualDiag.pendingTimer);
+        visualDiag.pendingTimer = 0;
+      }
+      visualDiag.pendingCaptureId = 0;
+
+      if (data.error){
+        setVisualStatus('Не удалось снять визуальное состояние: ' + data.error, 'err');
+        return true;
+      }
+
+      renderVisualSnapshot(data.snapshot || {});
+      return true;
+    }
+
     const INPUT_DIAG_SCRIPT = `
     (() => {
       const registered = new WeakMap();
       const origAdd = EventTarget.prototype.addEventListener;
+      const origCanvasGetContext = HTMLCanvasElement.prototype.getContext;
+
+      // Включает сохранение WebGL-буфера до создания renderer, иначе 3D-canvas часто отдаёт чёрный кадр при toDataURL/drawImage.
+      function installWebglCapturePatch(){
+        if (!origCanvasGetContext || HTMLCanvasElement.prototype.__testerWebglCapturePatched) return;
+
+        HTMLCanvasElement.prototype.__testerWebglCapturePatched = true;
+        HTMLCanvasElement.prototype.getContext = function(type, attrs){
+          const contextType = String(type || '').toLowerCase();
+          if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2'){
+            const patchedAttrs = Object.assign({}, attrs || {}, { preserveDrawingBuffer: true });
+            try{
+              return origCanvasGetContext.call(this, type, patchedAttrs);
+            } catch (_) {
+              return origCanvasGetContext.call(this, type, attrs);
+            }
+          }
+
+          return origCanvasGetContext.call(this, type, attrs);
+        };
+
+        if (window.OffscreenCanvas && window.OffscreenCanvas.prototype && !window.OffscreenCanvas.prototype.__testerWebglCapturePatched){
+          const origOffscreenGetContext = window.OffscreenCanvas.prototype.getContext;
+          window.OffscreenCanvas.prototype.__testerWebglCapturePatched = true;
+          window.OffscreenCanvas.prototype.getContext = function(type, attrs){
+            const contextType = String(type || '').toLowerCase();
+            if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2'){
+              const patchedAttrs = Object.assign({}, attrs || {}, { preserveDrawingBuffer: true });
+              try{
+                return origOffscreenGetContext.call(this, type, patchedAttrs);
+              } catch (_) {
+                return origOffscreenGetContext.call(this, type, attrs);
+              }
+            }
+            return origOffscreenGetContext.call(this, type, attrs);
+          };
+        }
+      }
+
+      installWebglCapturePatch();
 
       function remember(target, type){
         let set = registered.get(target);
@@ -814,6 +2052,951 @@
         } catch (_) {}
       }
 
+      // Ограничивает числовые значения, чтобы сбойные стили не ломали анализ.
+      function clamp(value, min, max){
+        return Math.max(min, Math.min(max, value));
+      }
+
+      // Разбирает rgb/rgba-цвет из CSS в числовой объект.
+      function parseCssColor(value){
+        const text = String(value || '').trim();
+        const match = text.match(/^rgba?\\(([^)]+)\\)$/i);
+        if (!match) return null;
+
+        const parts = match[1].split(',').map((part) => part.trim());
+        if (parts.length < 3) return null;
+
+        const readChannel = (raw) => {
+          if (raw.indexOf('%') !== -1) return clamp(parseFloat(raw) * 2.55, 0, 255);
+          return clamp(parseFloat(raw), 0, 255);
+        };
+
+        const alpha = parts.length >= 4 ? clamp(parseFloat(parts[3]), 0, 1) : 1;
+        return {
+          r: readChannel(parts[0]),
+          g: readChannel(parts[1]),
+          b: readChannel(parts[2]),
+          a: Number.isFinite(alpha) ? alpha : 1
+        };
+      }
+
+      // Накладывает полупрозрачный цвет поверх уже найденного фона.
+      function blendOver(top, bottom){
+        if (!top) return bottom;
+        const a = clamp(top.a == null ? 1 : top.a, 0, 1);
+        const inv = 1 - a;
+        return {
+          r: top.r * a + bottom.r * inv,
+          g: top.g * a + bottom.g * inv,
+          b: top.b * a + bottom.b * inv,
+          a: 1
+        };
+      }
+
+      // Превращает RGB в HEX для палитры и подсказок.
+      function rgbToHex(color){
+        const toHex = (value) => {
+          const n = clamp(Math.round(value || 0), 0, 255);
+          return n.toString(16).padStart(2, '0');
+        };
+        return '#' + toHex(color.r) + toHex(color.g) + toHex(color.b);
+      }
+
+      // Считает относительную яркость цвета по формуле WCAG.
+      function relativeLuminance(color){
+        const convert = (channel) => {
+          const c = clamp(channel, 0, 255) / 255;
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * convert(color.r) + 0.7152 * convert(color.g) + 0.0722 * convert(color.b);
+      }
+
+      // Считает контраст двух цветов как отношение яркостей WCAG.
+      function contrastRatio(foreground, background){
+        const l1 = relativeLuminance(foreground);
+        const l2 = relativeLuminance(background);
+        const light = Math.max(l1, l2);
+        const dark = Math.min(l1, l2);
+        return (light + 0.05) / (dark + 0.05);
+      }
+
+      // Проверяет, виден ли элемент и занимает ли он место на экране.
+      function isVisibleForVisual(el){
+        if (!el || el.nodeType !== 1) return false;
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return (
+          rect.width > 1 &&
+          rect.height > 1 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity || 1) > 0.02
+        );
+      }
+
+      // Ищет фактический фон элемента, поднимаясь по родителям и учитывая прозрачность.
+      function readBackgroundColor(el){
+        const chain = [];
+        let node = el;
+        while (node && node.nodeType === 1){
+          chain.push(node);
+          node = node.parentElement;
+        }
+
+        let color = { r: 0, g: 0, b: 0, a: 1 };
+        for (let i = chain.length - 1; i >= 0; i--){
+          const parsed = parseCssColor(getComputedStyle(chain[i]).backgroundColor);
+          if (parsed && parsed.a > 0){
+            color = blendOver(parsed, color);
+          }
+        }
+        return color;
+      }
+
+      // Берёт прямой текст элемента, чтобы не дублировать большие родительские контейнеры.
+      function getDirectText(el){
+        if (!el || el.nodeType !== 1) return '';
+        if (el.matches('input,textarea,select')){
+          return String(el.value || el.getAttribute('placeholder') || '').trim();
+        }
+
+        return Array.from(el.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => String(node.nodeValue || '').replace(/\\s+/g, ' ').trim())
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+      }
+
+      // Проверяет, содержит ли строка полезные буквы или цифры, а не только разделители HUD.
+      function hasMeaningfulText(text){
+        return /[A-Za-zА-Яа-яЁё0-9]/.test(String(text || ''));
+      }
+
+      // Выбирает текст для проверки контраста: прямой текст, value формы или текст листового UI-элемента.
+      function getVisualTextForContrast(el){
+        const direct = getDirectText(el);
+        if (hasMeaningfulText(direct)) return direct;
+
+        const children = Array.from(el.children || []).filter(isVisibleForVisual);
+        const isLeaf = !children.length;
+        const isSemanticText = el.matches('button,a,label,[role="button"],[role="heading"],h1,h2,h3,h4,h5,h6,p,li,span,strong,em,small');
+        if (!isLeaf && !isSemanticText) return '';
+
+        const text = String(el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+        return hasMeaningfulText(text) ? text : '';
+      }
+
+      // Проверяет контраст видимого DOM-текста с ближайшим фоном.
+      function collectTextReadability(){
+        const pageText = (document.body && document.body.innerText ? document.body.innerText : '')
+          .replace(/\\s+/g, ' ')
+          .trim();
+        const result = { total: 0, bad: 0, warn: 0, hasPageText: !!pageText, issues: [] };
+        const nodes = Array.from(document.querySelectorAll('body, body *')).slice(0, 500);
+
+        for (const el of nodes){
+          if (!isVisibleForVisual(el)) continue;
+
+          const text = getVisualTextForContrast(el);
+          if (!text) continue;
+
+          const style = getComputedStyle(el);
+          const foreground = parseCssColor(style.color);
+          if (!foreground) continue;
+
+          const background = readBackgroundColor(el);
+          const ratio = contrastRatio(foreground, background);
+          const fontSize = parseFloat(style.fontSize || '0') || 0;
+          const threshold = fontSize >= 24 || (fontSize >= 18 && Number(style.fontWeight || 400) >= 700) ? 3 : 4.5;
+          const shortText = text.length > 38 ? text.slice(0, 35) + '...' : text;
+
+          result.total += 1;
+
+          if (ratio < Math.max(2.4, threshold - 1.2)){
+            result.bad += 1;
+            result.issues.push({
+              level: 'err',
+              scope: 'контраст',
+              text: 'низкий контраст текста "' + shortText + '" (' + ratio.toFixed(2) + ':1)'
+            });
+          } else if (ratio < threshold){
+            result.warn += 1;
+            result.issues.push({
+              level: 'warn',
+              scope: 'контраст',
+              text: 'пограничный контраст текста "' + shortText + '" (' + ratio.toFixed(2) + ':1)'
+            });
+          }
+        }
+
+        if (!result.total){
+          if (pageText){
+            result.issues.push({
+              level: 'info',
+              scope: 'контраст',
+              text: 'DOM-текст найден, но отдельные видимые блоки для расчёта контраста не выделены.'
+            });
+          } else {
+            result.warn += 1;
+            result.issues.push({
+              level: 'warn',
+              scope: 'контраст',
+              text: 'DOM-текст не найден; если текст нарисован в canvas, проверьте читаемость вручную по bitmap.'
+            });
+          }
+        }
+
+        result.issues = result.issues.slice(0, 10);
+        return result;
+      }
+
+      // Переводит RGB в HSL, чтобы отделять нейтральный фон от насыщенных игровых акцентов.
+      function rgbToHsl(color){
+        const r = clamp(color.r, 0, 255) / 255;
+        const g = clamp(color.g, 0, 255) / 255;
+        const b = clamp(color.b, 0, 255) / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const lightness = (max + min) / 2;
+        let hue = 0;
+        let saturation = 0;
+
+        if (max !== min){
+          const delta = max - min;
+          saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+          if (max === r){
+            hue = (g - b) / delta + (g < b ? 6 : 0);
+          } else if (max === g){
+            hue = (b - r) / delta + 2;
+          } else {
+            hue = (r - g) / delta + 4;
+          }
+          hue *= 60;
+        }
+
+        return { h: hue, s: saturation, l: lightness };
+      }
+
+      // Называет сектор цветового круга понятным словом для отчёта студенту.
+      function hueName(hue, saturation, lightness){
+        if (saturation < 0.16){
+          if (lightness < 0.18) return 'тёмный нейтральный';
+          if (lightness > 0.82) return 'светлый нейтральный';
+          return 'нейтральный';
+        }
+
+        const h = ((hue % 360) + 360) % 360;
+        if (h < 14 || h >= 345) return 'красный';
+        if (h < 50) return 'оранжево-жёлтый';
+        if (h < 72) return 'жёлтый';
+        if (h < 155) return 'зелёный';
+        if (h < 200) return 'голубой';
+        if (h < 250) return 'синий';
+        if (h < 292) return 'фиолетовый';
+        return 'пурпурный';
+      }
+
+      // Считает кратчайшее расстояние между двумя оттенками на цветовом круге.
+      function hueDistance(a, b){
+        const diff = Math.abs(a - b) % 360;
+        return Math.min(diff, 360 - diff);
+      }
+
+      // Считает минимальный охват набора оттенков на круге, учитывая переход через 0 градусов.
+      function hueSpan(hues){
+        if (!hues.length) return 0;
+        const sorted = hues.slice().sort((a, b) => a - b);
+        let biggestGap = 0;
+        for (let i = 0; i < sorted.length; i++){
+          const current = sorted[i];
+          const next = sorted[(i + 1) % sorted.length] + (i + 1 === sorted.length ? 360 : 0);
+          biggestGap = Math.max(biggestGap, next - current);
+        }
+        return 360 - biggestGap;
+      }
+
+      // Создаёт расширенную запись цвета с HSL, яркостью и оценкой акцентности.
+      function makePaletteColor(color, count, total, source){
+        const hsl = rgbToHsl(color);
+        const percent = total ? count / total * 100 : 0;
+        const luminance = relativeLuminance(color);
+        const saturation = hsl.s;
+        const lightness = hsl.l;
+        const accentScore = Math.pow(Math.max(percent, 0.04), 0.55) * (0.45 + saturation) * (0.35 + Math.max(lightness, luminance));
+
+        return {
+          hex: rgbToHex(color),
+          percent,
+          hue: hsl.h,
+          saturation,
+          lightness,
+          luminance,
+          hueName: hueName(hsl.h, saturation, lightness),
+          source,
+          accentScore
+        };
+      }
+
+      // Строит сводку по цветовому кругу: сектора, температуру и грубый тип гармонии.
+      function buildColorWheelAnalysis(colors){
+        const unique = new Map();
+        (colors || []).forEach((color) => {
+          if (!color || !color.hex) return;
+          const existing = unique.get(color.hex);
+          if (!existing || (color.accentScore || 0) > (existing.accentScore || 0)){
+            unique.set(color.hex, color);
+          }
+        });
+
+        const sectorMap = new Map();
+        let warm = 0;
+        let cool = 0;
+        let neutral = 0;
+        let total = 0;
+
+        unique.forEach((color) => {
+          const weight = Math.max(0.1, Math.sqrt(Math.max(color.percent || 0.05, 0.05)));
+          total += weight;
+
+          if (color.saturation < 0.18 || color.lightness < 0.05 || color.lightness > 0.96){
+            neutral += weight;
+            return;
+          }
+
+          const h = ((color.hue % 360) + 360) % 360;
+          if (h < 75 || h >= 330){
+            warm += weight;
+          } else if (h >= 145 && h <= 285){
+            cool += weight;
+          } else {
+            neutral += weight * 0.35;
+          }
+
+          const name = hueName(h, color.saturation, color.lightness);
+          const current = sectorMap.get(name) || { name, hue: h, weight: 0, color: 'hsl(' + Math.round(h) + ', 88%, 56%)' };
+          current.weight += weight;
+          current.hue = (current.hue + h) / 2;
+          sectorMap.set(name, current);
+        });
+
+        const sectors = Array.from(sectorMap.values())
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 7)
+          .map((sector) => ({
+            name: sector.name,
+            hue: sector.hue,
+            color: sector.color,
+            percent: total ? sector.weight / total * 100 : 0
+          }));
+        const hues = sectors.map((sector) => sector.hue);
+        let harmony = 'нейтральная палитра';
+
+        if (hues.length === 1){
+          harmony = 'один выраженный hue-сектор';
+        } else if (hues.length > 1){
+          const hasOpposite = hues.some((a, index) => hues.slice(index + 1).some((b) => {
+            const distance = hueDistance(a, b);
+            return distance >= 145 && distance <= 215;
+          }));
+          const span = hueSpan(hues);
+          const hasTriad = hues.length >= 3 && hues.some((a) => {
+            const hasSecond = hues.some((b) => hueDistance(a, b) >= 85 && hueDistance(a, b) <= 145);
+            const hasThird = hues.some((b) => hueDistance(a, b) >= 205 && hueDistance(a, b) <= 265);
+            return hasSecond && hasThird;
+          });
+
+          if (hasTriad){
+            harmony = 'триадная/разнесённая гармония';
+          } else if (hasOpposite){
+            harmony = 'комплементарный контраст';
+          } else if (span <= 65){
+            harmony = 'аналоговая гармония';
+          } else {
+            harmony = 'смешанная палитра';
+          }
+        }
+
+        const sectorNames = sectors.map((sector) => sector.name).join(', ');
+        const temperature = total
+          ? 'тёплые ' + Math.round(warm / total * 100) + '%, холодные ' + Math.round(cool / total * 100) + '%, нейтральные ' + Math.round(neutral / total * 100) + '%'
+          : 'температура не определена';
+
+        return {
+          sectors,
+          harmony,
+          warmPercent: total ? warm / total * 100 : 0,
+          coolPercent: total ? cool / total * 100 : 0,
+          neutralPercent: total ? neutral / total * 100 : 0,
+          summary: harmony + (sectorNames ? ': ' + sectorNames + '; ' : '; ') + temperature
+        };
+      }
+
+      // Собирает палитру из готовых цветовых бакетов: отдельно масса кадра и малые насыщенные акценты.
+      function buildPaletteInfoFromBuckets(buckets, sampled, source){
+        const colors = Array.from(buckets || []).map((bucket) => {
+          const color = {
+            r: bucket.r / Math.max(1, bucket.count),
+            g: bucket.g / Math.max(1, bucket.count),
+            b: bucket.b / Math.max(1, bucket.count)
+          };
+          return makePaletteColor(color, bucket.count, sampled || 1, source);
+        });
+        const dominant = colors.slice()
+          .sort((a, b) => b.percent - a.percent)
+          .slice(0, 12);
+        const accents = colors.slice()
+          .filter((color) => (
+            color.saturation >= 0.28 &&
+            color.lightness >= 0.10 &&
+            color.lightness <= 0.92 &&
+            (color.percent >= 0.035 || source === 'css')
+          ))
+          .sort((a, b) => b.accentScore - a.accentScore)
+          .slice(0, 12);
+        const info = {
+          source,
+          dominant,
+          accents,
+          wheel: buildColorWheelAnalysis(dominant.concat(accents)),
+          summary: ''
+        };
+        info.summary = summarizePaletteInfo(info);
+        return info;
+      }
+
+      // Формирует короткую подпись карточки палитры без двусмысленного “8 цветов”.
+      function summarizePaletteInfo(info){
+        const dominant = info && Array.isArray(info.dominant) ? info.dominant : [];
+        const accents = info && Array.isArray(info.accents) ? info.accents : [];
+        if (!dominant.length && !accents.length) return 'нет данных';
+
+        const top = dominant[0];
+        if (top && top.percent > 82 && accents.length < 3){
+          return 'фон ' + top.percent.toFixed(1) + '%, мало акц.';
+        }
+
+        return dominant.length + ' осн. / ' + accents.length + ' акц.';
+      }
+
+      // Извлекает палитру из пикселей bitmap: доминирующие цвета и малые насыщенные игровые акценты.
+      function extractPaletteFromPixels(data, width, height){
+        const buckets = new Map();
+        const totalPixels = Math.max(1, width * height);
+        const step = Math.max(1, Math.floor(totalPixels / 24000));
+        let sampled = 0;
+
+        for (let i = 0; i < data.length; i += 4 * step){
+          const alpha = data[i + 3];
+          if (alpha < 140) continue;
+
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const key = (r >> 5) + '-' + (g >> 5) + '-' + (b >> 5);
+          const current = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0 };
+          current.r += r;
+          current.g += g;
+          current.b += b;
+          current.count += 1;
+          buckets.set(key, current);
+          sampled += 1;
+        }
+
+        return buildPaletteInfoFromBuckets(buckets.values(), sampled, 'bitmap');
+      }
+
+      // Достаёт все rgb/rgba-цвета из сложных CSS-свойств вроде box-shadow и text-shadow.
+      function extractCssColorList(value){
+        const matches = String(value || '').match(/rgba?\\([^)]+\\)/ig) || [];
+        return matches.map(parseCssColor).filter(Boolean);
+      }
+
+      // Собирает запасную и дополнительную палитру по DOM/CSS-цветам интерфейса.
+      function collectCssPaletteInfo(){
+        const counts = new Map();
+        const nodes = Array.from(document.querySelectorAll('body, body *')).slice(0, 500);
+
+        function addParsedColor(parsed, weight){
+          if (!parsed || parsed.a < 0.08) return;
+          const hex = rgbToHex(parsed);
+          const current = counts.get(hex) || { r: 0, g: 0, b: 0, count: 0 };
+          current.r += parsed.r * weight;
+          current.g += parsed.g * weight;
+          current.b += parsed.b * weight;
+          current.count += weight;
+          counts.set(hex, current);
+        }
+
+        function addColor(value, weight){
+          addParsedColor(parseCssColor(value), weight);
+        }
+
+        function addColorList(value, weight){
+          extractCssColorList(value).forEach((color) => addParsedColor(color, weight));
+        }
+
+        for (const el of nodes){
+          if (!isVisibleForVisual(el)) continue;
+          const style = getComputedStyle(el);
+          addColor(style.backgroundColor, 2);
+          addColor(style.color, 4);
+          addColor(style.borderTopColor, 2);
+          addColor(style.borderRightColor, 1);
+          addColor(style.outlineColor, 1);
+          addColorList(style.boxShadow, 1);
+          addColorList(style.textShadow, 1);
+        }
+
+        const total = Array.from(counts.values()).reduce((sum, bucket) => sum + bucket.count, 0) || 1;
+        return buildPaletteInfoFromBuckets(counts.values(), total, 'css');
+      }
+
+      // Объединяет bitmap-палитру с DOM/CSS-цветами, чтобы мелкий интерфейс не терялся на фоне canvas.
+      function mergePaletteInfo(bitmapInfo, cssInfo){
+        const base = bitmapInfo && bitmapInfo.dominant && bitmapInfo.dominant.length ? bitmapInfo : cssInfo;
+        const dominant = base && Array.isArray(base.dominant) ? base.dominant.slice(0, 12) : [];
+        const accentMap = new Map();
+
+        function addAccent(color, boost){
+          if (!color || !color.hex) return;
+          const existing = accentMap.get(color.hex);
+          const copy = Object.assign({}, color, {
+            accentScore: (color.accentScore || 0) + boost,
+            source: existing && existing.source !== color.source ? 'bitmap+css' : color.source
+          });
+          if (!existing || copy.accentScore > (existing.accentScore || 0)){
+            accentMap.set(color.hex, copy);
+          }
+        }
+
+        if (bitmapInfo){
+          (bitmapInfo.accents || []).forEach((color) => addAccent(color, 2));
+        }
+        if (cssInfo){
+          (cssInfo.accents || []).forEach((color) => addAccent(color, 1.2));
+          (cssInfo.dominant || []).forEach((color) => {
+            if (color.saturation >= 0.24) addAccent(color, 0.7);
+          });
+        }
+
+        const accents = Array.from(accentMap.values())
+          .sort((a, b) => b.accentScore - a.accentScore)
+          .slice(0, 12);
+        const info = {
+          source: bitmapInfo ? (cssInfo ? 'bitmap+css' : 'bitmap') : 'css',
+          dominant,
+          accents,
+          wheel: buildColorWheelAnalysis(dominant.concat(accents)),
+          summary: ''
+        };
+        info.summary = summarizePaletteInfo(info);
+        return info;
+      }
+
+      // Делает bitmap с самого большого canvas, если DOM-снимок недоступен.
+      function captureLargestCanvasBitmap(){
+        const canvases = Array.from(document.querySelectorAll('canvas'))
+          .filter((canvas) => isVisibleForVisual(canvas) && canvas.width > 0 && canvas.height > 0)
+          .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+        if (!canvases.length) return null;
+
+        const source = canvases[0];
+        const maxWidth = 360;
+        const scale = Math.min(1, maxWidth / source.width);
+        const width = Math.max(1, Math.round(source.width * scale));
+        const height = Math.max(1, Math.round(source.height * scale));
+        const out = document.createElement('canvas');
+        out.width = width;
+        out.height = height;
+        const ctx = out.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(source, 0, 0, width, height);
+        const pixels = ctx.getImageData(0, 0, width, height);
+
+        const paletteInfo = extractPaletteFromPixels(pixels.data, width, height);
+
+        return {
+          dataUrl: out.toDataURL('image/jpeg', 0.72),
+          width,
+          height,
+          paletteInfo,
+          palette: paletteInfo.dominant,
+          source: 'canvas'
+        };
+      }
+
+      // Пытается снять bitmap всего состояния через SVG foreignObject.
+      function captureDomBitmap(){
+        return new Promise((resolve, reject) => {
+          try{
+            const width = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 360));
+            const height = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 640));
+            const outWidth = Math.min(360, width);
+            const outHeight = Math.max(1, Math.round(height * (outWidth / width)));
+            const clone = document.documentElement.cloneNode(true);
+
+            clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+            clone.style.width = width + 'px';
+            clone.style.height = height + 'px';
+            clone.style.overflow = 'hidden';
+
+            Array.from(clone.querySelectorAll('script')).forEach((script) => script.remove());
+
+            const originalCanvases = Array.from(document.querySelectorAll('canvas'));
+            const cloneCanvases = Array.from(clone.querySelectorAll('canvas'));
+            originalCanvases.forEach((canvas, index) => {
+              const cloneCanvas = cloneCanvases[index];
+              if (!cloneCanvas) return;
+              try{
+                const img = document.createElement('img');
+                img.setAttribute('src', canvas.toDataURL('image/png'));
+                img.setAttribute('width', String(canvas.clientWidth || canvas.width));
+                img.setAttribute('height', String(canvas.clientHeight || canvas.height));
+                img.setAttribute('style', cloneCanvas.getAttribute('style') || '');
+                cloneCanvas.replaceWith(img);
+              } catch (_) {}
+            });
+
+            const serialized = new XMLSerializer().serializeToString(clone);
+            const svg =
+              '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' +
+                '<foreignObject width="100%" height="100%">' + serialized + '</foreignObject>' +
+              '</svg>';
+            const image = new Image();
+            const canvas = document.createElement('canvas');
+            canvas.width = outWidth;
+            canvas.height = outHeight;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            image.onload = () => {
+              try{
+                ctx.drawImage(image, 0, 0, outWidth, outHeight);
+                const pixels = ctx.getImageData(0, 0, outWidth, outHeight);
+                const paletteInfo = extractPaletteFromPixels(pixels.data, outWidth, outHeight);
+                resolve({
+                  dataUrl: canvas.toDataURL('image/jpeg', 0.72),
+                  width: outWidth,
+                  height: outHeight,
+                  paletteInfo,
+                  palette: paletteInfo.dominant,
+                  source: 'dom'
+                });
+              } catch (error){
+                reject(error);
+              }
+            };
+
+            image.onerror = () => reject(new Error('DOM bitmap не отрисовался'));
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          } catch (error){
+            reject(error);
+          }
+        });
+      }
+
+      // Проверяет размеры, края и скученность интерактивных зон для touch.
+      function collectInteractiveTargets(){
+        const selector = [
+          'button',
+          'a',
+          'input',
+          'select',
+          'textarea',
+          '[role="button"]',
+          '[onclick]',
+          '[onpointerdown]',
+          '[ontouchstart]',
+          '[tabindex]'
+        ].join(',');
+        const nodes = Array.from(new Set(Array.from(document.querySelectorAll(selector))))
+          .filter(isVisibleForVisual)
+          .slice(0, 100);
+        const result = { total: nodes.length, small: 0, edge: 0, spacing: 0, issues: [] };
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const rects = nodes.map((el) => ({ el, rect: el.getBoundingClientRect() }));
+
+        rects.forEach((item) => {
+          const rect = item.rect;
+          const minSide = Math.min(rect.width, rect.height);
+          const label = nodeLabel(item.el);
+
+          if (minSide < 32){
+            result.small += 1;
+            result.issues.push({
+              level: 'err',
+              scope: 'touch',
+              text: 'слишком маленькая зона ' + label + ' (' + Math.round(rect.width) + '×' + Math.round(rect.height) + 'px)'
+            });
+          } else if (minSide < 44){
+            result.small += 1;
+            result.issues.push({
+              level: 'warn',
+              scope: 'touch',
+              text: 'зона ' + label + ' меньше комфортных 44px (' + Math.round(rect.width) + '×' + Math.round(rect.height) + 'px)'
+            });
+          }
+
+          if (
+            rect.left < 8 ||
+            rect.top < 8 ||
+            viewportWidth - rect.right < 8 ||
+            viewportHeight - rect.bottom < 8
+          ){
+            result.edge += 1;
+            result.issues.push({
+              level: 'warn',
+              scope: 'touch',
+              text: 'интерактивный элемент ' + label + ' расположен близко к краю экрана'
+            });
+          }
+        });
+
+        function gapBetween(a, b){
+          const horizontal = Math.max(0, Math.max(a.left - b.right, b.left - a.right));
+          const vertical = Math.max(0, Math.max(a.top - b.bottom, b.top - a.bottom));
+          return Math.sqrt(horizontal * horizontal + vertical * vertical);
+        }
+
+        for (let i = 0; i < rects.length; i++){
+          for (let j = i + 1; j < rects.length; j++){
+            if (gapBetween(rects[i].rect, rects[j].rect) < 8){
+              result.spacing += 1;
+              if (result.spacing <= 6){
+                result.issues.push({
+                  level: 'warn',
+                  scope: 'touch',
+                  text: 'две touch-зоны расположены слишком близко друг к другу'
+                });
+              }
+            }
+          }
+        }
+
+        if (!nodes.length){
+          result.issues.push({
+            level: 'warn',
+            scope: 'touch',
+            text: 'явные интерактивные DOM-зоны не найдены; если игра на canvas, проверьте реальные зоны касания вручную.'
+          });
+        }
+
+        result.issues = result.issues.slice(0, 12);
+        return result;
+      }
+
+      // Проверяет понятность текущего состояния по видимому DOM-тексту и результату игры.
+      function collectUxState(context){
+        const text = (document.body && document.body.innerText ? document.body.innerText : '')
+          .replace(/\\s+/g, ' ')
+          .trim();
+        const canvasCount = document.querySelectorAll('canvas').length;
+        const hasGoal = /(цель|задача|сч[её]т|очки|таймер|время|осталось|score|goal|target|time|progress|start|начать|управ)/i.test(text);
+        const hasSuccess = /(побед|успех|готово|верно|success|win|complete|victory)/i.test(text);
+        const hasFail = /(пораж|ошиб|проиг|fail|lose|lost|game over)/i.test(text);
+        const issues = [];
+        let summary = 'DOM-текст найден';
+
+        if (!text && canvasCount){
+          summary = 'canvas без DOM-текста';
+          issues.push({
+            level: 'warn',
+            scope: 'UX',
+            text: 'цель и финальные сообщения могут быть нарисованы в canvas; проверьте их читаемость по bitmap.'
+          });
+        } else if (!text){
+          summary = 'нет видимого текста';
+          issues.push({
+            level: 'warn',
+            scope: 'UX',
+            text: 'не найден видимый текст цели, счёта или состояния игры.'
+          });
+        } else if (!hasGoal && context && context.result == null){
+          summary = 'цель не распознана';
+          issues.push({
+            level: 'warn',
+            scope: 'UX',
+            text: 'не найден явный текст цели, счёта, времени или прогресса.'
+          });
+        }
+
+        if (context && context.result != null){
+          const numericResult = Number(context.result);
+          if (Number.isFinite(numericResult) && numericResult > 0 && !hasSuccess){
+            issues.push({
+              level: 'warn',
+              scope: 'UX',
+              text: 'получен успешный gameResult, но в DOM не найден явный текст победы или успеха.'
+            });
+          }
+          if (Number.isFinite(numericResult) && numericResult <= 0 && !hasFail){
+            issues.push({
+              level: 'warn',
+              scope: 'UX',
+              text: 'получен неуспешный gameResult, но в DOM не найден явный текст поражения или ошибки.'
+            });
+          }
+          summary = 'финал result=' + numericResult;
+        }
+
+        return {
+          summary,
+          hasText: !!text,
+          hasGoal,
+          hasSuccess,
+          hasFail,
+          issues: issues.slice(0, 6)
+        };
+      }
+
+      // Оценивает палитру с учётом отделённых акцентов и цветового круга.
+      function evaluatePalette(paletteInfo){
+        const issues = [];
+        const dominant = paletteInfo && Array.isArray(paletteInfo.dominant) ? paletteInfo.dominant : [];
+        const accents = paletteInfo && Array.isArray(paletteInfo.accents) ? paletteInfo.accents : [];
+        const wheel = paletteInfo && paletteInfo.wheel ? paletteInfo.wheel : null;
+        if (!dominant.length && !accents.length){
+          issues.push({
+            level: 'warn',
+            scope: 'палитра',
+            text: 'палитра не собрана: нет bitmap и заметных DOM/CSS-цветов.'
+          });
+          return { mode: 'warn', issues };
+        }
+
+        if (dominant.length < 3 && accents.length < 2){
+          issues.push({
+            level: 'warn',
+            scope: 'палитра',
+            text: 'палитра выглядит слишком бедной: мало доминирующих цветов и мало акцентов.'
+          });
+        }
+
+        if (dominant[0] && dominant[0].percent > 82 && accents.length < 3){
+          issues.push({
+            level: 'warn',
+            scope: 'палитра',
+            text: 'фон занимает ' + dominant[0].percent.toFixed(1) + '% снимка, а насыщенных акцентов мало.'
+          });
+        } else if (dominant[0] && dominant[0].percent > 76){
+          issues.push({
+            level: 'info',
+            scope: 'палитра',
+            text: 'фон занимает ' + dominant[0].percent.toFixed(1) + '% снимка; игровые акценты вынесены отдельным списком.'
+          });
+        }
+
+        if (!wheel || !Array.isArray(wheel.sectors) || !wheel.sectors.length){
+          issues.push({
+            level: 'warn',
+            scope: 'цветовой круг',
+            text: 'не найдено насыщенных hue-секторов для оценки цветовой гармонии.'
+          });
+        } else if (wheel.sectors.length === 1 && accents.length < 3){
+          issues.push({
+            level: 'warn',
+            scope: 'цветовой круг',
+            text: 'найден только один выраженный hue-сектор; интерфейс может быть цветово однообразным.'
+          });
+        }
+
+        return { mode: issues.some((issue) => issue.level === 'warn' || issue.level === 'err') ? 'warn' : 'ok', issues };
+      }
+
+      // Сводит количество критичных и пограничных замечаний в статус карточки.
+      function scoreFromCounts(bad, warn){
+        if (bad > 0) return 'err';
+        if (warn > 0) return 'warn';
+        return 'ok';
+      }
+
+      // Собирает полный визуальный снимок: bitmap, палитру, контраст, touch и UX.
+      async function buildVisualSnapshot(context){
+        const snapshot = {
+          label: context && context.label ? String(context.label) : 'текущее состояние',
+          createdAt: Date.now(),
+          viewport: {
+            width: window.innerWidth || document.documentElement.clientWidth || 0,
+            height: window.innerHeight || document.documentElement.clientHeight || 0,
+            devicePixelRatio: window.devicePixelRatio || 1
+          },
+          bitmap: null,
+          palette: [],
+          paletteInfo: null,
+          text: collectTextReadability(),
+          touch: collectInteractiveTargets(),
+          ux: collectUxState(context || {}),
+          scores: {},
+          issues: []
+        };
+
+        try{
+          snapshot.bitmap = await captureDomBitmap();
+        } catch (domError){
+          try{
+            snapshot.bitmap = captureLargestCanvasBitmap();
+          } catch (canvasError){
+            snapshot.issues.push({
+              level: 'warn',
+              scope: 'bitmap',
+              text: 'bitmap снимка недоступен: ' + (canvasError && canvasError.message ? canvasError.message : 'нет доступа')
+            });
+          }
+        }
+
+        const cssPaletteInfo = collectCssPaletteInfo();
+        snapshot.paletteInfo = mergePaletteInfo(
+          snapshot.bitmap && snapshot.bitmap.paletteInfo ? snapshot.bitmap.paletteInfo : null,
+          cssPaletteInfo
+        );
+        snapshot.palette = snapshot.paletteInfo && Array.isArray(snapshot.paletteInfo.dominant)
+          ? snapshot.paletteInfo.dominant
+          : [];
+
+        const paletteScore = evaluatePalette(snapshot.paletteInfo);
+        snapshot.scores.readability = scoreFromCounts(snapshot.text.bad, snapshot.text.warn);
+        snapshot.scores.touch = snapshot.touch.issues.some((issue) => issue.level === 'err')
+          ? 'err'
+          : snapshot.touch.issues.length ? 'warn' : 'ok';
+        snapshot.scores.ux = snapshot.ux.issues.some((issue) => issue.level === 'err')
+          ? 'err'
+          : snapshot.ux.issues.length ? 'warn' : 'ok';
+        snapshot.scores.palette = paletteScore.mode;
+
+        snapshot.issues = []
+          .concat(snapshot.text.issues || [])
+          .concat(snapshot.touch.issues || [])
+          .concat(snapshot.ux.issues || [])
+          .concat(paletteScore.issues || [])
+          .concat(snapshot.issues || [])
+          .slice(0, 24);
+
+        return snapshot;
+      }
+
+      window.addEventListener('message', (event) => {
+        const data = event.data || {};
+        if (!data || data.type !== 'testerVisualCapture') return;
+
+        buildVisualSnapshot({
+          label: data.label,
+          result: data.result
+        }).then((snapshot) => {
+          send({
+            kind: 'visualSnapshot',
+            captureId: data.captureId,
+            snapshot
+          });
+        }).catch((error) => {
+          send({
+            kind: 'visualSnapshot',
+            captureId: data.captureId,
+            error: error && error.message ? error.message : String(error)
+          });
+        });
+      }, true);
+
       function onAnyEvent(e){
         const interactiveNode = findInteractiveNode(e.target);
         const summary = collectSummaryForNode(interactiveNode || e.target);
@@ -889,6 +3072,16 @@
         ' / target=' + (data.target || '—')
       );
 
+      if (
+        !visualDiag.firstActionCaptured &&
+        (data.eventType === 'pointerdown' || data.eventType === 'touchstart' || data.eventType === 'mousedown' || data.eventType === 'click')
+      ){
+        visualDiag.firstActionCaptured = true;
+        setTimeout(() => {
+          requestVisualSnapshot('после первого действия', true);
+        }, 220);
+      }
+
       const summary = data.listenerSummary || {};
       const clickOnly = !!summary.click && !summary.pointer && !summary.touch;
 
@@ -939,14 +3132,23 @@
       if (data.kind === 'ready'){
         inputDiag.ready = true;
         inputDiag.fallback = false;
+        visualDiag.ready = true;
         setDiagRisk('Встроенная диагностика активна. Проверяйте кнопки и сцену.', 'ok');
         setDiagNote('Нажимайте мышью или включите Force touch в DevTools.');
+        setVisualStatus('Визуальный анализ активен. Можно делать снимки состояний.', 'ok');
         appendDiagLine('[ready] instrumentation active');
+        setTimeout(() => {
+          requestVisualSnapshot('стартовое состояние', true);
+        }, 180);
         return true;
       }
 
       if (data.kind === 'event'){
         handleDiagEvent(data);
+        return true;
+      }
+
+      if (handleVisualSnapshotMessage(data)){
         return true;
       }
 
@@ -1137,7 +3339,9 @@
       }
 
       gameResultCount = 0;
+      lastGameResult = null;
       resetInputDiag();
+      resetVisualAnalysis('Обычная загрузка не включает визуальный анализ. Используйте локальный HTML-файл с диагностикой.');
       inputDiag.expected = false;
       inputDiag.fallback = true;
 
@@ -1168,7 +3372,9 @@
           const html = String(reader.result || '');
 
           gameResultCount = 0;
+          lastGameResult = null;
           resetInputDiag();
+          resetVisualAnalysis('Ожидается запуск визуальной диагностики…');
           inputDiag.expected = true;
           inputDiag.fallback = false;
 
@@ -1218,6 +3424,9 @@
       els.gameFrame.contentWindow.postMessage(payload, '*');
       logMessage('→ frame', payload);
       setStatus('Сообщение gameInit отправлено.', 'ok');
+      setTimeout(() => {
+        requestVisualSnapshot('после gameInit', true);
+      }, 260);
     }
 
     window.addEventListener('message', (event) => {
@@ -1234,18 +3443,24 @@
       if (data && data.type === 'gameResult'){
         gameResultCount += 1;
         const resultValue = Number((data && 'result' in data) ? data.result : 0);
+        lastGameResult = Number.isFinite(resultValue) ? resultValue : null;
 
         if (gameResultCount > 1){
           setStatus('Игра отправила gameResult больше одного раза. Это нарушает контракт.', 'err');
+          requestVisualSnapshot('после повторного gameResult', true);
           return;
         }
 
         if (!Number.isFinite(resultValue)){
           setStatus('Игра прислала gameResult с нечисловым result. Это нарушает контракт.', 'err');
+          requestVisualSnapshot('после некорректного gameResult', true);
           return;
         }
 
         setStatus('Получен gameResult: ' + resultValue, 'ok');
+        setTimeout(() => {
+          requestVisualSnapshot('после gameResult: ' + resultValue, true);
+        }, 160);
       }
     });
 
@@ -1273,6 +3488,10 @@
       el.addEventListener('input', syncPayloadWithControls);
     });
 
+    els.workspaceTabs.forEach((tab) => {
+      tab.addEventListener('click', () => selectWorkspaceTab(tab.dataset.workspaceTab));
+    });
+
     [els.virtualWidth, els.virtualHeight].forEach((el) => {
       el.addEventListener('input', () => {
         els.resolutionPreset.value = 'custom';
@@ -1292,14 +3511,42 @@
     els.saveSettingsBtn.addEventListener('click', saveSettings);
     els.resetSettingsBtn.addEventListener('click', resetSettings);
     els.recalcBtn.addEventListener('click', () => updateFramePresentation(true));
+    els.captureVisualBtn.addEventListener('click', () => {
+      requestManualVisualSnapshot('ручной снимок');
+    });
+    els.previewCaptureVisualBtn.addEventListener('click', () => {
+      requestManualVisualSnapshot('ручной снимок preview');
+    });
+    els.autoVisualCaptureBtn.addEventListener('click', toggleVisualAutoCapture);
+    els.clearVisualBtn.addEventListener('click', () => {
+      const ready = visualDiag.ready;
+      resetVisualAnalysis(ready ? 'Визуальный анализ очищен. Можно сделать новый снимок.' : undefined);
+      visualDiag.ready = ready;
+      if (ready) setVisualStatus('Визуальный анализ очищен. Можно сделать новый снимок.', 'ok');
+    });
+    els.clearVisualHistoryBtn.addEventListener('click', resetVisualSnapshotHistory);
+    els.visualSnapshots.addEventListener('click', (event) => {
+      const button = event.target && event.target.closest ? event.target.closest('[data-delete-snapshot]') : null;
+      if (button){
+        deleteVisualSnapshot(button.dataset.deleteSnapshot);
+        return;
+      }
+
+      const item = event.target && event.target.closest ? event.target.closest('[data-snapshot-id]') : null;
+      if (!item) return;
+      selectVisualSnapshot(item.dataset.snapshotId, true);
+    });
     els.clearLogBtn.addEventListener('click', () => {
       els.messageLog.textContent = '';
       setStatus('Лог очищен.', '');
     });
 
     window.addEventListener('resize', () => updateFramePresentation(false));
+    window.addEventListener('keydown', handleVisualCaptureHotkey, true);
 
     loadSettings();
+    renderVisualHistoryAnalysis();
+    updateVisualAutoCaptureButton();
     requestAnimationFrame(() => updateFramePresentation(false));
   </script>
 </body>
