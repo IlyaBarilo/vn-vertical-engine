@@ -123,6 +123,7 @@ const UI_I18N = {
     choices: "Choices",
     game: "Game",
     closeGame: "Close Game",
+    restartGame: "Restart Game",
     hintContinue: "Click to continue",
     statsTitle: "Script Statistics",
     fullGraphButton: "📊 Full Graph",
@@ -171,6 +172,7 @@ const UI_I18N = {
     choices: "Выбор",
     game: "Игра",
     closeGame: "Закрыть игру",
+    restartGame: "Перезапустить",
     hintContinue: "Нажмите, чтобы продолжить",
     statsTitle: "Статистика сценария",
     fullGraphButton: "📊 Граф полный",
@@ -260,7 +262,7 @@ function applyUiLanguage() {
   if (statsGameModal) statsGameModal.setAttribute("aria-label", t("game"));
 
   var btnCloseGame = document.getElementById("btnCloseGame");
-  if (btnCloseGame) btnCloseGame.textContent = t("closeGame");
+  if (btnCloseGame) btnCloseGame.textContent = getStoryGameControlButtonText();
 
   var btnCloseStatsGame = document.getElementById("btnCloseStatsGame");
   if (btnCloseStatsGame) btnCloseStatsGame.textContent = t("closeGame");
@@ -331,6 +333,22 @@ function applyUiLanguage() {
   var btnRefreshGraph = document.getElementById("btnRefreshGraph");
   if (btnRefreshGraph) btnRefreshGraph.textContent = t("refresh");
 
+}
+
+function getStoryGameControlButtonText(mode) {
+  var isUrlGameMode = mode === "url" || (
+    typeof state !== "undefined" &&
+    state &&
+    state.currentGame &&
+    state.currentGame.mode === "url"
+  );
+  return isUrlGameMode ? t("restartGame") : t("closeGame");
+}
+
+function updateStoryGameControlButtonLabel(mode) {
+  var btnCloseGame = document.getElementById("btnCloseGame");
+  if (!btnCloseGame) return;
+  btnCloseGame.textContent = getStoryGameControlButtonText(mode);
 }
 
 window.showingGraph = false;
@@ -813,6 +831,7 @@ const STORY_WINDOW_AUTO = "auto";
 
 // ---------- DOM ----------
 var elTitle = document.getElementById("title");
+var elStage = document.getElementById("stage");
 var elNovelWindow = document.getElementById("novelWindow");
 var elUiFrame = document.getElementById("uiFrame");
 var elBg = document.getElementById("bgLayer");
@@ -1491,6 +1510,9 @@ var state = {
   pendingActions: []
 };
 applyStoryModeToStateVars(state);
+
+// URL-режим мини-игры фиксируется один раз при загрузке страницы: он намеренно обходит сценарий и автосейв.
+var standaloneGameLaunch = parseStandaloneGameLaunchFromUrl();
 
 // Допустимый диапазон scale для фона/сюжетного видео (множитель к «базовому» object-fit: cover).
 var BG_MEDIA_SCALE_MIN = 0.05;
@@ -3580,6 +3602,17 @@ btnCloseGame.addEventListener("pointerup", function (e) {
   // Сброс от случайного "следующего клика" после закрытия
   lastNextTime = Date.now();
 
+  if (isCurrentStoryGameUrlMode()) {
+    restartStandaloneGameFromUrl();
+    console.log("[LOG] after restartStandaloneGameFromUrl", {
+      inGame: state.inGame,
+      modalHidden: elGameModal.classList.contains("hidden"),
+      waitingNext: state.waitingNext,
+      nextLocked: state.nextLocked
+    });
+    return;
+  }
+
   closeGame({ manualClose: true, result: 0 });
 
   console.log("[LOG] after closeGame", {
@@ -4774,11 +4807,13 @@ function restart() {
     : {};
 
   var shouldWriteCleanAutosaveAfterReset = !!restartOptions.clearAutosave;
+  var shouldRunStandaloneGame = !!standaloneGameLaunch;
 
   if (shouldWriteCleanAutosaveAfterReset) {
     clearAutosaveStorage();
   }
 
+  setStandaloneGameModeEnabled(false);
   suppressAutoRunOnce = false;
   lastNextTime = 0;
   // На рестарте инвалидируем старые асинхронные загрузки персонажа,
@@ -4799,7 +4834,8 @@ function restart() {
   // Явно сбрасываем персонажа до запуска стартовой сцены.
   hideAllCharacters();
 
-  if (!restartOptions.clearAutosave && isStoryAutosaveEnabled() && tryApplyAutosave()) {
+  // URL-запуск игры важнее автосейва: адрес должен открывать выбранную мини-игру, а не сохранённую сцену.
+  if (!shouldRunStandaloneGame && !restartOptions.clearAutosave && isStoryAutosaveEnabled() && tryApplyAutosave()) {
     return;
   }
 
@@ -4859,6 +4895,11 @@ function restart() {
 
   firstScreenMetrics.waitingForCharacter = false;
   firstScreenMetrics.firstScreenShown = false;
+
+  // Если в адресе задана игра, обычный поток новеллы не стартует: остаётся чёрный фон и iframe игры.
+  if (shouldRunStandaloneGame && startStandaloneGameFromUrl()) {
+    return;
+  }
 
   runCurrent();
 
@@ -13666,6 +13707,163 @@ document.addEventListener("keydown", function (e) {
 //                   МИНИ-ИГРЫ
 // =========================================================
 
+// Достаёт параметры автономного запуска из адресной строки: game выбирает ресурс, diff задаёт сложность 1..5.
+function parseStandaloneGameLaunchFromUrl() {
+  if (!window || !window.location || !window.location.search) return null;
+
+  var params;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (e) {
+    console.warn("[GAME] URL params parse failed:", e);
+    return null;
+  }
+
+  var gameId = String(params.get("game") || "").trim();
+  if (!gameId) return null;
+
+  var rawDifficulty = params.has("diff") ? params.get("diff") : params.get("difficulty");
+  var difficulty = normalizeStandaloneGameDifficulty(rawDifficulty);
+  var gameParams = {};
+
+  params.forEach(function(value, key) {
+    var normalizedKey = String(key || "").trim();
+    if (!normalizedKey || normalizedKey === "game" || normalizedKey === "diff") return;
+    gameParams[normalizedKey] = value;
+  });
+
+  // Внутренний API игр ожидает difficulty; diff остаётся только коротким параметром адресной строки.
+  gameParams.difficulty = difficulty;
+  if (!Object.prototype.hasOwnProperty.call(gameParams, "source")) {
+    gameParams.source = "urlGame";
+  }
+
+  return {
+    gameId: gameId,
+    difficulty: difficulty,
+    params: gameParams
+  };
+}
+
+// Приводит сложность из URL к диапазону меню 1..5, а любой мусор заменяет обычной сложностью 3.
+function normalizeStandaloneGameDifficulty(value) {
+  var parsed = parseInt(String(value == null ? "" : value), 10);
+  if (!isFinite(parsed) || parsed < 1 || parsed > 5) return 3;
+  return parsed;
+}
+
+// Делает плоскую копию параметров, чтобы openGame мог безопасно дописать служебные значения без мутации источника.
+function copyGameParams(params) {
+  var copy = {};
+  if (!params || typeof params !== "object") return copy;
+
+  Object.keys(params).forEach(function(key) {
+    copy[key] = params[key];
+  });
+
+  return copy;
+}
+
+// Добавляет параметры запуска в iframe-URL игры: это помогает играм, которые читают настройки до postMessage.
+function appendGameParamsToUrl(src, params) {
+  var source = String(src || "");
+  if (!source || !params || typeof params !== "object") return source;
+
+  var queryParts = [];
+  Object.keys(params).forEach(function(key) {
+    var value = params[key];
+    if (value === undefined || value === null) return;
+    queryParts.push(encodeURIComponent(key) + "=" + encodeURIComponent(String(value)));
+  });
+
+  if (!queryParts.length) return source;
+
+  var hash = "";
+  var base = source;
+  var hashIndex = source.indexOf("#");
+  if (hashIndex >= 0) {
+    base = source.slice(0, hashIndex);
+    hash = source.slice(hashIndex);
+  }
+
+  return base + (base.indexOf("?") >= 0 ? "&" : "?") + queryParts.join("&") + hash;
+}
+
+// Собирает action для URL-запуска из [game], сохраняя тот же контракт, что у сценарной команды game.
+function createStandaloneGameAction(launch) {
+  if (!launch || !launch.gameId) return null;
+
+  var games = (STORY && STORY.assets && STORY.assets.games) ? STORY.assets.games : {};
+  var rawGame = games[launch.gameId];
+  if (!rawGame) return null;
+
+  var file = "";
+  var title = launch.gameId;
+  if (typeof rawGame === "string") {
+    file = rawGame;
+  } else if (rawGame && typeof rawGame === "object") {
+    file = String(rawGame.file || "").trim();
+    title = rawGame.title || launch.gameId;
+  }
+
+  if (!file) return null;
+
+  return {
+    type: "game",
+    mode: "url",
+    gameId: launch.gameId,
+    title: title,
+    src: file,
+    difficulty: launch.difficulty,
+    resultVar: null,
+    params: copyGameParams(launch.params)
+  };
+}
+
+// Переключает визуальный режим страницы: в URL-запуске остаётся только чёрный фон и окно игры.
+function setStandaloneGameModeEnabled(enabled) {
+  if (elStage) {
+    elStage.classList.toggle("url-game-mode", !!enabled);
+  }
+}
+
+// Открывает мини-игру из адресной строки и сообщает caller, нужно ли пропускать обычный запуск новеллы.
+function startStandaloneGameFromUrl() {
+  if (!standaloneGameLaunch) return false;
+
+  var action = createStandaloneGameAction(standaloneGameLaunch);
+  if (!action) {
+    console.warn("[GAME] URL game not found or has no file:", standaloneGameLaunch.gameId);
+    return false;
+  }
+
+  setStandaloneGameModeEnabled(true);
+  state.inGame = false;
+  state.currentGame = null;
+  state.waitingNext = false;
+  state.nextLocked = true;
+  hideChoices();
+  hideOverlay();
+
+  openGame(action);
+  return true;
+}
+
+// Полностью пересоздаёт iframe URL-игры с теми же параметрами, не возвращаясь в сценарий.
+function restartStandaloneGameFromUrl() {
+  if (!standaloneGameLaunch) return;
+
+  closeGameFrameVisualOnly();
+  state.inGame = false;
+  state.currentGame = null;
+  startStandaloneGameFromUrl();
+}
+
+// Проверяет, что сюжетная кнопка модалки сейчас обслуживает автономную игру из URL.
+function isCurrentStoryGameUrlMode() {
+  return !!(state && state.currentGame && state.currentGame.mode === "url");
+}
+
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', action);
@@ -13694,17 +13892,29 @@ function openGame(action) {
     }
   }
 
+  var normalizedParams = copyGameParams(action.params || {});
+  if (action.difficulty !== undefined) {
+    normalizedParams.difficulty = action.difficulty;
+  }
+
   state.inGame = true;
   state.currentGame = {
+    mode: action.mode || null,
     gameId: action.gameId || 'game',
+    title: action.title || action.gameId || 'game',
+    difficulty: normalizedParams.difficulty,
+    src: action.src,
     resultVar: action.resultVar || null,
-    params: action.params || {}
+    params: normalizedParams
   };
 
+  updateStoryGameControlButtonLabel(state.currentGame.mode);
   elGameModal.classList.remove("hidden");
 
   // Загружаем игру в iframe
-  elGameFrame.src = action.src;
+  elGameFrame.src = action.mode === "url"
+    ? appendGameParamsToUrl(action.src, normalizedParams)
+    : action.src;
 
   // После загрузки iframe отправляем в игру все named params
   elGameFrame.onload = function () {
@@ -13742,6 +13952,18 @@ function closeGame(resultData) {
     } else if (!isNaN(Number(resultData.result))) {
       resultValue = Number(resultData.result);
     }
+  }
+
+  if (finishedGame && finishedGame.mode === "url" && !manualClose) {
+    // В URL-режиме у новеллы нет точки возврата, поэтому результат только запоминаем и оставляем окно игры открытым.
+    finishedGame.result = resultValue;
+    finishedGame.finished = true;
+    console.log("[GAME] url game result received:", {
+      gameId: finishedGame.gameId,
+      difficulty: finishedGame.difficulty,
+      result: resultValue
+    });
+    return;
   }
 
   if (finishedGame && finishedGame.mode === "stats") {
@@ -13815,6 +14037,7 @@ function closeGameFrameVisualOnly() {
   elGameModal.classList.add("hidden");
   elGameFrame.onload = null;
   elGameFrame.src = "about:blank";
+  updateStoryGameControlButtonLabel(null);
 }
 
 function closeStatsGameFrameVisualOnly() {
@@ -15323,6 +15546,26 @@ function renderStats() {
         text += "✅ All files found\n\n";
       }
 
+      var invalidResourceNames = fileStats.invalidNames || [];
+      if (invalidResourceNames.length > 0) {
+        text += "❌ INVALID RESOURCE PATH NAMES:\n\n";
+        text += "Allowed for file and folder names: English letters, digits, - and _.\n\n";
+        invalidResourceNames.forEach(function(item, index) {
+          text += (index + 1) + ". " + item.path + "\n";
+          text += "   Invalid parts: " + item.issues.map(function(issue) {
+            var typeLabel = issue.type === "folder" ? "folder" : "file";
+            return typeLabel + " \"" + issue.segment + "\"";
+          }).join(", ") + "\n";
+          text += "   Used in:\n";
+          item.refs.forEach(function(ref) {
+            text += "   - " + ref + "\n";
+          });
+          text += "\n";
+        });
+      } else {
+        text += "✅ All resource file and folder names are valid\n\n";
+      }
+
       var skippedNetworkAssets = fileStats.files.filter(function (f) {
         return f && f.skippedCheck;
       });
@@ -15889,11 +16132,174 @@ function collectEnvironmentInfo() {
 // Проверка файлов: изображения и аудио через теги <Image>/<Audio>.
 // Видео и HTML-игры по сети не проверяем (см. ниже), чтобы не упираться в
 // тяжёлый <video> preload и в CSP/смешанный контент при fetch.
+var RESOURCE_PATH_SAFE_NAME_RE = /^[A-Za-z0-9_-]+$/;
+
+// Находит сегменты пути ресурса с недопустимыми именами: у каталогов проверяется весь сегмент,
+// у файла — имя до последней точки, чтобы расширение не превращало каждый ресурс в ошибку.
+function findInvalidResourcePathNameSegments(path) {
+  var raw = String(path || "").trim();
+  if (!raw || raw.indexOf("data:") === 0 || raw.indexOf("blob:") === 0) return [];
+
+  var hashIndex = raw.indexOf("#");
+  if (hashIndex >= 0) raw = raw.slice(0, hashIndex);
+
+  var queryIndex = raw.indexOf("?");
+  if (queryIndex >= 0) raw = raw.slice(0, queryIndex);
+
+  raw = raw.replace(/\\/g, "/");
+
+  var protocolMatch = raw.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
+  if (protocolMatch) {
+    var withoutProtocol = raw.slice(protocolMatch[0].length);
+    var firstSlash = withoutProtocol.indexOf("/");
+    raw = firstSlash >= 0 ? withoutProtocol.slice(firstSlash + 1) : "";
+  }
+
+  raw = raw.replace(/^[A-Za-z]:\//, "").replace(/^\/+/, "");
+
+  var segments = raw.split("/").filter(function(segment) {
+    return !!segment;
+  });
+  var issues = [];
+
+  for (var i = 0; i < segments.length; i++) {
+    var segment = segments[i];
+    var isFileSegment = i === segments.length - 1;
+    var name = segment;
+
+    if (isFileSegment) {
+      var dotIndex = segment.lastIndexOf(".");
+      if (dotIndex > 0) name = segment.slice(0, dotIndex);
+    }
+
+    if (!name || !RESOURCE_PATH_SAFE_NAME_RE.test(name)) {
+      issues.push({
+        type: isFileSegment ? "file" : "folder",
+        segment: segment,
+        name: name || segment
+      });
+    }
+  }
+
+  return issues;
+}
+
+// Собирает все пути, которые объявлены как ресурсы истории, включая дополнительные poster/fallback/cover.
+function collectStoryResourcePathRefs(story) {
+  var result = [];
+  var assets = story && story.assets ? story.assets : null;
+  if (!assets) return result;
+
+  // Добавляет в список только реальные строковые пути, чтобы валидатор имён не дублировал ошибки пустых file=.
+  function addPathRef(path, category, ref) {
+    if (typeof path !== "string") return;
+    var value = path.trim();
+    if (!value) return;
+    result.push({
+      path: value,
+      category: category,
+      ref: ref
+    });
+  }
+
+  if (assets.backgrounds) {
+    Object.entries(assets.backgrounds).forEach(function(entry) {
+      var id = entry[0];
+      var asset = entry[1];
+      addPathRef(getBackgroundAssetPrimaryPath(asset), "background", id);
+      addPathRef(getBackgroundAssetFallbackPath(asset), "background-fallback", id);
+    });
+  }
+
+  if (assets.characters) {
+    Object.entries(assets.characters).forEach(function(entry) {
+      var charId = entry[0];
+      var char = entry[1];
+      if (!char || !char.images) return;
+
+      Object.entries(char.images).forEach(function(imageEntry) {
+        var emotion = imageEntry[0];
+        addPathRef(getCharacterImagePath(imageEntry[1]), "character", charId + " (" + emotion + ")");
+      });
+    });
+  }
+
+  if (assets.audio) {
+    Object.entries(assets.audio).forEach(function(entry) {
+      addPathRef(getAudioAssetPrimaryPath(entry[1]), "audio", entry[0]);
+    });
+  }
+
+  if (assets.games) {
+    Object.entries(assets.games).forEach(function(entry) {
+      var id = entry[0];
+      var game = entry[1];
+      if (game && typeof game === "object") {
+        addPathRef(game.file, "game", id);
+        addPathRef(game.cover, "game-cover", id);
+      } else {
+        addPathRef(game, "game", id);
+      }
+    });
+  }
+
+  if (assets.videos) {
+    Object.entries(assets.videos).forEach(function(entry) {
+      var id = entry[0];
+      var video = entry[1];
+      if (video && typeof video === "object") {
+        addPathRef(video.file, "video", id);
+        addPathRef(video.poster, "video-poster", id);
+      } else {
+        addPathRef(video, "video", id);
+      }
+    });
+  }
+
+  return result;
+}
+
+// Группирует ошибки имён по пути, чтобы один и тот же ресурс показывался один раз со всеми местами использования.
+function collectInvalidResourcePathNames(story) {
+  var grouped = {};
+  var refs = collectStoryResourcePathRefs(story);
+
+  for (var i = 0; i < refs.length; i++) {
+    var item = refs[i];
+    var issues = findInvalidResourcePathNameSegments(item.path);
+    if (!issues.length) continue;
+
+    if (!grouped[item.path]) {
+      grouped[item.path] = {
+        path: item.path,
+        refs: [],
+        issues: issues,
+        refMap: {}
+      };
+    }
+
+    var refText = item.category + ": " + item.ref;
+    if (!grouped[item.path].refMap[refText]) {
+      grouped[item.path].refMap[refText] = true;
+      grouped[item.path].refs.push(refText);
+    }
+  }
+
+  return Object.keys(grouped).sort().map(function(path) {
+    return {
+      path: grouped[path].path,
+      refs: grouped[path].refs,
+      issues: grouped[path].issues
+    };
+  });
+}
+
 function checkAssetsFiles() {
   return new Promise((resolve) => {
     const result = {
       missing: [],
       sizeErrors: [], // файлы с неправильными размерами
+      invalidNames: [],
       files: []
     };
 
@@ -16026,6 +16432,8 @@ function checkAssetsFiles() {
       });
     }
 
+    result.invalidNames = collectInvalidResourcePathNames(STORY);
+
     console.log("[ASSET CHECK] STORY.assets.games =", STORY.assets.games);
     console.log("[ASSET CHECK] allFiles after games =", allFiles);
 
@@ -16124,6 +16532,7 @@ function checkAssetsFiles() {
             errorCount: errorCount,
             missing: result.missing.length,
             sizeErrors: result.sizeErrors.length,
+            invalidNames: result.invalidNames.length,
             files: result.files.length
           });
           resolve(result);

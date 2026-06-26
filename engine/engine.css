@@ -1660,6 +1660,31 @@ body {
   background: transparent;
 }
 
+/* URL-запуск мини-игры не показывает сцену новеллы: только чёрный фон и iframe игры. */
+.stage.url-game-mode,
+.stage.url-game-mode .novel-window,
+.stage.url-game-mode .ui-frame {
+  background: #000;
+}
+
+.stage.url-game-mode #blurBgLayer,
+.stage.url-game-mode .bg,
+.stage.url-game-mode .bg-360,
+.stage.url-game-mode #bg360MarksLayer,
+.stage.url-game-mode #bgScrollHint,
+.stage.url-game-mode .char-frame,
+.stage.url-game-mode .overlay,
+.stage.url-game-mode .story-video-overlay,
+.stage.url-game-mode .topbar,
+.stage.url-game-mode .dialog,
+.stage.url-game-mode .choices {
+  display: none !important;
+}
+
+.stage.url-game-mode .ui-frame > .gameModal {
+  background: #000;
+}
+
 /* Окно визуальной новеллы */
 .novel-window {
   position: relative;  /* НОВОЕ */
