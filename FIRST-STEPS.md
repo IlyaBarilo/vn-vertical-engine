@@ -275,6 +275,11 @@ This helps you see:
   than English letters, digits, and `_`.
 
 This is especially useful after adding 360 scenes, mini-games, and new branching.
+The `SUMMARY CHECK` line at the beginning gives a quick overview of parsing,
+variables, identifiers, files, image sizes, script validation, and story360
+conditions, as well as unreachable scenes and cycles. A red cross points to a
+detailed section below.
+
 The `VARIABLES` statistics section reports groups such as `Score`, `score`, and
 `SCORE` with their usage locations. They remain separate runtime variables;
 the warning only helps find likely typing mistakes. The same section checks

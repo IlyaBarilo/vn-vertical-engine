@@ -16109,6 +16109,16 @@ function formatStory360VisibilityConditionsStats(analysis) {
   return text;
 }
 
+// Формирует короткую строку итоговых статусов без подробностей: расшифровка остаётся в разделах ниже.
+function formatStatsSummaryCheck(checks) {
+  var items = Array.isArray(checks) ? checks : [];
+  var text = "=== SUMMARY CHECK ===\n\n";
+  text += items.map(function(item) {
+    return (item && item.ok ? "✅ " : "❌ ") + String(item && item.label ? item.label : "CHECK");
+  }).join("  ");
+  return text + "\n\n";
+}
+
 // Генерация статистики по STORY.
 // Сделано так, чтобы потом легко дописывать новые показатели: просто добавляете новые строки в statsLines.
 function renderStats() {
@@ -16139,6 +16149,46 @@ function renderStats() {
 
       // Получаем ошибки парсинга
       var parseErrors = window.PARSE_ERRORS || [];
+      var summaryChecks = [
+        {
+          label: "PARSE",
+          ok: parseErrors.length === 0
+        },
+        {
+          label: "VARIABLES",
+          ok: (variableCaseAnalysis.invalidNames || []).length === 0 &&
+            (variableCaseAnalysis.conflicts || []).length === 0
+        },
+        {
+          label: "IDENTIFIERS",
+          ok: (identifierNameAnalysis.invalidIdentifiers || []).length === 0
+        },
+        {
+          label: "FILES",
+          ok: (fileStats.missing || []).length === 0 &&
+            (fileStats.invalidNames || []).length === 0
+        },
+        {
+          label: "IMAGES",
+          ok: (fileStats.sizeErrors || []).length === 0
+        },
+        {
+          label: "SCRIPT",
+          ok: errors.length === 0
+        },
+        {
+          label: "STORY360",
+          ok: (story360Visibility.invalidConditions || []).length === 0
+        },
+        {
+          label: "REACH",
+          ok: (reach.unreachable || []).length === 0
+        },
+        {
+          label: "CYCLES",
+          ok: cycles.length === 0
+        }
+      ];
 
       var text = "";
 
@@ -16183,6 +16233,7 @@ function renderStats() {
 
       text += `Software version: ${window.APP_VERSION}\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
       text += formatLicenseStatsText() + "\n";
+      text += formatStatsSummaryCheck(summaryChecks);
 
       text += formatCurrentViewportMediaFocusForStats();
       
