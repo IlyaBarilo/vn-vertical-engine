@@ -341,6 +341,13 @@ specified together, `scene` takes priority and saving remains disabled.
 Recommended enabled values are `true`, `1`, `yes`, and `on`; only `false`, `0`,
 `no`, or `off` explicitly disable the flag.
 
+Use `mode=release` or the short `release` URL flag to force release mode without
+editing `[meta]`. Both forms hide the statistics button but do not change the
+start scene or autosave behavior:
+
+    index.html?mode=release
+    index.html?release
+
 Restart clears only the active slot during a regular or `novel` launch. In
 `scene` or `nosave` mode it restarts the entry point without deleting any save.
 An unknown or case-ambiguous scene id displays an error. Setting

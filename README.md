@@ -448,6 +448,18 @@ and `on` are the recommended explicit values. Only `false`, `0`, `no`, or
 `off` disable the flag. Any other value remains enabled so a typo cannot
 accidentally restore a previous visitor's progress.
 
+### Release mode from URL
+
+The URL can force release mode without changing `story.js`:
+
+    index.html?mode=release
+    index.html?release
+
+Both forms hide the statistics button and expose `mode` as `release` to the
+scenario. They do not change the selected start scene or autosave behavior.
+The URL can promote a `debug` story to `release`, but it cannot downgrade a
+story whose `[meta] mode` is already `release`.
+
 ### Parameter rules
 
 - Parameter names and scene ids are matched without regard to letter case.

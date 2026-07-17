@@ -3135,8 +3135,35 @@ function normalizeStoryMode(value, fallback) {
   return fallback;
 }
 
-// Возвращает режим истории из [meta] с дефолтом debug.
+// Читает безопасный URL-переход в release: поддерживает mode=release и короткий флаг release без учёта регистра.
+function getStoryReleaseModeFromUrl() {
+  if (typeof window === "undefined" || !window.location || !window.location.search) return null;
+
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var normalized = Object.create(null);
+    params.forEach(function(value, key) {
+      normalized[String(key || "").trim().toLowerCase()] = value;
+    });
+
+    if (normalizeStoryMode(normalized.mode, "") === "release") return "release";
+    if (!Object.prototype.hasOwnProperty.call(normalized, "release")) return null;
+
+    var rawFlag = String(normalized.release || "").trim().toLowerCase();
+    if (rawFlag === "false" || rawFlag === "0" || rawFlag === "no" || rawFlag === "off") {
+      return null;
+    }
+    return "release";
+  } catch (e) {
+    console.warn("[VN] Story mode URL params parse failed:", e);
+    return null;
+  }
+}
+
+// Возвращает эффективный режим истории: URL может повысить debug до release, иначе используется [meta].
 function getStoryMode() {
+  var urlMode = getStoryReleaseModeFromUrl();
+  if (urlMode === "release") return urlMode;
   var meta = window.STORY && window.STORY.meta ? window.STORY.meta : {};
   return normalizeStoryMode(meta.mode, "debug");
 }
