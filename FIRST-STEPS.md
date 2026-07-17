@@ -285,7 +285,8 @@ The `IDENTIFIERS` section checks scene, background, character, emotion, audio,
 video, game, and story360 space and entry IDs. Story360 panorama and mark IDs
 are not checked when declared, but a panorama ID used as a `goto360` target is
 checked. Digits may be the first character. Resource file and folder paths are
-checked separately in `FILE CHECK`.
+checked separately in `FILE CHECK`: every path segment may contain only English
+letters, digits, `-`, and `_`. The dot before a file extension is allowed.
 
 ---
 

@@ -16230,7 +16230,8 @@ function renderStats() {
       var invalidResourceNames = fileStats.invalidNames || [];
       if (invalidResourceNames.length > 0) {
         text += "❌ INVALID RESOURCE PATH NAMES:\n\n";
-        text += "Allowed for file and folder names: English letters, digits, - and _.\n\n";
+        text += "Allowed for file and folder names: English letters, digits, - and _.\n";
+        text += "The dot before a file extension is allowed.\n\n";
         invalidResourceNames.forEach(function(item, index) {
           text += (index + 1) + ". " + item.path + "\n";
           text += "   Invalid parts: " + item.issues.map(function(issue) {
@@ -16815,8 +16816,8 @@ function collectEnvironmentInfo() {
 // тяжёлый <video> preload и в CSP/смешанный контент при fetch.
 var RESOURCE_PATH_SAFE_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
-// Находит сегменты пути ресурса с недопустимыми именами: у каталогов проверяется весь сегмент,
-// у файла — имя до последней точки, чтобы расширение не превращало каждый ресурс в ошибку.
+// Находит сегменты пути ресурса с недопустимыми именами: каталоги проверяются целиком,
+// а у файла точка между именем и расширением считается служебным разделителем.
 function findInvalidResourcePathNameSegments(path) {
   var raw = String(path || "").trim();
   if (!raw || raw.indexOf("data:") === 0 || raw.indexOf("blob:") === 0) return [];
@@ -16847,13 +16848,20 @@ function findInvalidResourcePathNameSegments(path) {
     var segment = segments[i];
     var isFileSegment = i === segments.length - 1;
     var name = segment;
+    var extension = "";
 
     if (isFileSegment) {
       var dotIndex = segment.lastIndexOf(".");
-      if (dotIndex > 0) name = segment.slice(0, dotIndex);
+      if (dotIndex > 0) {
+        name = segment.slice(0, dotIndex);
+        extension = segment.slice(dotIndex + 1);
+      }
     }
 
-    if (!name || !RESOURCE_PATH_SAFE_NAME_RE.test(name)) {
+    var invalidName = !name || !RESOURCE_PATH_SAFE_NAME_RE.test(name);
+    var invalidExtension = isFileSegment && extension !== "" && !RESOURCE_PATH_SAFE_NAME_RE.test(extension);
+    var missingExtension = isFileSegment && segment.lastIndexOf(".") === segment.length - 1;
+    if (invalidName || invalidExtension || missingExtension) {
       issues.push({
         type: isFileSegment ? "file" : "folder",
         segment: segment,
@@ -16865,11 +16873,10 @@ function findInvalidResourcePathNameSegments(path) {
   return issues;
 }
 
-// Собирает все пути, которые объявлены как ресурсы истории, включая дополнительные poster/fallback/cover.
+// Собирает пути обычных ресурсов, story360 и photo-меток, включая дополнительные poster/fallback/cover.
 function collectStoryResourcePathRefs(story) {
   var result = [];
-  var assets = story && story.assets ? story.assets : null;
-  if (!assets) return result;
+  var assets = story && story.assets ? story.assets : {};
 
   // Добавляет в список только реальные строковые пути, чтобы валидатор имён не дублировал ошибки пустых file=.
   function addPathRef(path, category, ref) {
@@ -16881,6 +16888,45 @@ function collectStoryResourcePathRefs(story) {
       category: category,
       ref: ref
     });
+  }
+
+  // Добавляет все изображения photo-метки независимо от строкового или объектного формата записи.
+  function addPhotoMarkPaths(mark, category, ref) {
+    var images = normalizeBg360PhotoImages(mark);
+    for (var i = 0; i < images.length; i++) {
+      addPathRef(images[i] && images[i].file, category, ref + " / image " + (i + 1));
+    }
+  }
+
+  // Обходит вложенные действия сценария, чтобы проверить прямые пути legacy photo-меток.
+  function visitActions(actions, refPrefix) {
+    if (!Array.isArray(actions)) return;
+
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      if (!action || typeof action !== "object") continue;
+      var actionRef = refPrefix + " / action " + (i + 1);
+
+      if (action.type === "bg360marks" && Array.isArray(action.marks)) {
+        for (var m = 0; m < action.marks.length; m++) {
+          addPhotoMarkPaths(action.marks[m], "story360-photo", actionRef + " / mark " + (m + 1));
+        }
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var c = 0; c < action.choices.length; c++) {
+          visitActions(action.choices[c] && action.choices[c].actions, actionRef + " / choice " + (c + 1));
+        }
+      }
+
+      if (action.type === "if_block") {
+        var branches = Array.isArray(action.branches) ? action.branches : [];
+        for (var b = 0; b < branches.length; b++) {
+          visitActions(branches[b] && branches[b].actions, actionRef + " / branch " + (b + 1));
+        }
+        visitActions(action.elseActions, actionRef + " / else");
+      }
+    }
   }
 
   if (assets.backgrounds) {
@@ -16934,6 +16980,34 @@ function collectStoryResourcePathRefs(story) {
       } else {
         addPathRef(video, "video", id);
       }
+    });
+  }
+
+  var scenes = story && Array.isArray(story.scenes) ? story.scenes : [];
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s] || {};
+    visitActions(scene.actions, "scene " + String(scene.id || (s + 1)));
+  }
+
+  var root = getStory360Root();
+  if (root && root.spaces && typeof root.spaces === "object") {
+    Object.keys(root.spaces).forEach(function(spaceId) {
+      var panoramas = getStory360Panoramas(root.spaces[spaceId]);
+      if (!panoramas) return;
+
+      Object.keys(panoramas).forEach(function(panoramaId) {
+        var panorama = panoramas[panoramaId];
+        if (!panorama || typeof panorama !== "object") return;
+        var panoramaRef = String(spaceId) + "." + String(panoramaId);
+        addPathRef(readStory360Field(panorama, ["file", "src", "path"]), "story360", panoramaRef);
+        addPathRef(readStory360Field(panorama, ["fallback", "poster"]), "story360-fallback", panoramaRef);
+
+        var marks = panorama.marks || panorama.hotspots || panorama.points;
+        if (!Array.isArray(marks)) return;
+        for (var m = 0; m < marks.length; m++) {
+          addPhotoMarkPaths(marks[m], "story360-photo", panoramaRef + " / mark " + (m + 1));
+        }
+      });
     });
   }
 
