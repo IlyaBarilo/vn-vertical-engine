@@ -290,8 +290,41 @@ A good practical loop looks like this:
 
 This is safer and more convenient than trying to generate games first and only then figuring out where to place them.
 
-Story progress is saved automatically in the browser, so regular reloads during
-testing do not erase the current playthrough.
+By default, story progress is saved automatically in the browser, so regular
+reloads during testing do not erase the current playthrough.
+
+### URL launch modes
+
+Use these modes when one `story.js` contains several independent entry points
+or when a public screen must never restore the previous visitor's progress:
+
+| URL | Result |
+| --- | --- |
+| `index.html` | Starts from `[meta] startScene` and uses the standard autosave |
+| `index.html?novel=game01` | Starts or restores the independent novel whose entry scene is `game01` |
+| `index.html?scene=scScene02` | Opens a scene directly without reading, writing, or deleting saves |
+| `index.html?novel=game01&nosave=true` | Starts `game01` from the beginning without touching saves |
+
+Each `novel` gets a separate localStorage slot, so different novels do not
+overwrite one another. The `novel` value is also its entry scene id. Scene ids
+are matched without regard to letter case.
+
+The regular slot is `vn_engine_autosave_v1`. A novel such as `game01` uses
+`vn_engine_autosave_v1:novel:game01`. The `novel` parameter selects an entry
+point at page load; it does not add in-story switching between novels.
+
+Use `nosave=true` or the short `nosave` form for exhibitions and interactive
+kiosks. It overrides autosave settings, always starts from the relevant entry
+scene, and leaves all existing saves untouched. If `scene` and `novel` are
+specified together, `scene` takes priority and saving remains disabled.
+Recommended enabled values are `true`, `1`, `yes`, and `on`; only `false`, `0`,
+`no`, or `off` explicitly disable the flag.
+
+Restart clears only the active slot during a regular or `novel` launch. In
+`scene` or `nosave` mode it restarts the entry point without deleting any save.
+An unknown or case-ambiguous scene id displays an error. Setting
+`autosave = false` in `[meta]` disables regular and `novel` autosave; `scene`
+and `nosave` always disable storage.
 
 ---
 

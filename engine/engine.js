@@ -1511,6 +1511,11 @@ var state = {
 };
 applyStoryModeToStateVars(state);
 
+// Режим URL-запуска фиксируется один раз: scene/nosave отключают сохранения, novel выбирает отдельный слот.
+var storyUrlLaunch = parseStoryUrlLaunchFromUrl();
+// Канонический id сцены заполняется после построения sceneMap и используется для старта и ключа novel-сохранения.
+var storyUrlLaunchSceneId = null;
+
 // URL-режим мини-игры фиксируется один раз при загрузке страницы: он намеренно обходит сценарий и автосейв.
 var standaloneGameLaunch = parseStandaloneGameLaunchFromUrl();
 
@@ -3656,7 +3661,7 @@ startLicensedEngine();
 //                   ОСНОВНЫЕ ФУНКЦИИ
 // =========================================================
 
-// ---------- Автосейв (localStorage, один слот) ----------
+// ---------- Автосейв (localStorage, стандартный или именованный novel-слот) ----------
 // Состояние сценария живёт в памяти движка; в localStorage пишем с дебаунсом (редко перезаписываем диск),
 // плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
 var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
@@ -3712,7 +3717,31 @@ function findBlurFallbackImageForBgVideoUrl(normalizedVideoUrl) {
   return "";
 }
 
+// Возвращает нормализованный id именованного novel-слота; регистр URL не должен создавать дубликаты сохранений.
+function getActiveNovelSaveId() {
+  if (!storyUrlLaunch || storyUrlLaunch.mode !== "novel" || !storyUrlLaunchSceneId) return "";
+  return String(storyUrlLaunchSceneId).toLowerCase();
+}
+
+// Выбирает стандартный ключ или отдельный ключ новеллы, не меняя совместимость старого запуска без параметров.
+function getAutosaveStorageKey() {
+  var novelSaveId = getActiveNovelSaveId();
+  if (!novelSaveId) return VN_AUTOSAVE_STORAGE_KEY;
+  return VN_AUTOSAVE_STORAGE_KEY + ":novel:" + encodeURIComponent(novelSaveId);
+}
+
+// Запрещает любые операции с localStorage для nosave, scene-режима и ошибочного novel-параметра.
+function isStoryUrlAutosaveStorageBlocked() {
+  if (!storyUrlLaunch) return false;
+  if (storyUrlLaunch.noSave) return true;
+  if (storyUrlLaunch.mode === "default") return false;
+  if (storyUrlLaunch.mode === "scene") return true;
+  return storyUrlLaunch.mode === "novel" && !storyUrlLaunchSceneId;
+}
+
+// Учитывает настройку сценария и URL-режим, чтобы scene/nosave не обращались к сохранениям.
 function isStoryAutosaveEnabled() {
+  if (isStoryUrlAutosaveStorageBlocked()) return false;
   if (!STORY || !STORY.meta) return true;
   return STORY.meta.autosave !== false;
 }
@@ -4108,7 +4137,8 @@ function applyAutosaveBgmSnapshot(bgmSnap) {
 }
 
 /**
- * Собирает JSON автосейва. opts.persistActionIndex — явный индекс шага (например шаг game/video до инкремента в runCurrent).
+ * Собирает JSON автосейва с принадлежностью текущему novel-слоту.
+ * opts.persistActionIndex — явный индекс шага (например шаг game/video до инкремента в runCurrent).
  */
 function buildAutosavePayload(opts) {
   opts = opts || {};
@@ -4208,6 +4238,7 @@ function buildAutosavePayload(opts) {
 
   return {
     v: VN_AUTOSAVE_PAYLOAD_VERSION,
+    novelId: getActiveNovelSaveId(),
     hashHex: fp.hashHex,
     textLength: fp.textLength,
     metaStart: STORY.meta && STORY.meta.start ? String(STORY.meta.start) : "",
@@ -4228,8 +4259,12 @@ function buildAutosavePayload(opts) {
   };
 }
 
+// Проверяет структуру, отпечаток сценария и принадлежность payload текущему стандартному или novel-слоту.
 function validateAutosavePayload(data) {
   if (!data || data.v !== VN_AUTOSAVE_PAYLOAD_VERSION) return false;
+  var activeNovelSaveId = getActiveNovelSaveId();
+  if (activeNovelSaveId && String(data.novelId || "") !== activeNovelSaveId) return false;
+  if (!activeNovelSaveId && data.novelId) return false;
   // Слоты, сохранённые до переименования focus → focusX в bgScroll, отклоняем (сброс через tryApplyAutosave).
   if (
     data.bgScroll &&
@@ -4259,7 +4294,8 @@ function validateAutosavePayload(data) {
 }
 
 /**
- * Немедленная запись автосейва. Если передан готовый payload (например точка входа в game/video), пишет его как есть.
+ * Немедленно пишет автосейв в выбранный стандартный или novel-слот.
+ * Если передан готовый payload (например точка входа в game/video), записывает его как есть.
  */
 function flushAutosaveToStorageSync(prebuiltPayload) {
   if (!STORY || !isStoryAutosaveEnabled()) {
@@ -4281,8 +4317,10 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
       });
       return;
     }
-    localStorage.setItem(VN_AUTOSAVE_STORAGE_KEY, JSON.stringify(payload));
+    var storageKey = getAutosaveStorageKey();
+    localStorage.setItem(storageKey, JSON.stringify(payload));
     autosaveDebugLog("flush:written", {
+      storageKey: storageKey,
       usesPrebuilt: usesPrebuilt,
       sceneId: payload.sceneId,
       actionIndex: payload.actionIndex,
@@ -4296,12 +4334,19 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
   }
 }
 
+// Очищает только активный слот; в scene/nosave-режиме намеренно не удаляет никаких данных.
 function clearAutosaveStorage() {
   cancelPendingAutosaveTimer("clear_storage");
   vnAutosaveStory360RestorePending = null;
+  // Режимы scene/nosave не должны удалять даже существующий стандартный или novel-слот.
+  if (isStoryUrlAutosaveStorageBlocked()) {
+    autosaveDebugLog("clear:skip", { reason: "url_storage_blocked" });
+    return;
+  }
   try {
-    localStorage.removeItem(VN_AUTOSAVE_STORAGE_KEY);
-    autosaveDebugLog("clear:removed", {});
+    var storageKey = getAutosaveStorageKey();
+    localStorage.removeItem(storageKey);
+    autosaveDebugLog("clear:removed", { storageKey: storageKey });
   } catch (err) {
     console.warn("[AUTOSAVE] clear failed:", err);
     autosaveDebugLog("clear:error", String(err && err.message ? err.message : err));
@@ -4478,6 +4523,7 @@ function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
   autosaveDebugLog("restore:rewind_to_if_block", { savedIndex: idx, coldLen: len, ifIdx: ifIdx });
 }
 
+// Загружает только активный стандартный или novel-слот; scene-режим отсекается до обращения к localStorage.
 function tryApplyAutosave() {
   function isUsableAutosaveBgSrc(src) {
     var normalized = normalizeAssetUrl(src || "");
@@ -4491,7 +4537,7 @@ function tryApplyAutosave() {
   vnAutosaveStory360RestorePending = null;
   var raw = null;
   try {
-    raw = localStorage.getItem(VN_AUTOSAVE_STORAGE_KEY);
+    raw = localStorage.getItem(getAutosaveStorageKey());
   } catch (err) {
     return false;
   }
@@ -4808,6 +4854,8 @@ function restart() {
 
   var shouldWriteCleanAutosaveAfterReset = !!restartOptions.clearAutosave;
   var shouldRunStandaloneGame = !!standaloneGameLaunch;
+  var resolvedStoryUrlLaunch = resolveStoryUrlLaunch();
+  storyUrlLaunchSceneId = resolvedStoryUrlLaunch.sceneId;
 
   if (shouldWriteCleanAutosaveAfterReset) {
     clearAutosaveStorage();
@@ -4834,8 +4882,13 @@ function restart() {
   // Явно сбрасываем персонажа до запуска стартовой сцены.
   hideAllCharacters();
 
-  // URL-запуск игры важнее автосейва: адрес должен открывать выбранную мини-игру, а не сохранённую сцену.
-  if (!shouldRunStandaloneGame && !restartOptions.clearAutosave && isStoryAutosaveEnabled() && tryApplyAutosave()) {
+  // URL-игра обходит сюжет, scene блокирует storage через isStoryAutosaveEnabled, а novel читает только свой слот.
+  if (
+    !shouldRunStandaloneGame &&
+    !restartOptions.clearAutosave &&
+    isStoryAutosaveEnabled() &&
+    tryApplyAutosave()
+  ) {
     return;
   }
 
@@ -4872,8 +4925,28 @@ function restart() {
 
 
 
-  // сброс к стартовой сцене
-  state.sceneId = STORY.meta && STORY.meta.start ? STORY.meta.start : null;
+  // Ошибка в явном scene/novel не должна незаметно запускать другую историю или затрагивать её сохранение.
+  if (
+    !shouldRunStandaloneGame &&
+    resolvedStoryUrlLaunch.mode !== "default" &&
+    !resolvedStoryUrlLaunch.valid
+  ) {
+    state.sceneId = null;
+    currentSceneId = null;
+    state.actionIndex = 0;
+    state.currentBgId = null;
+    stopBgmImmediate();
+    showError(
+      "Не найдена сцена для параметра " +
+      resolvedStoryUrlLaunch.mode +
+      ": " +
+      resolvedStoryUrlLaunch.requestedId
+    );
+    return;
+  }
+
+  // novel и scene используют найденное без учёта регистра каноническое имя; обычный запуск сохраняет startScene.
+  state.sceneId = resolvedStoryUrlLaunch.sceneId || (STORY.meta && STORY.meta.start ? STORY.meta.start : null);
   currentSceneId = state.sceneId;
   state.actionIndex = 0;
   state.currentBgId = null;
@@ -13702,6 +13775,94 @@ document.addEventListener("keydown", function (e) {
     handleStoryVideoSkip(e);
   }
 }, true);
+
+// =========================================================
+//                   URL-ЗАПУСК НОВЕЛЛЫ
+// =========================================================
+
+// Считает nosave включённым при пустом или любом неотрицательном значении; явные false/0/no/off снова разрешают storage.
+function parseStoryNoSaveUrlFlag(normalizedParams) {
+  if (!normalizedParams || !Object.prototype.hasOwnProperty.call(normalizedParams, "nosave")) return false;
+  var raw = String(normalizedParams.nosave || "").trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "no" && raw !== "off";
+}
+
+// Разбирает scene/novel/nosave без учёта регистра ключей; при конфликте scene получает приоритет.
+function parseStoryUrlLaunchFromUrl() {
+  var fallback = { mode: "default", requestedId: "", conflict: false, noSave: false };
+  if (typeof window === "undefined" || !window.location || !window.location.search) return fallback;
+
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var normalized = {};
+    params.forEach(function(value, key) {
+      normalized[String(key || "").trim().toLowerCase()] = value;
+    });
+
+    var sceneId = String(normalized.scene || "").trim();
+    var novelId = String(normalized.novel || "").trim();
+    var noSave = parseStoryNoSaveUrlFlag(normalized);
+    if (sceneId && novelId) {
+      console.warn("[VN] Both scene and novel are set; scene mode has priority.");
+    }
+    if (sceneId) {
+      return { mode: "scene", requestedId: sceneId, conflict: !!novelId, noSave: noSave };
+    }
+    if (novelId) {
+      return { mode: "novel", requestedId: novelId, conflict: false, noSave: noSave };
+    }
+    return { mode: "default", requestedId: "", conflict: false, noSave: noSave };
+  } catch (e) {
+    console.warn("[VN] URL params parse failed:", e);
+    return fallback;
+  }
+}
+
+// Находит канонический id сцены без учёта регистра, чтобы URL Game01 и game01 означали одну точку входа.
+function findStorySceneIdCaseInsensitive(requestedId) {
+  var requested = String(requestedId || "").trim();
+  if (!requested || !state || !state.sceneMap) return null;
+
+  var normalized = requested.toLowerCase();
+  var sceneIds = Object.keys(state.sceneMap);
+  var foundSceneId = null;
+  for (var i = 0; i < sceneIds.length; i++) {
+    if (String(sceneIds[i]).toLowerCase() === normalized) {
+      // Два id, отличающиеся только регистром, неоднозначны в регистронезависимом URL-режиме.
+      if (foundSceneId !== null) {
+        console.warn("[VN] Ambiguous case-insensitive scene id:", requested, foundSceneId, sceneIds[i]);
+        return null;
+      }
+      foundSceneId = sceneIds[i];
+    }
+  }
+  return foundSceneId;
+}
+
+// Разрешает сырой URL-параметр после построения sceneMap и сохраняет режим даже при ошибочном имени.
+function resolveStoryUrlLaunch() {
+  var launch = storyUrlLaunch || { mode: "default", requestedId: "", conflict: false, noSave: false };
+  if (launch.mode === "default") {
+    return {
+      mode: "default",
+      requestedId: "",
+      sceneId: null,
+      valid: true,
+      conflict: false,
+      noSave: !!launch.noSave
+    };
+  }
+
+  var sceneId = findStorySceneIdCaseInsensitive(launch.requestedId);
+  return {
+    mode: launch.mode,
+    requestedId: launch.requestedId,
+    sceneId: sceneId,
+    valid: !!sceneId,
+    conflict: !!launch.conflict,
+    noSave: !!launch.noSave
+  };
+}
 
 // =========================================================
 //                   МИНИ-ИГРЫ

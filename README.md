@@ -315,7 +315,9 @@ The main story stays in plain text. For larger 360 routes, place an optional
 in the `[game]` section. The tools in `tools/` are optional helpers for
 preparing 360 scenes, media focus points, and mini-game integration.
 
-Story progress is saved automatically in the browser and restored after reloads.
+By default, story progress is saved automatically in the browser and restored
+after reloads. The URL launch modes described below can isolate or completely
+disable this autosave.
 
 The engine runs completely **offline**.
 
@@ -360,6 +362,106 @@ URL parameters:
     index.html?topSpacing=500&bottomSpacing=800
 
 Replace `500` and `800` with your desired values (in pixels).
+
+---
+
+## 🚀 URL Launch Modes and Autosave
+
+The same `story.js` can provide a regular entry point, several independent
+novels, and direct scene previews. A `novel` name is not a new script section:
+it is both the entry scene id and the namespace of that novel's autosave.
+
+| URL | Start point | Autosave behavior |
+| --- | --- | --- |
+| `index.html` | `[meta] startScene` | Reads and writes the standard slot |
+| `index.html?novel=game01` | Scene `game01` | Reads and writes a separate `game01` slot |
+| `index.html?scene=scScene02` | Scene `scScene02` | Does not read, write, or delete saves |
+| `index.html?novel=game01&nosave=true` | Scene `game01` | Does not read, write, or delete saves |
+
+### Regular launch
+
+Opening `index.html` without a story launch parameter starts from
+`[meta] startScene`. The engine restores the standard autosave when it is
+available and valid.
+
+The standard localStorage key remains:
+
+```text
+vn_engine_autosave_v1
+```
+
+This preserves compatibility with saves created before the URL launch modes
+were added.
+
+### Independent novels
+
+To start an independent novel, pass its entry scene id in `novel`:
+
+    index.html?novel=game01
+
+The engine starts from scene `game01` if that novel has no save. Later page
+loads restore only this novel's progress. State such as the current scene,
+action position, variables, background, character, music, and 360 state stays
+inside its named slot.
+
+The slot key is derived from the resolved scene id in lowercase:
+
+```text
+vn_engine_autosave_v1:novel:game01
+```
+
+Therefore `?novel=Game01` and `?novel=game01` use the same scene and save.
+Restart clears only the active novel's slot and starts that novel again. It
+does not clear the standard slot or another novel's slot.
+
+The `novel` parameter selects an entry point only when the page is opened.
+It does not add commands for switching between independent novels while the
+story is already running.
+
+### Direct scene launch
+
+To open a scene directly, pass its id in `scene`:
+
+    index.html?scene=scScene02
+
+This mode is intended for testing, demonstrations, and direct links. It never
+reads, writes, or deletes any autosave. Restart opens the same scene again.
+Existing standard and novel saves remain untouched.
+
+### Public screens and kiosk mode
+
+Use `nosave=true` when every visitor must start from the beginning:
+
+    index.html?nosave=true
+    index.html?novel=game01&nosave=true
+
+The short form also works:
+
+    index.html?novel=game01&nosave
+
+`nosave` has priority over `[meta] autosave`, the standard launch mode, and the
+`novel` mode. The page does not restore, create, update, or delete a save.
+Existing saves are ignored and remain untouched.
+
+The presence of `nosave` enables the safe kiosk behavior; `true`, `1`, `yes`,
+and `on` are the recommended explicit values. Only `false`, `0`, `no`, or
+`off` disable the flag. Any other value remains enabled so a typo cannot
+accidentally restore a previous visitor's progress.
+
+### Parameter rules
+
+- Parameter names and scene ids are matched without regard to letter case.
+- If `scene` and `novel` are both present, `scene` takes priority and saves
+  remain disabled.
+- An unknown scene id shows an error instead of falling back to another story.
+- Two scene ids that differ only by letter case are ambiguous for URL launch
+  and also produce an error.
+- URL launch parameters can be combined with interface parameters:
+
+      index.html?novel=game01&nosave=true&topSpacing=500&bottomSpacing=800
+
+- `[meta] autosave = false` disables autosave for regular and `novel` launches.
+  `scene` and `nosave` disable storage regardless of this setting.
 
 ---
 
