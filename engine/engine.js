@@ -15509,6 +15509,522 @@ function collectScenarioVariableNames(story) {
   return names;
 }
 
+// Проверяет формат имён переменных и находит написания, различающиеся только регистром.
+function analyzeScenarioVariableCaseConflicts(story) {
+  var groups = {};
+  var invalidNames = Object.create(null);
+
+  // Возвращает причину замечания к имени или пустую строку, если имя соответствует правилам.
+  function getNameIssue(name) {
+    if (!name) return "The variable name is empty.";
+    if (/^[0-9]/.test(name)) {
+      return "A variable name cannot start with a digit.";
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return "Use only English letters, digits and _.";
+    }
+    if (!isSafeScenarioVariableName(name)) {
+      return "This variable name is reserved or unsafe.";
+    }
+    return "";
+  }
+
+  // Сохраняет недопустимое написание и все места, где оно встретилось.
+  function addInvalidName(name, ref, issue) {
+    if (!invalidNames[name]) {
+      invalidNames[name] = {
+        name: name,
+        issue: issue,
+        refs: []
+      };
+    }
+    var reference = String(ref || "").trim();
+    if (reference && invalidNames[name].refs.indexOf(reference) === -1) {
+      invalidNames[name].refs.push(reference);
+    }
+  }
+
+  // Добавляет исходное написание имени и место его использования в регистронезависимую группу.
+  function addName(name, ref) {
+    var originalName = String(name || "").trim();
+    var issue = getNameIssue(originalName);
+    if (issue) {
+      addInvalidName(originalName || "(empty)", ref, issue);
+      return;
+    }
+
+    var normalizedName = originalName.toLowerCase();
+    if (!groups[normalizedName]) {
+      groups[normalizedName] = {
+        normalizedName: normalizedName,
+        variants: {}
+      };
+    }
+
+    var variants = groups[normalizedName].variants;
+    if (!variants[originalName]) variants[originalName] = [];
+    var reference = String(ref || "").trim();
+    if (reference && variants[originalName].indexOf(reference) === -1) {
+      variants[originalName].push(reference);
+    }
+  }
+
+  // Извлекает имена переменных из безопасного выражения без его выполнения.
+  function addExpression(expression, ref) {
+    var parsed = validateAndCollectSafeExpressionIdentifiers(expression);
+    if (!parsed.ok) return;
+    var identifiers = parsed.identifiers || [];
+    for (var i = 0; i < identifiers.length; i++) {
+      addName(identifiers[i], ref);
+    }
+  }
+
+  // Находит подстановки переменных вида {name} в отображаемом тексте.
+  function addTextVariables(text, ref) {
+    if (typeof text !== "string") return;
+    text.replace(/\{([^}]+)\}/g, function(match, name) {
+      addName(name, ref);
+      return match;
+    });
+  }
+
+  // Учитывает переменные, подставляемые вместо чисел в media-параметры.
+  function addMediaVariables(item, ref) {
+    if (!item || typeof item !== "object") return;
+    var fields = ["scale", "focusX", "focusY", "focusZ", "focusx", "focusy", "focusz", "fov"];
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      var value = item[field];
+      if (typeof value === "string" && value.trim()) {
+        addName(value, ref + " / " + field);
+      }
+    }
+  }
+
+  // Рекурсивно обходит действия, пункты выбора и условные ветки сценария.
+  function visitActions(actions, refPrefix) {
+    if (!Array.isArray(actions)) return;
+
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      if (!action || typeof action !== "object") continue;
+      var actionRef = refPrefix + " / action " + (i + 1);
+
+      addTextVariables(action.text, actionRef + " / text");
+      addTextVariables(action.button, actionRef + " / button");
+      addTextVariables(action.title, actionRef + " / title");
+      addTextVariables(action.skipText, actionRef + " / skipText");
+      addMediaVariables(action, actionRef);
+
+      if (action.type === "set" && typeof action.expression === "string") {
+        var eqPos = action.expression.indexOf("=");
+        if (eqPos > 0) {
+          addName(action.expression.substring(0, eqPos), actionRef + " / set target");
+          addExpression(action.expression.substring(eqPos + 1), actionRef + " / set expression");
+        }
+      }
+
+      if (action.condition) addExpression(action.condition, actionRef + " / condition");
+      if (action.key) addName(action.key, actionRef + " / condition key");
+      if (action.result) addName(action.result, actionRef + " / result");
+      if (action.resultVar) addName(action.resultVar, actionRef + " / result");
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var c = 0; c < action.choices.length; c++) {
+          var choice = action.choices[c];
+          if (!choice || typeof choice !== "object") continue;
+          var choiceRef = actionRef + " / choice " + (c + 1);
+          addTextVariables(choice.text, choiceRef + " / text");
+          if (choice.set && typeof choice.set === "object") {
+            Object.keys(choice.set).forEach(function(name) {
+              addName(name, choiceRef + " / set");
+            });
+          }
+          visitActions(choice.actions, choiceRef);
+        }
+      }
+
+      if (action.type === "if_block") {
+        var branches = Array.isArray(action.branches) ? action.branches : [];
+        for (var b = 0; b < branches.length; b++) {
+          var branch = branches[b];
+          var branchRef = actionRef + " / branch " + (b + 1);
+          if (branch && branch.condition) addExpression(branch.condition, branchRef + " / condition");
+          visitActions(branch && branch.actions, branchRef);
+        }
+        visitActions(action.elseActions, actionRef + " / else");
+      }
+    }
+  }
+
+  if (story && story.vars && typeof story.vars === "object") {
+    Object.keys(story.vars).forEach(function(name) {
+      addName(name, "[var] or system variable");
+    });
+  }
+
+  // Служебные имена добавляем в принятом написании, чтобы ловить опечатки при обращении к ним.
+  [
+    "__licenseValid",
+    "__licenseStatus",
+    "__licenseMode",
+    "__licenseCustomer",
+    "__licenseId",
+    "__licenseInstallations"
+  ].forEach(function(name) {
+    addName(name, "system variable");
+  });
+
+  var scenes = story && Array.isArray(story.scenes) ? story.scenes : [];
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s] || {};
+    visitActions(scene.actions, "scene " + String(scene.id || (s + 1)));
+  }
+
+  var assets = story && story.assets ? story.assets : {};
+  ["backgrounds", "characters", "videos"].forEach(function(category) {
+    var entries = assets[category];
+    if (!entries || typeof entries !== "object") return;
+    Object.keys(entries).forEach(function(id) {
+      var entry = entries[id];
+      var entryRef = "[" + category + "] " + id;
+      addMediaVariables(entry, entryRef);
+      if (category === "characters" && entry && entry.imageOptions) {
+        Object.keys(entry.imageOptions).forEach(function(emotion) {
+          addMediaVariables(entry.imageOptions[emotion], entryRef + " / " + emotion);
+        });
+      }
+    });
+  });
+
+  var root = getStory360Root();
+  if (root && root.spaces && typeof root.spaces === "object") {
+    Object.keys(root.spaces).forEach(function(spaceId) {
+      var panoramas = getStory360Panoramas(root.spaces[spaceId]);
+      if (!panoramas) return;
+      Object.keys(panoramas).forEach(function(panoramaId) {
+        var panorama = panoramas[panoramaId];
+        var marks = panorama && (panorama.marks || panorama.hotspots || panorama.points);
+        if (!Array.isArray(marks)) return;
+        for (var m = 0; m < marks.length; m++) {
+          var mark = marks[m] || {};
+          var visibleIf = getStory360MarkVisibleIf(mark);
+          if (!visibleIf) continue;
+          var markId = String(mark.id || ("mark" + (m + 1)));
+          addExpression(
+            visibleIf,
+            "story360 " + spaceId + "." + panoramaId + "#" + markId + " / visibleIf"
+          );
+        }
+      });
+    });
+  }
+
+  var conflicts = Object.keys(groups).map(function(normalizedName) {
+    return groups[normalizedName];
+  }).filter(function(group) {
+    return Object.keys(group.variants).length > 1;
+  }).sort(function(a, b) {
+    return a.normalizedName.localeCompare(b.normalizedName);
+  });
+
+  return {
+    groups: groups,
+    conflicts: conflicts,
+    invalidNames: Object.keys(invalidNames).map(function(name) {
+      return invalidNames[name];
+    }).sort(function(a, b) {
+      return a.name.localeCompare(b.name);
+    })
+  };
+}
+
+// Формирует раздел статистики с проверкой допустимых символов и потенциальных опечаток в регистре.
+function formatScenarioVariableCaseStats(analysis) {
+  var info = analysis || analyzeScenarioVariableCaseConflicts(STORY);
+  var conflicts = info.conflicts || [];
+  var invalidNames = info.invalidNames || [];
+  var text = "=== VARIABLES ===\n\n";
+  text += "Name rules:\n";
+  text += "Allowed: English letters, digits and _. The first character must be a letter or _.\n";
+  if (!invalidNames.length) {
+    text += "✅ All variable names match the allowed format.\n\n";
+  } else {
+    text += "⚠️ Invalid variable names: " + invalidNames.length + ".\n";
+    for (var n = 0; n < invalidNames.length; n++) {
+      var invalid = invalidNames[n];
+      text += "- " + invalid.name + ": " + invalid.issue + "\n";
+      if (invalid.refs.length) {
+        text += "  Used in: " + invalid.refs.join("; ") + "\n";
+      }
+    }
+    text += "\n";
+  }
+
+  text += "Case consistency:\n";
+  text += "Variable names are case-sensitive.\n";
+  if (!conflicts.length) {
+    text += "✅ No names differing only by letter case found.\n\n";
+    return text;
+  }
+
+  text += "⚠️ Potential case typos: " + conflicts.length + " group(s).\n";
+  text += "Each spelling below is currently a different runtime variable.\n\n";
+
+  for (var i = 0; i < conflicts.length; i++) {
+    var group = conflicts[i];
+    var variants = Object.keys(group.variants).sort();
+    text += "- " + group.normalizedName + ": " + variants.join(", ") + "\n";
+    for (var v = 0; v < variants.length; v++) {
+      var variant = variants[v];
+      var refs = group.variants[variant] || [];
+      text += "  - " + variant + ": " + (refs.length ? refs.join("; ") : "(location unknown)") + "\n";
+    }
+  }
+
+  text += "\n";
+  return text;
+}
+
+// Проверяет идентификаторы сценария и story360, не меняя их и не влияя на поиск ресурсов во время игры.
+function analyzeStoryIdentifierNames(story) {
+  var checkedIdentifiers = Object.create(null);
+  var invalidIdentifiers = Object.create(null);
+
+  // Добавляет идентификатор в общую проверку и сохраняет все места с недопустимым написанием.
+  function addIdentifier(kind, value, ref) {
+    if (value === undefined || value === null) return;
+    var name = String(value).trim();
+    if (!name) return;
+
+    var key = String(kind || "Identifier") + "\u0000" + name;
+    checkedIdentifiers[key] = true;
+    if (/^[A-Za-z0-9_]+$/.test(name)) return;
+
+    if (!invalidIdentifiers[key]) {
+      invalidIdentifiers[key] = {
+        kind: String(kind || "Identifier"),
+        name: name,
+        refs: []
+      };
+    }
+
+    var reference = String(ref || "").trim();
+    if (reference && invalidIdentifiers[key].refs.indexOf(reference) === -1) {
+      invalidIdentifiers[key].refs.push(reference);
+    }
+  }
+
+  // Извлекает идентификатор из ссылки вида @bg.name или @audio.name, оставляя обычные пути вне этой проверки.
+  function addAssetReference(value, prefix, kind, ref) {
+    if (typeof value !== "string" || value.indexOf(prefix) !== 0) return;
+    addIdentifier(kind, value.slice(prefix.length), ref);
+  }
+
+  // В составной ссылке space.panorama проверяет только пространство; идентификаторы панорам намеренно исключены.
+  function addStory360EntryIdentifier(value, ref) {
+    if (value === undefined || value === null) return;
+    var name = String(value).trim();
+    if (!name) return;
+    var composite = name.match(/^([^.:]+)[.:]([^.:]+)$/);
+    if (composite) {
+      addIdentifier("360 space", composite[1], ref + " / space");
+      return;
+    }
+    addIdentifier("360 entry", name, ref);
+  }
+
+  // Проверяет идентификаторы во вложенных действиях, пунктах выбора и условных ветках.
+  function visitActions(actions, refPrefix) {
+    if (!Array.isArray(actions)) return;
+
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      if (!action || typeof action !== "object") continue;
+      var actionRef = refPrefix + " / action " + (i + 1);
+
+      if (action.type === "bg") {
+        addIdentifier("Background", action.bgId, actionRef);
+        addAssetReference(action.src, "@bg.", "Background", actionRef);
+      } else if (action.type === "bgm" || action.type === "sfx") {
+        addAssetReference(action.src, "@audio.", "Audio", actionRef);
+      } else if (action.type === "char") {
+        addIdentifier("Character", action.charId, actionRef);
+        addIdentifier("Character emotion", action.emotion, actionRef);
+      } else if (action.type === "say") {
+        addIdentifier("Character", action.charVar, actionRef);
+      } else if (action.type === "game") {
+        addIdentifier("Game", action.gameId, actionRef);
+      } else if (action.type === "video") {
+        addIdentifier("Video", action.videoId, actionRef);
+      } else if (action.type === "goto" || action.type === "if_expr") {
+        addIdentifier("Scene", action.target, actionRef);
+      } else if (action.type === "walk360") {
+        addIdentifier("Background", action.bgId, actionRef);
+      } else if (action.type === "goto360") {
+        addIdentifier("360 space", action.spaceId, actionRef);
+        addIdentifier("360 panorama target", action.panoramaId, actionRef + " / target");
+        addStory360EntryIdentifier(action.entry, actionRef + " / entry");
+      } else if (action.type === "bg360marks") {
+        addIdentifier("Background", action.bgId, actionRef);
+        var actionMarks = Array.isArray(action.marks) ? action.marks : [];
+        for (var m = 0; m < actionMarks.length; m++) {
+          var actionMark = actionMarks[m] || {};
+          var actionMarkRef = actionRef + " / mark " + (m + 1);
+          addIdentifier("Scene", actionMark.targetScene, actionMarkRef);
+        }
+      }
+
+      if (action.type === "choice" && Array.isArray(action.choices)) {
+        for (var c = 0; c < action.choices.length; c++) {
+          var choice = action.choices[c];
+          if (!choice || typeof choice !== "object") continue;
+          var choiceRef = actionRef + " / choice " + (c + 1);
+          addIdentifier("Scene", choice.goto, choiceRef);
+          addAssetReference(choice.sfx, "@audio.", "Audio", choiceRef);
+          visitActions(choice.actions, choiceRef);
+        }
+      }
+
+      if (action.type === "if_block") {
+        var branches = Array.isArray(action.branches) ? action.branches : [];
+        for (var b = 0; b < branches.length; b++) {
+          visitActions(branches[b] && branches[b].actions, actionRef + " / branch " + (b + 1));
+        }
+        visitActions(action.elseActions, actionRef + " / else");
+      }
+    }
+  }
+
+  addIdentifier("Scene", story && story.meta ? story.meta.start : null, "[meta] start");
+
+  var scenes = story && Array.isArray(story.scenes) ? story.scenes : [];
+  for (var s = 0; s < scenes.length; s++) {
+    var scene = scenes[s] || {};
+    var sceneRef = "scene " + String(scene.id || (s + 1));
+    addIdentifier("Scene", scene.id, sceneRef + " / declaration");
+    visitActions(scene.actions, sceneRef);
+  }
+
+  var assets = story && story.assets ? story.assets : {};
+  [
+    { field: "backgrounds", kind: "Background", section: "bg" },
+    { field: "characters", kind: "Character", section: "char" },
+    { field: "audio", kind: "Audio", section: "audio" },
+    { field: "games", kind: "Game", section: "game" },
+    { field: "videos", kind: "Video", section: "video" }
+  ].forEach(function(category) {
+    var entries = assets[category.field];
+    if (!entries || typeof entries !== "object") return;
+
+    Object.keys(entries).forEach(function(id) {
+      var declarationRef = "[" + category.section + "] " + id;
+      addIdentifier(category.kind, id, declarationRef);
+
+      if (category.field !== "characters") return;
+      var character = entries[id];
+      if (!character || typeof character !== "object") return;
+      var emotions = Object.create(null);
+
+      if (character.images && typeof character.images === "object") {
+        Object.keys(character.images).forEach(function(emotion) {
+          emotions[emotion] = true;
+        });
+      }
+      if (character.imageOptions && typeof character.imageOptions === "object") {
+        Object.keys(character.imageOptions).forEach(function(emotion) {
+          emotions[emotion] = true;
+        });
+      }
+
+      Object.keys(emotions).forEach(function(emotion) {
+        addIdentifier("Character emotion", emotion, declarationRef + " / emotion");
+      });
+    });
+  });
+
+  var root = getStory360Root();
+  if (root && root.spaces && typeof root.spaces === "object") {
+    Object.keys(root.spaces).forEach(function(spaceId) {
+      var spaceRef = "story360 " + spaceId;
+      addIdentifier("360 space", spaceId, spaceRef + " / declaration");
+
+      var panoramas = getStory360Panoramas(root.spaces[spaceId]);
+      if (!panoramas) return;
+      Object.keys(panoramas).forEach(function(panoramaId) {
+        var panorama = panoramas[panoramaId];
+        var panoramaRef = spaceRef + "." + panoramaId;
+        if (!panorama || typeof panorama !== "object") return;
+
+        addIdentifier(
+          "Background",
+          readStory360Field(panorama, ["bgId", "bg", "backgroundId"]),
+          panoramaRef + " / background"
+        );
+
+        var entries = panorama.entries || panorama.entryPoints || panorama.focuses;
+        if (entries && typeof entries === "object") {
+          Object.keys(entries).forEach(function(entryId) {
+            addStory360EntryIdentifier(entryId, panoramaRef + " / entry");
+          });
+        }
+
+        var marks = panorama.marks || panorama.hotspots || panorama.points;
+        if (!Array.isArray(marks)) return;
+        for (var m = 0; m < marks.length; m++) {
+          var mark = marks[m] || {};
+          var markRef = panoramaRef + " / mark " + (m + 1);
+
+          var target = normalizeStory360Target(mark, spaceId);
+          if (!target) continue;
+          if (target.type === "scene") {
+            addIdentifier("Scene", target.sceneId, markRef + " / target");
+          } else if (target.type === "360") {
+            addIdentifier("360 space", target.spaceId, markRef + " / target");
+            addStory360EntryIdentifier(target.entryId, markRef + " / target entry");
+          }
+        }
+      });
+    });
+  }
+
+  return {
+    checkedCount: Object.keys(checkedIdentifiers).length,
+    invalidIdentifiers: Object.keys(invalidIdentifiers).map(function(key) {
+      return invalidIdentifiers[key];
+    }).sort(function(a, b) {
+      var kindCompare = a.kind.localeCompare(b.kind);
+      return kindCompare || a.name.localeCompare(b.name);
+    })
+  };
+}
+
+// Формирует самостоятельный раздел статистики по допустимым символам во всех идентификаторах.
+function formatStoryIdentifierNamesStats(analysis) {
+  var info = analysis || analyzeStoryIdentifierNames(STORY);
+  var invalid = info.invalidIdentifiers || [];
+  var text = "=== IDENTIFIERS ===\n\n";
+  text += "Allowed: English letters, digits and _. Digits are allowed as the first character.\n";
+  text += "Resource file and folder paths are checked separately in FILE CHECK.\n";
+  text += "Checked unique identifiers: " + (info.checkedCount || 0) + ".\n";
+
+  if (!invalid.length) {
+    text += "✅ All identifiers match the allowed format.\n\n";
+    return text;
+  }
+
+  text += "⚠️ Invalid identifiers: " + invalid.length + ".\n";
+  for (var i = 0; i < invalid.length; i++) {
+    var item = invalid[i];
+    text += "- " + item.kind + " \"" + item.name + "\"\n";
+    if (item.refs.length) {
+      text += "  Used in: " + item.refs.join("; ") + "\n";
+    }
+  }
+  text += "\n";
+  return text;
+}
+
 // Проверяет условия visibleIf в story360 для статистики; отсутствующие переменные фиксируются как справка, а не как ошибка.
 function analyzeStory360VisibilityConditions(story) {
   var analysis = {
@@ -15618,6 +16134,8 @@ function renderStats() {
       var reach = findUnreachableScenes(STORY);
       var cycles = findCyclesSCC(STORY);
       var story360Visibility = analyzeStory360VisibilityConditions(STORY);
+      var variableCaseAnalysis = analyzeScenarioVariableCaseConflicts(STORY);
+      var identifierNameAnalysis = analyzeStoryIdentifierNames(STORY);
 
       // Получаем ошибки парсинга
       var parseErrors = window.PARSE_ERRORS || [];
@@ -15689,6 +16207,8 @@ function renderStats() {
         });
       }
 
+      text += formatScenarioVariableCaseStats(variableCaseAnalysis);
+      text += formatStoryIdentifierNamesStats(identifierNameAnalysis);
 
       text += "=== FILE CHECK ===\n\n";
         

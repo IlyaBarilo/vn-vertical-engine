@@ -269,8 +269,23 @@ This helps you see:
 - overly complex or confusing structural parts;
 - resource usage and repeated assets;
 - mini-game launches and returned `gameResult` values.
+- case-sensitive variable names that differ only by letter case.
+- variable names containing characters other than English letters, digits, and `_`.
+- scene, asset, emotion, and story360 identifiers containing characters other
+  than English letters, digits, and `_`.
 
 This is especially useful after adding 360 scenes, mini-games, and new branching.
+The `VARIABLES` statistics section reports groups such as `Score`, `score`, and
+`SCORE` with their usage locations. They remain separate runtime variables;
+the warning only helps find likely typing mistakes. The same section checks
+that a variable name starts with an English letter or `_` and contains only
+English letters, digits, and `_`.
+
+The `IDENTIFIERS` section checks scene, background, character, emotion, audio,
+video, game, and story360 space and entry IDs. Story360 panorama and mark IDs
+are not checked when declared, but a panorama ID used as a `goto360` target is
+checked. Digits may be the first character. Resource file and folder paths are
+checked separately in `FILE CHECK`.
 
 ---
 
