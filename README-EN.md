@@ -4,8 +4,11 @@
 
 **A lightweight offline visual novel engine for vertical screens.**
 
-<p align="left">
+<p align="center">
   <a href="https://ilyabarilo.github.io/vn-vertical-engine/"><img src="https://img.shields.io/badge/demo-open-2ea44f?style=for-the-badge" alt="Open demo"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest"><img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?display_name=tag&amp;label=release&amp;style=for-the-badge" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-blue?style=for-the-badge" alt="PolyForm Noncommercial 1.0.0"></a>
   <a href="https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/IlyaBarilo/vn-vertical-engine/release.yml?event=release&amp;style=for-the-badge&amp;label=release%20build" alt="Release build"></a>
