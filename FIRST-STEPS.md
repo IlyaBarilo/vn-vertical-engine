@@ -1,88 +1,87 @@
-# First Steps
+# Первые шаги
 
-> Russian version: [FIRST-STEPS-RU.md](FIRST-STEPS-RU.md)  
-> If needed, you can use automatic translators.
+> English version: [FIRST-STEPS-EN.md](FIRST-STEPS-EN.md)<br>
+> При необходимости можно использовать автопереводчики.
 
-This file is a short route for getting started with the project.
+Этот файл — короткий маршрут для старта работы с проектом.
 
-The main idea is simple:
+Главная идея простая:
 
-1. first, come up with the story;
-2. then build a draft script;
-3. then decide whether you need 360 scenes or mini-games at all;
-4. use optional tools only where they make the project clearer;
-5. after that, connect, test, and refine everything together.
+1. сначала придумайте историю;
+2. затем соберите черновой сценарий;
+3. потом решите, нужны ли вообще 360-сцены или мини-игры;
+4. используйте дополнительные инструменты только там, где они делают проект понятнее;
+5. после этого подключите, проверьте и доработайте всё вместе.
 
-When downloading a release, use the full ZIP archive if you want to run the
-included demo as-is, including demo media, 360 panorama packages, mini-games,
-and tools. Use the `-update` ZIP archive when copying a new engine version over
-an existing novel; it does not include `assets/`, `story.js`, or root
-`story-example.js`. Inside the update archive, the current example is available
-as `docs/examples/story-example.js`.
-
----
-
-## Important
-
-Mini-games are **not a required part** of a visual novel.
-360 spaces and authoring tools are optional too.
-
-The main story remains a plain text script in `story.js`. You can write and
-edit it in any text editor without special authoring software.
-
-You can work like this:
-
-- first create the idea and a draft script for the novel;
-- fully build the story **without mini-games**;
-- add 360 scenes only where free exploration helps the location or learning task;
-- mark places where a mini-game could strengthen a scene;
-- add one or more mini-games later;
-- or skip mini-games entirely if needed.
-
-Mini-games should be added only where they are truly useful for the story, the learning goal, or the pacing of the experience.
+При скачивании релиза используйте полный ZIP-архив, если хотите сразу открыть
+демо со всеми медиа, 360-панорамами, мини-играми и инструментами. Используйте
+ZIP-архив `-update`, когда копируете новую версию движка поверх существующей
+новеллы; `assets/`, `story.js` и корневой `story-example.js` в него не входят.
+Внутри update-архива текущий пример доступен как `docs/examples/story-example.js`.
 
 ---
 
-## Step 1. Come up with the novel idea
+## Важно
 
-First, define the foundation of the project:
+Мини-игры **не являются обязательной частью** новеллы.
+360-пространства и авторские инструменты тоже необязательны.
 
-- what the story is about;
-- who the main character is;
-- what the key scenes are;
-- where the choices will appear;
-- whether any location should be explored as a 360 scene;
-- what the final effect should be: learning, atmosphere, demonstration, or an interactive story.
+Основная история остаётся обычным текстовым сценарием в `story.js`. Её можно
+писать и редактировать в любом текстовом редакторе без специального ПО.
 
-At this stage, you do not need to think about code, and you do not need to create mini-games yet.
+Можно работать так:
+
+- сначала сделать идею и черновой сценарий новеллы;
+- полностью собрать историю **без мини-игр**;
+- добавлять 360-сцены только там, где свободный осмотр помогает локации или учебной задаче;
+- отметить места, где мини-игра могла бы усилить сцену;
+- добавить одну или несколько мини-игр позже;
+- при необходимости вообще обойтись без мини-игр.
+
+Мини-игры стоит добавлять только там, где они действительно нужны по сюжету, по обучающей задаче или по темпу игры.
 
 ---
 
-## Step 2. Make a draft script
+## Шаг 1. Придумайте идею новеллы
 
-In this project, your script is stored in `story.js` as a text block called `window.STORY_TEXT`.
-If `story.js` does not exist yet, the engine loads `story-example.js` so the demo can start.
-Start your own novel by copying `story-example.js` to `story.js`, then edit `story.js`.
+Сначала определите основу проекта:
 
-For larger 360 routes, keep the main story in `story.js` and store the panorama
-map in an optional `story360.js` file, usually generated with
-`tools/scene360-editor.html`.
+- о чём история;
+- кто главный герой;
+- какие есть ключевые сцены;
+- где будут выборы;
+- нужно ли какую-то локацию исследовать как 360-сцену;
+- какой должен быть итоговый эффект: обучение, атмосфера, демонстрация, интерактивная история.
 
-The minimum structure looks like this:
+На этом этапе не нужно думать о коде и не нужно сразу делать мини-игры.
+
+---
+
+## Шаг 2. Сделайте черновой сценарий
+
+В этом проекте ваш сценарий хранится в `story.js` как текстовый блок `window.STORY_TEXT`.
+Если `story.js` ещё нет, движок загрузит `story-example.js`, чтобы демо могло запуститься.
+Чтобы начать свою новеллу, скопируйте `story-example.js` в `story.js`, а затем редактируйте `story.js`.
+
+Для больших 360-маршрутов оставляйте основную историю в `story.js`, а карту
+панорам храните в дополнительном файле `story360.js`, который обычно создаётся
+через `tools/scene360-editor.html`.
+
+Минимальная структура такая:
 
 ```js
 window.STORY_TEXT = `
 
 [meta]
-title = My Story
+title = Моя история
 startScene = intro
-lang = en
+lang = ru
 
 [bg]
 hall file=assets/backgrounds/bg-hall.jpg
 
 [char]
-anna emotion=neutral file=assets/characters/anna.png name="Anna" color=#0F0
+anna emotion=neutral file=assets/characters/anna.png name="Анна" color=#0F0
 
 [var]
 score = 0
@@ -91,143 +90,144 @@ score = 0
 scene intro
 bg hall
 show anna neutral
-anna: "Welcome!"
+anna: "Добро пожаловать!"
 
 menu
-"Go forward" -> next_scene
-"Stay here" -> stay_scene
+"Пойти дальше" -> next_scene
+"Остаться здесь" -> stay_scene
 
 scene next_scene
-"The story continues."
+"История продолжается."
 
 scene stay_scene
-"You stayed where you are."
+"Вы остались на месте."
 `;
 ```
 
-At first, make exactly this kind of draft:
+Сначала сделайте именно такой черновик:
 
-- scenes;
-- transitions;
-- choices;
-- basic variables;
-- the overall story structure.
+- сцены;
+- переходы;
+- выборы;
+- базовые переменные;
+- общую структуру истории.
 
-Do not polish everything immediately. The important thing is to quickly assemble the framework.
-
----
-
-## Optional. Add 360 scenes and authoring tools when needed
-
-Use 360 scenes when the player should look around a place, choose a direction,
-or move through a connected space rather than only read a static scene.
-
-Useful local tools:
-
-- `tools/scene360-editor.html` — build `story360.js`, place markers, and define panorama links visually;
-- `tools/convert-360-img-to-js.html` — convert panorama images into offline JS packages;
-- `tools/panorama-cleaner.html` — remove people and moving objects with matching areas from a second shot;
-- `tools/media-focus-editor.html` — tune focus points for media-heavy scenes;
-- `tools/game-tester.html` — test mini-games before connecting them to the story.
-
-These tools are helpers, not a replacement for the story text. Start with the
-story structure first, then add 360 navigation only where it clearly helps.
+Не полируйте всё сразу. Важно быстро собрать каркас.
 
 ---
 
-## Step 3. Mark places where mini-games may be useful
+## Дополнительно. Добавляйте 360-сцены и инструменты, когда они нужны
 
-Once the draft script already exists, look at whether mini-games are actually needed.
+Используйте 360-сцены, когда игроку важно осмотреть место, выбрать направление
+или пройти по связанному пространству, а не только прочитать статичную сцену.
 
-Useful questions:
+Полезные локальные инструменты:
 
-- is an interactive knowledge check needed here;
-- does a mini-game strengthen the scene;
-- does it give the player a clear result;
-- does that result affect branching;
-- does the mini-game break the pacing of the story.
+- `tools/scene360-editor.html` — собрать `story360.js`, расставить метки и визуально связать панорамы;
+- `tools/convert-360-img-to-js.html` — преобразовать панорамы в офлайн JS-пакеты;
+- `tools/panorama-cleaner.html` — удалить людей и движущиеся объекты, заменяя области фрагментами второго снимка;
+- `tools/media-focus-editor.html` — настроить фокусные точки для сцен с медиа;
+- `tools/game-tester.html` — проверить мини-игры до подключения к истории.
 
-If the answer is no, **do not add a game just for the sake of having a game**.
-
-Good places for mini-games:
-
-- a short check of understanding;
-- an active scene instead of a long explanation;
-- a moment of choice through action rather than only through text;
-- a repeatable episode where the result can be saved into a variable.
+Эти инструменты помогают, но не заменяют текст истории. Сначала соберите
+структуру сценария, а затем добавляйте 360-навигацию там, где она действительно
+усиливает проект.
 
 ---
 
-## Step 4. If a mini-game is needed, ask for ideas first
+## Шаг 3. Отметьте места, где мини-игры могут пригодиться
 
-Do not start by generating code immediately.
+Когда черновой сценарий уже есть, посмотрите, нужны ли в нём мини-игры.
 
-First, ask the AI to suggest several game ideas.
+Полезные вопросы:
 
-Prompt #1:
+- нужна ли здесь интерактивная проверка знания;
+- усиливает ли мини-игра сцену;
+- даёт ли она игроку понятный результат;
+- влияет ли результат на ветвление;
+- не ломает ли мини-игра темп истории.
+
+Если ответа нет — **не добавляйте игру только ради самой игры**.
+
+Хорошие места для мини-игр:
+
+- короткая проверка понимания темы;
+- активная сцена вместо длинного объяснения;
+- момент выбора через действие, а не только через текст;
+- повторяемый эпизод, где результат можно сохранить в переменную.
+
+---
+
+## Шаг 4. Если нужна мини-игра — сначала попросите идеи
+
+Не начинайте сразу с генерации кода.
+
+Сначала попросите ИИ предложить несколько идей игры.
+
+Промпт №1:
 
 ```text
-You are a game designer of short educational browser mini-games. Suggest 5 game ideas on the topic "<topic>" for the audience "<audience>" in the style "<style>". No code. For each idea, briefly describe the mechanic, what it teaches, why it works, and the main risk.
+Ты геймдизайнер коротких обучающих браузерных мини-игр. Предложи 5 идей игры по теме «<тема>» для аудитории «<аудитория>» в стиле «<стиль>». Без кода. Для каждой идеи кратко укажи механику, чему она учит, почему работает и главный риск.
 ```
 
-Example:
+Пример:
 
 ```text
-You are a game designer of short educational browser mini-games. Suggest 5 game ideas on the topic "logarithms" for the audience "students aged 14–17" in the style "cyberpunk". No code. For each idea, briefly describe the mechanic, what it teaches, why it works, and the main risk.
+Ты геймдизайнер коротких обучающих браузерных мини-игр. Предложи 5 идей игры по теме «логарифмы» для аудитории «школьники 14–17 лет» в стиле «киберпанк». Без кода. Для каждой идеи кратко укажи механику, чему она учит, почему работает и главный риск.
 ```
 
-After that, choose one idea that:
+После этого выберите одну идею, которая:
 
-- fits the scene;
-- is not too complex;
-- is clear to the player;
-- genuinely strengthens the visual novel.
+- подходит сцене;
+- не слишком сложна;
+- понятна игроку;
+- реально усиливает новеллу.
 
 ---
 
-## Step 5. Then create the game based on the chosen idea
+## Шаг 5. Затем создайте игру по выбранной идее
 
-Once the idea has been selected, attach the `SPEC-GAME.md` file to the request and use the second prompt.
+Когда идея уже выбрана, приложите к запросу файл `spec-game.md` и дайте второй промпт.
 
-Prompt #2:
+Промпт №2:
 
 ```text
-Create a mini-game about <TOPIC> in the style of <STYLE>, where the player must <WHAT THE PLAYER DOES>.
+Разработай мини-игру на тему <ТЕМА> в стиле <СТИЛЬ>, в которой игрок должен <ЧТО ДЕЛАЕТ ИГРОК>.
 
-When developing the game, you must use the attached SPEC-GAME.md specification file.
+При разработке обязательно используй приложенный файл спецификации spec-game.md.
 ```
 
-Why this matters:
+Почему это важно:
 
-- first you choose the mechanic;
-- then you build the implementation;
-- the specification already defines the compatibility, input, completion, and result-format requirements.
-
----
-
-## Step 6. Test the mini-game separately
-
-Before connecting it to the visual novel, it is convenient to test the game separately through `tools/game-tester.html`.
-
-What to check:
-
-- the game opens locally;
-- it starts correctly;
-- it works with mouse and touch;
-- it looks fine in vertical format;
-- it does not require a server or external dependencies;
-- it sends the final `gameResult`;
-- after finishing, it does not continue accepting input.
-
-If the game fails this standalone check, do not connect it to the story until it is fixed.
+- сначала вы выбираете механику;
+- потом делаете реализацию;
+- спецификация уже задаёт требования к совместимости, вводу, завершению игры и формату результата.
 
 ---
 
-## Step 7. Connect the game to the script
+## Шаг 6. Проверьте мини-игру отдельно
 
-When the game is ready, register it in the `[game]` section and call it from a scene.
+Перед подключением в новеллу удобно проверить игру отдельно через `tools/game-tester.html`.
 
-Example:
+Что проверить:
+
+- игра открывается локально;
+- корректно стартует;
+- работает мышью и touch;
+- нормально выглядит в вертикальном формате;
+- не требует сервера и внешних зависимостей;
+- отправляет финальный `gameResult`;
+- после завершения не продолжает принимать ввод.
+
+Если игра плохо проходит отдельную проверку, не подключайте её в сюжет до исправления.
+
+---
+
+## Шаг 7. Подключите игру в сценарий
+
+Когда игра готова, зарегистрируйте её в секции `[game]` и вызовите из сцены.
+
+Пример:
 
 ```text
 [game]
@@ -238,7 +238,7 @@ mathResult = 0
 
 [scene]
 scene lab_test
-"We need to hack the terminal."
+"Нужно взломать терминал."
 
 game mathHack difficulty=2 result=mathResult
 
@@ -246,158 +246,162 @@ if mathResult == 1 -> success_scene
 if mathResult == 0 -> fail_scene
 ```
 
-This order is convenient:
+Такой порядок удобен:
 
-1. the game is declared in `[game]`;
-2. the result variable is declared in `[var]`;
-3. the game is launched with the `game` command;
-4. after that, you can use `if` and send the player to different scenes.
+1. игра объявлена в `[game]`;
+2. переменная результата объявлена в `[var]`;
+3. игра запускается командой `game`;
+4. после этого можно использовать `if` и отправлять игрока в разные сцены.
 
-If a mini-game is not needed, simply skip this step.
-
----
-
-## Step 8. Check the story structure through the graph
-
-After assembling the script, open the visual novel and view the scene graph through the built-in statistics panel.
-
-This helps you see:
-
-- unreachable scenes;
-- broken transitions;
-- unnecessary branches;
-- scenes that cannot be reached;
-- overly complex or confusing structural parts;
-- resource usage and repeated assets;
-- mini-game launches and returned `gameResult` values.
-- case-sensitive variable names that differ only by letter case.
-- variable names containing characters other than English letters, digits, and `_`.
-- scene, asset, emotion, and story360 identifiers containing characters other
-  than English letters, digits, and `_`.
-
-This is especially useful after adding 360 scenes, mini-games, and new branching.
-The `SUMMARY CHECK` line at the beginning gives a quick overview of parsing,
-variables, identifiers, files, image sizes, script validation, and story360
-conditions, as well as unreachable scenes and cycles. A red cross points to a
-detailed section below.
-
-The `VARIABLES` statistics section reports groups such as `Score`, `score`, and
-`SCORE` with their usage locations. They remain separate runtime variables;
-the warning only helps find likely typing mistakes. The same section checks
-that a variable name starts with an English letter or `_` and contains only
-English letters, digits, and `_`.
-
-The `IDENTIFIERS` section checks scene, background, character, emotion, audio,
-video, game, and story360 space and entry IDs. Story360 panorama and mark IDs
-are not checked when declared, but a panorama ID used as a `goto360` target is
-checked. Digits may be the first character. Resource file and folder paths are
-checked separately in `FILE CHECK`: every path segment may contain only English
-letters, digits, `-`, and `_`. The dot before a file extension is allowed.
+Если мини-игра не нужна, этот шаг просто пропускается.
 
 ---
 
-## Step 9. Put everything into a working loop
+## Шаг 8. Проверьте структуру истории через граф
 
-A good practical loop looks like this:
+После сборки сценария откройте новеллу и посмотрите граф сцен через встроенную статистику.
 
-1. story idea;
-2. draft `story.js`;
-3. optional 360 places and media focus checks;
-4. decision on whether mini-games are needed;
-5. mini-game ideas;
-6. mini-game implementation according to `SPEC-GAME.md`;
-7. connection to the script;
-8. graph, resource, and branching check;
-9. refinement of text, scenes, 360 routes, and games.
+Это помогает увидеть:
 
-This is safer and more convenient than trying to generate games first and only then figuring out where to place them.
+- недостижимые сцены;
+- оборванные переходы;
+- лишние ветки;
+- сцены, в которые нельзя попасть;
+- слишком сложные или запутанные куски структуры;
+- использование ресурсов и повторяющиеся ассеты;
+- запуск мини-игр и возвращаемые значения `gameResult`.
+- регистрозависимые имена переменных, различающиеся только регистром.
+- имена переменных с символами кроме английских букв, цифр и `_`.
+- идентификаторы сцен, ресурсов, эмоций и объектов story360 с символами кроме
+  английских букв, цифр и `_`.
 
-By default, story progress is saved automatically in the browser, so regular
-reloads during testing do not erase the current playthrough.
+Особенно полезно делать это после добавления 360-сцен, мини-игр и новых ветвлений.
+Строка `SUMMARY CHECK` в начале статистики кратко показывает состояние
+парсинга, переменных, идентификаторов, файлов, размеров изображений, проверки
+сценария, условий story360, достижимости сцен и циклов. Красный крестик
+указывает на подробный раздел ниже.
 
-### URL launch modes
+Раздел статистики `VARIABLES` показывает группы вроде `Score`, `score` и
+`SCORE` вместе с местами использования. Во время выполнения это по-прежнему
+разные переменные; предупреждение только помогает находить вероятные опечатки.
+Тот же раздел проверяет, что имя начинается с английской буквы или `_` и
+содержит только английские буквы, цифры и `_`.
 
-Use these modes when one `story.js` contains several independent entry points
-or when a public screen must never restore the previous visitor's progress:
+Раздел `IDENTIFIERS` проверяет идентификаторы сцен, фонов, персонажей, эмоций,
+аудио, видео, игр, а также пространств и входов story360. Идентификаторы
+панорам при объявлении и идентификаторы меток story360 не проверяются, но
+целевая панорама в команде `goto360` проверяется. Цифра может быть первым
+символом. `FILE CHECK` отдельно проверяет каждый каталог и имя файла в путях
+обычных ресурсов, панорам и photo-меток. Допустимы только английские буквы,
+цифры, `-` и `_`; точка перед расширением файла считается разделителем.
 
-| URL | Result |
+---
+
+## Шаг 9. Соберите всё в рабочий цикл
+
+Хороший практический цикл такой:
+
+1. идея истории;
+2. черновой `story.js`;
+3. возможные 360-локации и проверка фокуса медиа;
+4. решение, нужны ли мини-игры;
+5. идеи мини-игр;
+6. реализация мини-игр по `spec-game.md`;
+7. подключение в сценарий;
+8. проверка графа, ресурсов и ветвлений;
+9. доработка текста, сцен, 360-маршрутов и игр.
+
+Это безопаснее и удобнее, чем пытаться сначала нагенерировать игры, а потом уже придумывать, куда их вставить.
+
+По умолчанию прогресс истории сохраняется в браузере автоматически, поэтому
+обычная перезагрузка во время тестирования не сбрасывает текущее прохождение.
+
+### Режимы запуска через URL
+
+Используйте эти режимы, если один `story.js` содержит несколько независимых
+точек входа или публичный экран не должен продолжать игру предыдущего
+посетителя:
+
+| URL | Результат |
 | --- | --- |
-| `index.html` | Starts from `[meta] startScene` and uses the standard autosave |
-| `index.html?novel=game01` | Starts or restores the independent novel whose entry scene is `game01` |
-| `index.html?scene=scScene02` | Opens a scene directly without reading, writing, or deleting saves |
-| `index.html?novel=game01&nosave=true` | Starts `game01` from the beginning without touching saves |
+| `index.html` | Запускает `[meta] startScene` и использует стандартное автосохранение |
+| `index.html?novel=game01` | Запускает или продолжает отдельную новеллу со стартовой сценой `game01` |
+| `index.html?scene=scScene02` | Открывает сцену напрямую без чтения, записи и удаления сохранений |
+| `index.html?novel=game01&nosave=true` | Запускает `game01` сначала, не обращаясь к сохранениям |
 
-Each `novel` gets a separate localStorage slot, so different novels do not
-overwrite one another. The `novel` value is also its entry scene id. Scene ids
-are matched without regard to letter case.
+Каждая `novel` получает отдельный слот localStorage, поэтому разные новеллы не
+перезаписывают друг друга. Значение `novel` одновременно является id её
+стартовой сцены. Имена сцен сопоставляются без учёта регистра.
 
-The regular slot is `vn_engine_autosave_v1`. A novel such as `game01` uses
-`vn_engine_autosave_v1:novel:game01`. The `novel` parameter selects an entry
-point at page load; it does not add in-story switching between novels.
+Стандартный слот называется `vn_engine_autosave_v1`. Например, новелла
+`game01` использует слот `vn_engine_autosave_v1:novel:game01`. Параметр
+`novel` выбирает точку входа при загрузке страницы, но не добавляет переходы
+между отдельными новеллами во время прохождения.
 
-Use `nosave=true` or the short `nosave` form for exhibitions and interactive
-kiosks. It overrides autosave settings, always starts from the relevant entry
-scene, and leaves all existing saves untouched. If `scene` and `novel` are
-specified together, `scene` takes priority and saving remains disabled.
-Recommended enabled values are `true`, `1`, `yes`, and `on`; only `false`, `0`,
-`no`, or `off` explicitly disable the flag.
+Для выставок и публичных интерактивных экранов используйте `nosave=true` или
+короткую форму `nosave`. Этот флаг имеет приоритет над настройками
+автосохранения, всегда начинает с соответствующей стартовой сцены и не изменяет
+существующие сохранения. Если одновременно указаны `scene` и `novel`, приоритет
+получает `scene`, а сохранение остаётся отключённым.
+Рекомендуемые включающие значения: `true`, `1`, `yes` и `on`; только `false`,
+`0`, `no` или `off` явно отключают флаг.
 
-Use `mode=release` or the short `release` URL flag to force release mode without
-editing `[meta]`. Both forms hide the statistics button but do not change the
-start scene or autosave behavior:
+Чтобы включить режим публикации без изменения `[meta]`, используйте
+`mode=release` или короткий URL-флаг `release`. Обе формы скрывают кнопку
+статистики, но не меняют стартовую сцену и работу автосохранения:
 
     index.html?mode=release
     index.html?release
 
-Restart clears only the active slot during a regular or `novel` launch. In
-`scene` or `nosave` mode it restarts the entry point without deleting any save.
-An unknown or case-ambiguous scene id displays an error. Setting
-`autosave = false` in `[meta]` disables regular and `novel` autosave; `scene`
-and `nosave` always disable storage.
+Кнопка перезапуска очищает только активный слот при обычном запуске или в
+режиме `novel`. В режимах `scene` и `nosave` она заново запускает точку входа,
+не удаляя сохранения. Неизвестное или неоднозначное по регистру имя сцены
+показывает ошибку. Настройка `autosave = false` в `[meta]` отключает обычное и
+именованное автосохранение; `scene` и `nosave` всегда отключают storage.
 
 ---
 
-## The shortest route
+## Самый короткий маршрут
 
-If you need the shortest version:
+Если нужно совсем кратко:
 
-1. come up with the story;
-2. sketch the script;
-3. decide whether 360 scenes or mini-games are needed;
-4. if 360 scenes are needed, prepare `story360.js` with the local tools;
-5. if mini-games are needed, ask for ideas first, then create the game according to the specification;
-6. test the game separately;
-7. connect it in `story.js`;
-8. check the graph, resources, games view, and branching.
-
----
-
-## What to attach to requests
-
-For scripts:
-
-- `SPEC-STORY.md` — if you want to generate or refine the script structure.
-- optional `story360.js` — if you want to refine an existing 360 route.
-
-For mini-games:
-
-- `SPEC-GAME.md` — if you want to generate a compatible mini-game.
-
-Usually this is enough:
-
-- for the story — the idea description and `SPEC-STORY.md`;
-- for the game — the chosen idea and `SPEC-GAME.md`.
+1. придумайте историю;
+2. набросайте сценарий;
+3. решите, нужны ли 360-сцены или мини-игры;
+4. если нужны 360-сцены, подготовьте `story360.js` локальными инструментами;
+5. если нужны мини-игры — сначала запросите идеи, потом сделайте игру по спецификации;
+6. проверьте игру отдельно;
+7. подключите её в `story.js`;
+8. проверьте граф, ресурсы, список игр и ветвления.
 
 ---
 
-## Result
+## Что прикладывать к запросам
 
-A good start in this project usually looks like this:
+Для сценариев:
 
-- **first the story**;
-- **then the script structure**;
-- **then optional 360 locations, if exploration helps the project**;
-- **then the decision whether mini-games are needed**;
-- **then the mini-games themselves, if they are truly useful**.
+- `spec-story.md` — если хотите генерировать или уточнять структуру сценария.
+- дополнительный `story360.js` — если хотите уточнить уже существующий 360-маршрут.
 
-Mini-games are an additional tool, not a mandatory part of every visual novel.
+Для мини-игр:
+
+- `spec-game.md` — если хотите генерировать совместимую мини-игру.
+
+Обычно этого достаточно:
+
+- для истории — описание идеи и `spec-story.md`;
+- для игры — выбранная идея и `spec-game.md`.
+
+---
+
+## Итог
+
+Правильный старт в этом проекте обычно выглядит так:
+
+- **сначала история**;
+- **потом структура сценария**;
+- **потом необязательные 360-локации, если осмотр помогает проекту**;
+- **потом решение, нужны ли мини-игры**;
+- **потом сами мини-игры, если они действительно полезны**.
+
+Мини-игры — это дополнительный инструмент, а не обязательная часть каждой новеллы.

@@ -2,10 +2,13 @@
 
 This file contains information about third-party libraries used in this project.
 
-The license for the project's own source code is provided in [LICENSE](LICENSE).
-Commercial use terms for the project's own source code are described in [COMMERCIAL-USE.md](COMMERCIAL-USE.md).
+The license scope for the project's original code, authoring tools, technical
+examples, and accompanying documentation is described in [LICENSE](LICENSE).
+Commercial use outside the cases permitted by that license is described in
+[COMMERCIAL-USE.md](COMMERCIAL-USE.md).
 
-The licenses of the third-party components listed below remain unchanged and apply separately from the license of this project.
+The licenses of the third-party components listed below remain unchanged and
+apply separately from the license of this project's original materials.
 
 ## Mermaid
 

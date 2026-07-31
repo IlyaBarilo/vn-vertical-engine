@@ -1,859 +1,437 @@
-# 🎮 Visual Novel Vertical Engine
+# Visual Novel Vertical Engine
+
+[Русский](README.md) · [English](README-EN.md)
+
+**Лёгкий офлайн-движок визуальных новелл для вертикальных экранов.**
+
+[![Открыть демо](https://img.shields.io/badge/демо-открыть-2ea44f)](https://ilyabarilo.github.io/vn-vertical-engine/)
+[![Последний релиз](https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?display_name=tag&label=релиз)](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)
+[![Лицензия PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-blue)](LICENSE)
+[![Сборка релиза](https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml/badge.svg)](https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml)
+
+[Открыть демо](https://ilyabarilo.github.io/vn-vertical-engine/) ·
+[Скачать полный архив](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest/download/vn-vertical-engine-latest.zip) ·
+[Скачать обновление](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest/download/vn-vertical-engine-latest-update.zip) ·
+[Первые шаги](FIRST-STEPS.md)
 
 <p align="center">
-  <strong>Lightweight HTML/CSS/JS visual novel engine built for vertical screens.</strong>
+  <img src="docs/demo/images/anna-first-screen.jpg" width="360" alt="Вертикальный интерфейс Visual Novel Vertical Engine с персонажем и диалогом">
 </p>
 
-<p align="center">
-  Offline • No build tools • Portrait-first • 4K vertical display ready
-</p>
+## Что это за проект
 
-<p align="center">
-  <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
-    <img src="https://img.shields.io/badge/▶-Try%20it%20now-brightgreen?style=for-the-badge" alt="Try it now">
-  </a>
-</p>
+Visual Novel Vertical Engine — движок интерактивных историй на обычных
+HTML, CSS и JavaScript. Он рассчитан прежде всего на портретные дисплеи 9:16:
+планшеты, информационные стойки, сенсорные киоски, выставочные экраны и
+инсталляции.
 
-<p align="center">
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/stargazers">
-    <img src="https://img.shields.io/github/stars/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Stars">
-  </a>
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-orange?style=for-the-badge" alt="License">
-  </a>
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
-    <img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Release">
-  </a>
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/commits/main">
-    <img src="https://img.shields.io/github/last-commit/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Last Commit">
-  </a>
-  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest">
-    <img src="https://img.shields.io/github/repo-size/IlyaBarilo/vn-vertical-engine?style=for-the-badge" alt="Repo Size">
-  </a>
-  <a href="https://ilyabarilo.github.io/vn-vertical-engine/">
-  <img src="https://img.shields.io/badge/demo-brightgreen?style=for-the-badge" alt="Demo">
-</a>
-</p>
+Проект можно открыть прямо из папки: сервер, сборщик и установка пакетов для
+запуска не нужны. История хранится в читаемом текстовом сценарии, а 360°-сцены
+и HTML-мини-игры подключаются при необходимости.
 
+> **Статус:** проект активно развивается. Релизы предназначены для стабильного
+> использования, а ветка `main` может содержать ещё не выпущенные изменения.
 
-A lightweight **offline visual novel engine** built with HTML, CSS, and JavaScript.
+## Быстрый старт
 
-Designed for **vertical screens**, **portrait displays**, and **real-world installations** — from kiosks to 4K TVs.
+1. Скачайте [полный архив последнего релиза](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest/download/vn-vertical-engine-latest.zip).
+2. Распакуйте архив в отдельную папку.
+3. Откройте `index.html` в поддерживаемом браузере.
+4. Для своей истории скопируйте `story-example.js` в `story.js`.
+5. Отредактируйте текст внутри `window.STORY_TEXT` и замените демонстрационные материалы своими.
 
-It now also includes **360 scene navigation**, embeddable **HTML mini-games**,
-story video support, and local authoring tools for building interactive
-installations without a build step.
+Если `story.js` отсутствует, движок автоматически открывает демонстрационный
+`story-example.js`.
 
-No setup. No dependencies. Just open `index.html` and start.
+### Какой архив выбрать
 
-> Free for noncommercial use.
-> Educational institutions may also use this software under the default public license.
-> See [LICENSE](LICENSE) for other permitted cases under PolyForm Noncommercial 1.0.0.
-> Commercial use outside those cases requires separate written permission from the author.
+- `vn-vertical-engine-latest.zip` — полный комплект с демонстрационными медиа,
+  360°-сценами, мини-играми и инструментами.
+- `vn-vertical-engine-latest-update.zip` — обновление движка без папки `assets/`,
+  пользовательского `story.js` и корневого `story-example.js`. Актуальный пример
+  внутри такого архива находится в `docs/examples/story-example.js`.
 
----
+Для первого запуска используйте полный архив. Вариант `-update` предназначен
+для обновления уже созданной истории без замены её сценария и материалов.
 
-## ✨ Features
+Подробный маршрут от идеи до тестирования: [«Первые шаги»](FIRST-STEPS.md).
 
--   📱 UI optimized for **vertical screens**
--   🖥 optimized for **4K displays**
--   📐 interface ratio **7:16**, with support for other aspect ratios
--   🌐 **fully offline**
--   ⚡ no build tools or frameworks required
--   🧾 simple **text-based scripting format**
--   🖼 support for **backgrounds**
--   🎭 **characters and emotions**
--   💬 dialogue system
--   🔀 **branching storylines**
--   🎵 background music support
--   🎬 story videos and video backgrounds
--   🌐 **360 backgrounds** with markers, compass labels, and multi-panorama spaces
--   🎮 embeddable **HTML mini-games** via a strict iframe protocol
--   🛠 local tools for 360 editing, media focus tuning, conversion, and game testing
--   💾 automatic local autosave and restore of story progress
--   📊 built-in **resource loading statistics**
--   📘 **Specifications:** [Story scripting](docs/specs/SPEC-STORY.md), [Mini-games](docs/specs/SPEC-GAME.md)
+## Для кого
 
----
+- для студентов и преподавателей, создающих учебные и просветительские истории;
+- для авторов визуальных новелл и интерактивных рассказов;
+- для разработчиков сенсорных киосков, музейных стендов и инсталляций;
+- для команд, которым нужен автономный интерактивный проект без серверной части;
+- для прототипов и демонстраций на портретных экранах.
 
-## 📷 Demo
+Мини-игры, панорамы и специальные инструменты необязательны. Простую историю
+можно собрать только из сценария, фонов, персонажей и звука.
 
-### 🖼️ Visual Novel Demo
+## Основные возможности
 
-<p align="center">
-<img src="docs/demo/images/anna-first-screen.jpg" width="300">
-<img src="docs/demo/images/igor-second-screen.jpg" width="300">
-<img src="docs/demo/images/menu.jpg" width="300">
-<img src="docs/demo/images/bg-cafe.jpg" width="300">
-</p>
+- ветвящиеся сцены, выборы, переходы, условия и переменные;
+- изображения, прокручиваемые фоны, видео, музыка и звуковые эффекты;
+- персонажи с эмоциями, позиционированием, масштабом и фокусными точками;
+- 360°-панорамы с точками перехода между локациями;
+- автономные HTML-мини-игры с возвратом результата в сценарий;
+- автоматическое сохранение и раздельные сохранения для нескольких историй;
+- прямой запуск сцены для тестирования и режим без сохранений для киосков;
+- статистика прохождения и граф связей между сценами;
+- русский и английский интерфейс;
+- управление мышью, клавиатурой и сенсорным экраном;
+- адаптивный интерфейс, рассчитанный в том числе на 4K-дисплеи.
 
-Also supports horizontal mode:
+## Формат экрана: 9:16
 
-<p align="center">
-<img src="docs/demo/images/wide-first-screen.jpg" width="600">
-</p>
+Основной публичный формат проекта — **портретный экран 9:16**.
 
----
+Внутри движка центральная адаптивная область ограничена соотношением до
+**10:16**. Это технический запас: интерфейс корректно помещается как на
+экранах и планшетах 9:16, так и на немного более широких устройствах 10:16.
+В режиме `window = auto` фон, видео или 360°-сцена могут занимать весь
+доступный экран, а диалог, меню и кнопки остаются в центральной области.
 
-### 🖥 Interactive Display
-
-The same project runs on a vertical touch display. These real installation
-photos show the visual novel interface, built-in mini-game launcher, and story
-graph view on an interactive TV.
-
-<p align="center">
-<img src="docs/kiosk/kiosk_first.webp" width="260">
-<img src="docs/kiosk/kiosk_game.webp" width="260">
-<img src="docs/kiosk/kiosk_graph.webp" width="260">
-</p>
-
----
-
-### 🌐 360 Spaces
-
-The engine can render 360 backgrounds, place interactive markers inside the
-panorama, and connect multiple panoramas into a navigable `story360.js` space.
-The bundled demo shows single 360 scenes with `bg360marks` and `walk360`;
-larger connected routes are authored as `story360.js` maps and entered with
-`goto360`.
-
-<p align="center">
-<img src="docs/360/360-vertical.webp" width="300">
-<img src="docs/360/360-wide.webp" width="600">
-</p>
-
-Panoramas can also be used as stylized story locations, from realistic spaces
-to generated fantasy or sci-fi rooms.
-
-<p align="center">
-<img src="docs/360/example/b101.webp" width="300">
-<img src="docs/360/example/80s-synthwave-retro-futurism.webp" width="300">
-<img src="docs/360/example/arctic-crystal-laboratory.webp" width="300">
-</p>
-
----
-
-### 🎮 Mini-games
-
-Stories can embed standalone HTML mini-games through an iframe protocol. The
-engine sends `gameInit` parameters such as difficulty, waits for one final
-`gameResult`, and can use the returned value for branching.
-
-The [mini-game specification](docs/specs/SPEC-GAME.md) is written for both
-humans and AI assistants. It can be used as a prompt-ready contract for creating
-AI-generated mini-games that integrate back into the novel and exchange
-parameters with the story through `gameInit` and `gameResult`.
-
-Mini-game AI prompt template:
+Для напольных стоек и экранов с особыми полями можно задать отступы через URL:
 
 ```text
-Create a mini-game about <TOPIC> in the style of <STYLE>, where the player must <WHAT THE PLAYER DOES>.
-
-When developing the game, you must use the attached SPEC-GAME.md specification file.
+index.html?topSpacing=500&bottomSpacing=800
 ```
 
-<p align="center">
-<img src="docs/games/game2.webp" width="260">
-<img src="docs/games/game3.webp" width="260">
-<img src="docs/games/game4.webp" width="260">
-</p>
+## Совместимость
 
----
+Проект проверялся в следующих окружениях:
 
-### 🛠 Authoring Tools
+| Платформа | Проверенные браузеры |
+| --- | --- |
+| Компьютер | Chrome, Edge, Firefox |
+| Android | Chrome, Firefox |
 
-Included local tools help prepare 360 packages, edit panorama markers, tune
-media focus points, and test mini-games before connecting them to a story.
-The story itself remains a plain text script that can be written and edited in
-any text editor without special authoring software.
+Интерфейс также проверялся на реальном 4K-экране. Обозначение **4K-ready**
+относится к работе и масштабированию интерфейса; итоговая чёткость фонов,
+персонажей и видео зависит от разрешения материалов конкретной истории.
 
-- **360 scene editor** — build `story360.js`, place markers, define panorama
-  links, and choose entry camera directions visually.
-- **360 image converter** — convert panorama images into offline JS packages
-  used by the engine without a server or external asset pipeline.
-- **360 panorama cleaner** — replace unwanted people or moving objects with
-  matching areas from a second shot and blend the boundaries smoothly.
-- **Mini-game tester** — run a game in an iframe, send `gameInit`, inspect
-  `gameResult`, and catch protocol mistakes before adding the game to a novel.
+## Практическое использование
+
+Движок используется на демонстрационных планшетах и на отдельном экране
+университетского стенда. Это помогает проверять не только настольный запуск,
+но и сенсорное управление, читаемость и поведение проекта на публичном экране.
 
 <p align="center">
-<img src="docs/tools/360/scene360-editor-1.webp" width="600">
-<img src="docs/tools/360/scene360-editor-2.webp" width="600">
+  <img src="docs/kiosk/kiosk_game.webp" width="340" alt="Мини-игра Visual Novel Vertical Engine на сенсорном университетском стенде">
+  <img src="docs/kiosk/kiosk_graph.webp" width="340" alt="Граф интерактивной истории на экране университетского стенда">
 </p>
 
-<p align="center">
-<img src="docs/tools/converter-img360-to-js.webp" width="300">
-<img src="docs/tools/game-tester-2.webp" width="600">
-</p>
-
----
-
-### 📊 Analysis Tools
-
-Script validation and graph generation in Mermaid format.
-
-<p align="center">
-<img src="docs/stat/stat-check.jpg" width="300">
-</p>
-
-The full story graph shows scenes, choices, transitions, and unreachable nodes.
-It helps control story flow, branching, missing links, and other structural
-issues while the script grows.
-
-The resources graph shows all story assets and how many times each one is used,
-making it easier to find unused media, repeated resources, and asset-heavy
-parts of the story.
-
-<p align="center">
-<img src="docs/stat/stat-graph-1.webp" width="600">
-<img src="docs/stat/stat-graph-2-resources.webp" width="600">
-</p>
-
-The games view helps debug mini-games directly inside the engine: launch a
-registered game from the menu, choose its difficulty, and check the values it
-returns through the `gameResult` protocol.
-
-<p align="center">
-<img src="docs/stat/stat-games.webp" width="600">
-</p>
-
----
-
-## 🧩 Use Cases
-
-This engine is suitable for:
-- interactive stories
-- branching educational scenarios
-- 360 campus, museum, or exhibition tours
-- touch-screen installations with mini-games
-- exhibition stands
-- educational projects
-- university interactive displays
-- browser-based narrative games
-- vertical information kiosks
-
----
-
-## 📁 Project Structure
-
-    project/
-    │
-    ├── index.html
-    ├── story-example.js
-    ├── story.js          ← your story script, created by you
-    ├── story360.js       ← optional 360 space map generated by the editor
-    ├── README.md
-    ├── LICENSE
-    ├── COMMERCIAL-USE.md
-    ├── NOTICE.md
-    ├── FIRST-STEPS.md
-    ├── FIRST-STEPS-RU.md
-    │
-    ├── engine/
-    │    ├── engine.css
-    │    ├── engine.js
-    │    └── story-loader.js
-    │
-    ├── docs/
-    │    ├── demo/images/           ← visual novel screenshots
-    │    ├── 360/                   ← 360 screenshots and panorama examples
-    │    ├── games/                 ← mini-game screenshots
-    │    ├── kiosk/                 ← real interactive display photos
-    │    ├── stat/                  ← statistics and graph screenshots
-    │    ├── tools/                 ← authoring tool screenshots
-    │    └── specs/
-    │         ├── SPEC-STORY.md      ← story scripting specification
-    │         └── SPEC-GAME.md       ← mini-game integration specification
-    │
-    ├── tools/
-    │    ├── scene360-editor.html
-    │    ├── convert-360-img-to-js.html
-    │    ├── game-tester.html
-    │    ├── panorama-cleaner.html
-    │    └── media-focus-editor.html
-    │
-    ├── lib/
-    └── assets/
-             ├── 360/
-             ├── backgrounds/
-             ├── characters/
-             ├── audio/
-             ├── video/
-             └── games/
-
-In update release archives, `assets/`, `story.js`, and the root `story-example.js`
-are not included, so copying an update over an existing novel does not touch
-its media files or story. During release packaging, a fresh reference example is
-copied into the update archive as `docs/examples/story-example.js`.
-
----
-
-## 🚀 Quick Start
-
-1.  Download the latest version:
-
-👉 **[Download Latest Release](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)**
-
-Release assets include two ZIP variants:
-
-- `vn-vertical-engine-VERSION.zip` — full package with demo media, 360
-  panorama packages, mini-games, and tools.
-- `vn-vertical-engine-VERSION-update.zip` — update package without `assets/`, `story.js`, and root `story-example.js`.
-
-Use the full archive to run the included demo as-is, including 360 scenes and
-mini-game examples. Use the update archive when copying a new engine version
-over an existing novel without touching its media files or story.
-Inside the update archive, the current example is available as
-`docs/examples/story-example.js`.
-
-2.  Extract the archive.
-
-3.  Open **index.html** in your browser.
-
-If `story.js` is absent, the engine automatically loads `story-example.js`.
-To start your own novel, copy `story-example.js` to `story.js` and edit `story.js`.
-
-The main story stays in plain text. For larger 360 routes, place an optional
-`story360.js` next to `story.js`; for mini-games, register standalone HTML files
-in the `[game]` section. The tools in `tools/` are optional helpers for
-preparing 360 scenes, media focus points, and mini-game integration.
-
-By default, story progress is saved automatically in the browser and restored
-after reloads. The URL launch modes described below can isolate or completely
-disable this autosave.
-
-The engine runs completely **offline**.
-
----
-
-## 📚 First Steps
-
-- [First Steps (EN)](FIRST-STEPS.md)
-- [First Steps (RU)](FIRST-STEPS-RU.md)
-
-Use these guides for the recommended workflow:
-story idea → draft script → optional mini-games → integration → testing.
-
----
-
-## 💬 Discussions and Feedback
-
-Use **GitHub Discussions** for questions, ideas, feedback, and showcase posts.
-
-### Categories
-
-- **Q&A** — setup help, scripting questions, engine behavior, and unexpected errors
-- **Ideas** — feature suggestions, scripting improvements, and workflow ideas
-- **Show and Tell** — projects, demos, experiments, and screenshots made with the engine
-
-### Repository Policy
-
-- **Issues** are disabled by design
-- **Projects** are disabled by design
-- Use **Discussions** instead of issue reports for questions, feedback, and unexpected problems
-- Pull requests are disabled by design
-
-For versioned updates and downloads, see **Releases**.
-
----
-
-## 📏 Vertical Screen Adjustment
-
-To add top and bottom margins (useful for floor-mounted displays), use
-URL parameters:
-
-    index.html?topSpacing=500&bottomSpacing=800
-
-Replace `500` and `800` with your desired values (in pixels).
-
----
-
-## 🚀 URL Launch Modes and Autosave
-
-The same `story.js` can provide a regular entry point, several independent
-novels, and direct scene previews. A `novel` name is not a new script section:
-it is both the entry scene id and the namespace of that novel's autosave.
-
-| URL | Start point | Autosave behavior |
-| --- | --- | --- |
-| `index.html` | `[meta] startScene` | Reads and writes the standard slot |
-| `index.html?novel=game01` | Scene `game01` | Reads and writes a separate `game01` slot |
-| `index.html?scene=scScene02` | Scene `scScene02` | Does not read, write, or delete saves |
-| `index.html?novel=game01&nosave=true` | Scene `game01` | Does not read, write, or delete saves |
-
-### Regular launch
-
-Opening `index.html` without a story launch parameter starts from
-`[meta] startScene`. The engine restores the standard autosave when it is
-available and valid.
-
-The standard localStorage key remains:
+Для публичного устройства рекомендуется запуск без восстановления прогресса:
 
 ```text
-vn_engine_autosave_v1
+index.html?nosave=true&mode=release
 ```
 
-This preserves compatibility with saves created before the URL launch modes
-were added.
-
-### Independent novels
-
-To start an independent novel, pass its entry scene id in `novel`:
-
-    index.html?novel=game01
-
-The engine starts from scene `game01` if that novel has no save. Later page
-loads restore only this novel's progress. State such as the current scene,
-action position, variables, background, character, music, and 360 state stays
-inside its named slot.
-
-The slot key is derived from the resolved scene id in lowercase:
+Можно также назначить отдельную историю через `novel` или открыть конкретную
+сцену без сохранения:
 
 ```text
-vn_engine_autosave_v1:novel:game01
+index.html?novel=exhibition&nosave=true
+index.html?scene=scIntro01
 ```
 
-Therefore `?novel=Game01` and `?novel=game01` use the same scene and save.
-Restart clears only the active novel's slot and starts that novel again. It
-does not clear the standard slot or another novel's slot.
+Все режимы URL и правила автосохранения описаны в
+[руководстве для начала работы](FIRST-STEPS.md#режимы-запуска-через-url).
 
-The `novel` parameter selects an entry point only when the page is opened.
-It does not add commands for switching between independent novels while the
-story is already running.
+## Интерфейс и режимы отображения
 
-### Direct scene launch
+Основной интерфейс строится вокруг одной активной сцены: фона, персонажа,
+реплики и вариантов выбора. Для широких экранов визуальный слой может занять
+всю доступную область, сохраняя элементы управления в центральной портретной
+зоне.
 
-To open a scene directly, pass its id in `scene`:
+<details>
+<summary><strong>Показать галерею интерфейса</strong></summary>
 
-    index.html?scene=scScene02
+<p align="center">
+  <img src="docs/demo/images/igor-second-screen.jpg" width="260" alt="Персонаж Игорь во второй сцене демонстрационной истории">
+  <img src="docs/demo/images/menu.jpg" width="260" alt="Меню выбора действия в вертикальной интерактивной истории">
+</p>
 
-This mode is intended for testing, demonstrations, and direct links. It never
-reads, writes, or deletes any autosave. Restart opens the same scene again.
-Existing standard and novel saves remain untouched.
+<p align="center">
+  <img src="docs/demo/images/bg-cafe.jpg" width="260" alt="Сцена кафе с фоном и диалоговым интерфейсом">
+  <img src="docs/demo/images/wide-first-screen.jpg" width="520" alt="Интерфейс истории на широком экране с центральной портретной областью">
+</p>
 
-### Public screens and kiosk mode
+</details>
 
-Use `nosave=true` when every visitor must start from the beginning:
+## Как устроен сценарий
 
-    index.html?nosave=true
-    index.html?novel=game01&nosave=true
+Сценарий хранится в `story.js` как текстовый блок. Минимальный фрагмент выглядит
+так:
 
-The short form also works:
-
-    index.html?novel=game01&nosave
-
-`nosave` has priority over `[meta] autosave`, the standard launch mode, and the
-`novel` mode. The page does not restore, create, update, or delete a save.
-Existing saves are ignored and remain untouched.
-
-The presence of `nosave` enables the safe kiosk behavior; `true`, `1`, `yes`,
-and `on` are the recommended explicit values. Only `false`, `0`, `no`, or
-`off` disable the flag. Any other value remains enabled so a typo cannot
-accidentally restore a previous visitor's progress.
-
-### Release mode from URL
-
-The URL can force release mode without changing `story.js`:
-
-    index.html?mode=release
-    index.html?release
-
-Both forms hide the statistics button and expose `mode` as `release` to the
-scenario. They do not change the selected start scene or autosave behavior.
-The URL can promote a `debug` story to `release`, but it cannot downgrade a
-story whose `[meta] mode` is already `release`.
-
-### Parameter rules
-
-- Parameter names and scene ids are matched without regard to letter case.
-- If `scene` and `novel` are both present, `scene` takes priority and saves
-  remain disabled.
-- An unknown scene id shows an error instead of falling back to another story.
-- Two scene ids that differ only by letter case are ambiguous for URL launch
-  and also produce an error.
-- URL launch parameters can be combined with interface parameters:
-
-      index.html?novel=game01&nosave=true&topSpacing=500&bottomSpacing=800
-
-- `[meta] autosave = false` disables autosave for regular and `novel` launches.
-  `scene` and `nosave` disable storage regardless of this setting.
-
----
-
-## 📝 Script Format
-
-Your working script is stored in `story.js` as a text block.
-The included demo script is stored in root `story-example.js` and is used only
-when `story.js` is absent. During release packaging, update archives receive a
-reference copy at `docs/examples/story-example.js`.
-
-Example:
-
-``` javascript
-window.STORY_TEXT = `
-
+```text
 [meta]
-title = Demo Story
+title = Моя история
+lang = ru
 startScene = intro
-lang = en
-mode = release
-window = auto
-bg360Quality = auto
-
-[bg]
-campusHall file=assets/backgrounds/bg-campus-hall.jpg scroll focusx=0.5 scale=1
-labVideo file=assets/backgrounds/bg-it-lab.mp4 fallbackimage=assets/backgrounds/bg-it-lab.jpg volume=0.0
-campus360 file=assets/360/B101/b101-360.js 360 quality=auto
-
-[char]
-anna emotion=neutral file=assets/characters/ch-anna-neutral.png name="Anna" color=#0F0
-anna emotion=smile file=assets/characters/ch-anna.png  # add another emotion for anna
-igor emotion=neutral file=assets/characters/ch-igor-neutral.png name="Igor" color=#F00
-
-igor name="Igor" file=assets/characters/ch-igor-smile.png  # if emotion is omitted, neutral is used
-igor color=#F00  # values can also be extended in separate lines
-
-[audio]
-bgmDay file=assets/audio/bgm-campus-day.mp3 volume=0.5
-
-[video]
-introClip file=assets/video/intro.mp4 poster=assets/video/intro.jpg volume=0.8
-
-[game]
-gameCoffeeRush file=assets/games/coffee-rush.html title="Coffee Rush" description="Catch orders and avoid mistakes." cover=assets/games/coffee-rush.jpg
-
-[var]
-lookResult = ""
-resultGame = 0
 
 [scene]
 scene intro
-
-bg campusHall
-
-show anna neutral
-
-anna: "Welcome to the demo."
+show anna welcome
+anna: "Добро пожаловать!"
 
 menu
-"Go to the lab" -> lab_scene
-"Go to the cafe" -> cafe_scene
-"Look around in 360" -> look_360
+"Продолжить" -> nextScene
+"Остаться" -> intro
 
-
-scene cafe_scene
-bg labVideo
-video introClip skip
-game gameCoffeeRush difficulty=3 result=resultGame
-
-if resultGame == 1 -> good_end
-if resultGame == 0 -> bad_end
-
-scene look_360
-bg campus360 360
-bg360marks campus360 (door, 0.30, 0.55, walk) (hint, 0.50, 0.20, text)
-walk360 campus360 text="Look around the room." button="Continue" result=lookResult
-
-`;
+scene nextScene
+"История продолжается."
 ```
 
-Variable names are case-sensitive: `Score` and `score` are different variables.
-The `VARIABLES` section in text statistics checks that names use only English
-letters, digits, and `_` and start with a letter or `_`. It also warns when
-names differ only by letter case and shows where each spelling is used. Such
-groups are often typing mistakes, but the engine does not merge or rename them
-automatically.
+Формат специально остаётся простым: его можно редактировать в любом текстовом
+редакторе, хранить в Git и обсуждать независимо от кода движка.
 
-Other identifiers—scene, background, character, emotion, audio, video, game,
-and story360 space and entry IDs—may contain only English letters, digits, and
-`_`. Digits are allowed at the beginning. The `IDENTIFIERS` statistics section
-reports old or mistyped names that do not follow this rule. File and folder
-paths are not identifiers and are checked separately in `FILE CHECK`.
-Story360 panorama declarations and mark IDs are not checked. A panorama ID
-explicitly used as the target of a `goto360` command is checked.
+Полное описание секций, команд и проверок:
+[спецификация сценария](docs/specs/spec-story.md).
 
-`FILE CHECK` validates every file name and directory segment used by regular
-assets, story360 panoramas, and photo marks. Only English letters, digits, `-`,
-and `_` are allowed; the dot before a file extension is treated as a separator.
+## 360°-сцены
 
-At the beginning of text statistics, immediately after the license block,
-`SUMMARY CHECK` shows the main checks in one line. A green check means that the
-corresponding section below has no issues; a red cross means its details should
-be reviewed. Reachability and cycle analysis have separate `REACH` and `CYCLES`
-statuses.
+Панорамы позволяют осматривать пространство и переходить между связанными
+точками. Для небольшого эпизода настройки можно хранить в основном сценарии;
+для большой карты — вынести их в отдельный `story360.js`.
 
-For larger 360 routes, keep the main story in `story.js` and store the
-panorama map in an optional `story360.js` generated by the 360 editor. The
-root demo script demonstrates the single-panorama pattern; `goto360` examples
-below show the route-map syntax for your own connected spaces.
+<p align="center">
+  <img src="docs/360/360-vertical.webp" width="260" alt="360-градусная сцена в вертикальном режиме">
+  <img src="docs/360/360-wide.webp" width="560" alt="360-градусная панорама с интерактивными точками перехода на широком экране">
+</p>
 
----
+<details>
+<summary><strong>Показать примеры панорамных локаций</strong></summary>
 
-## 📘 Specifications
+<p align="center">
+  <img src="docs/360/example/b101.webp" width="190" alt="Реалистичная учебная аудитория в формате 360 градусов">
+  <img src="docs/360/example/solar.webp" width="190" alt="Светлая экологическая лаборатория в панорамной сцене">
+  <img src="docs/360/example/80s-synthwave-retro-futurism.webp" width="190" alt="Стилизованная ретрофутуристическая панорамная локация">
+  <img src="docs/360/example/arctic-crystal-laboratory.webp" width="190" alt="Фантастическая арктическая лаборатория в панорамной сцене">
+</p>
 
-- [Story Scripting](docs/specs/SPEC-STORY.md)
-- [Mini-games](docs/specs/SPEC-GAME.md)
+</details>
 
-The specifications are currently written in Russian. The first-steps guide is
-available in both English and Russian.
+## HTML-мини-игры
 
----
+Мини-игра — самостоятельный HTML-файл. Движок открывает её внутри истории,
+передаёт сложность и данные, а затем получает результат в сценарную переменную.
 
-## 🎬 Core Commands
+<p align="center">
+  <img src="docs/games/game2.webp" width="260" alt="Пример мини-игры с управлением внутри интерактивной истории">
+  <img src="docs/games/game3.webp" width="260" alt="Пример встроенной HTML-мини-игры в вертикальной истории">
+  <img src="docs/games/game4.webp" width="260" alt="Ещё один пример автономной HTML-мини-игры движка">
+</p>
 
-### Scene
+Проверить игру до подключения помогает `tools/game-tester.html`. Требования к
+обмену сообщениями, параметрам и результатам собраны в
+[спецификации мини-игр](docs/specs/spec-game.md).
 
-    scene scene_id
+## Инструменты подготовки проекта
 
-### Background
+Инструменты находятся в `tools/` и открываются как обычные локальные
+HTML-страницы:
 
-    bg backgroundId
+| Инструмент | Назначение |
+| --- | --- |
+| `scene360-editor.html` | Собирает `story360.js`, связывает панорамы и расставляет точки перехода |
+| `convert-360-img-to-js.html` | Упаковывает панорамные изображения в автономные JS-файлы |
+| `panorama-cleaner.html` | Заменяет выбранные области фрагментами второго снимка |
+| `media-focus-editor.html` | Подбирает фокусные точки, масштаб и позиционирование медиа |
+| `game-tester.html` | Отправляет игре тестовый `gameInit` и проверяет полученный `gameResult` |
 
-Background assets and commands can also tune media composition:
+Инструменты не требуются для запуска готовой истории и не заменяют текстовый
+сценарий. Они помогают подготовить отдельные материалы и проверить интеграцию
+до подключения к проекту.
+
+<details>
+<summary><strong>Показать интерфейсы инструментов</strong></summary>
+
+<p align="center">
+  <img src="docs/tools/360/scene360-editor-1.webp" width="720" alt="Редактор связей между 360-градусными сценами">
+</p>
+
+<p align="center">
+  <img src="docs/tools/360/scene360-editor-2.webp" width="720" alt="Расстановка интерактивных точек в редакторе 360-градусных сцен">
+</p>
+
+<p align="center">
+  <img src="docs/tools/converter-img360-to-js.webp" width="300" alt="Конвертер панорамного изображения в автономный JavaScript-пакет">
+  <img src="docs/tools/game-tester-2.webp" width="560" alt="Проверка HTML-мини-игры и протокола обмена данными">
+</p>
+
+</details>
+
+Наличие конкретного инструмента в готовом ZIP следует проверять по составу
+выбранного релиза: ветка `main` может опережать стабильную сборку.
+
+## Статистика и граф истории
+
+В режиме разработки движок показывает посещённые сцены, значения переменных и
+граф переходов. Граф строится локально с помощью включённой в проект библиотеки
+Mermaid.
+
+<p align="center">
+  <img src="docs/stat/stat-graph-1.webp" width="820" alt="Граф ветвлений интерактивной истории в окне статистики">
+</p>
+
+Проверка сценария помогает находить отсутствующие переходы и недостижимые
+сцены. Отдельные представления показывают использование ресурсов и позволяют
+запускать зарегистрированные мини-игры непосредственно из диагностического
+раздела.
+
+<details>
+<summary><strong>Показать дополнительные средства анализа</strong></summary>
+
+<p align="center">
+  <img src="docs/stat/stat-check.jpg" width="300" alt="Результат локальной проверки сценария на ошибки">
+  <img src="docs/stat/stat-games.webp" width="560" alt="Список мини-игр в диагностическом разделе движка">
+</p>
+
+<p align="center">
+  <img src="docs/stat/stat-graph-2-resources.webp" width="820" alt="Граф ресурсов и частоты их использования в истории">
+</p>
+
+</details>
+
+Для публичного показа включите `mode = release` в сценарии или добавьте к URL
+`?mode=release`: кнопка статистики будет скрыта.
+
+## Офлайн-работа и зависимости
+
+Для запуска истории не требуется устанавливать npm-пакеты, запускать сборку или
+подключаться к серверу. Рабочие библиотеки Mermaid, three.js и jsrsasign уже
+включены в репозиторий, поэтому во время выполнения сетевое подключение им не
+нужно.
+
+Это не означает полного отсутствия стороннего кода. Его перечень и отдельные
+лицензии приведены в [NOTICE.md](NOTICE.md).
+
+## Структура проекта
 
 ```text
-[bg]
-wideCafe file=assets/backgrounds/cafe-wide.jpg scroll focusx=0.47 focusy=0.5 scale=1
-labVideo file=assets/backgrounds/lab.mp4 fallbackimage=assets/backgrounds/lab.jpg volume=0.0
-
-[scene]
-bg wideCafe transition=fade transitionMs=180
+project/
+├── index.html                         точка запуска
+├── story-example.js                   демонстрационный сценарий
+├── story.js                           ваш сценарий, создаётся отдельно
+├── story360.js                        необязательная карта 360°-пространства
+│
+├── engine/
+│   ├── engine.css                     стили интерфейса
+│   ├── engine.js                      основная логика движка
+│   └── story-loader.js                загрузка и разбор сценария
+│
+├── assets/                            материалы истории
+│   ├── backgrounds/                   фоны, широкие изображения и видео
+│   ├── characters/                    персонажи и эмоции
+│   ├── audio/                         музыка и звуковые эффекты
+│   ├── games/                         HTML-мини-игры и их обложки
+│   └── 360/                           автономные пакеты панорам
+│
+├── tools/                             локальные авторские инструменты
+│   ├── scene360-editor.html           редактор маршрутов 360°
+│   ├── convert-360-img-to-js.html     конвертер панорам
+│   ├── panorama-cleaner.html          очистка панорам по второму снимку
+│   ├── media-focus-editor.html        настройка фокуса медиа
+│   └── game-tester.html               тестирование мини-игр
+│
+├── lib/                               сторонние библиотеки
+│   ├── mermaid.min.js                 графы истории и ресурсов
+│   ├── three.min.js                   отображение 360°-сцен
+│   └── jsrsasign-all-min.js           проверка подписей лицензий
+│
+├── docs/
+│   ├── specs/
+│   │   ├── spec-story.md              спецификация сценария
+│   │   └── spec-game.md               контракт HTML-мини-игр
+│   ├── demo/images/                   снимки интерфейса
+│   ├── 360/                           примеры панорам
+│   ├── games/                         снимки мини-игр
+│   ├── kiosk/                         фотографии реального стенда
+│   ├── stat/                          проверка, статистика и графы
+│   └── tools/                         снимки авторских инструментов
+│
+├── .github/workflows/release.yml      сборка ZIP и публикация Pages
+├── FIRST-STEPS.md                     первые шаги на русском
+├── FIRST-STEPS-EN.md                  первые шаги на английском
+├── README.md                          основное описание на русском
+├── README-EN.md                       сокращённое описание на английском
+├── LICENSE                            PolyForm Noncommercial 1.0.0
+├── COMMERCIAL-USE.md                  порядок коммерческого разрешения
+└── NOTICE.md                          лицензии сторонних компонентов
 ```
 
-Use `scroll` and `focusx`/`focusy` to make wide media draggable or centered on
-an important point. Video backgrounds may declare a `fallbackimage` for browsers
-or devices that cannot play the video.
-
-### 360 Backgrounds And Spaces
-
-For a single 360 scene, show the panorama with `bg`, add marker definitions with
-`bg360marks`, and wait for interaction with `walk360`.
-
-```text
-bg bg360Campus 360
-bg360marks bg360Campus (door, 0.30, 0.55, walk) (hint, 0.50, 0.20, text)
-walk360 bg360Campus text="Look around the room." button="Continue" result=lookResult
-```
-
-For larger connected routes, use `tools/scene360-editor.html` to maintain
-`story360.js`. Put it next to `story.js`; the launcher loads it automatically.
-The snippet below is a format example for a map you create in `story360.js`,
-not a separate public demo script.
-
-```text
-goto360 korpusNight.174 entry=default
-goto360 korpusNight.186 from=scGames
-```
-
-`story360.js` stores panorama package paths, entry camera directions, marker
-targets, and optional compass labels. This keeps large 360 maps out of the main
-story script, and 360 spaces do not need matching entries in the story `[bg]`
-section.
-
-For the full 360 syntax, see [Story Scripting](docs/specs/SPEC-STORY.md).
-
-### Characters
-
-    show character emotion
-    hide all
-
-### Dialogue
-
-Character:
-
-    anna: "Text"
-
-Narrator:
-
-    "Text"
-
-### Choices
-
-    menu
-    "Option 1" -> scene_a
-    "Option 2" -> scene_b
-
-### Navigation
-
-    goto scene_id
-
-### Music
-
-    music musicId
-    music musicId loop
-    music musicId volume=0.8
-    music stop
-
-`volume` in `[audio]` sets the default BGM volume for that track. `volume` in the `music` command overrides it for a single playback.
-
-### Video
-
-    video videoId
-    video videoId start=1 stop=10
-    video videoId skip=false skipText="Skip" fit=contain
-
----
-
-## 🎮 Mini-games
-
-The engine supports standalone HTML mini-games embedded through iframe.
-Declare a game in `[game]`, call it from a scene, and store its numeric result
-in a story variable.
-
-```text
-[game]
-wordSearch file=assets/games/word-search-game.html title="Word Search" description="Find all hidden words." cover=assets/games/word-search-game.jpg
-
-[var]
-searchResult = 0
-
-[scene]
-scene puzzle
-game wordSearch difficulty=3 result=searchResult data="theme=algorithms"
-```
-
-`title`, `description`, and `cover` are used by the built-in games view and
-resource graph. Extra parameters on the `game` command, such as `difficulty` or
-`data`, are forwarded to the mini-game in `gameInit`.
-
-Mini-games must follow the protocol described in
-[docs/specs/SPEC-GAME.md](docs/specs/SPEC-GAME.md):
-
-- initialization via `gameInit`
-- one final numeric result via `gameResult`
-- stable behavior after the result is sent
-
-Use `tools/game-tester.html` or the built-in games view in statistics to test
-mini-games before connecting them to the story.
-
----
-
-## ⚙ Interface Configuration
-
-The UI is designed for **tall vertical displays**, but can also adapt to wider
-layouts for video backgrounds, 360 scenes, and desktop previews.
-
-Available settings:
-- story mode (`debug` or `release`)
-- window mode (`vertical` or `auto`)
-- autosave
-- transition style and duration
-- top spacing
-- bottom spacing
-- 360 quality mode
-- automatic engine optimization mode
-
-Example:
-
-```text
-[meta]
-mode = release
-window = auto
-bg360Quality = auto
-```
-
-`vertical` is the default mode and keeps the current narrow visual-novel
-window. `auto` lets backgrounds, videos, and 360 scene visuals fill the
-available screen while keeping the interface centered in the familiar 10:16
-area.
-
-This allows adapting the interface for **very tall screens, vertical TVs,
-touch kiosks, and wide debugging screens** without changing the story text.
-
----
-
-## ⚠ Current Limitations
-
--   minimalistic script format
-
-The engine is focused on **simple interactive projects and
-installations**.
-
----
-
-## 📝 License
-
-### Source Code
-
-Starting from version 0.5, the engine source code (`engine/engine.js`, `engine/engine.css`, `index.html`, `engine/story-loader.js`) is available under the **PolyForm Noncommercial 1.0.0** license.
-
-You may use, study, modify, and share this software for noncommercial purposes.
-
-The default public license also permits use by educational institutions and certain other organizations expressly listed in PolyForm Noncommercial 1.0.0.
-
-Commercial use outside those permitted cases is not allowed unless you obtain separate written permission from the author.
-
-Copyright (c) 2026 Ilya Barilo
-
-See the full license text in the [LICENSE](LICENSE).
-See commercial terms in [COMMERCIAL-USE.md](COMMERCIAL-USE.md) (English / Russian).
-
-### Previous Versions
-
-Versions released before 0.5 remain available under the license they were originally published with.
-
-This license change applies to version 0.5 and later.
-
----
-
-## 📦 Content (Demo Assets)
-
-All files in the `assets/` folder and the demo story content in `story-example.js` are **not covered by the public license for the engine source code**.
-
-They are provided for demonstration purposes only and may not be reused in commercial or noncommercial projects without separate permission from the copyright holder.
-
-When creating your own stories using this engine, you must replace all demo assets and demo story content with your own content.
-
----
-
-## 📦 Third-Party Components
-
-This project uses the following open-source libraries:
-
-### Mermaid (MIT License)
-
--   **Purpose:** story flow graphs and resource usage graphs in the
-    statistics and analysis panel
--   **File:** `lib/mermaid.min.js` (version 11.x)
--   **License:** MIT (see [NOTICE.md](NOTICE.md) for details)
--   **Usage:** included in the repository without modifications, works
-    fully offline
-
-### jsrsasign (MIT License)
-
--   **Purpose:** offline signature verification for optional license keys
--   **File:** `lib/jsrsasign-all-min.js` (version 11.1.0)
--   **License:** MIT (see [NOTICE.md](NOTICE.md) for details)
--   **Usage:** included in the repository without modifications, works
-    fully offline
-
-### three.js (MIT License)
-
--   **Purpose:** WebGL rendering for 360 backgrounds and multi-panorama
-    navigation
--   **File:** `lib/three.min.js` (version 0.152.2)
--   **License:** MIT (see [NOTICE.md](NOTICE.md) for details)
--   **Usage:** included in the repository without modifications, works
-    offline in the current distribution format
-
-### Full Notices List
-
-Detailed information about licenses and usage terms of third-party
-software can be found in the [NOTICE.md](NOTICE.md) file.
-
----
-
-## 🔮 Possible Improvements
-
--   character animations and additional visual effects
--   additional scripting commands
-
----
-
-## 🔄 Dependency Updates
-
-Mermaid is updated manually as new versions are released.
-three.js and jsrsasign are also updated manually as needed.
-
-
-
+`story.js` и `story360.js` показаны как рабочие файлы автора. Они могут
+отсутствовать в чистой копии или не отслеживаться Git: демонстрация при этом
+загружается из `story-example.js`.
+
+### Куда смотреть для типовых задач
+
+| Задача | Файл или каталог |
+| --- | --- |
+| Запустить демонстрацию | `index.html` |
+| Начать собственную историю | `story-example.js` → `story.js` |
+| Изучить команды сценария | `docs/specs/spec-story.md` |
+| Подключить мини-игру | `docs/specs/spec-game.md` и `tools/game-tester.html` |
+| Собрать маршрут из панорам | `tools/scene360-editor.html` |
+| Заменить материалы демонстрации | `assets/` |
+| Обновить существующий проект | ZIP с суффиксом `-update` |
+
+В релизном update-архиве отсутствуют `assets/`, `story.js` и корневой
+`story-example.js`, поэтому обновление не заменяет материалы и сценарий
+существующей новеллы. Актуальный пример остаётся в
+`docs/examples/story-example.js`.
+
+## Документация
+
+- [Первые шаги на русском](FIRST-STEPS.md)
+- [First Steps in English](FIRST-STEPS-EN.md)
+- [Спецификация сценария](docs/specs/spec-story.md)
+- [Спецификация HTML-мини-игр](docs/specs/spec-game.md)
+- [Уведомления о сторонних библиотеках](NOTICE.md)
+- [Коммерческое использование](COMMERCIAL-USE.md)
+
+Спецификации можно использовать как точные технические контракты при ручной
+разработке или передавать ИИ-помощнику вместе с задачей на сценарий либо
+мини-игру. ИИ не требуется для работы движка и не является его основной
+функцией.
+
+## Ограничения
+
+- движок ориентирован на портретные экраны, а не на универсальную игровую сцену;
+- редактор сценария не встроен: основной файл редактируется как текст;
+- качество и производительность медиа зависят от подготовки материалов;
+- браузерные ограничения устройства по памяти, автозапуску звука и WebGL всё ещё действуют;
+- ветка `main` не заменяет стабильный релиз для демонстрационного стенда.
+
+## Обсуждения и обратная связь
+
+[GitHub Discussions](https://github.com/IlyaBarilo/vn-vertical-engine/discussions)
+используются для вопросов, идей, сообщений о неожиданном поведении и примеров
+собственных проектов. Раздел Issues намеренно не используется.
+
+Перед сообщением о проблеме укажите устройство, браузер, способ запуска и
+минимальный фрагмент сценария, на котором она воспроизводится.
+
+## Лицензия
+
+Оригинальный код, авторские инструменты, технические примеры и сопроводительная
+документация текущей версии распространяются по лицензии
+[PolyForm Noncommercial 1.0.0](LICENSE), если для конкретного файла не указано
+иное.
+
+Материалы в `assets/` и содержание демонстрационной истории в
+`story-example.js` предназначены только для демонстрации и не предоставляются
+для повторного использования по этой лицензии. При создании своего проекта их
+нужно заменить.
+
+Сторонние библиотеки сохраняют собственные лицензии — см. [NOTICE.md](NOTICE.md).
+Созданные пользователями истории и материалы остаются собственностью их
+авторов. Для коммерческого использования за пределами случаев, прямо
+разрешённых PolyForm Noncommercial, требуется отдельное письменное разрешение:
+[COMMERCIAL-USE.md](COMMERCIAL-USE.md).
+
+Версии до 0.5 сохраняют условия, с которыми они были опубликованы.
+
+© 2026 Ilya Barilo

@@ -5,55 +5,81 @@ In case of discrepancy, the English version prevails.
 
 ## English
 
-The default public license for this project is PolyForm Noncommercial 1.0.0.
+Unless a file states otherwise, the default public license for the project's
+original code, authoring tools, technical examples, and accompanying
+documentation is PolyForm Noncommercial 1.0.0.
 
-That license does not authorize commercial use, except in cases expressly permitted by the license itself, including educational institutions and certain other listed organizations.
+That license permits the uses expressly described in its terms. In particular,
+it permits use by educational institutions and the other qualifying
+organizations listed in the license, regardless of their source of funding or
+funding obligations.
 
-If you want to use this engine in a commercial product, commercial service, paid deployment,
-internal business tool, or any other activity intended for commercial advantage or monetary
-compensation outside those permitted cases, you must first obtain separate written permission from the author.
+Commercial use outside the cases permitted by PolyForm Noncommercial requires
+separate written permission from the author. This includes, where not already
+permitted by the public license, use in a commercial product or service, a paid
+deployment, an internal business tool, or another activity intended for
+commercial advantage or monetary compensation.
 
-Commercial licenses may be supplied with an individual license key or license file.
+Written commercial permission may be accompanied by an individual license key
+or license file. A key or file alone does not grant commercial rights unless it
+is accompanied by written permission that identifies the authorized use.
 
-To request a commercial license, please send:
+To request commercial permission, please provide:
 
-- your name or company name
-- your contact email
-- project name
-- planned use of the engine
-- whether the product will be sold, monetized, or used inside a business
-- expected release date
+- your name or company name;
+- your contact email;
+- the project name;
+- the planned use of the engine;
+- whether the product will be sold, monetized, or used inside a business;
+- the expected release or deployment date.
 
-Contact:
-developer@barilo.ru
+Contact: `developer@barilo.ru`
 
-Until such permission is granted in writing, commercial use outside the cases already permitted by the default public license is not allowed.
+Until permission is granted in writing, commercial use outside the cases
+already permitted by the default public license is not allowed.
+
+The exclusions stated in [LICENSE](LICENSE) remain in effect. Third-party
+components retain their own licenses as described in [NOTICE.md](NOTICE.md).
 
 ---
 
 ## Русский
 
-Публичная лицензия этого проекта — PolyForm Noncommercial 1.0.0.
+Если в конкретном файле не указано иное, публичная лицензия для оригинального
+кода проекта, авторских инструментов, технических примеров и сопроводительной
+документации — PolyForm Noncommercial 1.0.0.
 
-Эта лицензия не разрешает коммерческое использование, кроме случаев, прямо разрешённых самой лицензией, включая образовательные учреждения и некоторые другие перечисленные в ней организации.
+Лицензия разрешает способы использования, прямо описанные в её условиях. В
+частности, она разрешает использование образовательными учреждениями и другими
+перечисленными в лицензии организациями независимо от источника финансирования
+и связанных с ним обязательств.
 
-Если вы хотите использовать этот движок в коммерческом продукте, коммерческом сервисе,
-платном развёртывании, внутреннем бизнес-инструменте или в любой иной деятельности,
-направленной на получение коммерческой выгоды или денежного вознаграждения вне таких разрешённых случаев,
-вы должны заранее получить отдельное письменное разрешение автора.
+Для коммерческого использования за пределами случаев, разрешённых PolyForm
+Noncommercial, необходимо отдельное письменное разрешение автора. Если такое
+использование уже не разрешено публичной лицензией, это относится в том числе к
+коммерческому продукту или сервису, платному развёртыванию, внутреннему
+бизнес-инструменту и другой деятельности, направленной на получение
+коммерческой выгоды или денежного вознаграждения.
 
-Коммерческие лицензии могут поставляться с индивидуальным лицензионным ключом или лицензионным файлом.
+Письменное разрешение на коммерческое использование может сопровождаться
+индивидуальным лицензионным ключом или файлом. Сам по себе ключ или файл не
+предоставляет коммерческих прав без письменного разрешения, в котором указан
+разрешённый способ использования.
 
-Чтобы запросить коммерческую лицензию, пожалуйста, укажите:
+Чтобы запросить разрешение, укажите:
 
-- ваше имя или название компании
-- контактный email
-- название проекта
-- планируемый способ использования движка
-- будет ли продукт продаваться, монетизироваться или использоваться внутри бизнеса
-- предполагаемую дату релиза
+- ваше имя или название компании;
+- контактный email;
+- название проекта;
+- планируемый способ использования движка;
+- будет ли продукт продаваться, монетизироваться или использоваться внутри бизнеса;
+- предполагаемую дату релиза или развёртывания.
 
-Контакт:
-developer@barilo.ru
+Контакт: `developer@barilo.ru`
 
-До получения такого письменного разрешения коммерческое использование вне случаев, уже разрешённых публичной лицензией по умолчанию, не допускается.
+До получения письменного разрешения коммерческое использование за пределами
+случаев, уже разрешённых публичной лицензией, не допускается.
+
+Исключения, перечисленные в [LICENSE](LICENSE), продолжают действовать.
+Сторонние компоненты сохраняют собственные лицензии, указанные в
+[NOTICE.md](NOTICE.md).

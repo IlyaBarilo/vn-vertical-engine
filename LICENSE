@@ -1,6 +1,21 @@
 Required Notice: Copyright (c) 2026 Ilya Barilo
-Required Notice: This license applies only to the engine source code of this project.
-Required Notice: Demo assets in /assets and demo story content in story.js are not licensed under these terms.
+Required Notice: Unless a file states otherwise, this license applies to the original source code, authoring tools, technical examples, and accompanying documentation distributed with the current version of this project.
+Required Notice: This license does not apply to third-party components listed in NOTICE.md, files in /assets, or the demo story content in story-example.js.
+
+## Scope and Exclusions
+
+The files in `/assets` and the demo story content in `story-example.js` are
+provided only to demonstrate the engine. No permission to reuse those materials
+is granted by this license. Replace them when creating your own project.
+
+Third-party components listed in `NOTICE.md` remain under their own licenses.
+
+Stories, media, and other materials created by users remain the property of
+their respective authors. This project claims no rights in that user-created
+content merely because it is used with the engine.
+
+This scope statement applies to the current version of the project. Versions
+before 0.5 retain the terms distributed with those versions.
 
 # PolyForm Noncommercial License 1.0.0
 
