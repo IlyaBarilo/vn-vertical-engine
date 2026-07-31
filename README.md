@@ -4,10 +4,12 @@
 
 **Лёгкий офлайн-движок визуальных новелл для вертикальных экранов.**
 
-[![Открыть демо](https://img.shields.io/badge/демо-открыть-2ea44f)](https://ilyabarilo.github.io/vn-vertical-engine/)
-[![Последний релиз](https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?display_name=tag&label=релиз)](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest)
-[![Лицензия PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-blue)](LICENSE)
-[![Сборка релиза](https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml/badge.svg)](https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml)
+<p align="center">
+  <a href="https://ilyabarilo.github.io/vn-vertical-engine/"><img src="https://img.shields.io/badge/демо-открыть-2ea44f?style=for-the-badge" alt="Открыть демо"></a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest"><img src="https://img.shields.io/github/v/release/IlyaBarilo/vn-vertical-engine?display_name=tag&amp;label=релиз&amp;style=for-the-badge" alt="Последний релиз"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20NC%201.0.0-blue?style=for-the-badge" alt="Лицензия PolyForm Noncommercial 1.0.0"></a>
+  <a href="https://github.com/IlyaBarilo/vn-vertical-engine/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/IlyaBarilo/vn-vertical-engine/release.yml?event=release&amp;style=for-the-badge&amp;label=release%20build" alt="Сборка релиза"></a>
+</p>
 
 [Открыть демо](https://ilyabarilo.github.io/vn-vertical-engine/) ·
 [Скачать полный архив](https://github.com/IlyaBarilo/vn-vertical-engine/releases/latest/download/vn-vertical-engine-latest.zip) ·
