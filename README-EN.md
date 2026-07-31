@@ -303,6 +303,7 @@ their authors.
 Commercial use outside the cases expressly permitted by PolyForm Noncommercial
 requires separate written permission. See [COMMERCIAL-USE.md](COMMERCIAL-USE.md).
 
-Versions before 0.5 retain the terms under which they were published.
+The clarified license scope applies to version 0.6.0 and later versions.
+Earlier versions retain the terms and notices distributed with them.
 
 © 2026 Ilya Barilo
