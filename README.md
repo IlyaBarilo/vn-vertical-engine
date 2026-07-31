@@ -171,6 +171,8 @@ any text editor without special authoring software.
   links, and choose entry camera directions visually.
 - **360 image converter** — convert panorama images into offline JS packages
   used by the engine without a server or external asset pipeline.
+- **360 panorama cleaner** — replace unwanted people or moving objects with
+  matching areas from a second shot and blend the boundaries smoothly.
 - **Mini-game tester** — run a game in an iframe, send `gameInit`, inspect
   `gameResult`, and catch protocol mistakes before adding the game to a novel.
 
@@ -267,6 +269,7 @@ This engine is suitable for:
     │    ├── scene360-editor.html
     │    ├── convert-360-img-to-js.html
     │    ├── game-tester.html
+    │    ├── panorama-cleaner.html
     │    └── media-focus-editor.html
     │
     ├── lib/

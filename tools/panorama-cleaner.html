@@ -1,0 +1,2581 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Очистка 360°-панорам</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090c12;
+      --panel: #111721;
+      --panel-2: #171f2c;
+      --panel-3: #0c1119;
+      --border: #2c3747;
+      --border-strong: #44536a;
+      --text: #eef3fb;
+      --muted: #98a7bc;
+      --accent: #64d7c5;
+      --accent-strong: #28bda7;
+      --accent-soft: rgba(100, 215, 197, 0.14);
+      --warning: #f5c66b;
+      --danger: #ff8585;
+      --shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 16% -8%, rgba(60, 130, 150, 0.16), transparent 34%),
+        var(--bg);
+      color: var(--text);
+      font: 13px/1.45 system-ui, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button,
+    .file-button {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #1a2432;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    }
+
+    button:hover:not(:disabled),
+    .file-button:hover {
+      border-color: var(--border-strong);
+      background: #222e3f;
+    }
+
+    button:active:not(:disabled),
+    .file-button:active {
+      transform: translateY(1px);
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    .file-button:focus-within {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
+    }
+
+    button.primary {
+      border-color: #3fae9e;
+      background: linear-gradient(180deg, #2a9f90, #237d74);
+      color: #f8fffd;
+      font-weight: 700;
+    }
+
+    button.primary:hover:not(:disabled) {
+      border-color: #72dfce;
+      background: linear-gradient(180deg, #32aa9a, #27877c);
+    }
+
+    button.danger {
+      color: #ffc2c2;
+      border-color: #653e47;
+      background: #2a1c23;
+    }
+
+    button.icon-button {
+      width: 34px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+    }
+
+    .app {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 3;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13, 18, 27, 0.96);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .brand {
+      min-width: 190px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .file-strip {
+      min-width: 0;
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .file-button {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      text-align: left;
+    }
+
+    .file-button.is-dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .file-button input { display: none; }
+
+    .file-index {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .file-copy {
+      min-width: 0;
+    }
+
+    .file-label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .file-name {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+
+    .file-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .swap-button {
+      align-self: center;
+    }
+
+    .export-button {
+      min-width: 156px;
+      padding: 0 16px;
+    }
+
+    .body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px;
+      border-right: 1px solid var(--border);
+      background: rgba(15, 21, 31, 0.94);
+    }
+
+    .section {
+      margin-bottom: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+    }
+
+    .section:last-child { margin-bottom: 0; }
+
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .section-heading h2 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .badge {
+      min-width: 22px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .empty-selection {
+      padding: 18px 10px;
+      border: 1px dashed var(--border-strong);
+      border-radius: 10px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .properties[hidden],
+    .empty-selection[hidden] {
+      display: none;
+    }
+
+    .property-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .field {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .field > span {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.035em;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      min-width: 0;
+      height: 32px;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-3);
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-strong);
+    }
+
+    .range-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 72px;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .range-row label {
+      display: grid;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .range-row input[type="number"] {
+      text-align: right;
+    }
+
+    .source-controls {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .source-controls h3 {
+      margin: 0 0 3px;
+      font-size: 12px;
+    }
+
+    .source-controls p {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .nudge-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 34px);
+      grid-template-rows: repeat(2, 32px);
+      justify-content: center;
+      gap: 4px;
+      margin: 9px 0;
+    }
+
+    .nudge-grid button {
+      min-height: 32px;
+      padding: 0;
+    }
+
+    .nudge-up { grid-column: 2; }
+    .nudge-left { grid-column: 1; grid-row: 2; }
+    .nudge-reset { grid-column: 2; grid-row: 2; font-size: 11px; }
+    .nudge-right { grid-column: 3; grid-row: 2; }
+
+    .selection-actions {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .region-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .region-item {
+      width: 100%;
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    .region-item.is-selected {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .region-item.is-disabled {
+      opacity: 0.55;
+    }
+
+    .region-number {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: rgba(100, 215, 197, 0.16);
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .region-copy {
+      min-width: 0;
+    }
+
+    .region-title,
+    .region-detail {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .region-title { font-size: 11px; font-weight: 650; }
+    .region-detail { color: var(--muted); font-size: 9px; }
+
+    .region-visibility {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .export-settings {
+      display: grid;
+      gap: 9px;
+    }
+
+    .meta-note {
+      padding: 8px;
+      border: 1px solid rgba(100, 215, 197, 0.24);
+      border-radius: 8px;
+      background: rgba(100, 215, 197, 0.07);
+      color: #b7dcd6;
+      font-size: 10px;
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: #080b10;
+    }
+
+    .toolbar {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-3);
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .toolbar-separator {
+      width: 1px;
+      height: 24px;
+      margin: 0 2px;
+      background: var(--border);
+    }
+
+    .tool-button,
+    .view-button {
+      min-height: 32px;
+      padding: 0 10px;
+      font-size: 11px;
+    }
+
+    .tool-button.is-active,
+    .view-button.is-active {
+      border-color: #4bb8a8;
+      background: var(--accent-soft);
+      color: #bff8ef;
+    }
+
+    .zoom-label {
+      min-width: 50px;
+      color: var(--muted);
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .canvas-shell {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background:
+        linear-gradient(45deg, #0c1118 25%, transparent 25%),
+        linear-gradient(-45deg, #0c1118 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #0c1118 75%),
+        linear-gradient(-45deg, transparent 75%, #0c1118 75%),
+        #090d13;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      background-size: 20px 20px;
+    }
+
+    #canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .drop-hint {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: min(460px, calc(100% - 40px));
+      padding: 32px 28px;
+      transform: translate(-50%, -50%);
+      border: 1px dashed var(--border-strong);
+      border-radius: 18px;
+      background: rgba(14, 20, 30, 0.84);
+      box-shadow: var(--shadow);
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .drop-hint[hidden] { display: none; }
+
+    .drop-symbol {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 12px;
+      border-radius: 15px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 28px;
+    }
+
+    .drop-hint strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 15px;
+    }
+
+    .drop-hint span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .canvas-shell.is-dragover .drop-hint {
+      border-color: var(--accent);
+      background: rgba(17, 41, 42, 0.94);
+    }
+
+    .statusbar {
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 5px 10px;
+      border-top: 1px solid var(--border);
+      background: var(--panel-3);
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .status-message {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-message.is-error { color: var(--danger); }
+    .status-message.is-busy { color: var(--warning); }
+
+    .cursor-position {
+      flex: 0 0 auto;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .busy-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      background: rgba(5, 8, 12, 0.68);
+      backdrop-filter: blur(3px);
+    }
+
+    .busy-overlay[hidden] { display: none; }
+
+    .busy-card {
+      min-width: 250px;
+      padding: 20px;
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .spinner {
+      width: 30px;
+      height: 30px;
+      margin: 0 auto 10px;
+      border: 3px solid rgba(100, 215, 197, 0.18);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 800ms linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 980px) {
+      .brand p { display: none; }
+      .file-strip { grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr); }
+      .body { grid-template-columns: 286px minmax(0, 1fr); }
+      .export-button { min-width: 116px; }
+    }
+
+    @media (max-width: 760px) {
+      html,
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100%; }
+      .topbar { align-items: stretch; flex-wrap: wrap; }
+      .brand { width: 100%; }
+      .file-strip { width: 100%; flex-basis: 100%; }
+      .export-button { flex: 1; }
+      .body { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+      .workspace { min-height: 68vh; }
+      .canvas-shell { min-height: 52vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Очистка 360°</h1>
+        <p>Замена объектов между двумя панорамами</p>
+      </div>
+
+      <div class="file-strip">
+        <label class="file-button" id="baseDropTarget">
+          <input id="baseFileInput" type="file" accept="image/jpeg,image/png" />
+          <span class="file-index">A</span>
+          <span class="file-copy">
+            <span class="file-label">Основа и метаданные</span>
+            <span class="file-name" id="baseFileName">Выберите первый снимок</span>
+            <span class="file-meta" id="baseFileMeta">JPEG или PNG</span>
+          </span>
+        </label>
+
+        <button class="icon-button swap-button" id="swapButton" type="button" title="Поменять снимки местами" disabled>⇄</button>
+
+        <label class="file-button" id="sourceDropTarget">
+          <input id="sourceFileInput" type="file" accept="image/jpeg,image/png" />
+          <span class="file-index">B</span>
+          <span class="file-copy">
+            <span class="file-label">Источник чистых областей</span>
+            <span class="file-name" id="sourceFileName">Выберите второй снимок</span>
+            <span class="file-meta" id="sourceFileMeta">Тот же размер, что у A</span>
+          </span>
+        </label>
+      </div>
+
+      <button class="primary export-button" id="exportButton" type="button" disabled>Сохранить JPEG</button>
+    </header>
+
+    <div class="body">
+      <aside class="sidebar">
+        <section class="section">
+          <div class="section-heading">
+            <h2>Выбранная область</h2>
+          </div>
+
+          <div class="empty-selection" id="emptySelection">
+            Проведите рамку по панораме вокруг человека или другого объекта.
+          </div>
+
+          <div class="properties" id="properties" hidden>
+            <div class="property-grid">
+              <label class="field">
+                <span>X</span>
+                <input id="regionX" data-region-field="x" type="number" min="0" step="1" />
+              </label>
+              <label class="field">
+                <span>Y</span>
+                <input id="regionY" data-region-field="y" type="number" min="0" step="1" />
+              </label>
+              <label class="field">
+                <span>Ширина</span>
+                <input id="regionWidth" data-region-field="width" type="number" min="1" step="1" />
+              </label>
+              <label class="field">
+                <span>Высота</span>
+                <input id="regionHeight" data-region-field="height" type="number" min="1" step="1" />
+              </label>
+            </div>
+
+            <div class="range-row">
+              <label>
+                Растушёвка вокруг области
+                <input id="featherRange" type="range" min="0" max="1000" step="1" />
+              </label>
+              <input id="featherNumber" data-region-field="feather" type="number" min="0" max="1000" step="1" aria-label="Растушёвка в пикселях" />
+            </div>
+
+            <div class="source-controls">
+              <h3>Смещение источника B</h3>
+              <p>Переключитесь на B и перетащите пунктирную рамку либо задайте сдвиг вручную.</p>
+              <div class="property-grid">
+                <label class="field">
+                  <span>Сдвиг X</span>
+                  <input id="sourceOffsetX" data-region-field="offsetX" type="number" step="1" />
+                </label>
+                <label class="field">
+                  <span>Сдвиг Y</span>
+                  <input id="sourceOffsetY" data-region-field="offsetY" type="number" step="1" />
+                </label>
+              </div>
+              <div class="nudge-grid" aria-label="Точная подгонка источника">
+                <button class="nudge-up" type="button" data-nudge-x="0" data-nudge-y="-1" title="Сдвинуть вверх">↑</button>
+                <button class="nudge-left" type="button" data-nudge-x="-1" data-nudge-y="0" title="Сдвинуть влево">←</button>
+                <button class="nudge-reset" id="resetOffsetButton" type="button" title="Сбросить смещение">0</button>
+                <button class="nudge-right" type="button" data-nudge-x="1" data-nudge-y="0" title="Сдвинуть вправо">→</button>
+              </div>
+            </div>
+
+            <label class="check-row">
+              <input id="regionEnabled" type="checkbox" checked />
+              Использовать область при сохранении
+            </label>
+
+            <div class="selection-actions">
+              <button id="duplicateButton" type="button">Дублировать</button>
+              <button class="danger" id="deleteButton" type="button">Удалить</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-heading">
+            <h2>Области замены</h2>
+            <span class="badge" id="regionCount">0</span>
+          </div>
+          <div class="region-list" id="regionList"></div>
+          <p class="hint" id="regionListHint">Областей пока нет.</p>
+        </section>
+
+        <section class="section">
+          <div class="section-heading">
+            <h2>Сохранение</h2>
+          </div>
+          <div class="export-settings">
+            <div class="range-row">
+              <label>
+                Качество JPEG
+                <input id="qualityRange" type="range" min="75" max="100" step="1" value="95" />
+              </label>
+              <input id="qualityNumber" type="number" min="75" max="100" step="1" value="95" aria-label="Качество JPEG" />
+            </div>
+            <p class="hint">Качество запоминается в этом браузере.</p>
+            <div class="meta-note" id="metadataNote">
+              EXIF, XMP/GPano и ICC-профиль будут перенесены из JPEG A.
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <div class="toolbar">
+          <div class="toolbar-group" aria-label="Отображаемый снимок">
+            <button class="view-button is-active" type="button" data-view="result">Результат</button>
+            <button class="view-button" type="button" data-view="base">Оригинал A</button>
+            <button class="view-button" type="button" data-view="source">Источник B</button>
+            <button class="view-button" type="button" data-view="overlay">A/B 50%</button>
+          </div>
+
+          <button class="tool-button" id="previewButton" type="button" disabled>Предпросмотр</button>
+
+          <span class="toolbar-separator"></span>
+
+          <div class="toolbar-group">
+            <button class="icon-button" id="zoomOutButton" type="button" title="Уменьшить">−</button>
+            <span class="zoom-label" id="zoomLabel">—</span>
+            <button class="icon-button" id="zoomInButton" type="button" title="Увеличить">+</button>
+            <button class="tool-button" id="fitButton" type="button">Вписать</button>
+          </div>
+
+          <span class="toolbar-separator"></span>
+
+          <button class="tool-button" id="undoButton" type="button" disabled>Отменить</button>
+        </div>
+
+        <div class="canvas-shell" id="canvasShell">
+          <canvas id="canvas"></canvas>
+          <div class="drop-hint" id="dropHint">
+            <div class="drop-symbol">360°</div>
+            <strong>Загрузите две панорамы</strong>
+            <span>Можно выбрать файлы сверху или перетащить их сюда.</span>
+          </div>
+          <div class="busy-overlay" id="busyOverlay" hidden>
+            <div class="busy-card">
+              <div class="spinner"></div>
+              <strong id="busyText">Подготовка результата…</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="statusbar">
+          <span class="status-message" id="statusMessage">Загрузите основу A и источник B.</span>
+          <span class="cursor-position" id="cursorPosition">x: — · y: —</span>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    var PREVIEW_MAX_SIDE = 4096;
+    var PREVIEW_MAX_PIXELS = 8000000;
+    var MIN_REGION_SIZE = 8;
+    var HANDLE_SIZE = 9;
+    var DELETE_BUTTON_SIZE = 24;
+    var SETTINGS_STORAGE_KEY = "panorama-cleaner-settings-v1";
+    var METADATA_MARKERS = [0xe1, 0xe2, 0xed, 0xfe];
+
+    var ui = {
+      canvas: document.getElementById("canvas"),
+      canvasShell: document.getElementById("canvasShell"),
+      dropHint: document.getElementById("dropHint"),
+      busyOverlay: document.getElementById("busyOverlay"),
+      busyText: document.getElementById("busyText"),
+      baseFileInput: document.getElementById("baseFileInput"),
+      sourceFileInput: document.getElementById("sourceFileInput"),
+      baseDropTarget: document.getElementById("baseDropTarget"),
+      sourceDropTarget: document.getElementById("sourceDropTarget"),
+      baseFileName: document.getElementById("baseFileName"),
+      sourceFileName: document.getElementById("sourceFileName"),
+      baseFileMeta: document.getElementById("baseFileMeta"),
+      sourceFileMeta: document.getElementById("sourceFileMeta"),
+      swapButton: document.getElementById("swapButton"),
+      exportButton: document.getElementById("exportButton"),
+      emptySelection: document.getElementById("emptySelection"),
+      properties: document.getElementById("properties"),
+      regionX: document.getElementById("regionX"),
+      regionY: document.getElementById("regionY"),
+      regionWidth: document.getElementById("regionWidth"),
+      regionHeight: document.getElementById("regionHeight"),
+      featherRange: document.getElementById("featherRange"),
+      featherNumber: document.getElementById("featherNumber"),
+      sourceOffsetX: document.getElementById("sourceOffsetX"),
+      sourceOffsetY: document.getElementById("sourceOffsetY"),
+      regionEnabled: document.getElementById("regionEnabled"),
+      resetOffsetButton: document.getElementById("resetOffsetButton"),
+      duplicateButton: document.getElementById("duplicateButton"),
+      deleteButton: document.getElementById("deleteButton"),
+      regionCount: document.getElementById("regionCount"),
+      regionList: document.getElementById("regionList"),
+      regionListHint: document.getElementById("regionListHint"),
+      qualityRange: document.getElementById("qualityRange"),
+      qualityNumber: document.getElementById("qualityNumber"),
+      metadataNote: document.getElementById("metadataNote"),
+      zoomOutButton: document.getElementById("zoomOutButton"),
+      zoomInButton: document.getElementById("zoomInButton"),
+      fitButton: document.getElementById("fitButton"),
+      previewButton: document.getElementById("previewButton"),
+      zoomLabel: document.getElementById("zoomLabel"),
+      undoButton: document.getElementById("undoButton"),
+      statusMessage: document.getElementById("statusMessage"),
+      cursorPosition: document.getElementById("cursorPosition")
+    };
+
+    var displayContext = ui.canvas.getContext("2d");
+    var compositeCanvas = document.createElement("canvas");
+    var state = {
+      base: null,
+      source: null,
+      regions: [],
+      selectedId: null,
+      nextRegionId: 1,
+      view: "result",
+      viewBeforePreview: "result",
+      previewMode: false,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0,
+      fitted: false,
+      pointer: null,
+      spacePressed: false,
+      renderPending: false,
+      compositeDirty: true,
+      history: [],
+      controlSnapshot: null,
+      busy: false
+    };
+
+    /* Ограничивает число заданным диапазоном и защищает расчёты от NaN. */
+    function clamp(value, min, max) {
+      var safe = Number.isFinite(value) ? value : min;
+      return Math.min(max, Math.max(min, safe));
+    }
+
+    /* Округляет координаты интерфейса до целых пикселей исходной панорамы. */
+    function roundPixel(value) {
+      return Math.round(Number(value) || 0);
+    }
+
+    /* Возвращает безопасный остаток, который не становится отрицательным. */
+    function positiveModulo(value, divisor) {
+      return ((value % divisor) + divisor) % divisor;
+    }
+
+    /* Создаёт независимую копию областей для истории отмены. */
+    function cloneRegions(regions) {
+      return regions.map(function cloneRegion(region) {
+        return Object.assign({}, region);
+      });
+    }
+
+    /* Находит выбранную область по стабильному идентификатору. */
+    function getSelectedRegion() {
+      return state.regions.find(function findSelected(region) {
+        return region.id === state.selectedId;
+      }) || null;
+    }
+
+    /* Показывает пользователю текущее состояние или понятную ошибку. */
+    function setStatus(message, kind) {
+      ui.statusMessage.textContent = message;
+      ui.statusMessage.classList.toggle("is-error", kind === "error");
+      ui.statusMessage.classList.toggle("is-busy", kind === "busy");
+    }
+
+    /* Блокирует действия на время полноразмерной обработки, чтобы данные не менялись в середине экспорта. */
+    function setBusy(isBusy, message) {
+      state.busy = isBusy;
+      ui.busyOverlay.hidden = !isBusy;
+      ui.busyText.textContent = message || "Подготовка результата…";
+      updateAvailability();
+    }
+
+    /* Даёт браузеру отрисовать статус перед тяжёлой операцией. */
+    function waitForPaint() {
+      return new Promise(function waitForPaintPromise(resolve) {
+        requestAnimationFrame(function resolveAfterFrame() {
+          requestAnimationFrame(resolve);
+        });
+      });
+    }
+
+    /* Вычисляет размеры облегчённой копии, сохраняя исходные пропорции. */
+    function getPreviewDimensions(width, height) {
+      var sideScale = Math.min(1, PREVIEW_MAX_SIDE / Math.max(width, height));
+      var pixelScale = Math.min(1, Math.sqrt(PREVIEW_MAX_PIXELS / (width * height)));
+      var scale = Math.min(sideScale, pixelScale);
+      return {
+        width: Math.max(1, Math.round(width * scale)),
+        height: Math.max(1, Math.round(height * scale)),
+        scale: scale
+      };
+    }
+
+    /* Читает ширину и высоту JPEG из SOF-сегмента без полного декодирования большого файла. */
+    function readJpegDimensions(bytes) {
+      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+        return null;
+      }
+      var offset = 2;
+      while (offset + 9 < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+          offset += 1;
+          continue;
+        }
+        var marker = bytes[offset + 1];
+        if (marker === 0xda || marker === 0xd9) {
+          break;
+        }
+        if (marker >= 0xd0 && marker <= 0xd7) {
+          offset += 2;
+          continue;
+        }
+        var length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+        if (length < 2 || offset + 2 + length > bytes.length) {
+          break;
+        }
+        var isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+        if (isSof) {
+          return {
+            width: (bytes[offset + 7] << 8) | bytes[offset + 8],
+            height: (bytes[offset + 5] << 8) | bytes[offset + 6]
+          };
+        }
+        offset += 2 + length;
+      }
+      return null;
+    }
+
+    /* Читает размеры PNG из обязательного заголовка IHDR. */
+    function readPngDimensions(bytes) {
+      var signature = [137, 80, 78, 71, 13, 10, 26, 10];
+      if (bytes.length < 24 || !signature.every(function matchesSignature(value, index) { return bytes[index] === value; })) {
+        return null;
+      }
+      var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      return { width: view.getUint32(16), height: view.getUint32(20) };
+    }
+
+    /* Использует временный элемент img как запасной путь для неизвестного растрового формата. */
+    function readDimensionsWithImage(file) {
+      return new Promise(function readDimensionsPromise(resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var image = new Image();
+        image.onload = function resolveDimensions() {
+          URL.revokeObjectURL(url);
+          resolve({ width: image.naturalWidth, height: image.naturalHeight });
+        };
+        image.onerror = function rejectDimensions() {
+          URL.revokeObjectURL(url);
+          reject(new Error("Файл не удалось прочитать как изображение."));
+        };
+        image.src = url;
+      });
+    }
+
+    /* Определяет исходные размеры по заголовку и не держит лишнюю 16K-копию в памяти. */
+    async function readImageDimensions(file) {
+      var header = new Uint8Array(await file.slice(0, 1024 * 1024).arrayBuffer());
+      var dimensions = readJpegDimensions(header) || readPngDimensions(header);
+      return dimensions || readDimensionsWithImage(file);
+    }
+
+    /* Создаёт уменьшенный ImageBitmap для отзывчивого редактирования больших панорам. */
+    async function createPreview(file, dimensions) {
+      var previewSize = getPreviewDimensions(dimensions.width, dimensions.height);
+      if (typeof createImageBitmap === "function") {
+        return createImageBitmap(file, {
+          resizeWidth: previewSize.width,
+          resizeHeight: previewSize.height,
+          resizeQuality: "high",
+          imageOrientation: "from-image"
+        });
+      }
+      return readImageWithUrl(file);
+    }
+
+    /* Загружает файл через object URL для браузеров без createImageBitmap. */
+    function readImageWithUrl(file) {
+      return new Promise(function readImagePromise(resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var image = new Image();
+        image.onload = function resolveImage() {
+          image.cleanupObjectUrl = function cleanupObjectUrl() { URL.revokeObjectURL(url); };
+          resolve(image);
+        };
+        image.onerror = function rejectImage() {
+          URL.revokeObjectURL(url);
+          reject(new Error("Браузер не смог декодировать изображение."));
+        };
+        image.src = url;
+      });
+    }
+
+    /* Освобождает декодированную копию при повторной загрузке снимка. */
+    function disposePreview(image) {
+      if (!image) {
+        return;
+      }
+      if (typeof image.close === "function") {
+        image.close();
+      }
+      if (typeof image.cleanupObjectUrl === "function") {
+        image.cleanupObjectUrl();
+      }
+    }
+
+    /* Проверяет, что оба кадра имеют одинаковую пиксельную сетку для точной замены. */
+    function validatePair(slot, dimensions) {
+      var other = slot === "base" ? state.source : state.base;
+      if (!other) {
+        return;
+      }
+      if (dimensions.width !== other.width || dimensions.height !== other.height) {
+        throw new Error("Размеры снимков различаются. Нужны две панорамы с одинаковой шириной и высотой.");
+      }
+    }
+
+    /* Загружает одну панораму, создаёт предпросмотр и сохраняет оригинальный File для экспорта. */
+    async function loadImageFile(slot, file) {
+      if (!file || state.busy) {
+        return;
+      }
+      if (!/^image\/(jpeg|png)$/i.test(file.type) && !/\.(jpe?g|png)$/i.test(file.name)) {
+        setStatus("Поддерживаются изображения JPEG и PNG.", "error");
+        return;
+      }
+      try {
+        setStatus("Подготавливаю уменьшенный предпросмотр…", "busy");
+        var dimensions = await readImageDimensions(file);
+        if (!dimensions.width || !dimensions.height) {
+          throw new Error("Не удалось определить размеры изображения.");
+        }
+        validatePair(slot, dimensions);
+        var preview = await createPreview(file, dimensions);
+        var previous = state[slot];
+        state[slot] = {
+          file: file,
+          name: file.name,
+          type: file.type,
+          width: dimensions.width,
+          height: dimensions.height,
+          preview: preview,
+          previewScale: preview.width / dimensions.width
+        };
+        if (previous) {
+          disposePreview(previous.preview);
+        }
+        if (slot === "base") {
+          state.regions = [];
+          state.selectedId = null;
+          state.history = [];
+          state.nextRegionId = 1;
+          state.fitted = false;
+        }
+        state.compositeDirty = true;
+        updateAllUi();
+        if (!state.fitted && state.base) {
+          fitImage();
+        }
+        setStatus(state.base && state.source ? "Готово. Проведите рамку по свободному месту панорамы." : "Загрузите второй снимок.");
+      } catch (error) {
+        setStatus(error.message || "Не удалось загрузить изображение.", "error");
+      } finally {
+        if (slot === "base") {
+          ui.baseFileInput.value = "";
+        } else {
+          ui.sourceFileInput.value = "";
+        }
+      }
+    }
+
+    /* Возвращает расширение и размер файла в компактном виде. */
+    function describeImage(image) {
+      if (!image) {
+        return "JPEG или PNG";
+      }
+      var megabytes = image.file.size / (1024 * 1024);
+      return image.width + "×" + image.height + " · " + megabytes.toFixed(megabytes >= 10 ? 0 : 1) + " МБ";
+    }
+
+    /* Обновляет подписи файлов и сообщает, будут ли сохранены JPEG-метаданные. */
+    function updateFileUi() {
+      ui.baseFileName.textContent = state.base ? state.base.name : "Выберите первый снимок";
+      ui.sourceFileName.textContent = state.source ? state.source.name : "Выберите второй снимок";
+      ui.baseFileMeta.textContent = state.base ? describeImage(state.base) : "JPEG или PNG";
+      ui.sourceFileMeta.textContent = state.source ? describeImage(state.source) : "Тот же размер, что у A";
+      var baseIsJpeg = state.base && (/image\/jpeg/i.test(state.base.type) || /\.jpe?g$/i.test(state.base.name));
+      ui.metadataNote.textContent = baseIsJpeg
+        ? "EXIF, XMP/GPano и ICC-профиль будут перенесены из JPEG A."
+        : "Основа A не является JPEG: результат сохранится без исходных JPEG-метаданных.";
+    }
+
+    /* Включает только те действия, для которых уже загружены нужные данные. */
+    function updateAvailability() {
+      var hasPair = Boolean(state.base && state.source);
+      ui.baseFileInput.disabled = state.busy || state.previewMode;
+      ui.sourceFileInput.disabled = state.busy || state.previewMode;
+      ui.swapButton.disabled = !hasPair || state.busy || state.previewMode;
+      ui.exportButton.disabled = !hasPair || state.busy;
+      ui.previewButton.disabled = !hasPair || state.busy;
+      ui.undoButton.disabled = state.history.length === 0 || state.busy || state.previewMode;
+      document.querySelectorAll("[data-view]").forEach(function updateViewAvailability(button) {
+        var needsSource = button.dataset.view === "source" || button.dataset.view === "overlay" || button.dataset.view === "result";
+        button.disabled = !state.base || (needsSource && !state.source) || state.busy || state.previewMode;
+      });
+      document.querySelectorAll("#properties input, #properties button").forEach(function updateEditorControlAvailability(control) {
+        control.disabled = state.busy || state.previewMode;
+      });
+      document.querySelectorAll("#qualityRange, #qualityNumber").forEach(function updateQualityAvailability(control) {
+        control.disabled = state.busy;
+      });
+    }
+
+    /* Нормализует геометрию области после ручного ввода или перетаскивания. */
+    function normalizeRegion(region) {
+      if (!state.base) {
+        return region;
+      }
+      region.width = clamp(roundPixel(region.width), MIN_REGION_SIZE, state.base.width);
+      region.height = clamp(roundPixel(region.height), MIN_REGION_SIZE, state.base.height);
+      region.x = clamp(roundPixel(region.x), 0, state.base.width - region.width);
+      region.y = clamp(roundPixel(region.y), 0, state.base.height - region.height);
+      region.feather = clamp(roundPixel(region.feather), 0, Math.floor(Math.min(state.base.width, state.base.height) / 2));
+      region.offsetX = clamp(roundPixel(region.offsetX), -region.x, state.base.width - region.x - region.width);
+      region.offsetY = clamp(roundPixel(region.offsetY), -region.y, state.base.height - region.y - region.height);
+      region.enabled = Boolean(region.enabled);
+      return region;
+    }
+
+    /* Синхронизирует поля свойств с выбранной областью. */
+    function updatePropertiesUi() {
+      var region = getSelectedRegion();
+      ui.emptySelection.hidden = Boolean(region);
+      ui.properties.hidden = !region;
+      if (!region) {
+        return;
+      }
+      var maxFeather = Math.floor(Math.min(state.base.width, state.base.height) / 2);
+      ui.featherRange.max = String(maxFeather);
+      ui.featherNumber.max = String(maxFeather);
+      ui.regionX.value = String(region.x);
+      ui.regionY.value = String(region.y);
+      ui.regionWidth.value = String(region.width);
+      ui.regionHeight.value = String(region.height);
+      ui.featherRange.value = String(region.feather);
+      ui.featherNumber.value = String(region.feather);
+      ui.sourceOffsetX.value = String(region.offsetX);
+      ui.sourceOffsetY.value = String(region.offsetY);
+      ui.regionEnabled.checked = region.enabled;
+    }
+
+    /* Создаёт строку области без вставки пользовательского HTML. */
+    function createRegionListItem(region, index) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "region-item";
+      button.dataset.regionId = String(region.id);
+      button.classList.toggle("is-selected", region.id === state.selectedId);
+      button.classList.toggle("is-disabled", !region.enabled);
+
+      var number = document.createElement("span");
+      number.className = "region-number";
+      number.textContent = String(index + 1);
+
+      var copy = document.createElement("span");
+      copy.className = "region-copy";
+      var title = document.createElement("span");
+      title.className = "region-title";
+      title.textContent = "Область " + (index + 1);
+      var detail = document.createElement("span");
+      detail.className = "region-detail";
+      detail.textContent = region.width + "×" + region.height + " · край " + region.feather + " px · Δ " + region.offsetX + ", " + region.offsetY;
+      copy.append(title, detail);
+
+      var visibility = document.createElement("span");
+      visibility.className = "region-visibility";
+      visibility.textContent = region.enabled ? "●" : "○";
+      button.append(number, copy, visibility);
+      return button;
+    }
+
+    /* Перестраивает список областей, сохраняя порядок их наложения. */
+    function updateRegionListUi() {
+      ui.regionList.replaceChildren();
+      state.regions.forEach(function appendRegion(region, index) {
+        ui.regionList.appendChild(createRegionListItem(region, index));
+      });
+      ui.regionCount.textContent = String(state.regions.length);
+      ui.regionListHint.hidden = state.regions.length > 0;
+    }
+
+    /* Обновляет весь интерфейс после загрузки или крупного изменения состояния. */
+    function updateAllUi() {
+      updateFileUi();
+      updatePropertiesUi();
+      updateRegionListUi();
+      updateAvailability();
+      ui.dropHint.hidden = Boolean(state.base);
+      requestRender();
+    }
+
+    /* Добавляет снимок состояния в ограниченную историю отмены. */
+    function pushHistory(snapshot, selectedId, nextRegionId) {
+      state.history.push({
+        regions: cloneRegions(snapshot || state.regions),
+        selectedId: selectedId === undefined ? state.selectedId : selectedId,
+        nextRegionId: nextRegionId === undefined ? state.nextRegionId : nextRegionId
+      });
+      if (state.history.length > 40) {
+        state.history.shift();
+      }
+      updateAvailability();
+    }
+
+    /* Возвращает последнюю сохранённую геометрию и сбрасывает незавершённое действие. */
+    function undo() {
+      var snapshot = state.history.pop();
+      if (!snapshot || state.busy) {
+        return;
+      }
+      state.regions = cloneRegions(snapshot.regions);
+      state.selectedId = snapshot.selectedId;
+      state.nextRegionId = snapshot.nextRegionId;
+      state.pointer = null;
+      state.compositeDirty = true;
+      updateAllUi();
+      setStatus("Последнее изменение отменено.");
+    }
+
+    /* Загружает локальные предпочтения интерфейса и безопасно игнорирует недоступное хранилище. */
+    function loadSettings() {
+      try {
+        var stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (!stored) {
+          return;
+        }
+        var settings = JSON.parse(stored);
+        if (!Number.isFinite(Number(settings.jpegQuality))) {
+          return;
+        }
+        var quality = clamp(roundPixel(settings.jpegQuality), 75, 100);
+        ui.qualityRange.value = String(quality);
+        ui.qualityNumber.value = String(quality);
+      } catch (error) {
+        /* Редактор остаётся работоспособным при запрете localStorage для локальных файлов. */
+      }
+    }
+
+    /* Сохраняет только небольшие настройки интерфейса, не записывая изображения и области. */
+    function saveSettings() {
+      try {
+        window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+          jpegQuality: clamp(roundPixel(ui.qualityNumber.value), 75, 100)
+        }));
+      } catch (error) {
+        /* Ошибка хранилища не должна мешать редактированию и экспорту панорамы. */
+      }
+    }
+
+    /* Включает чистый результат без рамок и возвращает прежний вид для продолжения правки. */
+    function togglePreview() {
+      if (!state.base || !state.source || state.busy) {
+        return;
+      }
+      state.previewMode = !state.previewMode;
+      if (state.previewMode) {
+        state.viewBeforePreview = state.view;
+        state.view = "result";
+        setStatus("Предпросмотр результата: рамки скрыты. Колесо масштабирует, пробел или средняя кнопка перемещают панораму.");
+      } else {
+        state.view = state.viewBeforePreview || "result";
+        setStatus("Редактирование включено: проведите рамку по свободному месту или выберите существующую область.");
+      }
+      ui.previewButton.classList.toggle("is-active", state.previewMode);
+      ui.previewButton.textContent = state.previewMode ? "Вернуться к правке" : "Предпросмотр";
+      document.querySelectorAll("[data-view]").forEach(function markPreviewView(button) {
+        button.classList.toggle("is-active", button.dataset.view === state.view);
+      });
+      updateAvailability();
+      updateCanvasCursor();
+      requestRender();
+    }
+
+    /* Переключает основу отображения, не меняя данные результата. */
+    function setView(view) {
+      if (state.previewMode) {
+        return;
+      }
+      if ((view === "source" || view === "overlay" || view === "result") && !state.source) {
+        return;
+      }
+      state.view = view;
+      document.querySelectorAll("[data-view]").forEach(function markActiveView(button) {
+        button.classList.toggle("is-active", button.dataset.view === view);
+      });
+      requestRender();
+      if (view === "source" && getSelectedRegion()) {
+        setStatus("Перетащите пунктирную рамку, чтобы подогнать источник B.");
+      }
+    }
+
+    /* Меняет снимки ролями; области остаются в тех же координатах, а смещения меняют знак. */
+    function swapImages() {
+      if (!state.base || !state.source || state.busy) {
+        return;
+      }
+      var temporary = state.base;
+      state.base = state.source;
+      state.source = temporary;
+      state.regions.forEach(function reverseOffset(region) {
+        region.offsetX = -region.offsetX;
+        region.offsetY = -region.offsetY;
+        normalizeRegion(region);
+      });
+      /* История областей относится к прежнему направлению A→B и после обмена стала бы неоднозначной. */
+      state.history = [];
+      state.compositeDirty = true;
+      updateAllUi();
+      setStatus("Снимки A и B поменяны местами. Метаданные будут взяты из нового A.");
+    }
+
+    /* Подбирает масштаб так, чтобы панорама целиком помещалась в рабочую область. */
+    function fitImage() {
+      if (!state.base) {
+        return;
+      }
+      var width = ui.canvas.clientWidth;
+      var height = ui.canvas.clientHeight;
+      if (!width || !height) {
+        return;
+      }
+      state.scale = Math.min(width / state.base.width, height / state.base.height) * 0.96;
+      state.offsetX = (width - state.base.width * state.scale) / 2;
+      state.offsetY = (height - state.base.height * state.scale) / 2;
+      state.fitted = true;
+      requestRender();
+    }
+
+    /* Масштабирует панораму вокруг заданной точки экрана, сохраняя объект под курсором. */
+    function zoomAt(factor, screenX, screenY) {
+      if (!state.base) {
+        return;
+      }
+      var oldScale = state.scale;
+      var fitScale = Math.min(ui.canvas.clientWidth / state.base.width, ui.canvas.clientHeight / state.base.height) * 0.96;
+      var newScale = clamp(oldScale * factor, fitScale * 0.2, 8);
+      var imageX = (screenX - state.offsetX) / oldScale;
+      var imageY = (screenY - state.offsetY) / oldScale;
+      state.offsetX = screenX - imageX * newScale;
+      state.offsetY = screenY - imageY * newScale;
+      state.scale = newScale;
+      requestRender();
+    }
+
+    /* Преобразует координаты указателя из экрана в пиксели исходной панорамы. */
+    function screenToImage(screenX, screenY) {
+      return {
+        x: (screenX - state.offsetX) / state.scale,
+        y: (screenY - state.offsetY) / state.scale
+      };
+    }
+
+    /* Преобразует координаты события в локальные координаты холста. */
+    function eventToCanvas(event) {
+      var rect = ui.canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+
+    /* Планирует единственную отрисовку на ближайший кадр при серии быстрых изменений. */
+    function requestRender() {
+      if (state.renderPending) {
+        return;
+      }
+      state.renderPending = true;
+      requestAnimationFrame(function renderRequestedFrame() {
+        state.renderPending = false;
+        render();
+      });
+    }
+
+    /* Подгоняет физический размер canvas под экран высокой плотности без изменения координат интерфейса. */
+    function resizeCanvas() {
+      var ratio = Math.min(window.devicePixelRatio || 1, 2);
+      var width = Math.max(1, Math.round(ui.canvas.clientWidth * ratio));
+      var height = Math.max(1, Math.round(ui.canvas.clientHeight * ratio));
+      if (ui.canvas.width !== width || ui.canvas.height !== height) {
+        ui.canvas.width = width;
+        ui.canvas.height = height;
+      }
+      displayContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+      return ratio;
+    }
+
+    /* Рисует исходник с горизонтальным зацикливанием, чтобы смещение работало у шва панорамы. */
+    function drawWrappedCrop(context, image, sourceX, sourceY, width, height, imageWidth, imageHeight) {
+      var clippedTop = Math.max(0, sourceY);
+      var clippedBottom = Math.min(imageHeight, sourceY + height);
+      if (clippedBottom <= clippedTop || width <= 0) {
+        return;
+      }
+      var destinationY = clippedTop - sourceY;
+      var drawHeight = clippedBottom - clippedTop;
+      var remaining = width;
+      var cursor = sourceX;
+      var destinationX = 0;
+      while (remaining > 0.001) {
+        var wrappedX = positiveModulo(cursor, imageWidth);
+        var chunk = Math.min(remaining, imageWidth - wrappedX);
+        context.drawImage(image, wrappedX, clippedTop, chunk, drawHeight, destinationX, destinationY, chunk, drawHeight);
+        cursor += chunk;
+        destinationX += chunk;
+        remaining -= chunk;
+      }
+    }
+
+    /* Размещает готовый фрагмент по круговой горизонтали, чтобы растушёвка продолжалась через шов 360°. */
+    function drawWrappedPatch(context, patchCanvas, destinationX, destinationY, outputWidth) {
+      var remaining = patchCanvas.width;
+      var sourceX = 0;
+      var cursor = destinationX;
+      while (remaining > 0.001) {
+        var wrappedX = positiveModulo(cursor, outputWidth);
+        var chunk = Math.min(remaining, outputWidth - wrappedX);
+        context.drawImage(
+          patchCanvas,
+          sourceX,
+          0,
+          chunk,
+          patchCanvas.height,
+          wrappedX,
+          destinationY,
+          chunk,
+          patchCanvas.height
+        );
+        sourceX += chunk;
+        cursor += chunk;
+        remaining -= chunk;
+      }
+    }
+
+    /* Создаёт маску с полностью заменённым центром и косинусным затуханием снаружи рамки. */
+    function createFeatherMask(width, height, coreX, coreY, coreWidth, coreHeight, feather) {
+      var maskCanvas = document.createElement("canvas");
+      maskCanvas.width = width;
+      maskCanvas.height = height;
+      var context = maskCanvas.getContext("2d", { willReadFrequently: true });
+      var imageData = context.createImageData(width, height);
+      var data = imageData.data;
+      var right = coreX + coreWidth;
+      var bottom = coreY + coreHeight;
+      var index = 0;
+      for (var y = 0; y < height; y += 1) {
+        var dy = y < coreY ? coreY - y : (y > bottom ? y - bottom : 0);
+        for (var x = 0; x < width; x += 1) {
+          var dx = x < coreX ? coreX - x : (x > right ? x - right : 0);
+          var distance = Math.sqrt(dx * dx + dy * dy);
+          var alpha = distance <= 0 ? 1 : (feather > 0 && distance < feather ? (1 + Math.cos(Math.PI * distance / feather)) / 2 : 0);
+          data[index] = 255;
+          data[index + 1] = 255;
+          data[index + 2] = 255;
+          data[index + 3] = Math.round(alpha * 255);
+          index += 4;
+        }
+      }
+      context.putImageData(imageData, 0, 0);
+      return maskCanvas;
+    }
+
+    /* Накладывает одну область из B на A в координатах текущего рабочего размера. */
+    function applyRegion(context, sourceImage, region, coordinateScale, outputWidth, outputHeight) {
+      if (!region.enabled) {
+        return;
+      }
+      var x = region.x * coordinateScale;
+      var y = region.y * coordinateScale;
+      var width = region.width * coordinateScale;
+      var height = region.height * coordinateScale;
+      var feather = region.feather * coordinateScale;
+      var patchX = Math.floor(x - feather);
+      var patchY = Math.max(0, Math.floor(y - feather));
+      var patchRight = Math.ceil(x + width + feather);
+      var patchBottom = Math.min(outputHeight, Math.ceil(y + height + feather));
+      /* Очень широкую область достаточно обработать один раз: повторное наложение после оборота усилило бы альфа-смешивание. */
+      if (patchRight - patchX > outputWidth) {
+        patchX = 0;
+        patchRight = outputWidth;
+      }
+      var patchWidth = Math.max(1, patchRight - patchX);
+      var patchHeight = Math.max(1, patchBottom - patchY);
+
+      var patchCanvas = document.createElement("canvas");
+      patchCanvas.width = patchWidth;
+      patchCanvas.height = patchHeight;
+      var patchContext = patchCanvas.getContext("2d");
+      drawWrappedCrop(
+        patchContext,
+        sourceImage,
+        patchX + region.offsetX * coordinateScale,
+        patchY + region.offsetY * coordinateScale,
+        patchWidth,
+        patchHeight,
+        outputWidth,
+        outputHeight
+      );
+
+      var maskCanvas = createFeatherMask(
+        patchWidth,
+        patchHeight,
+        x - patchX,
+        y - patchY,
+        width,
+        height,
+        feather
+      );
+      patchContext.globalCompositeOperation = "destination-in";
+      patchContext.drawImage(maskCanvas, 0, 0);
+      patchContext.globalCompositeOperation = "source-over";
+      drawWrappedPatch(context, patchCanvas, patchX, patchY, outputWidth);
+
+      patchCanvas.width = 1;
+      patchCanvas.height = 1;
+      maskCanvas.width = 1;
+      maskCanvas.height = 1;
+    }
+
+    /* Пересобирает уменьшенный результат только после изменения областей или файлов. */
+    function rebuildCompositePreview() {
+      if (!state.base || !state.source) {
+        return;
+      }
+      var width = state.base.preview.width;
+      var height = state.base.preview.height;
+      compositeCanvas.width = width;
+      compositeCanvas.height = height;
+      var context = compositeCanvas.getContext("2d");
+      context.drawImage(state.base.preview, 0, 0, width, height);
+      var scale = width / state.base.width;
+      state.regions.forEach(function composeRegion(region) {
+        applyRegion(context, state.source.preview, region, scale, width, height);
+      });
+      state.compositeDirty = false;
+    }
+
+    /* Рисует пунктирную исходную рамку на B, включая индивидуальное смещение. */
+    function drawSourceOverlay(context, region) {
+      var x = state.offsetX + (region.x + region.offsetX) * state.scale;
+      var y = state.offsetY + (region.y + region.offsetY) * state.scale;
+      var width = region.width * state.scale;
+      var height = region.height * state.scale;
+      context.save();
+      context.setLineDash([8, 6]);
+      context.lineWidth = 2;
+      context.strokeStyle = "#f5c66b";
+      context.fillStyle = "rgba(245, 198, 107, 0.09)";
+      context.fillRect(x, y, width, height);
+      context.strokeRect(x, y, width, height);
+      context.setLineDash([]);
+      context.fillStyle = "rgba(8, 12, 18, 0.84)";
+      context.fillRect(x + 5, y + 5, 92, 20);
+      context.fillStyle = "#ffe1a6";
+      context.font = "11px system-ui, sans-serif";
+      context.fillText("Источник B", x + 11, y + 19);
+      context.restore();
+      drawDeleteControl(context, region);
+    }
+
+    /* Вычисляет экранное положение кнопки удаления рядом с целевой или исходной рамкой. */
+    function getDeleteButtonRect(region) {
+      var useSource = state.view === "source";
+      var regionX = region.x + (useSource ? region.offsetX : 0);
+      var regionY = region.y + (useSource ? region.offsetY : 0);
+      var leftEdge = state.offsetX + regionX * state.scale;
+      var right = state.offsetX + (regionX + region.width) * state.scale;
+      var top = state.offsetY + regionY * state.scale;
+      var bottom = state.offsetY + (regionY + region.height) * state.scale;
+      var left = right + 7;
+      var buttonTop = top - 10;
+      if (right < 0 || leftEdge > ui.canvas.clientWidth || bottom < 0 || top > ui.canvas.clientHeight) {
+        return { x: left, y: buttonTop, width: DELETE_BUTTON_SIZE, height: DELETE_BUTTON_SIZE };
+      }
+      if (left + DELETE_BUTTON_SIZE > ui.canvas.clientWidth - 4) {
+        left = right - DELETE_BUTTON_SIZE - 7;
+      }
+      if (buttonTop < 4) {
+        buttonTop = top + 7;
+      }
+      return {
+        x: clamp(left, 4, Math.max(4, ui.canvas.clientWidth - DELETE_BUTTON_SIZE - 4)),
+        y: clamp(buttonTop, 4, Math.max(4, ui.canvas.clientHeight - DELETE_BUTTON_SIZE - 4)),
+        width: DELETE_BUTTON_SIZE,
+        height: DELETE_BUTTON_SIZE
+      };
+    }
+
+    /* Рисует кликабельную кнопку удаления, которая остаётся заметной и у краёв холста. */
+    function drawDeleteControl(context, region) {
+      var rect = getDeleteButtonRect(region);
+      context.save();
+      context.globalAlpha = 1;
+      context.fillStyle = "#8f3240";
+      context.strokeStyle = "#ff9cac";
+      context.lineWidth = 1;
+      context.fillRect(rect.x, rect.y, rect.width, rect.height);
+      context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      context.fillStyle = "#fff2f4";
+      context.font = "700 17px system-ui, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("×", rect.x + rect.width / 2, rect.y + rect.height / 2 - 1);
+      context.restore();
+    }
+
+    /* Рисует область, внешнюю границу растушёвки и маркеры изменения размера. */
+    function drawTargetOverlay(context, region, isSelected, index) {
+      var x = state.offsetX + region.x * state.scale;
+      var y = state.offsetY + region.y * state.scale;
+      var width = region.width * state.scale;
+      var height = region.height * state.scale;
+      var feather = region.feather * state.scale;
+      context.save();
+      context.globalAlpha = region.enabled ? 1 : 0.45;
+      context.lineWidth = isSelected ? 2 : 1.5;
+      context.strokeStyle = isSelected ? "#64d7c5" : "rgba(225, 240, 245, 0.82)";
+      context.fillStyle = isSelected ? "rgba(100, 215, 197, 0.09)" : "rgba(255, 255, 255, 0.035)";
+      context.fillRect(x, y, width, height);
+      context.strokeRect(x, y, width, height);
+      if (isSelected && feather > 0) {
+        context.setLineDash([5, 5]);
+        context.strokeStyle = "rgba(100, 215, 197, 0.54)";
+        context.strokeRect(x - feather, y - feather, width + feather * 2, height + feather * 2);
+        context.setLineDash([]);
+      }
+      context.fillStyle = isSelected ? "#64d7c5" : "rgba(230, 240, 245, 0.9)";
+      context.fillRect(x + 4, y + 4, 22, 18);
+      context.fillStyle = "#08110f";
+      context.font = "700 10px system-ui, sans-serif";
+      context.fillText(String(index + 1), x + 12, y + 17);
+      if (isSelected) {
+        getHandlePoints(region).forEach(function drawHandle(point) {
+          context.fillStyle = "#eafffb";
+          context.strokeStyle = "#227d72";
+          context.lineWidth = 1;
+          context.fillRect(point.x - HANDLE_SIZE / 2, point.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+          context.strokeRect(point.x - HANDLE_SIZE / 2, point.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+        });
+        drawDeleteControl(context, region);
+      }
+      context.restore();
+    }
+
+    /* Возвращает экранные углы выбранной рамки для отрисовки и hit-test. */
+    function getHandlePoints(region) {
+      var left = state.offsetX + region.x * state.scale;
+      var top = state.offsetY + region.y * state.scale;
+      var right = left + region.width * state.scale;
+      var bottom = top + region.height * state.scale;
+      return [
+        { name: "nw", x: left, y: top },
+        { name: "ne", x: right, y: top },
+        { name: "sw", x: left, y: bottom },
+        { name: "se", x: right, y: bottom }
+      ];
+    }
+
+    /* Отрисовывает текущий кадр предпросмотра и редактируемые рамки. */
+    function render() {
+      resizeCanvas();
+      var width = ui.canvas.clientWidth;
+      var height = ui.canvas.clientHeight;
+      displayContext.clearRect(0, 0, width, height);
+      if (!state.base) {
+        ui.zoomLabel.textContent = "—";
+        return;
+      }
+
+      var drawWidth = state.base.width * state.scale;
+      var drawHeight = state.base.height * state.scale;
+      if (state.view === "result" && state.source) {
+        if (state.compositeDirty) {
+          rebuildCompositePreview();
+        }
+        displayContext.drawImage(compositeCanvas, state.offsetX, state.offsetY, drawWidth, drawHeight);
+      } else if (state.view === "source" && state.source) {
+        displayContext.drawImage(state.source.preview, state.offsetX, state.offsetY, drawWidth, drawHeight);
+      } else {
+        displayContext.drawImage(state.base.preview, state.offsetX, state.offsetY, drawWidth, drawHeight);
+        if (state.view === "overlay" && state.source) {
+          displayContext.save();
+          displayContext.globalAlpha = 0.5;
+          displayContext.drawImage(state.source.preview, state.offsetX, state.offsetY, drawWidth, drawHeight);
+          displayContext.restore();
+        }
+      }
+
+      if (state.previewMode) {
+        ui.zoomLabel.textContent = Math.round(state.scale * 100) + "%";
+        return;
+      }
+
+      var selected = getSelectedRegion();
+      if (state.view === "source" && selected) {
+        drawSourceOverlay(displayContext, selected);
+      } else {
+        state.regions.forEach(function drawRegion(region, index) {
+          drawTargetOverlay(displayContext, region, region.id === state.selectedId, index);
+        });
+      }
+      ui.zoomLabel.textContent = Math.round(state.scale * 100) + "%";
+    }
+
+    /* Находит рамку или угловой маркер под указателем. */
+    function hitTest(screenPoint) {
+      if (state.previewMode) {
+        return null;
+      }
+      var selected = getSelectedRegion();
+      if (selected) {
+        var deleteRect = getDeleteButtonRect(selected);
+        if (
+          screenPoint.x >= deleteRect.x && screenPoint.x <= deleteRect.x + deleteRect.width &&
+          screenPoint.y >= deleteRect.y && screenPoint.y <= deleteRect.y + deleteRect.height
+        ) {
+          return { type: "delete", region: selected };
+        }
+      }
+      if (state.view === "source" && selected) {
+        var sourceLeft = state.offsetX + (selected.x + selected.offsetX) * state.scale;
+        var sourceTop = state.offsetY + (selected.y + selected.offsetY) * state.scale;
+        var sourceRight = sourceLeft + selected.width * state.scale;
+        var sourceBottom = sourceTop + selected.height * state.scale;
+        if (screenPoint.x >= sourceLeft && screenPoint.x <= sourceRight && screenPoint.y >= sourceTop && screenPoint.y <= sourceBottom) {
+          return { type: "source", region: selected };
+        }
+        return null;
+      }
+      if (selected) {
+        var handles = getHandlePoints(selected);
+        for (var h = 0; h < handles.length; h += 1) {
+          if (Math.abs(screenPoint.x - handles[h].x) <= HANDLE_SIZE && Math.abs(screenPoint.y - handles[h].y) <= HANDLE_SIZE) {
+            return { type: "resize", handle: handles[h].name, region: selected };
+          }
+        }
+      }
+      for (var index = state.regions.length - 1; index >= 0; index -= 1) {
+        var region = state.regions[index];
+        var imagePoint = screenToImage(screenPoint.x, screenPoint.y);
+        if (imagePoint.x >= region.x && imagePoint.x <= region.x + region.width && imagePoint.y >= region.y && imagePoint.y <= region.y + region.height) {
+          return { type: "region", region: region };
+        }
+      }
+      return null;
+    }
+
+    /* Подбирает курсор по объекту под указателем и прямому жесту без режимов. */
+    function updateCanvasCursor(screenPoint) {
+      if (state.pointer && state.pointer.mode === "pan") {
+        ui.canvas.style.cursor = "grabbing";
+        return;
+      }
+      if (state.previewMode || state.spacePressed) {
+        ui.canvas.style.cursor = "grab";
+        return;
+      }
+      var hit = screenPoint ? hitTest(screenPoint) : null;
+      if (hit && hit.type === "delete") {
+        ui.canvas.style.cursor = "pointer";
+      } else if (hit && hit.type === "resize") {
+        ui.canvas.style.cursor = hit.handle === "nw" || hit.handle === "se" ? "nwse-resize" : "nesw-resize";
+      } else if (hit && hit.type === "source") {
+        ui.canvas.style.cursor = "move";
+      } else if (hit && hit.type === "region") {
+        ui.canvas.style.cursor = "move";
+      } else {
+        var point = screenPoint ? screenToImage(screenPoint.x, screenPoint.y) : null;
+        var canDraw = point && state.view !== "source" && point.x >= 0 && point.x <= state.base.width && point.y >= 0 && point.y <= state.base.height;
+        ui.canvas.style.cursor = canDraw ? "crosshair" : "default";
+      }
+    }
+
+    /* Начинает перемещение, рисование, изменение рамки или подгонку источника. */
+    function handlePointerDown(event) {
+      if (!state.base || state.busy) {
+        return;
+      }
+      var screenPoint = eventToCanvas(event);
+      var imagePoint = screenToImage(screenPoint.x, screenPoint.y);
+      var wantsPan = state.previewMode || state.spacePressed || event.button === 1;
+      if (wantsPan) {
+        state.pointer = {
+          mode: "pan",
+          id: event.pointerId,
+          startScreen: screenPoint,
+          startOffsetX: state.offsetX,
+          startOffsetY: state.offsetY
+        };
+      } else {
+        var hit = hitTest(screenPoint);
+        if (hit && hit.type === "delete") {
+          deleteSelectedRegion();
+          event.preventDefault();
+          return;
+        }
+        if (!hit && state.view !== "source" && imagePoint.x >= 0 && imagePoint.x <= state.base.width && imagePoint.y >= 0 && imagePoint.y <= state.base.height) {
+          state.pointer = {
+            mode: "draw",
+            id: event.pointerId,
+            startImage: imagePoint,
+            before: cloneRegions(state.regions),
+            beforeSelectedId: state.selectedId,
+            beforeNextRegionId: state.nextRegionId,
+            previewRegion: null,
+            changed: false
+          };
+          state.selectedId = null;
+        } else if (!hit) {
+          state.selectedId = null;
+          updatePropertiesUi();
+          updateRegionListUi();
+          requestRender();
+          return;
+        } else {
+          var previousSelectedId = state.selectedId;
+          state.selectedId = hit.region.id;
+          state.pointer = {
+            mode: hit.type === "source" ? "source" : (hit.type === "resize" ? "resize" : "move"),
+            handle: hit.handle || null,
+            id: event.pointerId,
+            startImage: imagePoint,
+            original: Object.assign({}, hit.region),
+            before: cloneRegions(state.regions),
+            beforeSelectedId: previousSelectedId,
+            beforeNextRegionId: state.nextRegionId,
+            changed: false
+          };
+          updatePropertiesUi();
+          updateRegionListUi();
+        }
+      }
+      ui.canvas.setPointerCapture(event.pointerId);
+      updateCanvasCursor(screenPoint);
+      event.preventDefault();
+    }
+
+    /* Строит нормализованный прямоугольник между начальной и текущей точкой. */
+    function rectangleFromPoints(start, current) {
+      var left = clamp(Math.min(start.x, current.x), 0, state.base.width);
+      var top = clamp(Math.min(start.y, current.y), 0, state.base.height);
+      var right = clamp(Math.max(start.x, current.x), 0, state.base.width);
+      var bottom = clamp(Math.max(start.y, current.y), 0, state.base.height);
+      return {
+        x: roundPixel(left),
+        y: roundPixel(top),
+        width: Math.max(1, roundPixel(right - left)),
+        height: Math.max(1, roundPixel(bottom - top))
+      };
+    }
+
+    /* Изменяет рамку за выбранный угол, удерживая противоположный угол неподвижным. */
+    function resizeRegionFromHandle(region, original, handle, deltaX, deltaY) {
+      var left = original.x;
+      var top = original.y;
+      var right = original.x + original.width;
+      var bottom = original.y + original.height;
+      if (handle.indexOf("w") >= 0) {
+        left = clamp(original.x + deltaX, 0, right - MIN_REGION_SIZE);
+      }
+      if (handle.indexOf("e") >= 0) {
+        right = clamp(original.x + original.width + deltaX, left + MIN_REGION_SIZE, state.base.width);
+      }
+      if (handle.indexOf("n") >= 0) {
+        top = clamp(original.y + deltaY, 0, bottom - MIN_REGION_SIZE);
+      }
+      if (handle.indexOf("s") >= 0) {
+        bottom = clamp(original.y + original.height + deltaY, top + MIN_REGION_SIZE, state.base.height);
+      }
+      region.x = roundPixel(left);
+      region.y = roundPixel(top);
+      region.width = roundPixel(right - left);
+      region.height = roundPixel(bottom - top);
+      normalizeRegion(region);
+    }
+
+    /* Применяет движение указателя к текущему интерактивному действию. */
+    function handlePointerMove(event) {
+      var screenPoint = eventToCanvas(event);
+      if (state.base) {
+        var cursorImage = screenToImage(screenPoint.x, screenPoint.y);
+        ui.cursorPosition.textContent = "x: " + roundPixel(cursorImage.x) + " · y: " + roundPixel(cursorImage.y);
+      }
+      if (!state.pointer || state.pointer.id !== event.pointerId) {
+        updateCanvasCursor(screenPoint);
+        return;
+      }
+      if (state.pointer.mode === "pan") {
+        state.offsetX = state.pointer.startOffsetX + screenPoint.x - state.pointer.startScreen.x;
+        state.offsetY = state.pointer.startOffsetY + screenPoint.y - state.pointer.startScreen.y;
+        requestRender();
+        return;
+      }
+      var imagePoint = screenToImage(screenPoint.x, screenPoint.y);
+      if (state.pointer.mode === "draw") {
+        state.pointer.changed = true;
+        var rect = rectangleFromPoints(state.pointer.startImage, imagePoint);
+        var feather = Math.max(16, Math.round(Math.min(rect.width, rect.height) * 0.16));
+        state.pointer.previewRegion = {
+          id: state.nextRegionId,
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          feather: feather,
+          offsetX: 0,
+          offsetY: 0,
+          enabled: true
+        };
+        var existingIndex = state.regions.findIndex(function findPreview(region) { return region.id === state.nextRegionId; });
+        if (existingIndex >= 0) {
+          state.regions[existingIndex] = state.pointer.previewRegion;
+        } else {
+          state.regions.push(state.pointer.previewRegion);
+        }
+        state.selectedId = state.nextRegionId;
+      } else {
+        var region = getSelectedRegion();
+        if (!region) {
+          return;
+        }
+        var deltaX = roundPixel(imagePoint.x - state.pointer.startImage.x);
+        var deltaY = roundPixel(imagePoint.y - state.pointer.startImage.y);
+        state.pointer.changed = state.pointer.changed || deltaX !== 0 || deltaY !== 0;
+        if (state.pointer.mode === "move") {
+          region.x = state.pointer.original.x + deltaX;
+          region.y = state.pointer.original.y + deltaY;
+          normalizeRegion(region);
+        } else if (state.pointer.mode === "source") {
+          region.offsetX = state.pointer.original.offsetX + deltaX;
+          region.offsetY = state.pointer.original.offsetY + deltaY;
+          normalizeRegion(region);
+        } else if (state.pointer.mode === "resize") {
+          resizeRegionFromHandle(region, state.pointer.original, state.pointer.handle, deltaX, deltaY);
+        }
+      }
+      state.compositeDirty = true;
+      updatePropertiesUi();
+      updateRegionListUi();
+      requestRender();
+      event.preventDefault();
+    }
+
+    /* Завершает действие, записывает одну точку истории и отбрасывает слишком маленькую рамку. */
+    function handlePointerUp(event) {
+      if (!state.pointer || state.pointer.id !== event.pointerId) {
+        return;
+      }
+      var action = state.pointer;
+      state.pointer = null;
+      if (action.mode !== "pan") {
+        var selected = getSelectedRegion();
+        if (action.mode === "draw" && (!action.previewRegion || !selected || selected.width < MIN_REGION_SIZE || selected.height < MIN_REGION_SIZE)) {
+          state.regions = cloneRegions(action.before);
+          state.selectedId = null;
+          setStatus(action.previewRegion ? "Область слишком мала и не была добавлена." : "Проведите рамку по свободному месту панорамы.", action.previewRegion ? "error" : null);
+        } else if (action.mode === "draw" || action.changed) {
+          pushHistory(action.before, action.beforeSelectedId, action.beforeNextRegionId);
+          if (action.mode === "draw") {
+            state.nextRegionId += 1;
+            setStatus("Область добавлена. При необходимости подгоните источник на вкладке B.");
+          }
+        }
+        state.compositeDirty = true;
+        updateAllUi();
+      }
+      if (ui.canvas.hasPointerCapture(event.pointerId)) {
+        ui.canvas.releasePointerCapture(event.pointerId);
+      }
+      updateCanvasCursor(eventToCanvas(event));
+    }
+
+    /* Масштабирует рабочую область колёсиком относительно положения курсора. */
+    function handleWheel(event) {
+      if (!state.base || state.busy) {
+        return;
+      }
+      var point = eventToCanvas(event);
+      zoomAt(event.deltaY < 0 ? 1.16 : 1 / 1.16, point.x, point.y);
+      event.preventDefault();
+    }
+
+    /* Сохраняет геометрию до начала редактирования поля для одной операции отмены. */
+    function rememberControlSnapshot() {
+      if (state.busy || state.previewMode) {
+        return;
+      }
+      if (!state.controlSnapshot) {
+        state.controlSnapshot = cloneRegions(state.regions);
+      }
+    }
+
+    /* Применяет введённое числовое свойство к выбранной области. */
+    function applyRegionField(input) {
+      var region = getSelectedRegion();
+      if (!region || !input.dataset.regionField || state.busy || state.previewMode) {
+        return;
+      }
+      region[input.dataset.regionField] = Number(input.value);
+      normalizeRegion(region);
+      state.compositeDirty = true;
+      updatePropertiesUi();
+      updateRegionListUi();
+      requestRender();
+    }
+
+    /* Завершает редактирование свойства и создаёт одну запись истории. */
+    function finishControlChange() {
+      if (state.controlSnapshot) {
+        pushHistory(state.controlSnapshot);
+        state.controlSnapshot = null;
+      }
+    }
+
+    /* Сдвигает источник на заданный шаг, ускоряя подгонку клавишами-маркерами. */
+    function nudgeSource(deltaX, deltaY) {
+      var region = getSelectedRegion();
+      if (!region || state.busy || state.previewMode) {
+        return;
+      }
+      pushHistory();
+      region.offsetX += deltaX;
+      region.offsetY += deltaY;
+      normalizeRegion(region);
+      state.compositeDirty = true;
+      updateAllUi();
+    }
+
+    /* Удаляет выбранную область, сохраняя возможность отмены. */
+    function deleteSelectedRegion() {
+      var index = state.regions.findIndex(function findSelectedIndex(region) { return region.id === state.selectedId; });
+      if (index < 0 || state.busy || state.previewMode) {
+        return;
+      }
+      pushHistory();
+      state.regions.splice(index, 1);
+      state.selectedId = state.regions[index] ? state.regions[index].id : (state.regions[index - 1] ? state.regions[index - 1].id : null);
+      state.compositeDirty = true;
+      updateAllUi();
+      setStatus("Область удалена.");
+    }
+
+    /* Создаёт рядом копию выбранной области для похожего объекта. */
+    function duplicateSelectedRegion() {
+      var selected = getSelectedRegion();
+      if (!selected || state.busy || state.previewMode) {
+        return;
+      }
+      pushHistory();
+      var copy = Object.assign({}, selected, {
+        id: state.nextRegionId,
+        x: selected.x + Math.min(24, state.base.width - selected.x - selected.width),
+        y: selected.y + Math.min(24, state.base.height - selected.y - selected.height)
+      });
+      state.nextRegionId += 1;
+      normalizeRegion(copy);
+      state.regions.push(copy);
+      state.selectedId = copy.id;
+      state.compositeDirty = true;
+      updateAllUi();
+    }
+
+    /* Разбирает заголовочные JPEG-сегменты до начала сжатых данных изображения. */
+    function parseJpegHeader(bytes) {
+      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+        return null;
+      }
+      var segments = [];
+      var offset = 2;
+      while (offset + 3 < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+          return null;
+        }
+        var start = offset;
+        while (offset < bytes.length && bytes[offset] === 0xff) {
+          offset += 1;
+        }
+        var marker = bytes[offset];
+        if (marker === 0xda || marker === 0xd9) {
+          return { segments: segments, tailStart: start };
+        }
+        if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+          segments.push({ marker: marker, bytes: bytes.slice(start, offset + 1) });
+          offset += 1;
+          continue;
+        }
+        if (offset + 2 >= bytes.length) {
+          return null;
+        }
+        var length = (bytes[offset + 1] << 8) | bytes[offset + 2];
+        var end = offset + 1 + length;
+        if (length < 2 || end > bytes.length) {
+          return null;
+        }
+        segments.push({ marker: marker, bytes: bytes.slice(start, end) });
+        offset = end;
+      }
+      return null;
+    }
+
+    /* Объединяет массивы байтов без промежуточного преобразования в строки. */
+    function concatenateBytes(parts) {
+      var total = parts.reduce(function sumLength(sum, part) { return sum + part.length; }, 0);
+      var result = new Uint8Array(total);
+      var offset = 0;
+      parts.forEach(function appendPart(part) {
+        result.set(part, offset);
+        offset += part.length;
+      });
+      return result;
+    }
+
+    /* Заменяет служебные сегменты нового JPEG сегментами основы A, сохраняя её GPano и цветовой профиль. */
+    function transferJpegMetadata(sourceBytes, renderedBytes) {
+      var sourceHeader = parseJpegHeader(sourceBytes);
+      var renderedHeader = parseJpegHeader(renderedBytes);
+      if (!sourceHeader || !renderedHeader) {
+        return { bytes: renderedBytes, count: 0 };
+      }
+      var sourceMetadata = sourceHeader.segments.filter(function keepMetadata(segment) {
+        return METADATA_MARKERS.indexOf(segment.marker) >= 0;
+      });
+      var outputApp0 = renderedHeader.segments.filter(function keepApp0(segment) {
+        return segment.marker === 0xe0;
+      });
+      var outputOther = renderedHeader.segments.filter(function keepEncoderSegment(segment) {
+        return segment.marker !== 0xe0 && METADATA_MARKERS.indexOf(segment.marker) < 0;
+      });
+      var parts = [renderedBytes.slice(0, 2)];
+      outputApp0.forEach(function addApp0(segment) { parts.push(segment.bytes); });
+      sourceMetadata.forEach(function addSourceMetadata(segment) { parts.push(segment.bytes); });
+      outputOther.forEach(function addOutputSegment(segment) { parts.push(segment.bytes); });
+      parts.push(renderedBytes.slice(renderedHeader.tailStart));
+      return { bytes: concatenateBytes(parts), count: sourceMetadata.length };
+    }
+
+    /* Преобразует canvas в JPEG Blob и сообщает об ошибке ограничения памяти. */
+    function canvasToJpeg(canvas, quality) {
+      return new Promise(function canvasToJpegPromise(resolve, reject) {
+        canvas.toBlob(function handleEncodedBlob(blob) {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error("Браузер не смог закодировать изображение такого размера."));
+          }
+        }, "image/jpeg", quality);
+      });
+    }
+
+    /* Формирует имя результата рядом с исходным названием без двойного расширения. */
+    function buildOutputFileName(fileName) {
+      var baseName = fileName.replace(/\.[^.]+$/, "");
+      return (baseName || "panorama") + "_edit.jpg";
+    }
+
+    /* Запускает скачивание созданного Blob и освобождает временную ссылку. */
+    function downloadBlob(blob, fileName) {
+      var url = URL.createObjectURL(blob);
+      var anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(function releaseDownloadUrl() { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    /* Загружает полноразмерный кадр только на время экспорта, экономя память при редактировании. */
+    async function createFullImage(file) {
+      if (typeof createImageBitmap === "function") {
+        return createImageBitmap(file, { imageOrientation: "from-image" });
+      }
+      return readImageWithUrl(file);
+    }
+
+    /* Собирает результат в исходном разрешении и переносит метаданные JPEG A. */
+    async function exportResult() {
+      if (!state.base || !state.source || state.busy) {
+        return;
+      }
+      /* Снимок параметров гарантирует единый результат, даже если системный диалог файла вернёт фокус во время обработки. */
+      var exportBase = state.base;
+      var exportSource = state.source;
+      var exportRegions = cloneRegions(state.regions);
+      var exportQuality = clamp(Number(ui.qualityNumber.value), 75, 100) / 100;
+      var fullBase = null;
+      var fullSource = null;
+      var outputCanvas = null;
+      try {
+        setBusy(true, "Декодирую оригиналы…");
+        setStatus("Полноразмерная обработка может занять некоторое время.", "busy");
+        await waitForPaint();
+        fullBase = await createFullImage(exportBase.file);
+        fullSource = await createFullImage(exportSource.file);
+
+        setBusy(true, "Собираю панораму " + exportBase.width + "×" + exportBase.height + "…");
+        await waitForPaint();
+        outputCanvas = document.createElement("canvas");
+        outputCanvas.width = exportBase.width;
+        outputCanvas.height = exportBase.height;
+        if (outputCanvas.width !== exportBase.width || outputCanvas.height !== exportBase.height) {
+          throw new Error("Браузер ограничил допустимый размер canvas.");
+        }
+        var context = outputCanvas.getContext("2d");
+        if (!context) {
+          throw new Error("Не удалось создать полноразмерный холст.");
+        }
+        context.drawImage(fullBase, 0, 0, exportBase.width, exportBase.height);
+        exportRegions.forEach(function renderFullRegion(region) {
+          applyRegion(context, fullSource, region, 1, exportBase.width, exportBase.height);
+        });
+
+        setBusy(true, "Кодирую JPEG…");
+        await waitForPaint();
+        var encodedBlob = await canvasToJpeg(outputCanvas, exportQuality);
+        var encodedBytes = new Uint8Array(await encodedBlob.arrayBuffer());
+        var finalBytes = encodedBytes;
+        var metadataCount = 0;
+        var baseIsJpeg = /image\/jpeg/i.test(exportBase.type) || /\.jpe?g$/i.test(exportBase.name);
+        if (baseIsJpeg) {
+          var sourceBytes = new Uint8Array(await exportBase.file.arrayBuffer());
+          var transferred = transferJpegMetadata(sourceBytes, encodedBytes);
+          finalBytes = transferred.bytes;
+          metadataCount = transferred.count;
+        }
+        var resultBlob = new Blob([finalBytes], { type: "image/jpeg" });
+        var outputFileName = buildOutputFileName(exportBase.name);
+        downloadBlob(resultBlob, outputFileName);
+        setStatus(
+          outputFileName + " сохранён в исходном размере" + (metadataCount ? "; перенесено служебных сегментов: " + metadataCount + "." : ".")
+        );
+      } catch (error) {
+        setStatus(
+          (error && error.message ? error.message : "Не удалось сохранить панораму.") + " Для 16K закройте лишние вкладки и повторите.",
+          "error"
+        );
+      } finally {
+        disposePreview(fullBase);
+        disposePreview(fullSource);
+        if (outputCanvas) {
+          outputCanvas.width = 1;
+          outputCanvas.height = 1;
+        }
+        setBusy(false);
+      }
+    }
+
+    /* Выбирает область из бокового списка и показывает её рамку. */
+    function handleRegionListClick(event) {
+      var button = event.target.closest("[data-region-id]");
+      if (!button) {
+        return;
+      }
+      state.selectedId = Number(button.dataset.regionId);
+      updatePropertiesUi();
+      updateRegionListUi();
+      requestRender();
+    }
+
+    /* Обрабатывает выбор файла через стандартный диалог. */
+    function handleFileInput(event) {
+      var slot = event.currentTarget === ui.baseFileInput ? "base" : "source";
+      loadImageFile(slot, event.currentTarget.files[0]);
+    }
+
+    /* Позволяет заменить конкретный снимок перетаскиванием на его карточку. */
+    function handleFileTargetDrop(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      var target = event.currentTarget;
+      target.classList.remove("is-dragover");
+      var file = Array.from(event.dataTransfer.files).find(function findImage(candidate) {
+        return candidate.type.indexOf("image/") === 0 || /\.(jpe?g|png)$/i.test(candidate.name);
+      });
+      loadImageFile(target === ui.baseDropTarget ? "base" : "source", file);
+    }
+
+    /* Подсвечивает карточку снимка, когда над ней находится файл. */
+    function handleFileTargetDragOver(event) {
+      event.preventDefault();
+      event.currentTarget.classList.add("is-dragover");
+    }
+
+    /* Снимает подсветку карточки после ухода указателя. */
+    function handleFileTargetDragLeave(event) {
+      event.currentTarget.classList.remove("is-dragover");
+    }
+
+    /* Раскладывает один или два перетащенных файла по свободным слотам A и B. */
+    function handleCanvasDrop(event) {
+      event.preventDefault();
+      ui.canvasShell.classList.remove("is-dragover");
+      var images = Array.from(event.dataTransfer.files).filter(function filterImages(file) {
+        return file.type.indexOf("image/") === 0 || /\.(jpe?g|png)$/i.test(file.name);
+      });
+      if (!images.length) {
+        setStatus("В перетаскивании нет JPEG или PNG.", "error");
+        return;
+      }
+      if (images.length >= 2) {
+        loadDroppedPair(images[0], images[1]);
+      } else {
+        loadImageFile(state.base ? "source" : "base", images[0]);
+      }
+    }
+
+    /* Загружает пару последовательно, чтобы корректно проверить одинаковый размер. */
+    async function loadDroppedPair(baseFile, sourceFile) {
+      await loadImageFile("base", baseFile);
+      if (state.base) {
+        await loadImageFile("source", sourceFile);
+      }
+    }
+
+    /* Подсвечивает общую область при переносе файлов. */
+    function handleCanvasDragOver(event) {
+      event.preventDefault();
+      ui.canvasShell.classList.add("is-dragover");
+    }
+
+    /* Снимает общую подсветку, когда файлы покидают рабочую область. */
+    function handleCanvasDragLeave() {
+      ui.canvasShell.classList.remove("is-dragover");
+    }
+
+    /* Синхронизирует качество JPEG между ползунком и числовым полем. */
+    function syncQuality(event) {
+      var value = clamp(roundPixel(event.currentTarget.value), 75, 100);
+      ui.qualityRange.value = String(value);
+      ui.qualityNumber.value = String(value);
+      saveSettings();
+    }
+
+    /* Переключает видимость выбранной области и сразу обновляет результат. */
+    function toggleSelectedRegion() {
+      var region = getSelectedRegion();
+      if (!region || state.busy || state.previewMode) {
+        updatePropertiesUi();
+        return;
+      }
+      pushHistory();
+      region.enabled = ui.regionEnabled.checked;
+      state.compositeDirty = true;
+      updateAllUi();
+    }
+
+    /* Обрабатывает горячие клавиши удаления, отмены и временного перемещения. */
+    function handleKeyDown(event) {
+      var tagName = event.target && event.target.tagName;
+      var isTyping = tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
+      if (event.code === "Space" && !isTyping) {
+        state.spacePressed = true;
+        updateCanvasCursor();
+        event.preventDefault();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !isTyping && !state.previewMode) {
+        undo();
+        event.preventDefault();
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && !isTyping && !state.previewMode) {
+        deleteSelectedRegion();
+        event.preventDefault();
+      }
+      if (event.key === "Escape" && state.previewMode) {
+        togglePreview();
+        event.preventDefault();
+      }
+    }
+
+    /* Возвращает обычный курсор после отпускания пробела. */
+    function handleKeyUp(event) {
+      if (event.code === "Space") {
+        state.spacePressed = false;
+        updateCanvasCursor();
+      }
+    }
+
+    /* Ставит обработчики на статические элементы один раз при открытии страницы. */
+    function bindEvents() {
+      ui.baseFileInput.addEventListener("change", handleFileInput);
+      ui.sourceFileInput.addEventListener("change", handleFileInput);
+      [ui.baseDropTarget, ui.sourceDropTarget].forEach(function bindFileTarget(target) {
+        target.addEventListener("dragover", handleFileTargetDragOver);
+        target.addEventListener("dragleave", handleFileTargetDragLeave);
+        target.addEventListener("drop", handleFileTargetDrop);
+      });
+      ui.canvasShell.addEventListener("dragover", handleCanvasDragOver);
+      ui.canvasShell.addEventListener("dragleave", handleCanvasDragLeave);
+      ui.canvasShell.addEventListener("drop", handleCanvasDrop);
+      ui.canvas.addEventListener("pointerdown", handlePointerDown);
+      ui.canvas.addEventListener("pointermove", handlePointerMove);
+      ui.canvas.addEventListener("pointerup", handlePointerUp);
+      ui.canvas.addEventListener("pointercancel", handlePointerUp);
+      ui.canvas.addEventListener("wheel", handleWheel, { passive: false });
+      ui.regionList.addEventListener("click", handleRegionListClick);
+      ui.swapButton.addEventListener("click", swapImages);
+      ui.exportButton.addEventListener("click", exportResult);
+      ui.undoButton.addEventListener("click", undo);
+      ui.deleteButton.addEventListener("click", deleteSelectedRegion);
+      ui.duplicateButton.addEventListener("click", duplicateSelectedRegion);
+      ui.regionEnabled.addEventListener("change", toggleSelectedRegion);
+      ui.resetOffsetButton.addEventListener("click", function resetOffset() {
+        var region = getSelectedRegion();
+        if (!region || state.busy || state.previewMode) {
+          return;
+        }
+        pushHistory();
+        region.offsetX = 0;
+        region.offsetY = 0;
+        state.compositeDirty = true;
+        updateAllUi();
+      });
+      document.querySelectorAll("[data-nudge-x]").forEach(function bindNudge(button) {
+        button.addEventListener("click", function handleNudgeClick() {
+          nudgeSource(Number(button.dataset.nudgeX), Number(button.dataset.nudgeY));
+        });
+      });
+      document.querySelectorAll("[data-view]").forEach(function bindView(button) {
+        button.addEventListener("click", function handleViewClick() { setView(button.dataset.view); });
+      });
+      document.querySelectorAll("[data-region-field]").forEach(function bindRegionField(input) {
+        input.addEventListener("focus", rememberControlSnapshot);
+        input.addEventListener("pointerdown", rememberControlSnapshot);
+        input.addEventListener("input", function handleRegionInput() { applyRegionField(input); });
+        input.addEventListener("change", finishControlChange);
+        input.addEventListener("blur", finishControlChange);
+      });
+      ui.featherRange.addEventListener("pointerdown", rememberControlSnapshot);
+      ui.featherRange.addEventListener("input", function handleFeatherRange() {
+        ui.featherNumber.value = ui.featherRange.value;
+        ui.featherNumber.dataset.regionField = "feather";
+        applyRegionField(ui.featherNumber);
+      });
+      ui.featherRange.addEventListener("change", finishControlChange);
+      ui.qualityRange.addEventListener("input", syncQuality);
+      ui.qualityNumber.addEventListener("change", syncQuality);
+      ui.previewButton.addEventListener("click", togglePreview);
+      ui.zoomOutButton.addEventListener("click", function zoomOut() {
+        zoomAt(1 / 1.2, ui.canvas.clientWidth / 2, ui.canvas.clientHeight / 2);
+      });
+      ui.zoomInButton.addEventListener("click", function zoomIn() {
+        zoomAt(1.2, ui.canvas.clientWidth / 2, ui.canvas.clientHeight / 2);
+      });
+      ui.fitButton.addEventListener("click", fitImage);
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+      window.addEventListener("blur", function clearSpaceState() {
+        state.spacePressed = false;
+        updateCanvasCursor();
+      });
+      var resizeObserver = new ResizeObserver(function handleResize() {
+        if (state.base && !state.fitted) {
+          fitImage();
+        } else {
+          requestRender();
+        }
+      });
+      resizeObserver.observe(ui.canvasShell);
+    }
+
+    loadSettings();
+    bindEvents();
+    updateAllUi();
+  </script>
+</body>
+</html>
