@@ -64,12 +64,11 @@ test('протокол заменяет некорректный результ�
   assert.equal(protocol.normalizeGameResult(null), 0);
 });
 
-// Защищает обязательное подключение общего модуля до движка и его попадание в релизный архив.
-test('модуль протокола подключён к runtime и релизной сборке', async function() {
-  const [indexSource, engineSource, releaseSource] = await Promise.all([
+// Защищает обязательное подключение общего модуля до основного кода движка.
+test('модуль протокола подключён к runtime до engine.js', async function() {
+  const [indexSource, engineSource] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../engine/engine.js', import.meta.url), 'utf8'),
-    readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+    readFile(new URL('../engine/engine.js', import.meta.url), 'utf8')
   ]);
   const protocolPosition = indexSource.indexOf('engine/game-protocol.js');
   const enginePosition = indexSource.indexOf('engine/engine.js');
@@ -78,5 +77,4 @@ test('модуль протокола подключён к runtime и рели�
   assert.ok(enginePosition > protocolPosition);
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.createGameInitMessage'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.normalizeGameResult'));
-  assert.ok(releaseSource.includes('cp engine/game-protocol.js'));
 });

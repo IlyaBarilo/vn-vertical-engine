@@ -47,8 +47,15 @@ node --test tests/assets.test.mjs
 node --test tests/game-protocol.test.mjs
 ```
 
+Только состав runtime и релизной сборки:
+
+```powershell
+node --test tests/release-package.test.mjs
+```
+
 При доступном npm те же команды можно запустить через `npm test`,
-`npm run test:parser`, `npm run test:assets`, `npm run test:protocol` и `npm run test:links`. В PowerShell с запрещёнными
+`npm run test:parser`, `npm run test:assets`, `npm run test:protocol`, `npm run test:release` и
+`npm run test:links`. В PowerShell с запрещёнными
 сценариями `npm.ps1` используйте основную команду `node --test`.
 
 Успешный запуск завершается кодом `0`. Любой проваленный тест возвращает
@@ -66,6 +73,7 @@ node --test tests/game-protocol.test.mjs
 - ошибки объявления синтетических ассетов без `file`, неверного источника 360 и ссылки на необъявленного персонажа;
 - создание `gameInit`, защита его служебных полей и распознавание `gameResult` на искусственных объектах;
 - нормализация числового, отсутствующего и некорректного результата мини-игры;
+- существование обязательных runtime-файлов и их включение в релизный workflow;
 - существование относительных ссылок в отслеживаемой Markdown-документации.
 
 Тест полного разбора читает текст `story-example.js`, но не открывает указанные в нём файлы ассетов.
@@ -95,3 +103,6 @@ Workflow `.github/workflows/tests.yml` запускает полный набо�
 
 Release workflow повторяет тесты перед сборкой ZIP. Провал проверки не позволяет
 собрать и загрузить релизные архивы.
+
+Каталог `tests/`, `package.json` и этот документ нужны только разработчику и GitHub Actions.
+Release workflow не копирует их в пользовательские ZIP-архивы.
