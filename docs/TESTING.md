@@ -29,6 +29,12 @@ node --test
 node --test tests/parser.test.mjs tests/transitions.test.mjs
 ```
 
+Только блочные условия и меню:
+
+```powershell
+node --test tests/branching.test.mjs
+```
+
 Только ссылки документации:
 
 ```powershell
@@ -54,7 +60,7 @@ node --test tests/release-package.test.mjs
 ```
 
 При доступном npm те же команды можно запустить через `npm test`,
-`npm run test:parser`, `npm run test:assets`, `npm run test:protocol`, `npm run test:release` и
+`npm run test:parser`, `npm run test:branching`, `npm run test:assets`, `npm run test:protocol`, `npm run test:release` и
 `npm run test:links`. В PowerShell с запрещёнными
 сценариями `npm.ps1` используйте основную команду `node --test`.
 
@@ -69,6 +75,7 @@ node --test tests/release-package.test.mjs
 - полный разбор поставляемого `story-example.js`;
 - корректные и отсутствующие цели `goto`;
 - переходы внутри нового блока `choice`;
+- структура `if / elif / else`, рекурсивные переходы и ошибки незакрытых или смешанных блоков;
 - регистрация фонов, персонажей, аудио, видео и игр на синтетических путях;
 - ошибки объявления синтетических ассетов без `file`, неверного источника 360 и ссылки на необъявленного персонажа;
 - создание `gameInit`, защита его служебных полей и распознавание `gameResult` на искусственных объектах;
