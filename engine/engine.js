@@ -3669,14 +3669,13 @@ btnCloseStatsGame.addEventListener("click", function (e) {
   swallowEvent(e);
 });
 
-// Слушаем результаты мини-игр через postMessage
+// Принимаем только сообщения gameResult, распознанные общим модулем протокола мини-игр.
 window.addEventListener("message", function (event) {
   // В офлайн-режиме origin может быть "null".
-  // Поэтому здесь делаем проверку максимально простую:
-  // ждём объект с type === 'gameResult'
+  // Поэтому проверяем формат сообщения, не ограничивая origin.
   if (!event || !event.data) return;
   var data = event.data;
-  if (data.type === "gameResult") {
+  if (window.VN_GAME_PROTOCOL.isGameResultMessage(data)) {
     closeGame(data);
   }
 });
@@ -14052,6 +14051,7 @@ function isCurrentStoryGameUrlMode() {
   return !!(state && state.currentGame && state.currentGame.mode === "url");
 }
 
+// Открывает сюжетную мини-игру и после загрузки iframe отправляет ей единый payload gameInit.
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', action);
@@ -14108,17 +14108,10 @@ function openGame(action) {
   elGameFrame.onload = function () {
     if (!state.currentGame) return;
 
-    var payload = {
-      type: 'gameInit',
-      gameId: state.currentGame.gameId
-    };
-
-    var params = state.currentGame.params || {};
-    for (var key in params) {
-      if (Object.prototype.hasOwnProperty.call(params, key)) {
-        payload[key] = params[key];
-      }
-    }
+    var payload = window.VN_GAME_PROTOCOL.createGameInitMessage(
+      state.currentGame.gameId,
+      state.currentGame.params
+    );
 
     try {
       elGameFrame.contentWindow.postMessage(payload, '*');
@@ -14129,18 +14122,11 @@ function openGame(action) {
   };
 }
 
+// Нормализует результат, закрывает текущую игру и продолжает соответствующий режим движка.
 function closeGame(resultData) {
   var finishedGame = state.currentGame;
   var manualClose = !!(resultData && resultData.manualClose === true);
-  var resultValue = 0;
-
-  if (resultData) {
-    if (typeof resultData.result === "number") {
-      resultValue = resultData.result;
-    } else if (!isNaN(Number(resultData.result))) {
-      resultValue = Number(resultData.result);
-    }
-  }
+  var resultValue = window.VN_GAME_PROTOCOL.normalizeGameResult(resultData);
 
   if (finishedGame && finishedGame.mode === "url" && !manualClose) {
     // В URL-режиме у новеллы нет точки возврата, поэтому результат только запоминаем и оставляем окно игры открытым.
@@ -15430,6 +15416,7 @@ function renderGamesCatalog() {
   });
 }
 
+// Открывает игру из панели статистики и использует тот же контракт gameInit, что и сюжетный запуск.
 function openStatsGame(item, difficulty) {
   if (!item || !item.file) {
     if (gamesStatus) {
@@ -15459,12 +15446,10 @@ function openStatsGame(item, difficulty) {
   elStatsGameFrame.onload = function () {
     if (!state.currentGame) return;
 
-    var payload = {
-      type: "gameInit",
-      gameId: state.currentGame.gameId,
-      difficulty: state.currentGame.difficulty,
-      source: "statsGamesPanel"
-    };
+    var payload = window.VN_GAME_PROTOCOL.createGameInitMessage(
+      state.currentGame.gameId,
+      state.currentGame.params
+    );
 
     try {
       elStatsGameFrame.contentWindow.postMessage(payload, "*");

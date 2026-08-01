@@ -106,6 +106,7 @@ jobs:
 
           [ -f engine/engine.css ] && cp engine/engine.css "build/$APP_NAME/engine/"
           [ -f engine/engine.js ] && cp engine/engine.js "build/$APP_NAME/engine/"
+          [ -f engine/game-protocol.js ] && cp engine/game-protocol.js "build/$APP_NAME/engine/"
           [ -f engine/story-loader.js ] && cp engine/story-loader.js "build/$APP_NAME/engine/"
 
           [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/docs/examples/"

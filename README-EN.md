@@ -223,6 +223,7 @@ project/
 ├── engine/
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
+│   ├── game-protocol.js               engine and mini-game messages
 │   └── story-loader.js                story loading and parsing
 │
 ├── assets/
