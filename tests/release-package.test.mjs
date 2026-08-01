@@ -62,3 +62,14 @@ test('релизная сборка включает обязательные ru
     );
   });
 });
+
+// Защищает пользовательский ZIP от случайного включения developer-тестов и их конфигурации.
+test('релизная сборка не копирует developer-тесты', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  assert.equal(releaseSource.includes('[ -d tests ]'), false);
+  assert.equal(releaseSource.includes('cp -r tests'), false);
+  assert.equal(releaseSource.includes('cp -a tests'), false);
+  assert.equal(releaseSource.includes('cp package.json'), false);
+  assert.equal(releaseSource.includes('cp docs/TESTING.md'), false);
+});

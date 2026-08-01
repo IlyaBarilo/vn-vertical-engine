@@ -1835,6 +1835,14 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     var assetId = m[1].trim();
     var rest = m[2].trim();
 
+    // Старые строки персонажей с эмоцией перед "=" должна разбирать legacy-ветка ниже.
+    if (
+      category === 'characters' &&
+      /^(?:image|file|src|focusx|focusy|scale)\s+[^\s=]+\s*=/i.test(rest)
+    ) {
+      return false;
+    }
+
     // Если справа нет key=value, это не новый формат
     if (rest.indexOf('=') === -1) return false;
 
@@ -2509,7 +2517,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         story.scenes.push(currentScene);
       }
       
-      const sceneId = cleanLine.substring(6).trim();
+      let sceneId = cleanLine.substring(6).trim();
       if (!sceneId) {
         addParseError(lineNumber, line, "The scene ID cannot be empty", true);
       }

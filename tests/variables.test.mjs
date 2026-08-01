@@ -85,6 +85,28 @@ test('небезопасные прототипные имена перемен�
   }));
 });
 
+// Проверяет общие правила имён и обязательность значения в секции [var].
+test('секция var отклоняет некорректные имена и пустые значения', async function(t) {
+  const cases = [
+    ['цифра в начале', ['1score = 1'], 'Invalid variable in [var] name "1score"'],
+    ['кириллица', ['счёт = 1'], 'Invalid variable in [var] name "счёт"'],
+    ['дефис', ['game-score = 1'], 'Invalid variable in [var] name "game-score"'],
+    ['пустое имя', ['= 1'], 'variable name in [var] cannot be empty'],
+    ['пустое значение', ['score ='], 'value of the variable in [var] cannot be empty']
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase[0], async function() {
+      const result = await runStoryLoader(createVariablesStory(testCase[1]));
+
+      assert.equal(result.story, null);
+      assert.ok(result.errors.some(function(error) {
+        return error.message.includes(testCase[2]);
+      }));
+    });
+  }
+});
+
 // Проверяет запрет доступа к глобальным объектам из выражения сценария.
 test('выражение не получает доступ к globalThis', async function() {
   const result = await runStoryLoader(createVariablesStory([
@@ -126,4 +148,27 @@ test('выражение отклоняет вызовы функций и до�
       return error.message.includes('Unsupported symbol "."');
     }));
   });
+});
+
+// Проверяет ошибки незавершённых строк и скобок в выражениях сценария.
+test('выражение отклоняет незавершённые литералы и скобки', async function(t) {
+  const cases = [
+    ['строка', 'set score = "текст', 'Unclosed string literal'],
+    ['скобка', 'set score = (score + 1', 'Unexpected token eof:']
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase[0], async function() {
+      const result = await runStoryLoader(createVariablesStory([
+        'score = 1'
+      ], [
+        testCase[1]
+      ]));
+
+      assert.equal(result.story, null);
+      assert.ok(result.errors.some(function(error) {
+        return error.message.includes(testCase[2]);
+      }));
+    });
+  }
 });

@@ -37,6 +37,22 @@ test('параметры не подменяют type и gameId', function() {
   assert.equal(params.gameId, 'otherGame');
 });
 
+// Не передаёт унаследованные свойства и корректно работает без объекта параметров.
+test('gameInit копирует только собственные параметры', function() {
+  const params = Object.create({ inherited: 'не передавать' });
+  params.difficulty = 4;
+
+  const message = protocol.createGameInitMessage('puzzle', params);
+  const emptyMessage = protocol.createGameInitMessage('puzzle', null);
+
+  assert.equal(message.difficulty, 4);
+  assert.equal(Object.prototype.hasOwnProperty.call(message, 'inherited'), false);
+  assert.deepEqual(emptyMessage, {
+    type: 'gameInit',
+    gameId: 'puzzle'
+  });
+});
+
 // Отделяет искусственный gameResult от посторонних сообщений окна.
 test('протокол распознаёт только gameResult', function() {
   assert.equal(protocol.isGameResultMessage({ type: 'gameResult', result: 1 }), true);

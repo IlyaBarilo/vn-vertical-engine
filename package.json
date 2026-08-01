@@ -3,10 +3,14 @@
   "private": true,
   "scripts": {
     "test": "node --test",
-    "test:parser": "node --test tests/parser.test.mjs tests/transitions.test.mjs",
+    "test:parser": "node --test tests/parser.test.mjs tests/meta.test.mjs tests/diagnostics.test.mjs tests/transitions.test.mjs tests/branching.test.mjs tests/variables.test.mjs tests/assets.test.mjs tests/media-options.test.mjs tests/scene-actions.test.mjs tests/story360-commands.test.mjs tests/loader-stats.test.mjs",
+    "test:meta": "node --test tests/meta.test.mjs tests/diagnostics.test.mjs",
+    "test:scenes": "node --test tests/scene-actions.test.mjs tests/transitions.test.mjs tests/branching.test.mjs",
     "test:branching": "node --test tests/branching.test.mjs",
-    "test:variables": "node --test tests/variables.test.mjs",
-    "test:assets": "node --test tests/assets.test.mjs",
+    "test:variables": "node --test tests/variables.test.mjs tests/expression-runtime.test.mjs",
+    "test:assets": "node --test tests/assets.test.mjs tests/media-options.test.mjs",
+    "test:360": "node --test tests/story360-commands.test.mjs",
+    "test:stats": "node --test tests/loader-stats.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs",
     "test:release": "node --test tests/release-package.test.mjs",
     "test:links": "node --test tests/markdown-links.test.mjs"

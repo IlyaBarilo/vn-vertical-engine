@@ -47,6 +47,20 @@ function normalizeErrors(errors) {
   });
 }
 
+// Копирует счётчики загрузчика из VM, исключая временные метки профилирования.
+function normalizeLoaderStats(stats) {
+  const source = stats || {};
+  return {
+    scenesCount: source.scenesCount || 0,
+    actionsCount: source.actionsCount || 0,
+    charactersCount: source.charactersCount || 0,
+    backgroundsCount: source.backgroundsCount || 0,
+    audioCount: source.audioCount || 0,
+    gamesCount: source.gamesCount || 0,
+    videosCount: source.videosCount || 0
+  };
+}
+
 // Лениво читает исходник загрузчика один раз для всего набора тестов.
 async function getLoaderSource() {
   if (!loaderSourcePromise) {
@@ -78,7 +92,8 @@ export async function runStoryLoader(storyText, options = {}) {
 
   return {
     story: windowObject.STORY || null,
-    errors: normalizeErrors(windowObject.PARSE_ERRORS)
+    errors: normalizeErrors(windowObject.PARSE_ERRORS),
+    stats: normalizeLoaderStats(windowObject.LOADER_STATS)
   };
 }
 

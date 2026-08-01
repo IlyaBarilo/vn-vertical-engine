@@ -59,3 +59,67 @@ test('переход внутри choice проверяется рекурсив
     return error.message.includes('non-existent scene "missingChoiceTarget"');
   }));
 });
+
+// Проверяет короткий условный переход if expression -> scene.
+test('короткий условный переход проходит ссылочную проверку', async function() {
+  const storyText = [
+    '[meta]',
+    'title = "Условный переход"',
+    'startScene = intro',
+    '',
+    '[var]',
+    'score = 10',
+    '',
+    '[scene]',
+    'scene intro',
+    'if score >= 5 -> ending',
+    '',
+    'scene ending',
+    '"Конец"'
+  ].join('\n');
+  const result = await runStoryLoader(storyText);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.story.scenes[0].actions[0].type, 'if_expr');
+  assert.equal(result.story.scenes[0].actions[0].target, 'ending');
+});
+
+// Проверяет отсутствующую цель короткого условного перехода.
+test('короткий if сообщает об отсутствующей сцене', async function() {
+  const storyText = [
+    '[meta]',
+    'startScene = intro',
+    '',
+    '[var]',
+    'score = 10',
+    '',
+    '[scene]',
+    'scene intro',
+    'if score >= 5 -> missingConditionalTarget'
+  ].join('\n');
+  const result = await runStoryLoader(storyText);
+
+  assert.equal(result.story, null);
+  assert.ok(result.errors.some(function(error) {
+    return error.message.includes('conditional transition leads to the non-existent scene "missingConditionalTarget"');
+  }));
+});
+
+// Проверяет ссылочную ошибку старого пункта menu с полем goto.
+test('старый пункт menu сообщает об отсутствующей сцене', async function() {
+  const storyText = [
+    '[meta]',
+    'startScene = intro',
+    '',
+    '[scene]',
+    'scene intro',
+    'menu',
+    '"Путь" -> missingLegacyTarget'
+  ].join('\n');
+  const result = await runStoryLoader(storyText);
+
+  assert.equal(result.story, null);
+  assert.ok(result.errors.some(function(error) {
+    return error.message.includes('menu item "Путь" leads to the non-existent scene "missingLegacyTarget"');
+  }));
+});
