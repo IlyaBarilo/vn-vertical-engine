@@ -242,12 +242,16 @@ project/
 ├── lib/                               bundled third-party libraries
 ├── docs/
 │   ├── specs/                         story and mini-game specifications
+│   ├── TESTING.md                     engine test instructions
 │   ├── demo/images/                   interface screenshots
 │   ├── 360/                           panorama examples
 │   ├── games/                         mini-game screenshots
 │   ├── kiosk/                         real installation photos
 │   ├── stat/                          checks, statistics, and graphs
 │   └── tools/                         authoring-tool screenshots
+├── tests/                             engine regression tests
+├── package.json                       optional npm test commands
+├── .github/workflows/                 tests and release automation
 ├── FIRST-STEPS-EN.md                  English starting guide
 ├── FIRST-STEPS.md                     Russian starting guide
 ├── README.md                          primary Russian overview
@@ -272,6 +276,7 @@ The current reference story remains available as
 - [Первые шаги на русском](FIRST-STEPS.md)
 - [Story specification (Russian)](docs/specs/spec-story.md)
 - [HTML mini-game specification (Russian)](docs/specs/spec-game.md)
+- [Engine automated tests (Russian)](docs/TESTING.md)
 - [Third-party notices](NOTICE.md)
 - [Commercial use](COMMERCIAL-USE.md)
 
@@ -292,6 +297,13 @@ feature of the engine.
 Use [GitHub Discussions](https://github.com/IlyaBarilo/vn-vertical-engine/discussions)
 for questions, ideas, unexpected behavior, and project showcases. Issues are
 intentionally disabled.
+
+## Engine tests
+
+After changing the parser or validation logic, run `node --test`. GitHub Actions
+and Codex use the same dependency-free command. These regression tests verify
+the engine itself and do not replace the statistics and graphs for a particular
+story. See [docs/TESTING.md](docs/TESTING.md).
 
 ## License
 

@@ -1,0 +1,13 @@
+# МЕТАДАННЫЕ
+title = Старая история
+startScene = intro
+lang = ru
+
+# СЦЕНЫ
+scene intro
+"Начало"
+menu
+"Продолжить" -> ending
+
+scene ending
+"Конец"

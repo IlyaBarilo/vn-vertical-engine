@@ -1,0 +1,12 @@
+{
+  "name": "vn-vertical-engine-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "test:parser": "node --test tests/parser.test.mjs tests/transitions.test.mjs",
+    "test:links": "node --test tests/markdown-links.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

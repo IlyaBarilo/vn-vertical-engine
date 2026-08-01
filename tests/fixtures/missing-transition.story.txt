@@ -1,0 +1,8 @@
+[meta]
+title = "Ошибка перехода"
+startScene = intro
+lang = ru
+
+[scene]
+scene intro
+goto missingScene
