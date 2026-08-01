@@ -142,7 +142,7 @@ The main story is a text block in `story.js`:
 
 ```text
 [meta]
-title = My Story
+title = "My Story"
 lang = en
 startScene = intro
 

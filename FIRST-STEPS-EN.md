@@ -74,7 +74,7 @@ The minimum structure looks like this:
 window.STORY_TEXT = `
 
 [meta]
-title = My Story
+title = "My Story"
 startScene = intro
 lang = en
 

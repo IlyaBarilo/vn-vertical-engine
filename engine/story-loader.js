@@ -1650,6 +1650,17 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 }
 
 
+  // Убирает парные внешние кавычки у строкового значения meta, сохраняя совместимость со значениями без кавычек.
+  function unwrapOptionalMetaQuotes(value) {
+    if (value.length < 2) return value;
+
+    var firstChar = value.charAt(0);
+    var lastChar = value.charAt(value.length - 1);
+    var hasDoubleQuotes = firstChar === '"' && lastChar === '"';
+    var hasSingleQuotes = firstChar === "'" && lastChar === "'";
+
+    return hasDoubleQuotes || hasSingleQuotes ? value.slice(1, -1) : value;
+  }
 
 
   // Парсинг метаданных
@@ -1726,7 +1737,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
     // Базовые служебные параметры истории
     if (key === 'title') {
-      story.meta.title = value;
+      story.meta.title = unwrapOptionalMetaQuotes(value);
       return;
     }
 

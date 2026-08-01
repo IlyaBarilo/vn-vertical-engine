@@ -73,7 +73,7 @@ ZIP-архив `-update`, когда копируете новую версию 
 window.STORY_TEXT = `
 
 [meta]
-title = Моя история
+title = "Моя история"
 startScene = intro
 lang = ru
 

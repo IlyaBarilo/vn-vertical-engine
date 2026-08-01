@@ -62,7 +62,7 @@ window.STORY_TEXT = `
 
 ```text
 [meta]
-title = Demo Story
+title = "Demo Story"
 startScene = intro
 lang = en
 mode = release
@@ -136,7 +136,7 @@ story360 в эту проверку не входят. Целевая панор
 
 ```text
 [meta]
-title = Demo Story
+title = "Demo Story"
 startScene = intro
 lang = en
 mode = release
@@ -153,10 +153,11 @@ engine.loadsafe = true
 
 ### `title`
 
-Название сценария.
+Название сценария. Рекомендуется заключать значение в двойные кавычки. Для
+совместимости со старыми сценариями значение без кавычек также поддерживается.
 
 ```text
-title = Demo Story
+title = "Demo Story"
 ```
 
 ### `startScene`
@@ -1030,7 +1031,7 @@ if coffeeResult == 0 -> cafeBad
 window.STORY_TEXT = `
 
 [meta]
-title = Demo Story
+title = "Demo Story"
 startScene = intro
 lang = en
 

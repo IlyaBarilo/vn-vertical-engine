@@ -172,7 +172,7 @@ index.html?scene=scIntro01
 
 ```text
 [meta]
-title = Моя история
+title = "Моя история"
 lang = ru
 startScene = intro
 
