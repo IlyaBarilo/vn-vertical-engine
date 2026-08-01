@@ -35,6 +35,12 @@ node --test tests/parser.test.mjs tests/transitions.test.mjs
 node --test tests/branching.test.mjs
 ```
 
+Только переменные и безопасный синтаксис выражений:
+
+```powershell
+node --test tests/variables.test.mjs
+```
+
 Только ссылки документации:
 
 ```powershell
@@ -60,7 +66,8 @@ node --test tests/release-package.test.mjs
 ```
 
 При доступном npm те же команды можно запустить через `npm test`,
-`npm run test:parser`, `npm run test:branching`, `npm run test:assets`, `npm run test:protocol`, `npm run test:release` и
+`npm run test:parser`, `npm run test:branching`, `npm run test:variables`, `npm run test:assets`,
+`npm run test:protocol`, `npm run test:release` и
 `npm run test:links`. В PowerShell с запрещёнными
 сценариями `npm.ps1` используйте основную команду `node --test`.
 
@@ -76,6 +83,7 @@ node --test tests/release-package.test.mjs
 - корректные и отсутствующие цели `goto`;
 - переходы внутри нового блока `choice`;
 - структура `if / elif / else`, рекурсивные переходы и ошибки незакрытых или смешанных блоков;
+- типы переменных, безопасные выражения и запрет системных или прототипных имён;
 - регистрация фонов, персонажей, аудио, видео и игр на синтетических путях;
 - ошибки объявления синтетических ассетов без `file`, неверного источника 360 и ссылки на необъявленного персонажа;
 - создание `gameInit`, защита его служебных полей и распознавание `gameResult` на искусственных объектах;
