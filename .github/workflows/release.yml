@@ -55,9 +55,19 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: dev/package-lock.json
 
       - name: Run engine tests
         run: node --test
+
+      - name: Install release smoke dependencies
+        run: npm ci
+        working-directory: dev
+
+      - name: Install Chromium for release smoke
+        run: npx playwright install --with-deps chromium
+        working-directory: dev
 
       - name: Detect version
         id: version
@@ -206,6 +216,19 @@ jobs:
             echo "Update-архив содержит пользовательские данные или developer-файлы."
             exit 1
           fi
+
+      - name: Run unpacked release smoke test
+        run: npm run test:release:smoke -- "../${APP_NAME}-${VERSION}.zip"
+        working-directory: dev
+
+      - name: Upload release smoke failure report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-smoke-report-${{ github.run_id }}
+          path: dev/.playwright/release-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload ZIP artifacts
         uses: actions/upload-artifact@v7
