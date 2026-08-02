@@ -60,6 +60,16 @@ async function createLicenseRuntime(options = {}) {
         verify: webcrypto.subtle.verify.bind(webcrypto.subtle)
       }
     };
+  } else if (options.webCryptoVerifyResult !== undefined) {
+    runtimeCrypto = {
+      subtle: {
+        importKey: webcrypto.subtle.importKey.bind(webcrypto.subtle),
+        // Возвращает заданный итог verify после настоящего импорта ключа для проверки логики согласования.
+        verify: function returnSyntheticVerifyResult() {
+          return Promise.resolve(!!options.webCryptoVerifyResult);
+        }
+      }
+    };
   }
 
   const sandbox = {
@@ -253,6 +263,32 @@ test('рабочий WebCrypto не запускает jsrsasign', async functio
   const state = await runtime.resolveLicenseState();
   assert.equal(state.status, 'valid');
   assert.deepEqual(runtime.__warnings, []);
+});
+
+// Имитирует ложный отрицательный WebCrypto и подтверждает приоритет проверенного положительного jsrsasign.
+test('отрицательный WebCrypto перепроверяется через jsrsasign', async function() {
+  const runtime = await createLicenseRuntime({ webCryptoVerifyResult: false });
+  runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload());
+
+  const state = await runtime.resolveLicenseState();
+  assert.equal(state.status, 'valid');
+  assert.equal(state.valid, true);
+  assert.equal(state.payload.licenseId, 'TEST-01-2026-000001');
+  assert.deepEqual(runtime.__warnings, []);
+});
+
+// Сохраняет отрицательный WebCrypto, если резервный jsrsasign физически недоступен.
+test('отрицательный WebCrypto остаётся решающим без jsrsasign', async function() {
+  const runtime = await createLicenseRuntime({
+    webCryptoVerifyResult: false,
+    withJsrsasign: false
+  });
+  runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload());
+
+  const state = await runtime.resolveLicenseState();
+  assert.equal(state.status, 'invalid-signature');
+  assert.equal(state.valid, false);
+  assert.equal(state.payload, null);
 });
 
 // Имитирует технический сбой WebCrypto и подтверждает успешную проверку старым локальным способом.

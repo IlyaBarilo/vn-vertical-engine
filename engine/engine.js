@@ -716,14 +716,16 @@ function verifyLicenseSignatureWithJsrsasign(dataToVerify, signatureBytes) {
   }
 }
 
-// Сначала использует нативный WebCrypto и обращается к jsrsasign только при недоступности первого пути.
+// Принимает успешный WebCrypto сразу, а отрицательный или недоступный результат перепроверяет через jsrsasign.
 function verifyLicenseSignature(dataToVerify, signatureBytes) {
   return verifyLicenseSignatureWithWebCrypto(dataToVerify, signatureBytes).then(function(webCryptoResult) {
-    if (webCryptoResult !== null) {
-      return webCryptoResult;
+    if (webCryptoResult === true) {
+      return true;
     }
 
-    return verifyLicenseSignatureWithJsrsasign(dataToVerify, signatureBytes);
+    return verifyLicenseSignatureWithJsrsasign(dataToVerify, signatureBytes).then(function(jsrsasignResult) {
+      return jsrsasignResult === null ? webCryptoResult : jsrsasignResult;
+    });
   });
 }
 
