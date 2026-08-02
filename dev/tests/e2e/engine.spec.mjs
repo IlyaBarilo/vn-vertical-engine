@@ -13,6 +13,32 @@ const fixtureRoutes = new Map([
 const blockedLocalRoutes = new Set(['/story360.js', '/license-key.js']);
 const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+N4fVAAAAAElFTkSuQmCC';
 
+// Создаёт короткую историю для проверки projectId, миграции и независимости localStorage-слотов.
+function createAutosaveProjectStorySource(projectId, label) {
+  const lines = [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    `title = ${JSON.stringify(`Автосохранение ${label}`)}`,
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = true',
+    'transition = none',
+    'transitionMs = 0',
+    'engine.gameSandbox = strict',
+    '',
+    '[scene]',
+    'scene intro',
+    JSON.stringify(`Начало ${label}`),
+    JSON.stringify(`Прогресс ${label}`),
+    '`;',
+    ''
+  ];
+  if (projectId) lines.splice(4, 0, `projectId = ${projectId}`);
+  return lines.join('\n');
+}
+
 // Создаёт минимальный story360.js с одним путём, чтобы проверять загрузку редактора без пользовательских файлов.
 function createScene360StorySource(assetPath) {
   return `window.STORY360 = ${JSON.stringify({
@@ -74,8 +100,8 @@ function isInsideRepository(filePath) {
   return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
-// Отдаёт Chromium настоящие runtime-файлы, блокируя внешнюю сеть, локальный story.js и лицензионный ключ.
-async function handleEngineRoute(route) {
+// Отдаёт Chromium настоящие runtime-файлы и позволяет имитировать проекты в разных папках одного origin.
+async function handleEngineRoute(route, routeOptions = {}) {
   let requestUrl;
   let pathname;
   try {
@@ -91,8 +117,23 @@ async function handleEngineRoute(route) {
     return;
   }
 
+  const virtualBasePath = String(routeOptions.virtualBasePath || '').replace(/\/$/, '');
+  if (virtualBasePath && (pathname === virtualBasePath || pathname.startsWith(`${virtualBasePath}/`))) {
+    pathname = pathname.slice(virtualBasePath.length) || '/';
+  }
+
   if (blockedLocalRoutes.has(pathname)) {
     await route.fulfill({ status: 404, contentType: 'text/plain; charset=utf-8', body: 'Not Found' });
+    return;
+  }
+
+  if (pathname === '/story.js' && typeof routeOptions.storySource === 'string') {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      headers: { 'Cache-Control': 'no-store' },
+      body: routeOptions.storySource
+    });
     return;
   }
 
@@ -123,9 +164,12 @@ async function handleEngineRoute(route) {
   }
 }
 
-// Устанавливает изолированный перехват всех запросов до первой навигации страницы.
-async function installRepositoryRoutes(page) {
-  await page.route('**/*', handleEngineRoute);
+// Устанавливает один актуальный перехват запросов, чтобы последовательные открытия могли менять тестовый проект.
+async function installRepositoryRoutes(page, routeOptions = {}) {
+  await page.unroute('**/*');
+  await page.route('**/*', function serveEngineRoute(route) {
+    return handleEngineRoute(route, routeOptions);
+  });
 }
 
 // Собирает необработанные ошибки страницы, не считая ожидаемые сообщения об отсутствующих optional-файлах.
@@ -172,11 +216,11 @@ async function readConsoleMessages(page) {
   });
 }
 
-// Открывает реальный index.html с необязательной query-строкой и ждёт первую реплику синтетической истории.
-async function openStory(page, storyUrl = '/') {
-  await installRepositoryRoutes(page);
+// Открывает реальный index.html и ждёт заданную реплику стандартной либо подменённой синтетической истории.
+async function openStory(page, storyUrl = '/', routeOptions = {}) {
+  await installRepositoryRoutes(page, routeOptions);
   await page.goto(storyUrl);
-  await expect(page.locator('#textBox')).toHaveText('Первый экран E2E');
+  await expect(page.locator('#textBox')).toHaveText(routeOptions.expectedText || 'Первый экран E2E');
 }
 
 // Учитывает защиту движка от двойного клика и переводит историю к следующему действию.
@@ -314,13 +358,224 @@ test('автосохранение восстанавливает прогрес
   await chooseRoute(page, 'Правая ветка');
   await expect(page.locator('#textBox')).toHaveText('Выбрана правая ветка');
 
-  // Ждёт отложенную запись штатного autosave-слота движка.
+  // Ждёт отложенную запись изолированного autosave-слота синтетического проекта.
   await page.waitForFunction(function hasAutosave() {
-    return window.localStorage.getItem('vn_engine_autosave_v1') !== null;
+    return window.localStorage.getItem('vn_engine_autosave_v1:project:e2e-story') !== null;
   });
   await page.reload();
 
   await expect(page.locator('#textBox')).toHaveText('Выбрана правая ветка');
+  expect(pageErrors).toEqual([]);
+});
+
+// Подтверждает, что две папки одного origin используют разные projectId-слоты и перезапуск не трогает соседний проект.
+test('projectId разделяет автосохранения новелл одного домена', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const projectASource = createAutosaveProjectStorySource('project-a', 'проекта A');
+  const projectBSource = createAutosaveProjectStorySource('project-b', 'проекта B');
+  const projectAKey = 'vn_engine_autosave_v1:project:project-a';
+  const projectBKey = 'vn_engine_autosave_v1:project:project-b';
+
+  await openStory(page, '/project-a/', {
+    virtualBasePath: '/project-a',
+    storySource: projectASource,
+    expectedText: 'Начало проекта A'
+  });
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Прогресс проекта A');
+  await page.waitForFunction(function hasProjectASave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, projectAKey);
+  const projectARaw = await page.evaluate(function readProjectASave(key) {
+    return window.localStorage.getItem(key);
+  }, projectAKey);
+
+  await openStory(page, '/project-b/', {
+    virtualBasePath: '/project-b',
+    storySource: projectBSource,
+    expectedText: 'Начало проекта B'
+  });
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Прогресс проекта B');
+  await page.waitForFunction(function hasProjectBSave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, projectBKey);
+  const projectBRaw = await page.evaluate(function readProjectBSave(key) {
+    return window.localStorage.getItem(key);
+  }, projectBKey);
+
+  await openStory(page, '/project-a/', {
+    virtualBasePath: '/project-a',
+    storySource: projectASource,
+    expectedText: 'Прогресс проекта A'
+  });
+  expect(await page.evaluate(function readOtherProjectSave(key) {
+    return window.localStorage.getItem(key);
+  }, projectBKey)).toBe(projectBRaw);
+
+  await page.locator('#btnRestart').click();
+  await expect(page.locator('#textBox')).toHaveText('Начало проекта A');
+  const slotsAfterRestart = await page.evaluate(function readProjectSlots(keys) {
+    return {
+      projectA: window.localStorage.getItem(keys.projectA),
+      projectB: window.localStorage.getItem(keys.projectB)
+    };
+  }, { projectA: projectAKey, projectB: projectBKey });
+  expect(slotsAfterRestart.projectA).not.toBe(projectARaw);
+  expect(slotsAfterRestart.projectB).toBe(projectBRaw);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что URL-режим novel создаёт вложенный слот проекта и не заменяет его обычное прохождение.
+test('projectId разделяет обычный и novel-слоты', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const storySource = createAutosaveProjectStorySource('project-slots', 'проекта со слотами');
+  const standardKey = 'vn_engine_autosave_v1:project:project-slots';
+  const novelKey = 'vn_engine_autosave_v1:project:project-slots:novel:intro';
+  const routeOptions = {
+    virtualBasePath: '/project-slots',
+    storySource
+  };
+
+  await openStory(page, '/project-slots/', {
+    ...routeOptions,
+    expectedText: 'Начало проекта со слотами'
+  });
+  await advanceDialog(page);
+  await page.waitForFunction(function hasStandardSave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, standardKey);
+  const standardRaw = await page.evaluate(function readStandardSave(key) {
+    return window.localStorage.getItem(key);
+  }, standardKey);
+
+  await openStory(page, '/project-slots/?novel=intro', {
+    ...routeOptions,
+    expectedText: 'Начало проекта со слотами'
+  });
+  await advanceDialog(page);
+  await page.waitForFunction(function hasNovelSave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, novelKey);
+  expect(await page.evaluate(function readStandardSaveAgain(key) {
+    return window.localStorage.getItem(key);
+  }, standardKey)).toBe(standardRaw);
+
+  await page.locator('#btnRestart').click();
+  await expect(page.locator('#textBox')).toHaveText('Начало проекта со слотами');
+  expect(await page.evaluate(function readStandardAfterNovelRestart(key) {
+    return window.localStorage.getItem(key);
+  }, standardKey)).toBe(standardRaw);
+
+  await openStory(page, '/project-slots/', {
+    ...routeOptions,
+    expectedText: 'Прогресс проекта со слотами'
+  });
+  expect(pageErrors).toEqual([]);
+});
+
+// Создаёт старое сохранение и проверяет его одноразовое копирование после добавления projectId без иных правок сценария.
+test('projectId мигрирует подходящее legacy-сохранение', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const legacySource = createAutosaveProjectStorySource('', 'мигрируемого проекта');
+  const projectSource = createAutosaveProjectStorySource('migrated-project', 'мигрируемого проекта');
+  const legacyKey = 'vn_engine_autosave_v1';
+  const projectKey = 'vn_engine_autosave_v1:project:migrated-project';
+
+  await openStory(page, '/migration-legacy/', {
+    virtualBasePath: '/migration-legacy',
+    storySource: legacySource,
+    expectedText: 'Начало мигрируемого проекта'
+  });
+  await advanceDialog(page);
+  await page.waitForFunction(function hasLegacySave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, legacyKey);
+
+  await openStory(page, '/migration-legacy/', {
+    virtualBasePath: '/migration-legacy',
+    storySource: legacySource,
+    expectedText: 'Прогресс мигрируемого проекта'
+  });
+  const legacyRaw = await page.evaluate(function readLegacyBeforeMigration(key) {
+    return window.localStorage.getItem(key);
+  }, legacyKey);
+
+  await openStory(page, '/migration-project/', {
+    virtualBasePath: '/migration-project',
+    storySource: projectSource,
+    expectedText: 'Прогресс мигрируемого проекта'
+  });
+  const migratedSlots = await page.evaluate(function readMigratedSlots(keys) {
+    return {
+      legacy: window.localStorage.getItem(keys.legacy),
+      project: window.localStorage.getItem(keys.project)
+    };
+  }, { legacy: legacyKey, project: projectKey });
+  expect(migratedSlots.legacy).toBe(legacyRaw);
+  expect(migratedSlots.project).not.toBeNull();
+  expect(JSON.parse(migratedSlots.project).projectId).toBe('migrated-project');
+  expect(pageErrors).toEqual([]);
+});
+
+// Чужой валидный legacy-слот должен пережить запуск нового projectId и не превращаться в его сохранение.
+test('projectId не удаляет чужое legacy-сохранение', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const foreignSource = createAutosaveProjectStorySource('', 'чужого legacy-проекта');
+  const currentSource = createAutosaveProjectStorySource('current-project', 'текущего проекта');
+  const legacyKey = 'vn_engine_autosave_v1';
+  const projectKey = 'vn_engine_autosave_v1:project:current-project';
+
+  await openStory(page, '/foreign-legacy/', {
+    virtualBasePath: '/foreign-legacy',
+    storySource: foreignSource,
+    expectedText: 'Начало чужого legacy-проекта'
+  });
+  await advanceDialog(page);
+  await page.waitForFunction(function hasForeignLegacySave(key) {
+    return window.localStorage.getItem(key) !== null;
+  }, legacyKey);
+  const foreignRaw = await page.evaluate(function readForeignLegacySave(key) {
+    return window.localStorage.getItem(key);
+  }, legacyKey);
+
+  await openStory(page, '/current-project/', {
+    virtualBasePath: '/current-project',
+    storySource: currentSource,
+    expectedText: 'Начало текущего проекта'
+  });
+  const storage = await page.evaluate(function readUnmigratedSlots(keys) {
+    return {
+      legacy: window.localStorage.getItem(keys.legacy),
+      project: window.localStorage.getItem(keys.project)
+    };
+  }, { legacy: legacyKey, project: projectKey });
+  expect(storage.legacy).toBe(foreignRaw);
+  expect(storage.project).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+// Повреждённый legacy JSON остаётся на месте: миграция не должна очищать данные, принадлежность которых не доказана.
+test('projectId сохраняет повреждённый legacy-слот без миграции', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const storySource = createAutosaveProjectStorySource('corrupt-check', 'проверки повреждения');
+  await page.addInitScript(function seedCorruptLegacyAutosave() {
+    window.localStorage.setItem('vn_engine_autosave_v1', '{broken-json');
+  });
+
+  await openStory(page, '/corrupt-check/', {
+    virtualBasePath: '/corrupt-check',
+    storySource,
+    expectedText: 'Начало проверки повреждения'
+  });
+  const storage = await page.evaluate(function readCorruptLegacyAutosave() {
+    return {
+      legacy: window.localStorage.getItem('vn_engine_autosave_v1'),
+      project: window.localStorage.getItem('vn_engine_autosave_v1:project:corrupt-check')
+    };
+  });
+  expect(storage.legacy).toBe('{broken-json');
+  expect(storage.project).toBeNull();
   expect(pageErrors).toEqual([]);
 });
 

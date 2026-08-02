@@ -63,6 +63,7 @@ window.STORY_TEXT = `
 ```text
 [meta]
 title = "Demo Story"
+projectId = demo-story
 startScene = intro
 engine.gameSandbox = strict
 lang = en
@@ -138,6 +139,7 @@ story360 в эту проверку не входят. Целевая панор
 ```text
 [meta]
 title = "Demo Story"
+projectId = demo-story
 startScene = intro
 lang = en
 mode = release
@@ -161,6 +163,27 @@ engine.gameSandbox = strict
 ```text
 title = "Demo Story"
 ```
+
+### `projectId`
+
+Постоянный технический идентификатор проекта, который отделяет его
+автосохранения от других новелл на том же origin:
+
+```text
+projectId = demo-story
+```
+
+Допустимы от 1 до 64 латинских букв, цифр и символов `.`, `_`, `-`; первый
+символ должен быть буквой или цифрой. Регистр нормализуется в нижний, кавычки
+необязательны. Значение должно быть уникальным среди проектов одного домена и
+не должно меняться после публикации. Отображаемое название `title` можно менять
+без переименования слота. При включённом `engine.loadsafe` любая правка текста
+сценария всё равно может сделать текущее сохранение неподходящим для изменённой
+версии истории.
+
+Если `projectId` отсутствует, используется прежний общий ключ — это сохраняет
+совместимость старых новелл при замене файлов движка. Новым проектам следует
+всегда задавать собственный `projectId`.
 
 ### `startScene`
 
@@ -301,6 +324,17 @@ autosave = false
 
 Если параметр не задан, автосохранение включено. `false` удобно для коротких
 тестов, когда каждый запуск должен начинаться с первой сцены.
+
+При `projectId = demo-story` обычный слот имеет имя
+`vn_engine_autosave_v1:project:demo-story`, а URL `?novel=intro` использует
+`vn_engine_autosave_v1:project:demo-story:novel:intro`. Если параметра нет,
+сохраняются legacy-имена `vn_engine_autosave_v1` и
+`vn_engine_autosave_v1:novel:intro`.
+
+После добавления `projectId` движок один раз копирует legacy-сохранение, только
+если его версия, структура и fingerprint совпадают со сценарием до добавления
+этой строки. Исходный legacy-слот остаётся на месте; чужой, неоднозначный или
+повреждённый слот также не изменяется и не удаляется.
 
 ### `transition`
 
@@ -1070,6 +1104,7 @@ window.STORY_TEXT = `
 
 [meta]
 title = "Demo Story"
+projectId = demo-story
 startScene = intro
 engine.gameSandbox = strict
 lang = en

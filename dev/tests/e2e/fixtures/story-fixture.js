@@ -3,6 +3,7 @@ window.STORY_TEXT = `
 
 [meta]
 title = "E2E-проверка движка"
+projectId = e2e-story
 lang = ru
 startScene = intro
 mode = debug

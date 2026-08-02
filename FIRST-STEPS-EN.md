@@ -75,6 +75,7 @@ window.STORY_TEXT = `
 
 [meta]
 title = "My Story"
+projectId = my-story
 startScene = intro
 lang = en
 engine.gameSandbox = strict
@@ -109,6 +110,12 @@ scene stay_scene
 Keep `engine.gameSandbox = strict` in a new novel: it isolates HTML mini-games.
 If one trusted older game is incompatible with strict mode, add
 `sandbox=legacy` only to that game's entry in `[game]`.
+
+Replace `projectId = my-story` with a permanent id for your project. It may use
+Latin letters, digits, `.`, `_`, and `-`, must start with a letter or digit, and
+should not change after publication. The visible `title` may still be edited
+without renaming the slot. With `engine.loadsafe` enabled, however, any story
+text edit may make the current save unsuitable for the changed story version.
 
 At first, make exactly this kind of draft:
 
@@ -340,9 +347,17 @@ Each `novel` gets a separate localStorage slot, so different novels do not
 overwrite one another. The `novel` value is also its entry scene id. Scene ids
 are matched without regard to letter case.
 
-The regular slot is `vn_engine_autosave_v1`. A novel such as `game01` uses
-`vn_engine_autosave_v1:novel:game01`. The `novel` parameter selects an entry
-point at page load; it does not add in-story switching between novels.
+For a project named `my-story`, the regular slot is
+`vn_engine_autosave_v1:project:my-story`. Its `game01` entry uses
+`vn_engine_autosave_v1:project:my-story:novel:game01`. The `novel` parameter
+selects an entry point at page load; it does not add in-story switching between
+novels.
+
+Older scripts without `projectId` keep the legacy keys
+`vn_engine_autosave_v1` and `vn_engine_autosave_v1:novel:game01`. If projectId
+is added without any other story-text changes, a matching old save is migrated
+once while the source legacy slot is retained. A foreign or malformed legacy
+slot is also left untouched.
 
 Use `nosave=true` or the short `nosave` form for exhibitions and interactive
 kiosks. It overrides autosave settings, always starts from the relevant entry

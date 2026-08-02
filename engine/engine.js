@@ -3684,7 +3684,7 @@ startLicensedEngine();
 //                   ОСНОВНЫЕ ФУНКЦИИ
 // =========================================================
 
-// ---------- Автосейв (localStorage, стандартный или именованный novel-слот) ----------
+// ---------- Автосейв (localStorage, legacy-слот или отдельный слот projectId/novel) ----------
 // Состояние сценария живёт в памяти движка; в localStorage пишем с дебаунсом (редко перезаписываем диск),
 // плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
 var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
@@ -3746,11 +3746,28 @@ function getActiveNovelSaveId() {
   return String(storyUrlLaunchSceneId).toLowerCase();
 }
 
-// Выбирает стандартный ключ или отдельный ключ новеллы, не меняя совместимость старого запуска без параметров.
-function getAutosaveStorageKey() {
+// Возвращает постоянный id проекта из meta; отсутствие значения намеренно сохраняет старую схему ключей.
+function getActiveProjectSaveId() {
+  if (!STORY || !STORY.meta || !STORY.meta.projectId) return "";
+  return String(STORY.meta.projectId).trim().toLowerCase();
+}
+
+// Строит прежний общий или novel-ключ, чтобы старые проекты продолжали работать и могли мигрировать сохранение.
+function getLegacyAutosaveStorageKey() {
   var novelSaveId = getActiveNovelSaveId();
   if (!novelSaveId) return VN_AUTOSAVE_STORAGE_KEY;
   return VN_AUTOSAVE_STORAGE_KEY + ":novel:" + encodeURIComponent(novelSaveId);
+}
+
+// Выбирает изолированный projectId-ключ, а без projectId полностью сохраняет прежнее имя слота.
+function getAutosaveStorageKey() {
+  var projectSaveId = getActiveProjectSaveId();
+  if (!projectSaveId) return getLegacyAutosaveStorageKey();
+
+  var storageKey = VN_AUTOSAVE_STORAGE_KEY + ":project:" + encodeURIComponent(projectSaveId);
+  var novelSaveId = getActiveNovelSaveId();
+  if (novelSaveId) storageKey += ":novel:" + encodeURIComponent(novelSaveId);
+  return storageKey;
 }
 
 // Запрещает любые операции с localStorage для nosave, scene-режима и ошибочного novel-параметра.
@@ -3814,8 +3831,9 @@ function normalizeVNInteractionFlagsForPersist(scene, runtimeActionIndex, waitin
   return { waitingNext: wn, nextLocked: nl };
 }
 
-function computeStoryTextFingerprint() {
-  var text = typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : "";
+// Вычисляет прежний компактный fingerprint для переданного текста без изменения формата существующих payload.
+function computeStoryTextFingerprintFromText(sourceText) {
+  var text = typeof sourceText === "string" ? sourceText : "";
   var len = text.length;
   var hash = 5381;
   for (var i = 0; i < len; i++) {
@@ -3827,6 +3845,42 @@ function computeStoryTextFingerprint() {
     hashHex: (hash >>> 0).toString(16),
     textLength: len
   };
+}
+
+// Возвращает fingerprint фактически загруженного текста сценария.
+function computeStoryTextFingerprint() {
+  return computeStoryTextFingerprintFromText(
+    typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : ""
+  );
+}
+
+/**
+ * Восстанавливает fingerprint версии сценария до добавления projectId.
+ * Удаляется только строка projectId внутри [meta], а остальные символы и EOL остаются без изменений.
+ */
+function computeLegacyStoryFingerprintForProjectMigration() {
+  var text = typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : "";
+  var chunks = text.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g) || [];
+  var result = "";
+  var insideMeta = false;
+  var removedProjectId = false;
+
+  for (var i = 0; i < chunks.length; i++) {
+    var chunk = chunks[i];
+    if (!chunk) continue;
+    var body = chunk.replace(/(?:\r\n|\n|\r)$/, "");
+    var trimmed = body.trim();
+    var sectionMatch = trimmed.match(/^\[([^\]]+)\]\s*(?:#.*)?$/);
+    if (sectionMatch) insideMeta = sectionMatch[1].trim().toLowerCase() === "meta";
+
+    if (insideMeta && /^projectId\s*[:=]/.test(trimmed)) {
+      removedProjectId = true;
+      continue;
+    }
+    result += chunk;
+  }
+
+  return removedProjectId ? computeStoryTextFingerprintFromText(result) : null;
 }
 
 function captureBackgroundSnapshotForAutosave() {
@@ -4260,6 +4314,7 @@ function buildAutosavePayload(opts) {
 
   return {
     v: VN_AUTOSAVE_PAYLOAD_VERSION,
+    projectId: getActiveProjectSaveId(),
     novelId: getActiveNovelSaveId(),
     hashHex: fp.hashHex,
     textLength: fp.textLength,
@@ -4281,9 +4336,24 @@ function buildAutosavePayload(opts) {
   };
 }
 
-// Проверяет структуру, отпечаток сценария и принадлежность payload текущему стандартному или novel-слоту.
-function validateAutosavePayload(data) {
+/**
+ * Проверяет структуру, fingerprint и принадлежность payload активному projectId/novel-слоту.
+ * Параметры используются только при безопасной миграции старого слота без projectId.
+ */
+function validateAutosavePayload(data, validationOptions) {
+  var options = validationOptions || {};
   if (!data || data.v !== VN_AUTOSAVE_PAYLOAD_VERSION) return false;
+  var activeProjectSaveId = getActiveProjectSaveId();
+  var payloadProjectSaveId = String(data.projectId || "");
+  if (activeProjectSaveId) {
+    if (options.allowMissingProjectId) {
+      if (payloadProjectSaveId) return false;
+    } else if (payloadProjectSaveId !== activeProjectSaveId) {
+      return false;
+    }
+  } else if (payloadProjectSaveId) {
+    return false;
+  }
   var activeNovelSaveId = getActiveNovelSaveId();
   if (activeNovelSaveId && String(data.novelId || "") !== activeNovelSaveId) return false;
   if (!activeNovelSaveId && data.novelId) return false;
@@ -4296,8 +4366,8 @@ function validateAutosavePayload(data) {
     autosaveDebugLog("restore:reject_legacy_bgScroll_focus", {});
     return false;
   }
-  if (isStoryLoadsafeEnabled()) {
-    var fp = computeStoryTextFingerprint();
+  if (options.requiredFingerprint || isStoryLoadsafeEnabled()) {
+    var fp = options.requiredFingerprint || computeStoryTextFingerprint();
     if (String(data.hashHex || "") !== fp.hashHex) return false;
     if (Number(data.textLength) !== fp.textLength) return false;
   } else {
@@ -4313,6 +4383,67 @@ function validateAutosavePayload(data) {
   var idx = parseInt(data.actionIndex, 10);
   if (!isFinite(idx) || idx < 0 || idx > scene.actions.length) return false;
   return true;
+}
+
+/**
+ * Один раз копирует подходящий legacy-слот в пространство projectId.
+ * Чужой, повреждённый или неоднозначный слот не изменяется и не удаляется.
+ */
+function copyLegacyAutosaveToProjectSlot() {
+  var projectSaveId = getActiveProjectSaveId();
+  if (!projectSaveId) return null;
+
+  var legacyFingerprint = computeLegacyStoryFingerprintForProjectMigration();
+  if (!legacyFingerprint) return null;
+
+  var legacyStorageKey = getLegacyAutosaveStorageKey();
+  var targetStorageKey = getAutosaveStorageKey();
+  var legacyRaw = null;
+  try {
+    legacyRaw = localStorage.getItem(legacyStorageKey);
+  } catch (err) {
+    autosaveDebugLog("migration:legacy_read_failed", String(err && err.message ? err.message : err));
+    return null;
+  }
+  if (!legacyRaw) return null;
+
+  var legacyData = null;
+  try {
+    legacyData = JSON.parse(legacyRaw);
+  } catch (err) {
+    autosaveDebugLog("migration:legacy_parse_failed", {});
+    return null;
+  }
+
+  if (!validateAutosavePayload(legacyData, {
+    allowMissingProjectId: true,
+    requiredFingerprint: legacyFingerprint
+  })) {
+    autosaveDebugLog("migration:legacy_rejected", {
+      legacyStorageKey: legacyStorageKey,
+      targetStorageKey: targetStorageKey
+    });
+    return null;
+  }
+
+  var currentFingerprint = computeStoryTextFingerprint();
+  legacyData.projectId = projectSaveId;
+  legacyData.hashHex = currentFingerprint.hashHex;
+  legacyData.textLength = currentFingerprint.textLength;
+  var migratedRaw = JSON.stringify(legacyData);
+
+  try {
+    localStorage.setItem(targetStorageKey, migratedRaw);
+  } catch (err) {
+    console.warn("[AUTOSAVE] migration write failed:", err);
+    return null;
+  }
+
+  autosaveDebugLog("migration:completed", {
+    legacyStorageKey: legacyStorageKey,
+    targetStorageKey: targetStorageKey
+  });
+  return migratedRaw;
 }
 
 /**
@@ -4543,7 +4674,7 @@ function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
   autosaveDebugLog("restore:rewind_to_if_block", { savedIndex: idx, coldLen: len, ifIdx: ifIdx });
 }
 
-// Загружает только активный стандартный или novel-слот; scene-режим отсекается до обращения к localStorage.
+// Загружает активный projectId/novel-слот и при необходимости безопасно копирует подходящий legacy-слот.
 function tryApplyAutosave() {
   function isUsableAutosaveBgSrc(src) {
     var normalized = normalizeAssetUrl(src || "");
@@ -4561,6 +4692,7 @@ function tryApplyAutosave() {
   } catch (err) {
     return false;
   }
+  if (!raw) raw = copyLegacyAutosaveToProjectSlot();
   if (!raw) return false;
 
   var data = null;

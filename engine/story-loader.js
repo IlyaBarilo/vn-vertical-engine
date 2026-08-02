@@ -242,6 +242,8 @@
     const story = {
       meta: {
         title: "Без названия",
+        // Пустой projectId сохраняет общий legacy-слот; новые шаблоны задают постоянный id явно.
+        projectId: '',
         start: null,
         lang: 'en',
         // Режим новеллы: debug/release. Если не задан, используем debug.
@@ -571,6 +573,8 @@
 
   // Регулярное выражение для допустимых имён сценарных переменных.
   var SAFE_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  // Технический id проекта остаётся пригодным для URL-кодирования и одинаковым во всех браузерах.
+  var SAFE_PROJECT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
   // Проверяет системные имена, которые нельзя использовать как пользовательские переменные.
   function isReservedStoryVariableName(name) {
@@ -1802,6 +1806,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     // Базовые служебные параметры истории
     if (key === 'title') {
       story.meta.title = unwrapOptionalMetaQuotes(value);
+      return;
+    }
+
+    // Нормализует постоянный id проекта для отдельного localStorage-слота; title на ключ не влияет.
+    if (key === 'projectId') {
+      var projectId = unwrapOptionalMetaQuotes(value).trim().toLowerCase();
+      if (!SAFE_PROJECT_ID_RE.test(projectId)) {
+        addParseError(
+          lineNumber,
+          originalLine,
+          'The "projectId" value must contain 1-64 Latin letters, digits, ".", "_" or "-" and start with a letter or digit.',
+          true
+        );
+        return;
+      }
+      story.meta.projectId = projectId;
       return;
     }
 

@@ -24,6 +24,7 @@ test('парсер сохраняет значения meta по умолчан�
   assert.equal(result.errors.length, 0);
   assert.ok(result.story);
   assert.equal(result.story.meta.title, 'Без названия');
+  assert.equal(result.story.meta.projectId, '');
   assert.equal(result.story.meta.lang, 'en');
   assert.equal(result.story.meta.mode, 'debug');
   assert.equal(result.story.meta.window, 'vertical');
@@ -39,6 +40,7 @@ test('парсер сохраняет значения meta по умолчан�
 test('парсер преобразует полный набор meta-параметров', async function() {
   const result = await runStoryLoader(createMetaStory([
     'title: "Полный набор"',
+    'projectId = MY-story_1.0',
     'startScene: intro',
     'lang = RU',
     'mode = RELEASE',
@@ -63,6 +65,7 @@ test('парсер преобразует полный набор meta-пара�
   assert.equal(result.errors.length, 0);
   assert.ok(result.story);
   assert.equal(result.story.meta.title, 'Полный набор');
+  assert.equal(result.story.meta.projectId, 'my-story_1.0');
   assert.equal(result.story.meta.lang, 'ru');
   assert.equal(result.story.meta.mode, 'release');
   assert.equal(result.story.meta.window, 'auto');
@@ -82,6 +85,40 @@ test('парсер преобразует полный набор meta-пара�
   assert.equal(result.story.meta.transition, 'white');
   assert.equal(result.story.meta.transitionMs, 250);
   assert.equal(result.story.vars.mode, 'release');
+});
+
+// Проверяет безопасный формат постоянного id, который используется в имени localStorage-слота.
+test('парсер проверяет projectId', async function(t) {
+  await t.test('принимает значение в необязательных кавычках', async function() {
+    const result = await runStoryLoader(createMetaStory([
+      'startScene = intro',
+      'projectId = "Quoted-Project"'
+    ]));
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.story.meta.projectId, 'quoted-project');
+  });
+
+  const invalidValues = [
+    '',
+    'project with spaces',
+    '../other-project',
+    'a'.repeat(65)
+  ];
+
+  for (const invalidValue of invalidValues) {
+    await t.test('отклоняет ' + JSON.stringify(invalidValue), async function() {
+      const result = await runStoryLoader(createMetaStory([
+        'startScene = intro',
+        'projectId = ' + invalidValue
+      ]));
+
+      assert.equal(result.story, null);
+      assert.ok(result.errors.some(function(error) {
+        return error.message.includes('The "projectId" value must contain 1-64');
+      }));
+    });
+  }
 });
 
 // Проверяет диагностические ошибки перечислимых meta-параметров.

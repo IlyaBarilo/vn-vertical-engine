@@ -7,6 +7,7 @@ window.STORY_TEXT = `
 
 [meta]
 title="Вуз: демо-новелла с выбором"
+projectId=university-demo # Замените при создании своей новеллы; после публикации не меняйте
 lang=ru                  # Язык инфтерфейса программы. Возможны значения: en, ru
 startScene=scIntro01
 mode=debug              # Режим: release и debug. По умолчанию debug
