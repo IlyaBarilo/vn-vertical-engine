@@ -442,9 +442,9 @@ project/
 [GitHub Discussions](https://github.com/IlyaBarilo/vn-vertical-engine/discussions)
 — единая публичная площадка проекта. Выберите подходящий раздел:
 
-- [Помощь](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/помощь) — вопросы, помощь со сценарием и сообщения о неожиданном поведении;
-- [Идеи](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/идеи) — предложения по движку, документации и авторским инструментам;
-- [Проекты](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/проекты) — созданные новеллы, инсталляции, мини-игры и эксперименты.
+- [Help](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/help) — вопросы, помощь со сценарием и сообщения о неожиданном поведении;
+- [Ideas](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/ideas) — предложения по движку, документации и авторским инструментам;
+- [Show Your Project](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/show-your-project) — публикация собственных новелл, инсталляций, мини-игр и экспериментов.
 
 Формы подскажут, какие сведения приложить. Для возможной ошибки укажите версию
 движка, устройство, браузер, способ запуска и минимальные шаги воспроизведения.

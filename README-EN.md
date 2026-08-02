@@ -317,9 +317,9 @@ feature of the engine.
 Use [GitHub Discussions](https://github.com/IlyaBarilo/vn-vertical-engine/discussions)
 as the project's public feedback space:
 
-- [Помощь](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/помощь) (Help) for questions, story help, and unexpected behavior;
-- [Идеи](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/идеи) (Ideas) for engine, documentation, and authoring-tool proposals;
-- [Проекты](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/проекты) (Showcase) for novels, installations, mini-games, and experiments.
+- [Help](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/help) for questions, story help, and unexpected behavior;
+- [Ideas](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/ideas) for engine, documentation, and authoring-tool proposals;
+- [Show Your Project](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/show-your-project) for sharing your novels, installations, mini-games, and experiments.
 
 The forms explain what context to provide. For a possible bug, include the
 engine version, device, browser, launch method, and minimal reproduction steps.

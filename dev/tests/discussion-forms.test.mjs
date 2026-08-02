@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 const categoryForms = new Map([
-  ['идеи', '.github/DISCUSSION_TEMPLATE/идеи.yml'],
-  ['помощь', '.github/DISCUSSION_TEMPLATE/помощь.yml'],
-  ['проекты', '.github/DISCUSSION_TEMPLATE/проекты.yml']
+  ['help', '.github/DISCUSSION_TEMPLATE/help.yml'],
+  ['ideas', '.github/DISCUSSION_TEMPLATE/ideas.yml'],
+  ['show-your-project', '.github/DISCUSSION_TEMPLATE/show-your-project.yml']
 ]);
 
 // Читает публичный файл сообщества относительно корня репозитория.
@@ -56,7 +56,7 @@ test('формы Discussions не зависят от GitHub labels', async func
 });
 
 // Проверяет прямую навигацию из обоих README к каждой категории обратной связи.
-test('README ведут к вопросам, идеям и showcase', async function() {
+test('README ведут к трём категориям Discussions', async function() {
   const readmeSources = await Promise.all([
     readRepositoryFile('README.md'),
     readRepositoryFile('README-EN.md')
@@ -74,8 +74,8 @@ test('README ведут к вопросам, идеям и showcase', async func
 
 // Напоминает авторам не передавать секреты и подтверждать права на showcase-материалы.
 test('формы содержат предупреждения о публичности данных', async function() {
-  const questionSource = await readRepositoryFile(categoryForms.get('помощь'));
-  const showcaseSource = await readRepositoryFile(categoryForms.get('проекты'));
+  const questionSource = await readRepositoryFile(categoryForms.get('help'));
+  const showcaseSource = await readRepositoryFile(categoryForms.get('show-your-project'));
 
   assert.ok(questionSource.includes('license-key.js'));
   assert.ok(questionSource.includes('required: true'));
