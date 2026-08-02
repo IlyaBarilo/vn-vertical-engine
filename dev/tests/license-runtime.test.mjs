@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {
   constants,
   generateKeyPairSync,
-  sign
+  sign,
+  webcrypto
 } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -47,6 +48,20 @@ async function readLicenseRuntimeSources() {
 async function createLicenseRuntime(options = {}) {
   const sources = await readLicenseRuntimeSources();
   const warnings = [];
+  let runtimeCrypto = options.withWebCrypto === false ? undefined : webcrypto;
+
+  if (options.webCryptoImportError) {
+    runtimeCrypto = {
+      subtle: {
+        // Имитирует технический отказ importKey, чтобы проверить переход на резервную библиотеку.
+        importKey: function rejectImportKey() {
+          return Promise.reject(new Error('Synthetic WebCrypto import failure.'));
+        },
+        verify: webcrypto.subtle.verify.bind(webcrypto.subtle)
+      }
+    };
+  }
+
   const sandbox = {
     atob: globalThis.atob,
     btoa: globalThis.btoa,
@@ -56,7 +71,7 @@ async function createLicenseRuntime(options = {}) {
         warnings.push(Array.from(arguments).map(String).join(' '));
       }
     },
-    crypto: globalThis.crypto,
+    crypto: runtimeCrypto,
     Date,
     decodeURIComponent,
     encodeURIComponent,
@@ -64,13 +79,14 @@ async function createLicenseRuntime(options = {}) {
     navigator: { appName: 'Netscape' },
     Promise,
     TextDecoder,
+    TextEncoder,
     Uint8Array
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   const context = vm.createContext(sandbox);
 
-  if (options.withVerifier !== false) {
+  if (options.withJsrsasign !== false) {
     new vm.Script(sources.jsrsasign, { filename: jsrsasignPath }).runInContext(context, { timeout: 5000 });
   }
   new vm.Script(sources.engine, { filename: enginePath }).runInContext(context, { timeout: 5000 });
@@ -93,6 +109,24 @@ function createSyntheticLicenseKey(payload) {
   return dataToSign + '.' + signature.toString('base64url');
 }
 
+// Меняет подписанный payload без пересоздания подписи, имитируя подделку содержимого лицензии.
+function alterSyntheticLicensePayload(licenseKey) {
+  const parts = licenseKey.split('.');
+  const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  payload.customer = 'Changed after signing';
+  parts[1] = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return parts.join('.');
+}
+
+// Искажает один байт подписи, не затрагивая подписанный payload.
+function corruptSyntheticLicenseSignature(licenseKey) {
+  const parts = licenseKey.split('.');
+  const signatureBytes = Buffer.from(parts[2], 'base64url');
+  signatureBytes[0] ^= 1;
+  parts[2] = signatureBytes.toString('base64url');
+  return parts.join('.');
+}
+
 // Возвращает минимальный корректный payload для проверок подписи и бизнес-полей.
 function createValidPayload(overrides = {}) {
   return {
@@ -107,27 +141,130 @@ function createValidPayload(overrides = {}) {
   };
 }
 
-// Проверяет, что фактический публичный ключ движка остаётся читаемым bundled-библиотекой.
-test('публичный ключ движка разбирается jsrsasign', async function() {
-  const runtime = await createLicenseRuntime({ withSyntheticPublicKey: false });
-  const publicKey = runtime.window.KEYUTIL.getKey(runtime.VN_LICENSE_PUBLIC_KEY_PEM);
+// Описывает два принудительно изолированных способа проверки для общей таблицы сценариев.
+const verifierModes = [
+  { name: 'WebCrypto', runtimeOptions: { withJsrsasign: false } },
+  { name: 'jsrsasign fallback', runtimeOptions: { withWebCrypto: false } }
+];
 
-  assert.ok(publicKey);
-  assert.ok(publicKey.n);
-  assert.equal(publicKey.n.bitLength(), 2048);
+// Проверяет, что фактический публичный ключ движка читается обоими криптографическими механизмами.
+test('публичный ключ движка разбирается WebCrypto и jsrsasign', async function(t) {
+  await t.test('WebCrypto', async function() {
+    const runtime = await createLicenseRuntime({
+      withJsrsasign: false,
+      withSyntheticPublicKey: false
+    });
+    const publicKey = await runtime.crypto.subtle.importKey(
+      'spki',
+      runtime.pemPublicKeyToBytes(runtime.VN_LICENSE_PUBLIC_KEY_PEM),
+      { name: 'RSA-PSS', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    assert.equal(publicKey.algorithm.name, 'RSA-PSS');
+    assert.equal(publicKey.algorithm.modulusLength, 2048);
+  });
+
+  await t.test('jsrsasign', async function() {
+    const runtime = await createLicenseRuntime({
+      withSyntheticPublicKey: false,
+      withWebCrypto: false
+    });
+    const publicKey = runtime.window.KEYUTIL.getKey(runtime.VN_LICENSE_PUBLIC_KEY_PEM);
+
+    assert.ok(publicKey);
+    assert.ok(publicKey.n);
+    assert.equal(publicKey.n.bitLength(), 2048);
+  });
 });
 
-// Проверяет настоящий RSA-PSS путь bundled-jsrsasign на синтетической паре ключей.
-test('действительная синтетическая лицензия проходит jsrsasign-проверку', async function() {
+// Прогоняет одинаковые лицензии через WebCrypto и резервный jsrsasign, чтобы результаты не расходились.
+test('WebCrypto и jsrsasign одинаково обрабатывают лицензионные сценарии', async function(t) {
+  const validKey = createSyntheticLicenseKey(createValidPayload());
+  const scenarios = [
+    {
+      name: 'действительная лицензия',
+      licenseKey: validKey,
+      expectedStatus: 'valid',
+      expectedValid: true,
+      expectedPayload: true
+    },
+    {
+      name: 'изменённый после подписи payload',
+      licenseKey: alterSyntheticLicensePayload(validKey),
+      expectedStatus: 'invalid-signature',
+      expectedValid: false,
+      expectedPayload: false
+    },
+    {
+      name: 'просроченная лицензия',
+      licenseKey: createSyntheticLicenseKey(createValidPayload({ expiresAt: '2000-01-01' })),
+      expectedStatus: 'invalid-payload',
+      expectedValid: false,
+      expectedPayload: true,
+      expectedMessage: 'License has expired.'
+    },
+    {
+      name: 'повреждённая подпись',
+      licenseKey: corruptSyntheticLicenseSignature(validKey),
+      expectedStatus: 'invalid-signature',
+      expectedValid: false,
+      expectedPayload: false,
+      expectedJsrsasignWarning: true
+    }
+  ];
+
+  for (const verifierMode of verifierModes) {
+    await t.test(verifierMode.name, async function(t) {
+      for (const scenario of scenarios) {
+        await t.test(scenario.name, async function() {
+          const runtime = await createLicenseRuntime(verifierMode.runtimeOptions);
+          runtime.window.VN_LICENSE_KEY = scenario.licenseKey;
+
+          const state = await runtime.resolveLicenseState();
+          assert.equal(state.status, scenario.expectedStatus);
+          assert.equal(state.valid, scenario.expectedValid);
+          assert.equal(!!state.payload, scenario.expectedPayload);
+          assert.equal(state.mode, scenario.expectedValid ? 'registered' : 'unregistered');
+          assert.equal(state.message, scenario.expectedMessage || (
+            scenario.expectedValid ? 'License is valid.' : 'License signature is invalid.'
+          ));
+          if (scenario.expectedJsrsasignWarning && verifierMode.name === 'jsrsasign fallback') {
+            assert.equal(runtime.__warnings.length, 1);
+            assert.match(runtime.__warnings[0], /jsrsasign verification failed/);
+          } else {
+            assert.deepEqual(runtime.__warnings, []);
+          }
+        });
+      }
+    });
+  }
+});
+
+// Доказывает приоритет WebCrypto: рабочая нативная проверка не должна обращаться к резервной библиотеке.
+test('рабочий WebCrypto не запускает jsrsasign', async function() {
   const runtime = await createLicenseRuntime();
+  runtime.window.KJUR.crypto.Signature = function rejectUnexpectedFallback() {
+    throw new Error('jsrsasign fallback must not run.');
+  };
+  runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload());
+
+  const state = await runtime.resolveLicenseState();
+  assert.equal(state.status, 'valid');
+  assert.deepEqual(runtime.__warnings, []);
+});
+
+// Имитирует технический сбой WebCrypto и подтверждает успешную проверку старым локальным способом.
+test('ошибка WebCrypto включает резервный jsrsasign', async function() {
+  const runtime = await createLicenseRuntime({ webCryptoImportError: true });
   runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload());
 
   const state = await runtime.resolveLicenseState();
   assert.equal(state.status, 'valid');
   assert.equal(state.valid, true);
-  assert.equal(state.mode, 'registered');
-  assert.equal(state.payload.licenseId, 'TEST-01-2026-000001');
-  assert.deepEqual(runtime.__warnings, []);
+  assert.equal(runtime.__warnings.length, 1);
+  assert.match(runtime.__warnings[0], /WebCrypto verification unavailable/);
 });
 
 // Подтверждает штатный незарегистрированный режим, когда опциональный license-key.js отсутствует.
@@ -138,32 +275,6 @@ test('отсутствующий лицензионный ключ не вызы
   assert.equal(state.status, 'missing');
   assert.equal(state.valid, false);
   assert.equal(state.mode, 'unregistered');
-});
-
-// Проверяет, что корректно подписанный, но просроченный payload отклоняется после криптографической проверки.
-test('просроченная лицензия отклоняется по бизнес-правилам', async function() {
-  const runtime = await createLicenseRuntime();
-  runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload({ expiresAt: '2000-01-01' }));
-
-  const state = await runtime.resolveLicenseState();
-  assert.equal(state.status, 'invalid-payload');
-  assert.equal(state.valid, false);
-  assert.equal(state.message, 'License has expired.');
-  assert.equal(state.payload.licenseId, 'TEST-01-2026-000001');
-});
-
-// Искажает один байт подписи и подтверждает, что payload не принимается и не возвращается вызывающему коду.
-test('повреждённая подпись лицензии отклоняется', async function() {
-  const runtime = await createLicenseRuntime();
-  const parts = createSyntheticLicenseKey(createValidPayload()).split('.');
-  const signatureBytes = Buffer.from(parts[2], 'base64url');
-  signatureBytes[0] ^= 1;
-  runtime.window.VN_LICENSE_KEY = parts[0] + '.' + parts[1] + '.' + signatureBytes.toString('base64url');
-
-  const state = await runtime.resolveLicenseState();
-  assert.equal(state.status, 'invalid-signature');
-  assert.equal(state.valid, false);
-  assert.equal(state.payload, null);
 });
 
 // Фиксирует обработку испорченного формата и недопустимой календарной даты без исключения наружу.
@@ -185,9 +296,12 @@ test('неверный формат и дата лицензии возвращ�
   });
 });
 
-// Проверяет отдельный статус при отсутствии bundled-проверяющего модуля вместо ложного valid.
-test('отсутствующий jsrsasign возвращает missing-verifier', async function() {
-  const runtime = await createLicenseRuntime({ withVerifier: false });
+// Проверяет отдельный статус, когда недоступны и WebCrypto, и bundled-jsrsasign.
+test('отсутствие обоих проверяющих механизмов возвращает missing-verifier', async function() {
+  const runtime = await createLicenseRuntime({
+    withJsrsasign: false,
+    withWebCrypto: false
+  });
   runtime.window.VN_LICENSE_KEY = createSyntheticLicenseKey(createValidPayload());
 
   const state = await runtime.resolveLicenseState();

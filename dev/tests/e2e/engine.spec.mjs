@@ -10,6 +10,8 @@ const fixtureRoutes = new Map([
   ['/__e2e__/game.html', path.join(fixtureRoot, 'game.html')],
   ['/__e2e__/legacy-game.html', path.join(fixtureRoot, 'legacy-game.html')]
 ]);
+// localhost нужен отдельному WebCrypto-тесту как доверенный origin; e2e.local сохраняет обычный режим.
+const allowedEngineOrigins = new Set(['http://e2e.local', 'http://localhost']);
 const blockedLocalRoutes = new Set(['/story360.js', '/license-key.js']);
 const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+N4fVAAAAAElFTkSuQmCC';
 
@@ -76,6 +78,26 @@ function createScene360PackSource(datasetKey) {
   ].join('\n');
 }
 
+// Добавляет доступ к внутренней проверке лицензии только в E2E-копию engine.js, не меняя публичный runtime.
+function exposeLicenseVerifierToE2e(engineSource) {
+  const eol = engineSource.includes('\r\n') ? '\r\n' : '\n';
+  const closingMarker = eol + '})();';
+  const closingIndex = engineSource.lastIndexOf(closingMarker);
+  if (closingIndex < 0) {
+    throw new Error('Не найден конец IIFE в engine.js.');
+  }
+
+  const hookSource = [
+    '// Открывает лицензионную функцию только в изменённой копии, которую получает E2E-браузер.',
+    'window.__VN_E2E_VERIFY_LICENSE = function(dataToVerify, signatureBytes, publicKeyPem) {',
+    '  VN_LICENSE_PUBLIC_KEY_PEM = publicKeyPem;',
+    '  return verifyLicenseSignature(dataToVerify, signatureBytes);',
+    '};'
+  ].join(eol);
+
+  return engineSource.slice(0, closingIndex) + eol + hookSource + engineSource.slice(closingIndex);
+}
+
 // Возвращает MIME-тип для настоящих файлов движка и синтетических fixtures.
 function getContentType(filePath) {
   const extension = path.extname(filePath).toLowerCase();
@@ -100,7 +122,7 @@ function isInsideRepository(filePath) {
   return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
-// Отдаёт Chromium настоящие runtime-файлы и позволяет имитировать проекты в разных папках одного origin.
+// Отдаёт Chromium runtime-файлы, имитирует разные проекты и при запросе добавляет только тестовый hook.
 async function handleEngineRoute(route, routeOptions = {}) {
   let requestUrl;
   let pathname;
@@ -112,7 +134,7 @@ async function handleEngineRoute(route, routeOptions = {}) {
     return;
   }
 
-  if (requestUrl.origin !== 'http://e2e.local') {
+  if (!allowedEngineOrigins.has(requestUrl.origin)) {
     await route.abort('blockedbyclient');
     return;
   }
@@ -147,7 +169,10 @@ async function handleEngineRoute(route, routeOptions = {}) {
   }
 
   try {
-    const body = await readFile(filePath);
+    let body = await readFile(filePath);
+    if (routeOptions.exposeLicenseVerifier && normalizedPath === '/engine/engine.js') {
+      body = Buffer.from(exposeLicenseVerifierToE2e(body.toString('utf8')), 'utf8');
+    }
     await route.fulfill({
       status: 200,
       contentType: getContentType(filePath),
@@ -268,6 +293,50 @@ test('движок запускает историю в браузере без 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет нативный RSA-PSS путь в настоящем Chromium и запрещает незаметный переход на jsrsasign.
+test('браузер проверяет подпись лицензии через WebCrypto', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page, 'http://localhost/', { exposeLicenseVerifier: true });
+
+  // Генерирует только временную браузерную пару и вызывает настоящий проверяющий код движка.
+  const isValid = await page.evaluate(async function verifyBrowserLicenseSignature() {
+    const keyPair = await crypto.subtle.generateKey({
+      name: 'RSA-PSS',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256'
+    }, true, ['sign', 'verify']);
+    const publicKeyBytes = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey));
+    let publicKeyBinary = '';
+    for (let index = 0; index < publicKeyBytes.length; index++) {
+      publicKeyBinary += String.fromCharCode(publicKeyBytes[index]);
+    }
+    const publicKeyBase64 = btoa(publicKeyBinary).match(/.{1,64}/g).join('\n');
+    window.VN_LICENSE_PUBLIC_KEY_PEM = [
+      '-----BEGIN PUBLIC KEY-----',
+      publicKeyBase64,
+      '-----END PUBLIC KEY-----'
+    ].join('\n');
+
+    const dataToVerify = 'VNV1.synthetic-browser-payload';
+    const signedData = new TextEncoder().encode(dataToVerify);
+    const signatureBytes = new Uint8Array(await crypto.subtle.sign(
+      { name: 'RSA-PSS', saltLength: 32 },
+      keyPair.privateKey,
+      signedData
+    ));
+
+    // Делает резервный путь заведомо нерабочим: true возможен только после успешного WebCrypto.
+    window.KJUR.crypto.Signature = function rejectUnexpectedFallback() {
+      throw new Error('jsrsasign fallback must not run in Chromium.');
+    };
+    return window.__VN_E2E_VERIFY_LICENSE(dataToVerify, signatureBytes, window.VN_LICENSE_PUBLIC_KEY_PEM);
+  });
+
+  expect(isValid).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 

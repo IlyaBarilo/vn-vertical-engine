@@ -603,6 +603,32 @@ function bytesToUtf8Text(bytes) {
   return decodeURIComponent(escape(binary));
 }
 
+// Кодирует строку в UTF-8 для WebCrypto и сохраняет работу в браузерах без TextEncoder.
+function utf8TextToBytes(value) {
+  if (window.TextEncoder) {
+    return new TextEncoder().encode(String(value || ""));
+  }
+
+  var binary = unescape(encodeURIComponent(String(value || "")));
+  var bytes = new Uint8Array(binary.length);
+
+  for (var i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+}
+
+// Удаляет PEM-обрамление и возвращает DER-байты публичного ключа для importKey.
+function pemPublicKeyToBytes(pem) {
+  var base64 = String(pem || "")
+    .replace(/-----BEGIN PUBLIC KEY-----/g, "")
+    .replace(/-----END PUBLIC KEY-----/g, "")
+    .replace(/\s/g, "");
+
+  return base64UrlToBytes(base64);
+}
+
 // Кодирует байты подписи в hex-строку, потому что jsrsasign принимает подписи в hex.
 function bytesToHex(bytes) {
   var hex = "";
@@ -613,7 +639,52 @@ function bytesToHex(bytes) {
   return hex;
 }
 
-// Проверяет наличие локально подключённой MIT-библиотеки jsrsasign; без неё лицензии не валидируются.
+// Проверяет наличие нативного WebCrypto со всеми операциями, нужными для RSA-PSS.
+function isWebCryptoAvailable() {
+  return !!(
+    window.crypto &&
+    window.crypto.subtle &&
+    typeof window.crypto.subtle.importKey === "function" &&
+    typeof window.crypto.subtle.verify === "function"
+  );
+}
+
+// Проверяет RSA-PSS подпись через WebCrypto; null означает, что следует применить резервный путь.
+function verifyLicenseSignatureWithWebCrypto(dataToVerify, signatureBytes) {
+  if (!isWebCryptoAvailable()) {
+    return Promise.resolve(null);
+  }
+
+  try {
+    var publicKeyBytes = pemPublicKeyToBytes(VN_LICENSE_PUBLIC_KEY_PEM);
+    var signedDataBytes = utf8TextToBytes(dataToVerify);
+
+    return window.crypto.subtle.importKey(
+      "spki",
+      publicKeyBytes,
+      { name: "RSA-PSS", hash: "SHA-256" },
+      false,
+      ["verify"]
+    ).then(function(publicKey) {
+      return window.crypto.subtle.verify(
+        { name: "RSA-PSS", saltLength: 32 },
+        publicKey,
+        signatureBytes,
+        signedDataBytes
+      );
+    }).then(function(isValid) {
+      return !!isValid;
+    }).catch(function(error) {
+      console.warn("[LICENSE] WebCrypto verification unavailable, using local fallback:", error);
+      return null;
+    });
+  } catch (error) {
+    console.warn("[LICENSE] WebCrypto setup failed, using local fallback:", error);
+    return Promise.resolve(null);
+  }
+}
+
+// Проверяет наличие локально подключённой MIT-библиотеки jsrsasign для резервной проверки.
 function isJsrsasignAvailable() {
   return !!(
     window.KJUR &&
@@ -623,8 +694,8 @@ function isJsrsasignAvailable() {
   );
 }
 
-// Проверяет RSA-PSS подпись через локальный jsrsasign, чтобы на всех устройствах был один путь проверки.
-function verifyLicenseSignature(dataToVerify, signatureBytes) {
+// Проверяет RSA-PSS подпись через jsrsasign, когда WebCrypto отсутствует или завершился ошибкой.
+function verifyLicenseSignatureWithJsrsasign(dataToVerify, signatureBytes) {
   if (!isJsrsasignAvailable()) {
     return Promise.resolve(null);
   }
@@ -643,6 +714,17 @@ function verifyLicenseSignature(dataToVerify, signatureBytes) {
     console.warn("[LICENSE] jsrsasign verification failed:", error);
     return Promise.resolve(false);
   }
+}
+
+// Сначала использует нативный WebCrypto и обращается к jsrsasign только при недоступности первого пути.
+function verifyLicenseSignature(dataToVerify, signatureBytes) {
+  return verifyLicenseSignatureWithWebCrypto(dataToVerify, signatureBytes).then(function(webCryptoResult) {
+    if (webCryptoResult !== null) {
+      return webCryptoResult;
+    }
+
+    return verifyLicenseSignatureWithJsrsasign(dataToVerify, signatureBytes);
+  });
 }
 
 // Разбирает строку VNV1.<payload>.<signature> и отделяет подписанные данные от подписи.
@@ -733,7 +815,7 @@ function resolveLicenseState() {
 
   return verifyLicenseSignature(parsed.dataToVerify, parsed.signatureBytes).then(function(isSignatureValid) {
     if (isSignatureValid === null) {
-      return createLicenseState("missing-verifier", false, parsed.payload, "The local jsrsasign signature verifier is missing.");
+      return createLicenseState("missing-verifier", false, parsed.payload, "No supported license signature verifier is available.");
     }
 
     if (!isSignatureValid) {
