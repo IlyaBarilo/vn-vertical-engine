@@ -13,7 +13,12 @@
     "test:stats": "node --test tests/loader-stats.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs",
     "test:release": "node --test tests/release-package.test.mjs",
-    "test:links": "node --test tests/markdown-links.test.mjs"
+    "test:links": "node --test tests/markdown-links.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
   },
   "engines": {
     "node": ">=22"

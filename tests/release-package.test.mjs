@@ -118,9 +118,10 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|tests/'));
+  assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
 });
 
-// Защищает пользовательский ZIP от случайного включения developer-тестов и их конфигурации.
+// Защищает пользовательский ZIP от developer-тестов, браузеров, отчётов и их конфигурации.
 test('релизная сборка не копирует developer-тесты', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
@@ -128,5 +129,10 @@ test('релизная сборка не копирует developer-тесты',
   assert.equal(releaseSource.includes('cp -r tests'), false);
   assert.equal(releaseSource.includes('cp -a tests'), false);
   assert.equal(releaseSource.includes('cp package.json'), false);
+  assert.equal(releaseSource.includes('cp package-lock.json'), false);
+  assert.equal(releaseSource.includes('cp playwright.config.mjs'), false);
+  assert.equal(releaseSource.includes('cp -r node_modules'), false);
+  assert.equal(releaseSource.includes('cp -r playwright-report'), false);
+  assert.equal(releaseSource.includes('cp -r test-results'), false);
   assert.equal(releaseSource.includes('cp docs/TESTING.md'), false);
 });

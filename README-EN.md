@@ -316,8 +316,10 @@ intentionally disabled.
 
 ## Engine tests
 
-After changing the parser or validation logic, run `node --test`. GitHub Actions
-and Codex use the same dependency-free command. These regression tests verify
+After changing the parser or validation logic, run `node --test`; this core
+suite remains dependency-free. Browser checks for the real UI, `localStorage`,
+and iframe messaging run separately with `npm run test:e2e` after `npm ci` and
+the Chromium installation. GitHub Actions runs both suites. These tests verify
 the engine itself and do not replace the statistics and graphs for a particular
 story. See [docs/TESTING.md](docs/TESTING.md).
 

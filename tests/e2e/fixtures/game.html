@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Синтетическая мини-игра</title>
+</head>
+<body>
+  <p id="status">Ожидание gameInit</p>
+  <dl>
+    <dt>gameId</dt><dd id="gameId">—</dd>
+    <dt>difficulty</dt><dd id="difficulty">—</dd>
+    <dt>token</dt><dd id="token">—</dd>
+  </dl>
+  <button id="finishGame" type="button" disabled>Завершить игру</button>
+
+  <script>
+    "use strict";
+
+    var receivedInit = null;
+
+    // Показывает поля gameInit, чтобы браузерный тест проверял фактическое содержимое сообщения.
+    function handleGameMessage(event) {
+      if (!event || !event.data || event.data.type !== "gameInit") return;
+      receivedInit = event.data;
+      document.getElementById("status").textContent = "gameInit получен";
+      document.getElementById("gameId").textContent = String(event.data.gameId || "");
+      document.getElementById("difficulty").textContent = String(event.data.difficulty);
+      document.getElementById("token").textContent = String(event.data.token || "");
+      document.getElementById("finishGame").disabled = false;
+    }
+
+    // Возвращает движку искусственный результат и завершает сюжетный шаг game.
+    function finishGame() {
+      if (!receivedInit) return;
+      window.parent.postMessage({
+        type: "gameResult",
+        gameId: receivedInit.gameId,
+        result: 7
+      }, "*");
+    }
+
+    window.addEventListener("message", handleGameMessage);
+    document.getElementById("finishGame").addEventListener("click", finishGame);
+  </script>
+</body>
+</html>

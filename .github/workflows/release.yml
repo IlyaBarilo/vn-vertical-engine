@@ -262,11 +262,11 @@ jobs:
           grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
 
           # Developer-файлы не должны попадать ни в один пользовательский ZIP.
-          if grep -Eq "^${APP_NAME}/(tests/|package\\.json$|docs/TESTING\\.md$)" build/full-zip-contents.txt; then
+          if grep -Eq "^${APP_NAME}/(tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/full-zip-contents.txt; then
             echo "Полный архив содержит developer-файлы."
             exit 1
           fi
-          if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|tests/|package\\.json$|docs/TESTING\\.md$)" build/update-zip-contents.txt; then
+          if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/update-zip-contents.txt; then
             echo "Update-архив содержит пользовательские данные или developer-файлы."
             exit 1
           fi
