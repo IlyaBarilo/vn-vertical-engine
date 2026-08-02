@@ -269,7 +269,9 @@ project/
 │   ├── package.json                   test commands and dependencies
 │   ├── playwright.config.mjs          browser-test configuration
 │   └── tests/                         unit and browser tests
-├── .github/workflows/                 tests and release automation
+├── .github/
+│   ├── DISCUSSION_TEMPLATE/           question, idea, and showcase forms
+│   └── workflows/                     tests and release automation
 ├── FIRST-STEPS-EN.md                  English starting guide
 ├── FIRST-STEPS.md                     Russian starting guide
 ├── README.md                          primary Russian overview
@@ -313,8 +315,16 @@ feature of the engine.
 ## Discussions
 
 Use [GitHub Discussions](https://github.com/IlyaBarilo/vn-vertical-engine/discussions)
-for questions, ideas, unexpected behavior, and project showcases. Issues are
-intentionally disabled.
+as the project's public feedback space:
+
+- [Помощь](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/помощь) (Help) for questions, story help, and unexpected behavior;
+- [Идеи](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/идеи) (Ideas) for engine, documentation, and authoring-tool proposals;
+- [Проекты](https://github.com/IlyaBarilo/vn-vertical-engine/discussions/categories/проекты) (Showcase) for novels, installations, mini-games, and experiments.
+
+The forms explain what context to provide. For a possible bug, include the
+engine version, device, browser, launch method, and minimal reproduction steps.
+Do not publish passwords, keys, `license-key.js`, or private project materials.
+Issues are intentionally disabled.
 
 ## Engine tests
 

@@ -1,0 +1,60 @@
+# Форма помогает связать предложение с пользовательской задачей и обратной совместимостью.
+title: "[Идея / Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Предложите улучшение движка, документации или авторских инструментов. Сначала опишите задачу, которую должна решить идея.
+
+        Suggest an improvement to the engine, documentation, or authoring tools. Start with the problem the idea should solve.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Область / Area"
+      options:
+        - "Сценарий и команды / Story and commands"
+        - "Интерфейс и runtime / Interface and runtime"
+        - "Медиа и 360° / Media and 360°"
+        - "Авторские инструменты / Authoring tools"
+        - "Документация / Documentation"
+        - "Тесты и разработка / Tests and development"
+        - "Другое / Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Какая задача не решается сейчас? / What problem is unsolved?"
+      description: "Опишите практический сценарий использования, а не только желаемую кнопку или команду."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Предлагаемое решение / Proposed solution"
+      description: "Как должно выглядеть или работать улучшение?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Альтернативы / Alternatives"
+      description: "Какие обходные пути или другие варианты вы уже рассматривали?"
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: "Совместимость / Compatibility"
+      description: "Может ли изменение повлиять на старые story.js, инструменты или сохранения?"
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: "Проверка предложения / Proposal check"
+      options:
+        - label: "Я проверил README и спецификацию и не нашёл уже существующей возможности."
+          required: true

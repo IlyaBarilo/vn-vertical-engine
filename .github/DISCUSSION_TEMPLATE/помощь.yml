@@ -1,0 +1,68 @@
+# Форма собирает достаточный контекст для вопроса или сообщения о неожиданном поведении.
+title: "[Вопрос / Question] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Задайте вопрос о VN Vertical Engine или опишите неожиданное поведение. Для возможной ошибки укажите минимальные шаги воспроизведения.
+
+        Ask about VN Vertical Engine or describe unexpected behavior. For a possible bug, include minimal reproduction steps.
+
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: "Тип обращения / Request type"
+      options:
+        - "Вопрос по использованию / Usage question"
+        - "Неожиданное поведение или ошибка / Unexpected behavior or bug"
+        - "Помощь со сценарием / Story scripting help"
+        - "Запуск или совместимость / Launch or compatibility"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: "Вопрос или проблема / Question or problem"
+      description: "Что вы ожидали и что произошло? / What did you expect and what happened?"
+      placeholder: "Опишите ситуацию коротко и конкретно."
+    validations:
+      required: true
+
+  - type: input
+    id: engine_version
+    attributes:
+      label: "Версия движка / Engine version"
+      description: "Например, v0.6 или main. Если версия неизвестна, так и напишите."
+      placeholder: "v0.6"
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Окружение / Environment"
+      description: "Устройство, операционная система, браузер и способ запуска."
+      placeholder: "Windows 11, Chrome, локальный index.html"
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Шаги воспроизведения / Reproduction steps"
+      description: "Для возможной ошибки перечислите минимальные действия и небольшой фрагмент сценария."
+      placeholder: |
+        1. Открыть...
+        2. Перейти...
+        3. Наблюдать...
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: "Дополнительные материалы / Additional context"
+      description: "Сюда можно перетащить screenshot или добавить безопасный фрагмент журнала."
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: "Публичность данных / Public data"
+      options:
+        - label: "Я не публикую ключи, пароли, license-key.js и закрытые пользовательские материалы."
+          required: true

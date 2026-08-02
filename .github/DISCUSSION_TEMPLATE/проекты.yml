@@ -1,0 +1,64 @@
+# Форма помогает публиковать проекты без передачи закрытых материалов или чужих ассетов.
+title: "[Showcase] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Покажите новеллу, инсталляцию, мини-игру или авторский инструмент, созданный с VN Vertical Engine.
+
+        Share a novel, installation, mini-game, or authoring tool made with VN Vertical Engine.
+
+  - type: input
+    id: project_name
+    attributes:
+      label: "Название проекта / Project name"
+      placeholder: "Название новеллы или проекта"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: project_status
+    attributes:
+      label: "Состояние проекта / Project status"
+      options:
+        - "Готовый проект / Released project"
+        - "Прототип / Prototype"
+        - "Эксперимент / Experiment"
+        - "Учебный пример / Learning example"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "О проекте / About the project"
+      description: "Что это за проект, для кого он создан и как использует движок?"
+    validations:
+      required: true
+
+  - type: input
+    id: project_link
+    attributes:
+      label: "Ссылка / Link"
+      description: "Необязательная публичная ссылка на проект, видео или страницу автора."
+      placeholder: "https://..."
+
+  - type: textarea
+    id: media
+    attributes:
+      label: "Изображения или видео / Images or video"
+      description: "Перетащите screenshots в это поле или добавьте публичные ссылки."
+
+  - type: textarea
+    id: engine_features
+    attributes:
+      label: "Использованные возможности / Engine features"
+      description: "Например: ветвление, мини-игры, видео, 360° или kiosk-режим."
+
+  - type: checkboxes
+    id: publishing_rights
+    attributes:
+      label: "Права на публикацию / Publishing rights"
+      options:
+        - label: "У меня есть право публиковать добавленные тексты, изображения, ссылки и другие материалы."
+          required: true
