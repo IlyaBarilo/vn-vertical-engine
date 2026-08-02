@@ -221,8 +221,12 @@ What to check:
 - it works with mouse and touch;
 - it looks fine in vertical format;
 - it does not require a server or external dependencies;
-- it sends the final `gameResult`;
+- it returns the received `gameId` and `sessionId` in the final `gameResult`;
 - after finishing, it does not continue accepting input.
+
+Keep the tester in its recommended strict mode. If a trusted older game works only
+in `Legacy` mode, the tester explains how to migrate it to protocol v2; compatibility
+mode should not be treated as a fix for the game.
 
 If the game fails this standalone check, do not connect it to the story until it is fixed.
 

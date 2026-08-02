@@ -250,6 +250,20 @@
     .status.warn{color:#ffe5ae;border-color:rgba(255,201,107,.42)}
     .status.err{color:#ffd6d6;border-color:rgba(255,133,133,.42)}
 
+    .trust-warning{
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,201,107,.48);
+      background:rgba(255,201,107,.1);
+      color:#ffe8b8;
+      font-size:12px;
+      line-height:1.5;
+    }
+
+    .trust-warning[hidden]{display:none}
+    .trust-warning strong{display:block;margin-bottom:5px;color:#fff0cf}
+    .trust-warning a{color:#a9c3ff}
+
     .pill-row{
       display:flex;
       gap:8px;
@@ -763,6 +777,22 @@
                 <input id="difficulty" type="number" min="0" step="1" value="3" />
               </label>
             </div>
+            <label>
+              Изоляция игры
+              <select id="sandboxMode">
+                <option value="strict">Строгий — рекомендуется</option>
+                <option value="legacy">Legacy — только доверенная игра</option>
+              </select>
+            </label>
+            <div id="legacyModeHelp" class="trust-warning" hidden>
+              <strong>Legacy снимает изоляцию: игра получает права страницы тестера.</strong>
+              Используйте этот режим только для знакомого проверенного HTML. Чтобы перевести игру на
+              строгий режим, сохраните полученные <code>gameId</code> и <code>sessionId</code> из
+              <code>gameInit</code> и верните их без изменений в единственном <code>gameResult</code>.
+              Сверьтесь с <a href="../docs/specs/spec-game.md" target="_blank" rel="noopener">спецификацией мини-игр</a>.
+              Можно передать HTML игры нейросети вместе со спецификацией и попросить привести обмен
+              <code>gameInit/gameResult</code> к протоколу v2, сохранив автономный и legacy-запуск.
+            </div>
             <div class="pill-row">
               <span class="pill">iframe</span>
               <span class="pill">postMessage</span>
@@ -973,7 +1003,7 @@
       </div>
       <div class="preview-wrap">
         <div class="frame-viewport" id="frameViewport">
-          <iframe id="gameFrame" title="Mini-game frame" src="about:blank" allow="autoplay"></iframe>
+          <iframe id="gameFrame" title="Mini-game frame" src="about:blank" sandbox="allow-scripts" allow="autoplay" referrerpolicy="no-referrer"></iframe>
         </div>
       </div>
     </section>
@@ -989,6 +1019,8 @@
       gameUrl: document.getElementById('gameUrl'),
       gameId: document.getElementById('gameId'),
       difficulty: document.getElementById('difficulty'),
+      sandboxMode: document.getElementById('sandboxMode'),
+      legacyModeHelp: document.getElementById('legacyModeHelp'),
       virtualWidth: document.getElementById('virtualWidth'),
       virtualHeight: document.getElementById('virtualHeight'),
       resolutionPreset: document.getElementById('resolutionPreset'),
@@ -1042,8 +1074,8 @@
       visualSnapshots: document.getElementById('visualSnapshots')
     };
 
-    let gameResultCount = 0;
     let lastGameResult = null;
+    let activeGameSession = null;
 
 
 
@@ -1338,7 +1370,7 @@
       }
 
       return list.map((item) => {
-        const hex = escapeHtml(item.hex || '#000000');
+        const hex = escapeHtml(safeVisualCssColor(item.hex, '#000000'));
         const percent = Number.isFinite(item.percent) ? item.percent.toFixed(1) + '%' : '';
         const hueName = item.hueName ? escapeHtml(item.hueName) : '';
         const title = hex + (percent ? ' ' + percent : '') + (hueName ? ' · ' + hueName : '');
@@ -1364,7 +1396,10 @@
 
       const segments = wheel.sectors.map((sector) => {
         const weight = Number.isFinite(sector.percent) ? Math.max(8, Math.min(100, sector.percent)) : 12;
-        const color = escapeHtml(sector.color || ('hsl(' + Math.round(sector.hue || 0) + ', 90%, 55%)'));
+        const color = escapeHtml(safeVisualCssColor(
+          sector.color,
+          'hsl(' + Math.round(sector.hue || 0) + ', 90%, 55%)'
+        ));
         const title = escapeHtml((sector.name || 'сектор') + ' · ' + weight.toFixed(1) + '%');
         return '<span class="visual-hue-segment" style="background:' + color + ';flex:' + weight.toFixed(2) + ' 1 0" title="' + title + '"></span>';
       }).join('');
@@ -3170,11 +3205,77 @@
       els.status.className = 'status' + (mode ? ' ' + mode : '');
     }
 
+    // Создаёт новый непредсказуемый идентификатор для каждого тестового gameInit.
+    function createGameSessionId(){
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function'){
+        const values = new Uint32Array(4);
+        window.crypto.getRandomValues(values);
+        return 'game-' + Array.from(values, (value) => value.toString(16).padStart(8, '0')).join('');
+      }
+      return 'game-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
+
+    // Возвращает только поддерживаемые режимы, чтобы старые сохранённые настройки не ослабили sandbox.
+    function getSandboxMode(){
+      return els.sandboxMode.value === 'legacy' ? 'legacy' : 'strict';
+    }
+
+    // Применяет права будущей загрузки iframe и показывает предупреждение для доверенного legacy-режима.
+    function applySandboxMode(){
+      const mode = getSandboxMode();
+      const isLegacy = mode === 'legacy';
+      els.legacyModeHelp.hidden = !isLegacy;
+      activeGameSession = null;
+
+      if (isLegacy){
+        els.gameFrame.removeAttribute('sandbox');
+        els.gameFrame.removeAttribute('referrerpolicy');
+      } else {
+        els.gameFrame.setAttribute('sandbox', 'allow-scripts');
+        els.gameFrame.setAttribute('referrerpolicy', 'no-referrer');
+      }
+    }
+
+    // Перезагружает уже открытую игру, потому что новые sandbox-права действуют только после навигации iframe.
+    function handleSandboxModeChange(){
+      const srcdoc = els.gameFrame.getAttribute('srcdoc');
+      const src = els.gameFrame.getAttribute('src');
+      applySandboxMode();
+      resetGameProtocolState();
+
+      if (srcdoc !== null){
+        resetInputDiag();
+        resetVisualAnalysis('Ожидается повторный запуск визуальной диагностики…');
+        inputDiag.expected = true;
+        inputDiag.fallback = false;
+        els.gameFrame.srcdoc = srcdoc;
+        return;
+      }
+      if (src && src !== 'about:blank'){
+        resetInputDiag();
+        resetVisualAnalysis('Обычная загрузка не включает визуальный анализ.');
+        inputDiag.expected = false;
+        inputDiag.fallback = true;
+        els.gameFrame.src = src;
+        return;
+      }
+
+      setStatus(
+        getSandboxMode() === 'legacy'
+          ? 'Legacy-режим выбран. Загружайте только доверенную игру.'
+          : 'Строгий режим выбран. Следующая игра загрузится внутри sandbox.',
+        getSandboxMode() === 'legacy' ? 'warn' : 'ok'
+      );
+    }
+
+    // Экранирует текст для оставшихся шаблонов визуальной диагностики, включая значения атрибутов.
     function escapeHtml(value){
       return String(value)
         .replaceAll('&','&amp;')
         .replaceAll('<','&lt;')
-        .replaceAll('>','&gt;');
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'",'&#39;');
     }
 
     function stringifyPayload(payload){
@@ -3183,17 +3284,25 @@
       catch { return String(payload); }
     }
 
+    // Строит запись журнала только через textContent, поэтому поля игры не превращаются в HTML.
     function logMessage(direction, payload, extra=''){
       const entry = document.createElement('div');
       entry.className = 'log-entry';
       const time = new Date().toLocaleTimeString();
       const type = payload && typeof payload === 'object' ? (payload.type || 'unknown') : typeof payload;
-      entry.innerHTML =
-        '<span class="log-time">[' + time + ']</span> ' +
-        '<span class="log-dir">' + direction + '</span> ' +
-        '<span class="log-type">' + type + '</span>' +
-        (extra ? ' ' + escapeHtml(extra) : '') + '\n' +
-        escapeHtml(stringifyPayload(payload));
+      const timeNode = document.createElement('span');
+      const directionNode = document.createElement('span');
+      const typeNode = document.createElement('span');
+      timeNode.className = 'log-time';
+      directionNode.className = 'log-dir';
+      typeNode.className = 'log-type';
+      timeNode.textContent = '[' + time + ']';
+      directionNode.textContent = direction;
+      typeNode.textContent = String(type);
+      entry.dataset.messageType = String(type);
+      entry.append(timeNode, ' ', directionNode, ' ', typeNode);
+      if (extra) entry.append(' ' + String(extra));
+      entry.append('\n' + stringifyPayload(payload));
       els.messageLog.prepend(entry);
     }
 
@@ -3209,11 +3318,13 @@
       els.payloadEditor.value = JSON.stringify(payload, null, 2);
     }
 
+    // Собирает пользовательские настройки вместе с явным режимом доверия к игре.
     function getSettings(){
       return {
         gameUrl: els.gameUrl.value.trim(),
         gameId: els.gameId.value.trim(),
         difficulty: els.difficulty.value,
+        sandboxMode: getSandboxMode(),
         virtualWidth: els.virtualWidth.value,
         virtualHeight: els.virtualHeight.value,
         resolutionPreset: els.resolutionPreset.value,
@@ -3221,16 +3332,19 @@
       };
     }
 
+    // Восстанавливает настройки, выбирая strict для старых записей без sandboxMode.
     function applySettings(settings){
       els.gameUrl.value = settings.gameUrl ?? '';
       els.gameId.value = settings.gameId ?? 'coffeeRush';
       els.difficulty.value = settings.difficulty ?? '3';
+      els.sandboxMode.value = settings.sandboxMode === 'legacy' ? 'legacy' : 'strict';
       els.virtualWidth.value = settings.virtualWidth ?? '360';
       els.virtualHeight.value = settings.virtualHeight ?? '640';
       els.resolutionPreset.value = settings.resolutionPreset ?? '360x640';
       els.payloadEditor.value = settings.payloadEditor || '{\n  "type": "gameInit",\n  "gameId": "coffeeRush",\n  "difficulty": 3,\n  "targetScore": 10\n}';
 
       syncPayloadWithControls();
+      applySandboxMode();
       updateFramePresentation(false);
     }
 
@@ -3239,10 +3353,12 @@
       setStatus('Настройки сохранены в localStorage.', 'ok');
     }
 
+    // Загружает прежний формат настроек без миграции ключа и безопасно дополняет его strict-режимом.
     function loadSettings(){
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw){
         syncPayloadWithControls();
+        applySandboxMode();
         updateFramePresentation(false);
         return;
       }
@@ -3253,17 +3369,20 @@
       } catch (error){
         console.error(error);
         syncPayloadWithControls();
+        applySandboxMode();
         updateFramePresentation(false);
         setStatus('Не удалось прочитать настройки из localStorage.', 'warn');
       }
     }
 
+    // Возвращает исходные параметры тестера и рекомендуемую строгую изоляцию.
     function resetSettings(){
       localStorage.removeItem(STORAGE_KEY);
       applySettings({
         gameUrl: '',
         gameId: 'coffeeRush',
         difficulty: '3',
+        sandboxMode: 'strict',
         virtualWidth: '360',
         virtualHeight: '640',
         resolutionPreset: '360x640',
@@ -3311,7 +3430,8 @@
       }
     }
 
-    function buildPayload(){
+    // Формирует gameInit v2 и не позволяет JSON-редактору подменить служебные поля сессии.
+    function buildPayload(sessionId){
       syncPayloadWithControls();
 
       let payload;
@@ -3327,10 +3447,45 @@
 
       payload.type = 'gameInit';
       payload.gameId = els.gameId.value.trim() || payload.gameId || 'game';
+      payload.protocolVersion = 2;
+      payload.sessionId = sessionId;
       payload.difficulty = num(els.difficulty.value, 3);
       return payload;
     }
 
+    // Сбрасывает результат и активную сессию перед каждой новой загрузкой iframe.
+    function resetGameProtocolState(){
+      lastGameResult = null;
+      activeGameSession = null;
+    }
+
+    // Проверяет идентификаторы, числовой result и одноразовость ответа активной игры.
+    function validateGameResult(event, data){
+      const session = activeGameSession;
+      if (!session) return { accepted: false, reason: 'нет активной сессии gameInit' };
+      if (event.source !== session.expectedSource) return { accepted: false, reason: 'сообщение пришло из другого iframe' };
+      if (session.resultAccepted) return { accepted: false, reason: 'результат этой сессии уже принят' };
+
+      const hasGameId = Object.prototype.hasOwnProperty.call(data, 'gameId');
+      const hasSessionId = Object.prototype.hasOwnProperty.call(data, 'sessionId');
+      if (!session.allowLegacyResult && (!hasGameId || !hasSessionId)){
+        return { accepted: false, reason: 'strict-режим требует gameId и sessionId' };
+      }
+      if (hasGameId && String(data.gameId) !== String(session.gameId)){
+        return { accepted: false, reason: 'gameId не совпадает с активной игрой' };
+      }
+      if (hasSessionId && String(data.sessionId) !== String(session.sessionId)){
+        return { accepted: false, reason: 'sessionId не совпадает с активным запуском' };
+      }
+
+      const resultValue = Number(Object.prototype.hasOwnProperty.call(data, 'result') ? data.result : 0);
+      if (!Number.isFinite(resultValue)){
+        return { accepted: false, reason: 'result должен быть конечным числом' };
+      }
+      return { accepted: true, resultValue };
+    }
+
+    // Загружает игру по пути с правами выбранного режима и очищает предыдущую сессию.
     function loadGame(){
       const url = els.gameUrl.value.trim();
       if (!url){
@@ -3338,8 +3493,8 @@
         return;
       }
 
-      gameResultCount = 0;
-      lastGameResult = null;
+      applySandboxMode();
+      resetGameProtocolState();
       resetInputDiag();
       resetVisualAnalysis('Обычная загрузка не включает визуальный анализ. Используйте локальный HTML-файл с диагностикой.');
       inputDiag.expected = false;
@@ -3358,6 +3513,7 @@
 
 
 
+    // Загружает выбранный HTML через srcdoc и внедряет автономную диагностику внутри sandbox.
     function loadGameWithDiagnostics(){
       const file = els.gameFile.files && els.gameFile.files[0];
       if (!file){
@@ -3371,8 +3527,8 @@
         try{
           const html = String(reader.result || '');
 
-          gameResultCount = 0;
-          lastGameResult = null;
+          applySandboxMode();
+          resetGameProtocolState();
           resetInputDiag();
           resetVisualAnalysis('Ожидается запуск визуальной диагностики…');
           inputDiag.expected = true;
@@ -3407,6 +3563,7 @@
 
 
 
+    // Начинает новую тестовую сессию и отправляет игре защищённый gameInit версии 2.
     function sendInit(){
       if (!els.gameFrame.contentWindow){
         setStatus('iframe ещё не готов.', 'warn');
@@ -3415,20 +3572,32 @@
 
       let payload;
       try{
-        payload = buildPayload();
+        payload = buildPayload(createGameSessionId());
       } catch (error){
         setStatus(error.message, 'err');
         return;
       }
 
+      lastGameResult = null;
+      activeGameSession = {
+        gameId: payload.gameId,
+        sessionId: payload.sessionId,
+        expectedSource: els.gameFrame.contentWindow,
+        allowLegacyResult: getSandboxMode() === 'legacy',
+        resultAccepted: false
+      };
       els.gameFrame.contentWindow.postMessage(payload, '*');
       logMessage('→ frame', payload);
-      setStatus('Сообщение gameInit отправлено.', 'ok');
+      setStatus(
+        'Сообщение gameInit v2 отправлено (' + getSandboxMode() + '-режим).',
+        getSandboxMode() === 'legacy' ? 'warn' : 'ok'
+      );
       setTimeout(() => {
         requestVisualSnapshot('после gameInit', true);
       }, 260);
     }
 
+    // Принимает сообщения только от игрового iframe и отдельно проверяет каждый gameResult.
     window.addEventListener('message', (event) => {
       if (event.source !== els.gameFrame.contentWindow) return;
 
@@ -3438,30 +3607,27 @@
         return;
       }
 
-      logMessage('← frame', data, event.origin ? '(' + event.origin + ')' : '');
-
       if (data && data.type === 'gameResult'){
-        gameResultCount += 1;
-        const resultValue = Number((data && 'result' in data) ? data.result : 0);
-        lastGameResult = Number.isFinite(resultValue) ? resultValue : null;
-
-        if (gameResultCount > 1){
-          setStatus('Игра отправила gameResult больше одного раза. Это нарушает контракт.', 'err');
-          requestVisualSnapshot('после повторного gameResult', true);
+        const verdict = validateGameResult(event, data);
+        const originText = event.origin ? '(' + event.origin + ')' : '';
+        if (!verdict.accepted){
+          logMessage('← frame', data, originText + ' [отклонено: ' + verdict.reason + ']');
+          setStatus('gameResult отклонён: ' + verdict.reason + '.', 'err');
+          requestVisualSnapshot('после отклонённого gameResult', true);
           return;
         }
 
-        if (!Number.isFinite(resultValue)){
-          setStatus('Игра прислала gameResult с нечисловым result. Это нарушает контракт.', 'err');
-          requestVisualSnapshot('после некорректного gameResult', true);
-          return;
-        }
-
-        setStatus('Получен gameResult: ' + resultValue, 'ok');
+        activeGameSession.resultAccepted = true;
+        lastGameResult = verdict.resultValue;
+        logMessage('← frame', data, originText + ' [принят]');
+        setStatus('Получен gameResult: ' + verdict.resultValue, 'ok');
         setTimeout(() => {
-          requestVisualSnapshot('после gameResult: ' + resultValue, true);
+          requestVisualSnapshot('после gameResult: ' + verdict.resultValue, true);
         }, 160);
+        return;
       }
+
+      logMessage('← frame', data, event.origin ? '(' + event.origin + ')' : '');
     });
 
     els.gameFrame.addEventListener('load', () => {
@@ -3500,6 +3666,7 @@
     });
 
     els.resolutionPreset.addEventListener('change', applyResolutionPreset);
+    els.sandboxMode.addEventListener('change', handleSandboxModeChange);
     els.loadGameBtn.addEventListener('click', loadGame);
     els.loadGameDiagBtn.addEventListener('click', loadGameWithDiagnostics);
     els.gameFile.addEventListener('change', () => {

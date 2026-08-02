@@ -19,6 +19,7 @@
   </dl>
   <button id="legacyResult" type="button" disabled>Отправить результат без сессии</button>
   <button id="wrongSession" type="button" disabled>Отправить неверную сессию</button>
+  <button id="unsafeType" type="button" disabled>Отправить опасный тип</button>
   <button id="finishGame" type="button" disabled>Завершить игру</button>
 
   <script>
@@ -71,6 +72,7 @@
       inspectSandboxBoundaries();
       document.getElementById("legacyResult").disabled = false;
       document.getElementById("wrongSession").disabled = false;
+      document.getElementById("unsafeType").disabled = false;
       document.getElementById("finishGame").disabled = false;
     }
 
@@ -94,6 +96,15 @@
       }, "*");
     }
 
+    // Отправляет HTML-подобный type, который тестер обязан показать только буквальным текстом.
+    function sendUnsafeType() {
+      if (!receivedInit) return;
+      window.parent.postMessage({
+        type: '<img id="tester-xss" src="x" onerror="document.body.dataset.xss=1">',
+        note: "Это сообщение не должно создавать DOM-элементы"
+      }, "*");
+    }
+
     // Возвращает корректный результат, а затем дубликат для проверки одноразовой обработки движком.
     function finishGame() {
       if (!receivedInit) return;
@@ -114,6 +125,7 @@
     window.addEventListener("message", handleGameMessage);
     document.getElementById("legacyResult").addEventListener("click", sendLegacyResult);
     document.getElementById("wrongSession").addEventListener("click", sendWrongSession);
+    document.getElementById("unsafeType").addEventListener("click", sendUnsafeType);
     document.getElementById("finishGame").addEventListener("click", finishGame);
   </script>
 </body>

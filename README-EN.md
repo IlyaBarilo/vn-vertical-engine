@@ -185,6 +185,10 @@ Browser-based authoring helpers in the repository include:
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
 - `tools/game-tester.html` for testing mini-games before integration.
 
+The game tester uses strict isolation and validates `gameId` and `sessionId` by
+default. Its explicit `Legacy` mode is intended only for a trusted older game and
+shows how to migrate that game to protocol v2.
+
 ### Cleaning a panorama with a second shot
 
 Open `tools/panorama-cleaner.html` directly from the local folder. Prepare two

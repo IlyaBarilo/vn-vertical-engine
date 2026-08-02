@@ -122,6 +122,21 @@ async function chooseRoute(page, routeLabel) {
   await choices.getByRole('button', { name: routeLabel }).click();
 }
 
+// Открывает настоящий тестер и загружает в него синтетическую игру через выбранный режим изоляции.
+async function openGameTester(page, gamePath, sandboxMode = 'strict') {
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/game-tester.html');
+  await page.locator('#sandboxMode').selectOption(sandboxMode);
+  await page.locator('#gameUrl').fill(gamePath);
+  await page.locator('#gameId').fill('testGame');
+  await page.locator('#workspaceTabInput').click();
+  await page.locator('#loadGameBtn').click();
+
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  return game;
+}
+
 // Проверяет загрузку настоящего интерфейса и применение title из синтетического сценария.
 test('движок запускает историю в браузере без демо-ассетов', async function({ page }) {
   const pageErrors = collectPageErrors(page);
@@ -309,5 +324,105 @@ test('игра из статистики изолирована от сюжет�
   await expect(page.locator('#gamesStatus')).toHaveText(
     'Последний запуск: Синтетическая мини-игра, сложность 1, игра закрыта вручную'
   );
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет sandbox тестера, безопасный лог и одноразовую привязку результата к gameInit v2.
+test('тестер мини-игр безопасно проверяет strict-протокол', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const game = await openGameTester(page, '/__e2e__/game.html');
+
+  await expect(page.locator('#sandboxMode')).toHaveValue('strict');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await expect(game.locator('#gameId')).toHaveText('testGame');
+  await expect(game.locator('#protocolVersion')).toHaveText('2');
+  await expect(game.locator('#sessionId')).toHaveText(/^game-[a-z0-9]+/);
+  await expect(game.locator('#parentDom')).toHaveText('заблокирован');
+  await expect(game.locator('#parentStorage')).toHaveText('заблокировано');
+
+  await game.getByRole('button', { name: 'Отправить опасный тип' }).click();
+  await expect(page.locator('#messageLog')).toContainText('<img id="tester-xss"');
+  await expect(page.locator('#messageLog #tester-xss')).toHaveCount(0);
+  await expect(page.locator('body')).not.toHaveAttribute('data-xss', '1');
+
+  await game.getByRole('button', { name: 'Отправить результат без сессии' }).click();
+  await expect(page.locator('#status')).toContainText('strict-режим требует gameId и sessionId');
+  await game.getByRole('button', { name: 'Отправить неверную сессию' }).click();
+  await expect(page.locator('#status')).toContainText('sessionId не совпадает');
+
+  // Сообщение из родительского окна не должно попасть в журнал игрового iframe.
+  const resultLogCount = await page.locator('#messageLog [data-message-type="gameResult"]').count();
+  await page.evaluate(function sendForgedTesterResult() {
+    window.postMessage({
+      type: 'gameResult',
+      gameId: 'testGame',
+      sessionId: 'forged-session',
+      result: 123
+    }, '*');
+  });
+  await expect(page.locator('#messageLog [data-message-type="gameResult"]')).toHaveCount(resultLogCount);
+
+  await game.getByRole('button', { name: 'Завершить игру' }).click();
+  await expect(page.locator('#messageLog')).toContainText('[принят]');
+  await expect(page.locator('#messageLog')).toContainText('результат этой сессии уже принят');
+  await expect(page.locator('#status')).toContainText('результат этой сессии уже принят');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что загрузка локального HTML через srcdoc сохраняет диагностику внутри strict sandbox.
+test('тестер сохраняет диагностику локального HTML в strict-режиме', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/game-tester.html');
+  await page.locator('#gameId').fill('testGame');
+  await page.locator('#gameFile').setInputFiles(path.join(fixtureRoot, 'game.html'));
+
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await expect(game.locator('#protocolVersion')).toHaveText('2');
+  await expect(game.locator('#sessionId')).toHaveText(/^game-[a-z0-9]+/);
+  await expect(page.locator('#diagRisk')).toContainText('Встроенная диагностика активна');
+  expect(pageErrors).toEqual([]);
+});
+
+// Сохраняет прежние настройки v4, но безопасно выбирает strict при отсутствии нового поля режима.
+test('старые настройки тестера получают strict-режим по умолчанию', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/game-tester.html');
+  await page.evaluate(function saveOldTesterSettings() {
+    localStorage.setItem('vn-game-tester-settings-v4', JSON.stringify({
+      gameUrl: '/__e2e__/legacy-game.html',
+      gameId: 'oldGame',
+      difficulty: '2'
+    }));
+  });
+  await page.reload();
+
+  await expect(page.locator('#sandboxMode')).toHaveValue('strict');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.locator('#legacyModeHelp')).toBeHidden();
+  expect(pageErrors).toEqual([]);
+});
+
+// Подтверждает явный legacy-режим, предупреждение о доверии и приём результата старой игры.
+test('тестер сохраняет явную поддержку доверенных legacy-игр', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const game = await openGameTester(page, '/__e2e__/legacy-game.html', 'legacy');
+
+  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
+  expect(await page.locator('#gameFrame').getAttribute('referrerpolicy')).toBeNull();
+  await page.locator('#workspaceTabSetup').click();
+  await expect(page.locator('#legacyModeHelp')).toBeVisible();
+  await expect(page.locator('#legacyModeHelp')).toContainText('нейросети');
+  await expect(page.locator('#legacyModeHelp')).toContainText('gameId');
+  await expect(page.locator('#legacyModeHelp')).toContainText('sessionId');
+  await expect(page.locator('#legacyModeHelp a')).toHaveAttribute('href', '../docs/specs/spec-game.md');
+
+  await game.getByRole('button', { name: 'Завершить старую игру' }).click();
+  await expect(page.locator('#status')).toHaveText('Получен gameResult: 5');
+  await expect(page.locator('#messageLog')).toContainText('[принят]');
   expect(pageErrors).toEqual([]);
 });
