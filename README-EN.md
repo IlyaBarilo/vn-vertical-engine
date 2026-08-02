@@ -180,6 +180,21 @@ Browser-based authoring helpers in the repository include:
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
 - `tools/game-tester.html` for testing mini-games before integration.
 
+### Cleaning a panorama with a second shot
+
+Open `tools/panorama-cleaner.html` directly from the local folder. Prepare two
+panoramas of the same dimensions, preferably captured from the same fixed
+camera position. Image A provides the base and final metadata, while image B
+provides clean areas where people or moving objects changed position.
+
+1. Load base image A and source image B.
+2. Draw a region around the object and adjust the source offset when needed.
+3. Tune feathering, review the preview, and save the resulting JPEG.
+
+The result keeps the original resolution. When A is a JPEG, the tool transfers
+its EXIF, XMP/GPano, and ICC metadata. All processing stays in the browser; the
+selected panoramas are not uploaded anywhere.
+
 Check the selected release contents when you need a specific tool: `main` may
 be ahead of the stable package.
 

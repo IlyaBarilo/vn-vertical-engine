@@ -100,6 +100,7 @@ jobs:
           [ -f tools/game-tester.html ] && cp tools/game-tester.html "build/$APP_NAME/tools/"
           [ -f tools/media-focus-editor.html ] && cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
           [ -f tools/convert-360-img-to-js.html ] && cp tools/convert-360-img-to-js.html "build/$APP_NAME/tools/"
+          [ -f tools/panorama-cleaner.html ] && cp tools/panorama-cleaner.html "build/$APP_NAME/tools/"
           [ -f tools/scene360-editor.html ] && cp tools/scene360-editor.html "build/$APP_NAME/tools/"
           [ -f FIRST-STEPS.md ] && cp FIRST-STEPS.md "build/$APP_NAME/"
           [ -f FIRST-STEPS-EN.md ] && cp FIRST-STEPS-EN.md "build/$APP_NAME/"

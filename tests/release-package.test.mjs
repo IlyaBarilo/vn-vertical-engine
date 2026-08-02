@@ -6,6 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
+// Перечисляет пользовательские инструменты, которые должны быть доступны в полном и update-архивах.
+const requiredAuthoringTools = [
+  'tools/game-tester.html',
+  'tools/media-focus-editor.html',
+  'tools/convert-360-img-to-js.html',
+  'tools/panorama-cleaner.html',
+  'tools/scene360-editor.html'
+];
+
 // Читает отслеживаемый файл относительно корня репозитория для проверки состава runtime и релиза.
 function readRepositoryFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
@@ -56,6 +65,18 @@ test('релизная сборка включает обязательные ru
   ];
 
   requiredPaths.forEach(function(relativePath) {
+    assert.ok(
+      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
+      'В release.yml отсутствует копирование ' + relativePath
+    );
+  });
+});
+
+// Проверяет, что релизный workflow не теряет локальные инструменты подготовки проекта.
+test('релизная сборка включает пользовательские инструменты', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  requiredAuthoringTools.forEach(function(relativePath) {
     assert.ok(
       releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
       'В release.yml отсутствует копирование ' + relativePath
