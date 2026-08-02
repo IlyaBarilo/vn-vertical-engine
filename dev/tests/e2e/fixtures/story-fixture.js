@@ -9,10 +9,11 @@ mode = debug
 autosave = true
 transition = none
 transitionMs = 0
+engine.gameSandbox = strict
 
 [game]
 testGame file=/__e2e__/game.html title="Синтетическая мини-игра"
-legacyGame file=/__e2e__/legacy-game.html title="Legacy-мини-игра"
+legacyGame file=/__e2e__/legacy-game.html title="Legacy-мини-игра" sandbox=legacy
 
 [var]
 route = ""

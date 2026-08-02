@@ -32,7 +32,7 @@ test('парсер регистрирует синтетические ассе�
     'introVideo file=synthetic/video/intro.mp4 poster=synthetic/video/intro.jpg volume=0.2',
     '',
     '[game]',
-    'puzzle file=synthetic/games/puzzle.html title="Головоломка" cover=synthetic/games/puzzle.jpg',
+    'puzzle file=synthetic/games/puzzle.html title="Головоломка" cover=synthetic/games/puzzle.jpg sandbox=strict',
     '',
     '[scene]',
     'scene intro',
@@ -51,6 +51,25 @@ test('парсер регистрирует синтетические ассе�
   assert.equal(result.story.assets.audio.theme.volume, 0.4);
   assert.equal(result.story.assets.videos.introVideo.file, 'synthetic/video/intro.mp4');
   assert.equal(result.story.assets.games.puzzle.file, 'synthetic/games/puzzle.html');
+  assert.equal(result.story.assets.games.puzzle.sandbox, 'strict');
+});
+
+// Отклоняет опечатку в локальном режиме sandbox, чтобы игра не получила legacy-права молча.
+test('парсер отклоняет неизвестный режим sandbox игры', async function() {
+  const storyText = createSyntheticStory([
+    '[game]',
+    'broken file=synthetic/games/broken.html sandbox=unknown',
+    '',
+    '[scene]',
+    'scene intro',
+    '"Текст"'
+  ]);
+  const result = await runStoryLoader(storyText);
+
+  assert.equal(result.story, null);
+  assert.ok(result.errors.some(function(error) {
+    return error.message.includes('The "sandbox" value must be strict or legacy.');
+  }));
 });
 
 // Фиксирует обязательность file= для записей нового формата.

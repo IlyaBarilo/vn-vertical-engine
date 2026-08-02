@@ -23,7 +23,7 @@ function createSceneActionsStory(actions) {
     'introVideo file=synthetic/video/intro.mp4 poster=synthetic/video/intro.jpg volume=0.2',
     '',
     '[game]',
-    'puzzle file=synthetic/games/puzzle.html title="Головоломка"',
+    'puzzle file=synthetic/games/puzzle.html title="Головоломка" sandbox=strict',
     '',
     '[var]',
     'gameResult = 0',
@@ -73,6 +73,7 @@ test('парсер собирает основные команды сцены',
   assert.equal(actions[6].src, null);
   assert.equal(actions[7].type, 'game');
   assert.equal(actions[7].gameId, 'puzzle');
+  assert.equal(actions[7].sandboxMode, 'strict');
   assert.equal(actions[7].resultVar, 'gameResult');
   assert.equal(actions[7].params.difficulty, 2);
   assert.equal(actions[7].params.mode, 'timed');

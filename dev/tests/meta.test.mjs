@@ -31,6 +31,7 @@ test('парсер сохраняет значения meta по умолчан�
   assert.equal(result.story.meta.bg360Quality, 'normal');
   assert.equal(result.story.meta.engine.loadsafe, true);
   assert.equal(result.story.meta.engine.optimized, 'false');
+  assert.equal(result.story.meta.engine.gameSandbox, 'legacy');
   assert.equal(result.story.vars.mode, 'debug');
 });
 
@@ -45,6 +46,7 @@ test('парсер преобразует полный набор meta-пара�
     'bg360Quality = mobile',
     'engine.optimized = auto',
     'engine.loadsafe = 0',
+    'engine.gameSandbox = STRICT',
     'topSpacing = 120',
     'bottomSpacing = 340',
     'leftSpacing = 10',
@@ -67,6 +69,7 @@ test('парсер преобразует полный набор meta-пара�
   assert.equal(result.story.meta.bg360Quality, 'mobile');
   assert.equal(result.story.meta.engine.optimized, 'auto');
   assert.equal(result.story.meta.engine.loadsafe, false);
+  assert.equal(result.story.meta.engine.gameSandbox, 'strict');
   assert.equal(result.story.meta.topSpacing, 120);
   assert.equal(result.story.meta.bottomSpacing, 340);
   assert.equal(result.story.meta.leftSpacing, 10);
@@ -103,6 +106,11 @@ test('парсер отклоняет недопустимые режимы meta
       name: 'оптимизация изображений',
       line: 'engine.optimized = sometimes',
       message: 'The "engine.optimized" value must be false, true or auto.'
+    },
+    {
+      name: 'sandbox мини-игр',
+      line: 'engine.gameSandbox = sometimes',
+      message: 'The "engine.gameSandbox" value must be strict or legacy.'
     }
   ];
 

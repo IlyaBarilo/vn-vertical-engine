@@ -101,6 +101,7 @@ test('активная сессия принимает корректный game
     gameId: 'puzzle',
     sessionId: 'session-123',
     expectedSource: gameWindow,
+    allowLegacyResult: false,
     resultAccepted: false
   };
   const event = {
@@ -123,6 +124,7 @@ test('активная сессия принимает legacy-gameResult из с
     gameId: 'legacyGame',
     sessionId: 'session-legacy',
     expectedSource: gameWindow,
+    allowLegacyResult: true,
     resultAccepted: false
   };
 
@@ -130,6 +132,23 @@ test('активная сессия принимает legacy-gameResult из с
     source: gameWindow,
     data: { type: 'gameResult', result: 5 }
   }, session), true);
+});
+
+// Требует оба служебных идентификатора, когда игра запущена в строгом sandbox-режиме.
+test('strict-сессия отклоняет legacy-gameResult без id', function() {
+  const gameWindow = {};
+  const session = {
+    gameId: 'strictGame',
+    sessionId: 'session-strict',
+    expectedSource: gameWindow,
+    allowLegacyResult: false,
+    resultAccepted: false
+  };
+
+  assert.equal(protocol.isGameResultEventAllowed({
+    source: gameWindow,
+    data: { type: 'gameResult', result: 5 }
+  }, session), false);
 });
 
 // Не позволяет странице движка или соседнему iframe завершить текущую мини-игру.

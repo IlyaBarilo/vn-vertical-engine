@@ -145,6 +145,7 @@ The main story is a text block in `story.js`:
 title = "My Story"
 lang = en
 startScene = intro
+engine.gameSandbox = strict
 
 [scene]
 scene intro
@@ -158,6 +159,10 @@ menu
 scene nextScene
 "The story continues."
 ```
+
+Keep `engine.gameSandbox = strict` in new stories so HTML mini-games run in an
+isolated iframe. If a trusted older game needs the previous behavior, add
+`sandbox=legacy` to that game's entry in the `[game]` section.
 
 The format can be edited in any text editor and reviewed independently from
 the engine code. The complete command reference is currently maintained in

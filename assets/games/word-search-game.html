@@ -2272,6 +2272,7 @@
     startGame();
   }
 
+  // Возвращает результат вместе с id текущего запуска, чтобы игра работала в строгом sandbox-режиме движка.
   function finishGame(result) {
     if (state.resultSent) return;
     state.resultSent = true;
@@ -2281,6 +2282,8 @@
     gameRoot.style.pointerEvents = "none";
     window.parent.postMessage({
       type: "gameResult",
+      gameId: lastInitParams.gameId,
+      sessionId: lastInitParams.sessionId,
       result: Number.isFinite(Number(result)) ? Number(result) : 0,
       words: state.found.size
     }, "*");

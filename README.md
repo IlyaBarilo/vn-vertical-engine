@@ -175,6 +175,7 @@ index.html?scene=scIntro01
 title = "Моя история"
 lang = ru
 startScene = intro
+engine.gameSandbox = strict
 
 [scene]
 scene intro
@@ -188,6 +189,10 @@ menu
 scene nextScene
 "История продолжается."
 ```
+
+Для новых историй оставляйте `engine.gameSandbox = strict`: так подключённые
+HTML-игры выполняются в изолированном iframe. Старым доверенным играм при
+необходимости можно задать `sandbox=legacy` в их строке секции `[game]`.
 
 Формат специально остаётся простым: его можно редактировать в любом текстовом
 редакторе, хранить в Git и обсуждать независимо от кода движка.

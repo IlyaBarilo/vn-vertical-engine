@@ -64,6 +64,7 @@ window.STORY_TEXT = `
 [meta]
 title = "Demo Story"
 startScene = intro
+engine.gameSandbox = strict
 lang = en
 mode = release
 autosave = true
@@ -147,6 +148,7 @@ transitionMs = 180
 bg360Quality = auto
 engine.optimized = auto
 engine.loadsafe = true
+engine.gameSandbox = strict
 ```
 
 Поддерживаемые поля:
@@ -266,6 +268,24 @@ engine.loadsafe = false
 версии текста истории, чтобы старый прогресс не переносился на уже изменённую
 структуру сценария. `false` можно использовать только осознанно, когда нужно
 разрешить восстановление даже после изменений текста истории.
+
+### `engine.gameSandbox`
+
+Режим изоляции HTML-мини-игр:
+
+```text
+engine.gameSandbox = strict
+engine.gameSandbox = legacy
+```
+
+`strict` запускает игры с `sandbox="allow-scripts"`, скрывает referrer и не
+разрешает игре читать DOM и хранилище родительской страницы, открывать окна или
+перенаправлять страницу новеллы. Это рекомендуемое значение для новых проектов
+и оно уже указано в `story-example.js`.
+
+`legacy` сохраняет прежние неограниченные права iframe для совместимости со
+старыми доверенными играми. Если параметр отсутствует, используется `legacy`,
+поэтому замена файлов движка в существующей новелле не меняет её поведение.
 
 ### `autosave`
 
@@ -549,7 +569,7 @@ video intro skip=false skipText="Пропустить" fit=contain
 
 ```text
 [game]
-<gameId> file=<path> title="<title>" description="<description>" cover=<path>
+<gameId> file=<path> title="<title>" description="<description>" cover=<path> sandbox=<strict|legacy>
 ```
 
 Расширенный пример:
@@ -568,6 +588,9 @@ spaceDebris file=assets/games/space_debris.html title="Космические о
 - `title` — человекочитаемое название для списка игр и графа ресурсов.
 - `description` — короткое описание для встроенного списка игр.
 - `cover` — изображение-превью; также принимаются алиасы `coverimage`, `thumbnail` и `logo`.
+- `sandbox` — необязательное переопределение общего `engine.gameSandbox` для
+  конкретной игры. Используйте `legacy` только для доверенной старой игры,
+  которая действительно несовместима со строгой изоляцией.
 
 Данные конкретного запуска не хранятся в `[game]`: параметры вроде `difficulty`,
 `targetScore` или `data` задаются в команде `game` и уходят в мини-игру через
@@ -1033,6 +1056,7 @@ window.STORY_TEXT = `
 [meta]
 title = "Demo Story"
 startScene = intro
+engine.gameSandbox = strict
 lang = en
 
 [bg]

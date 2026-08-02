@@ -12,7 +12,12 @@
     <dt>sessionId</dt><dd id="sessionId">—</dd>
     <dt>difficulty</dt><dd id="difficulty">—</dd>
     <dt>token</dt><dd id="token">—</dd>
+    <dt>parent DOM</dt><dd id="parentDom">не проверено</dd>
+    <dt>parent storage</dt><dd id="parentStorage">не проверено</dd>
+    <dt>top navigation</dt><dd id="topNavigation">не проверено</dd>
+    <dt>popup</dt><dd id="popup">не проверено</dd>
   </dl>
+  <button id="legacyResult" type="button" disabled>Отправить результат без сессии</button>
   <button id="wrongSession" type="button" disabled>Отправить неверную сессию</button>
   <button id="finishGame" type="button" disabled>Завершить игру</button>
 
@@ -20,6 +25,38 @@
     "use strict";
 
     var receivedInit = null;
+
+    // Выполняет реальные запрещённые операции и выводит результат для негативного браузерного теста.
+    function inspectSandboxBoundaries() {
+      try {
+        void window.parent.document.body;
+        document.getElementById("parentDom").textContent = "доступен";
+      } catch (error) {
+        document.getElementById("parentDom").textContent = "заблокирован";
+      }
+
+      try {
+        window.parent.localStorage.getItem("vn_engine_autosave_v1");
+        document.getElementById("parentStorage").textContent = "доступно";
+      } catch (error) {
+        document.getElementById("parentStorage").textContent = "заблокировано";
+      }
+
+      try {
+        window.top.location.href = "/__e2e__/sandbox-escape.html";
+        document.getElementById("topNavigation").textContent = "доступна";
+      } catch (error) {
+        document.getElementById("topNavigation").textContent = "заблокирована";
+      }
+
+      try {
+        var popupWindow = window.open("about:blank", "_blank");
+        if (popupWindow) popupWindow.close();
+        document.getElementById("popup").textContent = popupWindow ? "доступен" : "заблокирован";
+      } catch (error) {
+        document.getElementById("popup").textContent = "заблокирован";
+      }
+    }
 
     // Показывает поля gameInit, чтобы браузерный тест проверял фактическое содержимое сообщения.
     function handleGameMessage(event) {
@@ -31,8 +68,19 @@
       document.getElementById("sessionId").textContent = String(event.data.sessionId || "");
       document.getElementById("difficulty").textContent = String(event.data.difficulty);
       document.getElementById("token").textContent = String(event.data.token || "");
+      inspectSandboxBoundaries();
+      document.getElementById("legacyResult").disabled = false;
       document.getElementById("wrongSession").disabled = false;
       document.getElementById("finishGame").disabled = false;
+    }
+
+    // Имитирует старый результат без служебных id, который strict-сессия обязана отклонить.
+    function sendLegacyResult() {
+      if (!receivedInit) return;
+      window.parent.postMessage({
+        type: "gameResult",
+        result: 88
+      }, "*");
     }
 
     // Имитирует результат прежнего запуска из правильного iframe, но с неверным идентификатором сессии.
@@ -64,6 +112,7 @@
     }
 
     window.addEventListener("message", handleGameMessage);
+    document.getElementById("legacyResult").addEventListener("click", sendLegacyResult);
     document.getElementById("wrongSession").addEventListener("click", sendWrongSession);
     document.getElementById("finishGame").addEventListener("click", finishGame);
   </script>

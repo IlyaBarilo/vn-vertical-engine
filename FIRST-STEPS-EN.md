@@ -77,6 +77,7 @@ window.STORY_TEXT = `
 title = "My Story"
 startScene = intro
 lang = en
+engine.gameSandbox = strict
 
 [bg]
 hall file=assets/backgrounds/bg-hall.jpg
@@ -104,6 +105,10 @@ scene stay_scene
 "You stayed where you are."
 `;
 ```
+
+Keep `engine.gameSandbox = strict` in a new novel: it isolates HTML mini-games.
+If one trusted older game is incompatible with strict mode, add
+`sandbox=legacy` only to that game's entry in `[game]`.
 
 At first, make exactly this kind of draft:
 

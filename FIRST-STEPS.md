@@ -76,6 +76,7 @@ window.STORY_TEXT = `
 title = "Моя история"
 startScene = intro
 lang = ru
+engine.gameSandbox = strict
 
 [bg]
 hall file=assets/backgrounds/bg-hall.jpg
@@ -103,6 +104,11 @@ scene stay_scene
 "Вы остались на месте."
 `;
 ```
+
+Не удаляйте `engine.gameSandbox = strict` из новой новеллы: эта настройка
+изолирует HTML-мини-игры. Если конкретная доверенная старая игра несовместима со
+строгим режимом, добавьте только к её объявлению в `[game]` параметр
+`sandbox=legacy`.
 
 Сначала сделайте именно такой черновик:
 

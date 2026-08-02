@@ -68,5 +68,6 @@ test('story-example.js проходит полный разбор', async functi
   assert.equal(result.errors.length, 0);
   assert.ok(result.story);
   assert.equal(result.story.meta.title, 'Вуз: демо-новелла с выбором');
+  assert.equal(result.story.meta.engine.gameSandbox, 'strict');
   assert.ok(result.story.scenes.length > 0);
 });

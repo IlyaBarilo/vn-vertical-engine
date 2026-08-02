@@ -13979,7 +13979,7 @@ function appendGameParamsToUrl(src, params) {
   return base + (base.indexOf("?") >= 0 ? "&" : "?") + queryParts.join("&") + hash;
 }
 
-// Собирает action для URL-запуска из [game], сохраняя тот же контракт, что у сценарной команды game.
+// Собирает action для URL-запуска из [game], включая выбранный для ассета режим sandbox.
 function createStandaloneGameAction(launch) {
   if (!launch || !launch.gameId) return null;
 
@@ -13989,11 +13989,13 @@ function createStandaloneGameAction(launch) {
 
   var file = "";
   var title = launch.gameId;
+  var sandboxMode = null;
   if (typeof rawGame === "string") {
     file = rawGame;
   } else if (rawGame && typeof rawGame === "object") {
     file = String(rawGame.file || "").trim();
     title = rawGame.title || launch.gameId;
+    sandboxMode = rawGame.sandbox || null;
   }
 
   if (!file) return null;
@@ -14004,6 +14006,7 @@ function createStandaloneGameAction(launch) {
     gameId: launch.gameId,
     title: title,
     src: file,
+    sandboxMode: sandboxMode,
     difficulty: launch.difficulty,
     resultVar: null,
     params: copyGameParams(launch.params)
@@ -14054,18 +14057,69 @@ function isCurrentStoryGameUrlMode() {
   return !!(state && state.currentGame && state.currentGame.mode === "url");
 }
 
-// Создаёт одноразовую сессию запуска и запоминает тип iframe, чтобы результаты разных окон не смешивались.
-function createActiveGameSession(gameId, frameKind) {
+// Возвращает строгий режим только для явного strict, сохраняя legacy-поведение для старых AST и сценариев.
+function normalizeGameSandboxMode(value) {
+  return String(value || "").trim().toLowerCase() === "strict" ? "strict" : "legacy";
+}
+
+// Выбирает локальную настройку игры или общий режим из [meta], если у игры нет собственного переопределения.
+function resolveGameSandboxMode(gameOverride) {
+  if (gameOverride !== undefined && gameOverride !== null && gameOverride !== "") {
+    return normalizeGameSandboxMode(gameOverride);
+  }
+
+  var engineMeta = STORY && STORY.meta && STORY.meta.engine;
+  return normalizeGameSandboxMode(engineMeta && engineMeta.gameSandbox);
+}
+
+// Восстанавливает исходный атрибут iframe, чтобы legacy-режим не стирал пользовательскую настройку index.html.
+function restoreGameFrameAttribute(frame, name, value) {
+  if (value === null) {
+    frame.removeAttribute(name);
+  } else {
+    frame.setAttribute(name, value);
+  }
+}
+
+// Настраивает iframe до навигации: strict оставляет скрипты и autoplay, legacy возвращает исходные атрибуты.
+function applyGameFrameSandbox(frame, sandboxMode) {
+  if (!frame) return;
+
+  if (!frame.__vnGameFrameSecurityBaseline) {
+    // Базовые значения запоминаются один раз до первого запуска и могут быть настроены автором оболочки.
+    frame.__vnGameFrameSecurityBaseline = {
+      sandbox: frame.getAttribute("sandbox"),
+      allow: frame.getAttribute("allow"),
+      referrerpolicy: frame.getAttribute("referrerpolicy")
+    };
+  }
+
+  if (sandboxMode === "strict") {
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.setAttribute("allow", "autoplay");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    return;
+  }
+
+  var baseline = frame.__vnGameFrameSecurityBaseline;
+  restoreGameFrameAttribute(frame, "sandbox", baseline.sandbox);
+  restoreGameFrameAttribute(frame, "allow", baseline.allow);
+  restoreGameFrameAttribute(frame, "referrerpolicy", baseline.referrerpolicy);
+}
+
+// Создаёт одноразовую сессию и разрешает старый result без id только iframe в legacy-режиме.
+function createActiveGameSession(gameId, frameKind, sandboxMode) {
   return {
     gameId: String(gameId),
     sessionId: window.VN_GAME_PROTOCOL.createGameSessionId(),
     expectedSource: null,
     frameKind: frameKind,
+    allowLegacyResult: sandboxMode !== "strict",
     resultAccepted: false
   };
 }
 
-// Открывает сюжетную мини-игру и после загрузки iframe отправляет ей единый payload gameInit.
+// Открывает сюжетную игру, применяет её sandbox до навигации и после загрузки отправляет единый gameInit.
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', action);
@@ -14100,6 +14154,7 @@ function openGame(action) {
   }
 
   var currentGameId = action.gameId || 'game';
+  var sandboxMode = resolveGameSandboxMode(action.sandboxMode);
   state.inGame = true;
   state.currentGame = {
     mode: action.mode || null,
@@ -14107,14 +14162,16 @@ function openGame(action) {
     title: action.title || currentGameId,
     difficulty: normalizedParams.difficulty,
     src: action.src,
+    sandboxMode: sandboxMode,
     resultVar: action.resultVar || null,
     params: normalizedParams,
-    session: createActiveGameSession(currentGameId, "story")
+    session: createActiveGameSession(currentGameId, "story", sandboxMode)
   };
   var openedGame = state.currentGame;
 
   updateStoryGameControlButtonLabel(state.currentGame.mode);
   elGameModal.classList.remove("hidden");
+  applyGameFrameSandbox(elGameFrame, sandboxMode);
 
   // После загрузки привязываем сессию к фактическому contentWindow и отправляем игре все named params.
   elGameFrame.onload = function () {
@@ -15288,6 +15345,7 @@ function hideStatsPanel() {
 }
 
 
+// Собирает каталог игр вместе с локальным режимом sandbox, который понадобится при запуске из статистики.
 function getGamesCatalogItems() {
   var games = (STORY && STORY.assets && STORY.assets.games) ? STORY.assets.games : {};
   var gameIds = Object.keys(games);
@@ -15301,7 +15359,8 @@ function getGamesCatalogItems() {
       file: "",
       title: gameId,
       description: "",
-      cover: ""
+      cover: "",
+      sandboxMode: null
     };
 
     if (typeof raw === "string") {
@@ -15311,6 +15370,7 @@ function getGamesCatalogItems() {
       item.title = raw.title || gameId;
       item.description = raw.description || "";
       item.cover = raw.cover || "";
+      item.sandboxMode = raw.sandbox || null;
     }
 
     items.push(item);
@@ -15443,7 +15503,7 @@ function renderGamesCatalog() {
   });
 }
 
-// Открывает игру из панели статистики и использует тот же контракт gameInit, что и сюжетный запуск.
+// Открывает игру из статистики с теми же sandbox-правилами и контрактом gameInit, что у сюжетного запуска.
 function openStatsGame(item, difficulty) {
   if (!item || !item.file) {
     if (gamesStatus) {
@@ -15454,23 +15514,26 @@ function openStatsGame(item, difficulty) {
     return;
   }
 
+  var sandboxMode = resolveGameSandboxMode(item.sandboxMode);
   state.inGame = true;
   state.currentGame = {
     mode: "stats",
     gameId: item.id,
     title: item.title || item.id,
     difficulty: difficulty,
+    sandboxMode: sandboxMode,
     resultVar: null,
     params: {
       difficulty: difficulty,
       source: "statsGamesPanel"
     },
-    session: createActiveGameSession(item.id, "stats")
+    session: createActiveGameSession(item.id, "stats", sandboxMode)
   };
   var openedGame = state.currentGame;
 
   elStatsGameModal.classList.remove("hidden");
   syncStatsGameFrameWrapToStoryGameWindow();
+  applyGameFrameSandbox(elStatsGameFrame, sandboxMode);
 
   elStatsGameFrame.onload = function () {
     if (state.currentGame !== openedGame || !openedGame.session) return;

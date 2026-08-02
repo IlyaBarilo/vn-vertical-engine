@@ -175,6 +175,9 @@ test('мини-игра обменивается сообщениями с дв�
   await advanceDialog(page);
 
   await expect(page.locator('#gameModal')).toBeVisible();
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('allow', 'autoplay');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
   const game = page.frameLocator('#gameFrame');
   await expect(game.locator('#status')).toHaveText('gameInit получен');
   await expect(game.locator('#gameId')).toHaveText('testGame');
@@ -182,6 +185,11 @@ test('мини-игра обменивается сообщениями с дв�
   await expect(game.locator('#sessionId')).toHaveText(/^game-[a-z0-9]+/);
   await expect(game.locator('#difficulty')).toHaveText('2');
   await expect(game.locator('#token')).toHaveText('e2e');
+  await expect(game.locator('#parentDom')).toHaveText('заблокирован');
+  await expect(game.locator('#parentStorage')).toHaveText('заблокировано');
+  await expect(game.locator('#topNavigation')).toHaveText('заблокирована');
+  await expect(game.locator('#popup')).toHaveText('заблокирован');
+  await expect(page).toHaveURL('http://e2e.local/');
 
   const sessionId = await game.locator('#sessionId').textContent();
   // Отправляет сообщение с правильными id из родительского окна: движок обязан проверить event.source.
@@ -195,6 +203,8 @@ test('мини-игра обменивается сообщениями с дв�
   }, sessionId);
   await expect(page.locator('#gameModal')).toBeVisible();
 
+  await game.getByRole('button', { name: 'Отправить результат без сессии' }).click();
+  await expect(page.locator('#gameModal')).toBeVisible();
   await game.getByRole('button', { name: 'Отправить неверную сессию' }).click();
   await expect(page.locator('#gameModal')).toBeVisible();
   await game.getByRole('button', { name: 'Завершить игру' }).click();
@@ -216,6 +226,8 @@ test('legacy-мини-игра возвращает результат в ста
   await advanceDialog(page);
 
   await expect(page.locator('#gameModal')).toBeVisible();
+  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
+  expect(await page.locator('#gameFrame').getAttribute('referrerpolicy')).toBeNull();
   const game = page.frameLocator('#gameFrame');
   await expect(game.locator('#status')).toHaveText('gameInit получен');
   await game.getByRole('button', { name: 'Завершить старую игру' }).click();
@@ -224,6 +236,30 @@ test('legacy-мини-игра возвращает результат в ста
   await expect(page.locator('#textBox')).toHaveText('Legacy-игра завершена: 5');
   await advanceDialog(page);
   await expect(page.locator('#textBox')).toHaveText('Финал: legacy, результат: 5');
+  expect(pageErrors).toEqual([]);
+});
+
+// Имитирует AST старой новеллы без новой meta-настройки и проверяет прежние права и формат результата.
+test('новелла без gameSandbox сохраняет legacy-поведение', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+
+  await openStory(page);
+  await page.evaluate(function useLegacyDefaultFromOldStory() {
+    window.STORY.meta.engine.gameSandbox = 'legacy';
+    delete window.STORY.assets.games.legacyGame.sandbox;
+  });
+  await chooseRoute(page, 'Старая мини-игра');
+  await expect(page.locator('#textBox')).toHaveText('Выбрана legacy-ветка');
+  await advanceDialog(page);
+
+  await expect(page.locator('#gameModal')).toBeVisible();
+  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.getByRole('button', { name: 'Завершить старую игру' }).click();
+
+  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toHaveText('Legacy-игра завершена: 5');
   expect(pageErrors).toEqual([]);
 });
 
@@ -241,6 +277,7 @@ test('игра из статистики изолирована от сюжет�
   });
   await gameCard.getByRole('button', { name: '3', exact: true }).click();
   await expect(page.locator('#statsGameModal')).toBeVisible();
+  await expect(page.locator('#statsGameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
 
   const statsGame = page.frameLocator('#statsGameFrame');
   await expect(statsGame.locator('#status')).toHaveText('gameInit получен');

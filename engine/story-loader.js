@@ -123,6 +123,10 @@
     optimized: {
       target: 'optimized',
       type: 'optimizedMode'
+    },
+    gameSandbox: {
+      target: 'gameSandbox',
+      type: 'gameSandboxMode'
     }
   };
 
@@ -198,7 +202,9 @@
         engine: {
           loadsafe: true,
           // false — только исходные пути; true/auto — сначала --vnv-optimized webp, затем исходник.
-          optimized: 'false'
+          optimized: 'false',
+          // Отсутствующая настройка сохраняет прежние права iframe; новые шаблоны явно включают strict.
+          gameSandbox: 'legacy'
         }
       },
       assets: {
@@ -1437,6 +1443,7 @@ function splitQuotedTokens(text) {
   return tokens;
 }
 
+// Разбирает запуск игры и переносит в действие режим sandbox из её объявления.
 function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
   var tokens = splitQuotedTokens(cleanLine);
   if (tokens.length < 2) {
@@ -1486,6 +1493,7 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     type: 'game',
     gameId: gameId,
     src: gameSrc,
+    sandboxMode: gameAsset.sandbox || null,
     resultVar: resultVar,
     params: params
   });
@@ -1662,8 +1670,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     return hasDoubleQuotes || hasSingleQuotes ? value.slice(1, -1) : value;
   }
 
+  // Нормализует режим sandbox из meta или объявления игры и сообщает понятную ошибку для других значений.
+  function parseGameSandboxMode(value, lineNumber, originalLine, parameterName, isCritical) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'strict' || normalized === 'legacy') return normalized;
 
-  // Парсинг метаданных
+    addParseError(
+      lineNumber,
+      originalLine,
+      'The "' + parameterName + '" value must be strict or legacy.',
+      !!isCritical
+    );
+    return null;
+  }
+
+
+  // Разбирает общие meta и системное пространство engine.*, включая совместимый режим sandbox игр.
   function parseMetaLine(lineNumber, line, story) {
     var originalLine = line;
 
@@ -1723,6 +1745,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           addParseError(lineNumber, originalLine, 'The "' + key + '" value must be false, true or auto.', false);
           parsedEngineValue = 'false';
         }
+      } else if (engineConfig.type === 'gameSandboxMode') {
+        parsedEngineValue = parseGameSandboxMode(value, lineNumber, originalLine, key, false);
       } else {
         parsedEngineValue = parseMetaValueByType(value, engineConfig.type);
       }
@@ -2019,6 +2043,18 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (args.title !== undefined) game.title = args.title;
       if (args.description !== undefined) game.description = args.description;
       if (args.cover !== undefined) game.cover = args.cover;
+      if (args.sandbox !== undefined) {
+        // Локальная настройка нужна для отдельных legacy-игр внутри новеллы со строгим режимом по умолчанию.
+        var parsedGameSandbox = parseGameSandboxMode(
+          args.sandbox,
+          lineNumber,
+          line,
+          'sandbox',
+          true
+        );
+        if (parsedGameSandbox === null) return true;
+        game.sandbox = parsedGameSandbox;
+      }
 
       story.assets.games[assetId] = game;
       return true;
@@ -2133,7 +2169,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
 
-  // Парсинг ресурсов (bg, char, audio)
+  // Разбирает реестры ресурсов и проверяет типизированные параметры отдельных категорий, включая sandbox игр.
   function parseAssetLine(lineNumber, line, category, story) {
     line = stripAssetInlineComment(line);
     if (!line) return;

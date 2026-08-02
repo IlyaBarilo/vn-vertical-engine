@@ -67,19 +67,22 @@
     return !!(data && typeof data === "object" && data.type === "gameResult");
   }
 
-  // Принимает результат только от iframe активного запуска; отсутствующие id разрешены для совместимости со старыми играми.
+  // Принимает результат только от активного iframe; отсутствие id разрешает лишь явно совместимая legacy-сессия.
   function isGameResultEventAllowed(event, session) {
     if (!event || !isGameResultMessage(event.data)) return false;
     if (!session || session.resultAccepted || !session.expectedSource) return false;
     if (event.source !== session.expectedSource) return false;
 
     var data = event.data;
+    var hasGameId = Object.prototype.hasOwnProperty.call(data, "gameId");
+    var hasSessionId = Object.prototype.hasOwnProperty.call(data, "sessionId");
+    if (session.allowLegacyResult === false && (!hasGameId || !hasSessionId)) return false;
     if (
-      Object.prototype.hasOwnProperty.call(data, "gameId") &&
+      hasGameId &&
       String(data.gameId) !== String(session.gameId)
     ) return false;
     if (
-      Object.prototype.hasOwnProperty.call(data, "sessionId") &&
+      hasSessionId &&
       String(data.sessionId) !== String(session.sessionId)
     ) return false;
 
