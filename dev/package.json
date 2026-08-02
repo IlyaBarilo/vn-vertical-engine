@@ -13,6 +13,8 @@
     "test:stats": "node --test tests/loader-stats.test.mjs",
     "test:ui": "node --test tests/ui-config-runtime.test.mjs",
     "test:logs": "node --test tests/runtime-logging.test.mjs",
+    "test:dependencies": "node --test tests/dependencies.test.mjs",
+    "test:license": "node --test tests/license-runtime.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs",
     "test:release": "node --test tests/release-package.test.mjs tests/release-assets.test.mjs tests/release-checksums.test.mjs",
     "test:release:smoke": "node tests/release-smoke.mjs",

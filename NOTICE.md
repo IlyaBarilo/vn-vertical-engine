@@ -41,7 +41,7 @@ SOFTWARE.
 ### Use in This Project
 
 The `mermaid.min.js` file is included in the repository without modifications and is located in the `lib/` directory.
-Mermaid version: 11.x (current at the time of the last update).
+Mermaid version: 11.13.0.
 
 ## jsrsasign
 
@@ -69,7 +69,7 @@ This project uses [three.js](https://threejs.org/) — a 3D/WebGL library used h
 
 The MIT License (MIT)
 
-Copyright (c) 2010-2024 three.js authors
+Copyright (c) 2010-2023 three.js authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -92,4 +92,4 @@ SOFTWARE.
 ### Use in This Project
 
 The `three.min.js` file is included in the repository without modifications and is located in the `lib/` directory.
-three.js version: 0.152.2.
+three.js version: 0.152.2 (r152).

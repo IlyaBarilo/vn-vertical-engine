@@ -89,6 +89,13 @@ npm.cmd --prefix dev run test:ui
 npm.cmd --prefix dev run test:logs
 ```
 
+Bundled-зависимости и текущий лицензионный runtime:
+
+```powershell
+npm.cmd --prefix dev run test:dependencies
+npm.cmd --prefix dev run test:license
+```
+
 Протокол мини-игр, состав релиза, ссылки и формы сообщества:
 
 ```powershell
@@ -168,6 +175,10 @@ index.html?Debug=all
 
 Тесты используют синтетические данные. Игнорируемые пользовательские сценарии,
 локальные ассеты и игры авторов в автоматической проверке не участвуют.
+
+Версии, размеры, upstream и SHA-256 bundled-библиотек находятся в
+`dev/dependencies.json`. Проверка не скачивает и не обновляет зависимости:
+изменение файла библиотеки требует явного обновления manifest и `NOTICE.md`.
 
 ## Правила расширения
 

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "libraries": [
+    {
+      "name": "jsrsasign",
+      "version": "11.1.0",
+      "file": "lib/jsrsasign-all-min.js",
+      "bytes": 339519,
+      "sha256": "6ccedfb9896ef454a92b081f29c229ca2a4969189661dcfa43f0eac12cb981a6",
+      "license": "MIT",
+      "upstream": "https://github.com/kjur/jsrsasign",
+      "usedBy": [
+        "index.html"
+      ]
+    },
+    {
+      "name": "mermaid",
+      "version": "11.13.0",
+      "file": "lib/mermaid.min.js",
+      "bytes": 2963890,
+      "sha256": "3e2002bf333907fae7c1d6860bbc78f5da417bc70b64f3d2268581ba0ba8b96a",
+      "license": "MIT",
+      "upstream": "https://github.com/mermaid-js/mermaid",
+      "usedBy": [
+        "engine/engine.js"
+      ]
+    },
+    {
+      "name": "three.js",
+      "version": "0.152.2 (r152)",
+      "file": "lib/three.min.js",
+      "bytes": 633338,
+      "sha256": "218b9f9420af1ee2b773fa066cee0eeb52f7ac76ca2fa11b11b732c1ba0a6e39",
+      "license": "MIT",
+      "upstream": "https://github.com/mrdoob/three.js",
+      "usedBy": [
+        "index.html",
+        "tools/scene360-editor.html"
+      ]
+    }
+  ]
+}
