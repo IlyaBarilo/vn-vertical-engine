@@ -120,15 +120,41 @@ test('ручная релизная сборка безопасна по умо�
   );
 });
 
-// Проверяет, что собранные ZIP доступны для ручного скачивания без создания GitHub Release.
-test('релизная сборка сохраняет временный artifact с двумя ZIP', async function() {
+// Проверяет, что собранные ZIP и их контрольные суммы доступны без создания GitHub Release.
+test('релизная сборка сохраняет временный artifact с ZIP и SHA-256', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
   assert.ok(releaseSource.includes('uses: actions/upload-artifact@v7'));
   assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256'));
   assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256'));
   assert.ok(releaseSource.includes('if-no-files-found: error'));
   assert.ok(releaseSource.includes('retention-days: 7'));
+});
+
+// Закрепляет создание, повторную проверку и публикацию SHA-256 для всех имён релизных архивов.
+test('релизный workflow создаёт и проверяет SHA-256 архивов', async function() {
+  const [releaseSource, packageSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release.yml'),
+    readRepositoryFile('dev/package.json')
+  ]);
+  const packageData = JSON.parse(packageSource);
+  const createPosition = releaseSource.indexOf('node dev/scripts/release-checksums.mjs create');
+  const verifyPosition = releaseSource.indexOf('node dev/scripts/release-checksums.mjs verify');
+  const uploadPosition = releaseSource.indexOf('- name: Upload ZIP artifacts');
+
+  assert.ok(packageData.scripts['test:release'].includes('tests/release-checksums.test.mjs'));
+  await Promise.all([
+    access(path.join(repositoryRoot, 'dev/scripts/release-checksums.mjs')),
+    access(path.join(repositoryRoot, 'dev/tests/release-checksums.test.mjs'))
+  ]);
+  assert.ok(createPosition >= 0 && verifyPosition > createPosition);
+  assert.ok(uploadPosition > verifyPosition);
+  assert.ok(releaseSource.includes('${APP_NAME}-latest.zip.sha256'));
+  assert.ok(releaseSource.includes('${APP_NAME}-latest-update.zip.sha256'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-latest.zip.sha256'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-latest-update.zip.sha256'));
 });
 
 // Проверяет наличие проверки целостности и ключевых различий полного и update-архивов.

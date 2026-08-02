@@ -187,10 +187,22 @@ jobs:
           cp "${APP_NAME}-${VERSION}.zip" "${APP_NAME}-latest.zip"
           cp "${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-latest-update.zip"
 
+          # Создаём отдельную SHA-256 для каждого имени архива, доступного пользователю.
+          node dev/scripts/release-checksums.mjs create \
+            "${APP_NAME}-${VERSION}.zip" \
+            "${APP_NAME}-${VERSION}-update.zip" \
+            "${APP_NAME}-latest.zip" \
+            "${APP_NAME}-latest-update.zip"
+
       - name: Verify ZIP archives
         shell: bash
         run: |
-          # Проверяем целостность обоих архивов до публикации или выдачи пользователю.
+          # Проверяем контрольные суммы и целостность архивов до публикации или выдачи пользователю.
+          node dev/scripts/release-checksums.mjs verify \
+            "${APP_NAME}-${VERSION}.zip.sha256" \
+            "${APP_NAME}-${VERSION}-update.zip.sha256" \
+            "${APP_NAME}-latest.zip.sha256" \
+            "${APP_NAME}-latest-update.zip.sha256"
           unzip -tq "${APP_NAME}-${VERSION}.zip"
           unzip -tq "${APP_NAME}-${VERSION}-update.zip"
           unzip -Z1 "${APP_NAME}-${VERSION}.zip" > build/full-zip-contents.txt
@@ -236,7 +248,9 @@ jobs:
           name: release-zips-${{ github.run_id }}
           path: |
             ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256
             ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -248,9 +262,13 @@ jobs:
           tag_name: ${{ env.VERSION }}
           files: |
             ${{ github.event.repository.name }}-${{ env.VERSION }}.zip
+            ${{ github.event.repository.name }}-${{ env.VERSION }}.zip.sha256
             ${{ github.event.repository.name }}-latest.zip
+            ${{ github.event.repository.name }}-latest.zip.sha256
             ${{ github.event.repository.name }}-${{ env.VERSION }}-update.zip
+            ${{ github.event.repository.name }}-${{ env.VERSION }}-update.zip.sha256
             ${{ github.event.repository.name }}-latest-update.zip
+            ${{ github.event.repository.name }}-latest-update.zip.sha256
 
       - name: Setup Pages
         if: github.event_name == 'release' || inputs.deploy_pages == true
