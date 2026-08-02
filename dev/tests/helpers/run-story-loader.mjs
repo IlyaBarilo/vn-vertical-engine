@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const helperDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(helperDirectory, '..', '..', '..');
+const expressionPath = path.join(repositoryRoot, 'engine', 'expression.js');
 const loaderPath = path.join(repositoryRoot, 'engine', 'story-loader.js');
-let loaderSourcePromise = null;
+let runtimeSourcesPromise = null;
 
 // Используется для подавления диагностического вывода браузерного загрузчика в тестах.
 function noop() {}
@@ -61,12 +62,15 @@ function normalizeLoaderStats(stats) {
   };
 }
 
-// Лениво читает исходник загрузчика один раз для всего набора тестов.
-async function getLoaderSource() {
-  if (!loaderSourcePromise) {
-    loaderSourcePromise = readFile(loaderPath, 'utf8');
+// Лениво читает общий expression-модуль и загрузчик в том же порядке, что используется браузером.
+async function getLoaderRuntimeSources() {
+  if (!runtimeSourcesPromise) {
+    runtimeSourcesPromise = Promise.all([
+      readFile(expressionPath, 'utf8'),
+      readFile(loaderPath, 'utf8')
+    ]);
   }
-  return loaderSourcePromise;
+  return runtimeSourcesPromise;
 }
 
 // Возвращает абсолютный путь корня репозитория для тестов документации и fixtures.
@@ -76,7 +80,7 @@ export function getRepositoryRoot() {
 
 // Запускает настоящий story-loader.js в изолированном окружении и возвращает STORY вместе с ошибками.
 export async function runStoryLoader(storyText, options = {}) {
-  const source = await getLoaderSource();
+  const sources = await getLoaderRuntimeSources();
   const windowObject = {
     STORY_TEXT: String(storyText || ''),
     STORY_SCRIPT_SOURCE: options.sourceName || 'test-story.js'
@@ -86,9 +90,11 @@ export async function runStoryLoader(storyText, options = {}) {
     document: createDocumentStub(),
     console: createSilentConsole()
   });
-  const script = new vm.Script(source, { filename: loaderPath });
+  const expressionScript = new vm.Script(sources[0], { filename: expressionPath });
+  const loaderScript = new vm.Script(sources[1], { filename: loaderPath });
 
-  script.runInContext(context, { timeout: 5000 });
+  expressionScript.runInContext(context, { timeout: 5000 });
+  loaderScript.runInContext(context, { timeout: 5000 });
 
   return {
     story: windowObject.STORY || null,

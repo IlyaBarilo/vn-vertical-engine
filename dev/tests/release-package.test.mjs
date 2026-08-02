@@ -163,6 +163,8 @@ test('релизный workflow проверяет фактический сос
 
   assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}.zip"'));
   assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
+  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));
+  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));
