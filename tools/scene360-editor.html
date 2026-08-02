@@ -566,6 +566,47 @@
       margin: 8px 0;
     }
 
+    .security-note {
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid rgba(103, 209, 149, 0.38);
+      border-radius: 8px;
+      background: rgba(34, 83, 61, 0.28);
+      color: #c9f5dc;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .legacy-pack-toggle {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      color: #ffd8a8;
+      line-height: 1.35;
+    }
+
+    .legacy-pack-toggle input {
+      width: auto;
+      flex: 0 0 auto;
+      margin-top: 2px;
+    }
+
+    .security-warning {
+      display: none;
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 151, 90, 0.6);
+      border-radius: 8px;
+      background: rgba(116, 55, 25, 0.35);
+      color: #ffe0c2;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .security-warning.is-visible {
+      display: block;
+    }
+
     .status {
       font-size: 12px;
       color: #cfe1ff;
@@ -851,13 +892,27 @@
       </div>
 
       <div class="row">
-        <label for="assetPathInput">Путь JS-пакета для story360</label>
+        <label for="assetPathInput">Путь изображения или JS-пакета для story360</label>
         <input id="assetPathInput" type="text" value="" placeholder="assets/360/korpusnight/174-360.js" />
       </div>
 
       <div class="row two">
-        <button id="loadAssetPathBtn" type="button">Загрузить путь</button>
+        <button id="loadAssetPathBtn" type="button">Загрузить превью по пути</button>
         <button id="testTargetBtn" type="button">Перейти по выбранной метке</button>
+      </div>
+
+      <div class="row">
+        <label for="packFileInput">Безопасное превью JS-пакета (рекомендуется)</label>
+        <input id="packFileInput" type="file" accept=".js,text/javascript,text/plain" />
+        <p class="security-note">Пакет читается как текст: редактор извлекает только растровое изображение и метаданные, не выполняя JavaScript.</p>
+      </div>
+
+      <div class="row">
+        <label class="legacy-pack-toggle" for="legacyPackModeInput">
+          <input id="legacyPackModeInput" type="checkbox" />
+          <span>Доверенный legacy-режим: разрешить выполнение JS-пакета по пути</span>
+        </label>
+        <p id="legacyPackWarning" class="security-warning" role="alert">В этом режиме пакет получает доступ к странице редактора. Включайте его только для собственного или проверенного проекта; перед каждым новым путём редактор запросит подтверждение.</p>
       </div>
 
       <div class="row two">
@@ -1095,6 +1150,9 @@
     var bgIdInput = document.getElementById("bgIdInput");
     var assetPathInput = document.getElementById("assetPathInput");
     var loadAssetPathBtn = document.getElementById("loadAssetPathBtn");
+    var packFileInput = document.getElementById("packFileInput");
+    var legacyPackModeInput = document.getElementById("legacyPackModeInput");
+    var legacyPackWarning = document.getElementById("legacyPackWarning");
     var testTargetBtn = document.getElementById("testTargetBtn");
     var focusXInput = document.getElementById("focusXInput");
     var focusYInput = document.getElementById("focusYInput");
@@ -1326,6 +1384,7 @@
     // Зафиксированные значения focus для текста команды.
     var fixedFocus = { x: 0.5, y: 0.5 };
     var story360Data = createEmptyStory360Data();
+    /** Уже подтверждённые и выполненные в этой вкладке legacy-пакеты; повторное подключение одного URL не требуется. */
     var loadedPackScripts = {};
     var editorReady = false;
     var suppressEditorAutosave = false;
@@ -2475,37 +2534,249 @@
     }
 
     /**
-     * Переводит путь из story360 (от корня проекта) в путь относительно папки tools.
+     * Нормализует путь от корня проекта и запрещает URL, абсолютные пути и выход через `..`.
+     * Повторное декодирование закрывает обход проверки через закодированные точки и разделители.
      */
-    function toToolRelativeUrl(path) {
+    function normalizeProjectAssetPath(path) {
       var value = String(path || "").trim();
-      if (!value) return "";
-      if (/^(data:|blob:|https?:|file:)/i.test(value)) return value;
-      if (value.indexOf("../") === 0) return value;
-      if (value.indexOf("./") === 0) value = value.replace(/^\.\/+/, "");
-      return "../" + value.replace(/^\/+/, "");
+      if (!value) throw new Error("Путь к ассету не указан.");
+
+      var pathEncodingStable = false;
+      for (var decodePass = 0; decodePass < 4; decodePass++) {
+        var decoded;
+        try {
+          decoded = decodeURIComponent(value);
+        } catch (e) {
+          throw new Error("Путь содержит некорректное URL-кодирование.");
+        }
+        if (decoded === value) {
+          pathEncodingStable = true;
+          break;
+        }
+        value = decoded;
+      }
+      if (!pathEncodingStable && /%[0-9a-f]{2}/i.test(value)) {
+        throw new Error("Путь содержит слишком много уровней URL-кодирования.");
+      }
+
+      value = value.replace(/\\/g, "/");
+      if (/[\u0000-\u001f\u007f]/.test(value)) {
+        throw new Error("Путь содержит недопустимые управляющие символы.");
+      }
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value) || /^[a-z]:/i.test(value)) {
+        throw new Error("Разрешены только относительные пути внутри проекта; URL и системные пути запрещены.");
+      }
+      if (value.charAt(0) === "/" || value.indexOf("//") === 0) {
+        throw new Error("Абсолютный путь запрещён. Укажите путь от корня проекта, например assets/360/panorama-360.js.");
+      }
+      if (/[?#]/.test(value)) {
+        throw new Error("Параметры URL и фрагменты в пути ассета не поддерживаются.");
+      }
+
+      var parts = value.split("/");
+      var safeParts = [];
+      for (var i = 0; i < parts.length; i++) {
+        var part = parts[i];
+        if (!part || part === ".") continue;
+        if (part === "..") {
+          throw new Error("Выход за каталог проекта через `..` запрещён.");
+        }
+        safeParts.push(part);
+      }
+      if (!safeParts.length) throw new Error("Путь к ассету не указан.");
+      return safeParts.join("/");
     }
 
     /**
-     * Динамически подключает JS-пакет 360, чтобы редактор мог показывать сохранённые панорамы.
+     * Переводит проверенный путь от корня проекта в URL относительно папки tools.
+     */
+    function toToolRelativeUrl(path) {
+      return "../" + normalizeProjectAssetPath(path);
+    }
+
+    /**
+     * Выполняет JS-пакет только в явно включённом доверенном legacy-режиме и после подтверждения нового пути.
      */
     function ensurePackScriptLoaded(path) {
-      var scriptUrl = toToolRelativeUrl(path);
-      if (!scriptUrl) return Promise.reject(new Error("Пустой путь JS-пакета."));
+      if (!legacyPackModeInput.checked) {
+        return Promise.reject(new Error("Выполнение JS-пакетов выключено. Выберите пакет файлом для безопасного предпросмотра."));
+      }
+
+      var projectPath;
+      try {
+        projectPath = normalizeProjectAssetPath(path);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+      if (!/-360(?:-[a-z0-9_-]+)?\.js$/i.test(projectPath)) {
+        return Promise.reject(new Error("Legacy-режим выполняет только пакеты с именем *-360.js."));
+      }
+
+      var scriptUrl = toToolRelativeUrl(projectPath);
       if (loadedPackScripts[scriptUrl]) return loadedPackScripts[scriptUrl];
+
+      var confirmed = window.confirm(
+        "Выполнить доверенный JS-пакет?\n\n" +
+        projectPath + "\n\n" +
+        "Пакет получит доступ к странице редактора. Продолжайте только для собственного или проверенного проекта."
+      );
+      if (!confirmed) {
+        return Promise.reject(new Error("Выполнение legacy-пакета отменено пользователем."));
+      }
 
       loadedPackScripts[scriptUrl] = new Promise(function (resolve, reject) {
         var script = document.createElement("script");
         script.src = scriptUrl;
         script.async = true;
+        script.referrerPolicy = "no-referrer";
+        script.setAttribute("data-scene360-legacy-pack", projectPath);
         script.onload = function () { resolve(scriptUrl); };
         script.onerror = function () {
           delete loadedPackScripts[scriptUrl];
-          reject(new Error("Не удалось загрузить " + scriptUrl));
+          reject(new Error("Не удалось загрузить доверенный legacy-пакет: " + projectPath));
         };
         document.body.appendChild(script);
       });
       return loadedPackScripts[scriptUrl];
+    }
+
+    /**
+     * Извлекает data-url из массива строк сгенерированного *-360.js без выполнения содержимого файла.
+     */
+    function extractDataUrlFromPackJs(jsText) {
+      var text = String(jsText || "");
+      var startMatch = text.match(/var\s+dataUrl\s*=\s*\[/);
+      if (!startMatch) {
+        throw new Error("В файле не найден блок var dataUrl = [ ... ] ожидаемого 360-пакета.");
+      }
+
+      var startIndex = startMatch.index + startMatch[0].length;
+      var rest = text.slice(startIndex);
+      var endMatch = rest.match(/\]\s*\.\s*join\s*\(\s*(['"])\s*\1\s*\)/);
+      if (!endMatch) throw new Error("Не найдено окончание массива dataUrl: ].join('').");
+
+      var body = rest.slice(0, endMatch.index);
+      var chunks = [];
+      var position = 0;
+      while (position < body.length) {
+        while (position < body.length && /[\s,\r\n]/.test(body.charAt(position))) position++;
+        if (position >= body.length) break;
+
+        var quote = body.charAt(position);
+        if (quote !== "'" && quote !== '"') {
+          throw new Error("Некорректный фрагмент dataUrl: ожидалась строка в кавычках.");
+        }
+        position++;
+        var fragment = "";
+        var closed = false;
+        while (position < body.length) {
+          var character = body.charAt(position);
+          if (character === "\\") {
+            position++;
+            if (position >= body.length) throw new Error("Обрыв escape-последовательности в dataUrl.");
+            var escaped = body.charAt(position);
+            if (escaped === "n") fragment += "\n";
+            else if (escaped === "r") fragment += "\r";
+            else if (escaped === quote) fragment += quote;
+            else if (escaped === "\\") fragment += "\\";
+            else fragment += escaped;
+            position++;
+          } else if (character === quote) {
+            position++;
+            closed = true;
+            break;
+          } else {
+            fragment += character;
+            position++;
+          }
+        }
+        if (!closed) throw new Error("Незакрытая строка в массиве dataUrl.");
+        chunks.push(fragment);
+      }
+
+      var dataUrl = chunks.join("");
+      if (!/^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/]+={0,2}$/i.test(dataUrl)) {
+        throw new Error("Пакет не содержит поддерживаемый растровый data-url JPEG, PNG или WebP.");
+      }
+      return dataUrl;
+    }
+
+    /**
+     * Находит JSON-объект метаданных после объявления, учитывая строки и вложенные фигурные скобки.
+     */
+    function extractObjectLiteralAfter(text, startRe) {
+      var source = String(text || "");
+      var match = source.match(startRe);
+      if (!match) return "";
+      var position = match.index + match[0].length;
+      while (position < source.length && /\s/.test(source.charAt(position))) position++;
+      if (source.charAt(position) !== "{") return "";
+
+      var start = position;
+      var depth = 0;
+      var quote = "";
+      var escapeNext = false;
+      for (; position < source.length; position++) {
+        var character = source.charAt(position);
+        if (quote) {
+          if (escapeNext) escapeNext = false;
+          else if (character === "\\") escapeNext = true;
+          else if (character === quote) quote = "";
+          continue;
+        }
+        if (character === "'" || character === '"') {
+          quote = character;
+          continue;
+        }
+        if (character === "{") depth++;
+        if (character === "}") {
+          depth--;
+          if (depth === 0) return source.slice(start, position + 1);
+        }
+      }
+      return "";
+    }
+
+    /**
+     * Читает необязательные JSON-метаданные нового пакета; старый пакет остаётся совместимым без сводки.
+     */
+    function extractPackMetaFromPackJs(jsText) {
+      var objectText = extractObjectLiteralAfter(jsText, /var\s+packMeta\s*=/);
+      if (!objectText) return null;
+      try {
+        return JSON.parse(objectText);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    /**
+     * Читает выбранный JS-пакет как данные и передаёт извлечённую текстуру в превью без запуска кода пакета.
+     */
+    function loadPackFileSafely(file) {
+      if (!file) return;
+      if (!/-360(?:-[a-z0-9_-]+)?\.js$/i.test(String(file.name || ""))) {
+        setStatus("Выберите JS-пакет с именем *-360.js.", true);
+        return;
+      }
+
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var sourceText = String(reader.result || "");
+          var dataUrl = extractDataUrlFromPackJs(sourceText);
+          var metaSummary = formatLoadedPackMetaSummary(extractPackMetaFromPackJs(sourceText));
+          var details = "JS-пакет безопасно прочитан без выполнения кода";
+          if (metaSummary) details += ". " + metaSummary;
+          loadTextureUrl(dataUrl, file.name, details);
+        } catch (err) {
+          setStatus("Не удалось безопасно прочитать JS-пакет: " + (err && err.message ? err.message : err), true);
+        }
+      };
+      reader.onerror = function () {
+        setStatus("Ошибка чтения выбранного JS-пакета.", true);
+      };
+      reader.readAsText(file);
     }
 
     /**
@@ -2703,7 +2974,7 @@
     }
 
     /**
-     * Загружает путь из поля story360: JS-пакет -360.js или обычное изображение.
+     * Загружает относительный путь из story360: изображение сразу, а JS-пакет — только в доверенном legacy-режиме.
      */
     function loadAssetPath(path) {
       var value = String(path || "").trim();
@@ -2711,22 +2982,37 @@
         setStatus("Укажите путь к изображению или JS-пакету.", true);
         return;
       }
+      var projectPath;
+      try {
+        projectPath = normalizeProjectAssetPath(value);
+      } catch (err) {
+        setStatus(err && err.message ? err.message : "Недопустимый путь к ассету.", true);
+        return;
+      }
       refreshGeneratedBgId();
       if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
-      if (/-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(value)) {
-        ensurePackScriptLoaded(value).then(function () {
-          var dataUrl = resolveLoadedPackDataUrl(value);
+      if (/-360(?:-[a-z0-9_-]+)?\.js$/i.test(projectPath)) {
+        if (!legacyPackModeInput.checked) {
+          setStatus(
+            "Путь JS-пакета сохранён, но код не выполнен: " + projectPath +
+            ". Для безопасного превью выберите этот файл в поле «Безопасное превью JS-пакета».",
+            false
+          );
+          return;
+        }
+        ensurePackScriptLoaded(projectPath).then(function () {
+          var dataUrl = resolveLoadedPackDataUrl(projectPath);
           if (!dataUrl) {
-            setStatus("JS-пакет загружен, но data-url не найден: " + value, true);
+            setStatus("Legacy-пакет выполнен, но data-url не найден: " + projectPath, true);
             return;
           }
-          loadTextureUrl(dataUrl, value, formatLoadedPackMetaSummary(resolveLoadedPackMeta(value)));
+          loadTextureUrl(dataUrl, projectPath, formatLoadedPackMetaSummary(resolveLoadedPackMeta(projectPath)));
         }).catch(function (err) {
-          setStatus(err && err.message ? err.message : "Не удалось загрузить JS-пакет.", true);
+          setStatus(err && err.message ? err.message : "Не удалось загрузить доверенный legacy-пакет.", true);
         });
         return;
       }
-      loadTextureUrl(toToolRelativeUrl(value), value);
+      loadTextureUrl(toToolRelativeUrl(projectPath), projectPath);
     }
 
     /**
@@ -5720,6 +6006,21 @@
         loadAssetPath(assetPathInput.value);
       });
 
+      packFileInput.addEventListener("change", function () {
+        var file = packFileInput.files && packFileInput.files[0];
+        if (file) loadPackFileSafely(file);
+      });
+
+      legacyPackModeInput.addEventListener("change", function () {
+        var enabled = legacyPackModeInput.checked;
+        legacyPackWarning.classList.toggle("is-visible", enabled);
+        if (enabled) {
+          setStatus("Доверенный legacy-режим включён. Каждый новый JS-пакет по пути потребует отдельного подтверждения.", true);
+        } else {
+          setStatus("Безопасный режим включён: JS-пакеты по пути не выполняются.", false);
+        }
+      });
+
       testTargetBtn.addEventListener("click", function () {
         goToFirst360Target();
       });
@@ -5867,7 +6168,7 @@
     }
 
     /**
-     * Подсказка для file://: движок и редактор рассчитаны на офлайн-открытие; пути к ассетам — относительно корня репозитория.
+     * Подсказка для file:// объясняет офлайн-пути и безопасный выбор JS-пакета без скрытого выполнения.
      */
     function appendFileProtocolTipIfNeeded() {
       if (String(window.location.protocol || "").toLowerCase() !== "file:") return;
@@ -5875,7 +6176,7 @@
       var needle = "file://";
       if (String(statusBox.textContent || "").indexOf(needle) !== -1) return;
       var tip =
-        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo — относительные, например assets/360/…. Предупреждения про iframe в консоли можно игнорировать.";
+        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo сохраняйте от корня проекта, например assets/360/…. Для безопасного превью JS-пакета выберите сам файл; выполнение по пути доступно только в доверенном legacy-режиме. Предупреждения про iframe в консоли можно игнорировать.";
       statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
     }
 

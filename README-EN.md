@@ -185,6 +185,14 @@ Browser-based authoring helpers in the repository include:
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
 - `tools/game-tester.html` for testing mini-games before integration.
 
+`scene360-editor.html` imports `story360.js` as data and does not automatically
+execute JavaScript packages referenced by it. For a safe preview, select the
+required `*-360.js` in the dedicated file field: the editor extracts only the
+raster image and metadata without running JavaScript. Loading a package by path
+is available only through an explicit legacy mode for a trusted project and
+requires confirmation for every new path. External URLs, absolute paths, and
+`..` traversal are rejected.
+
 The game tester uses strict isolation and validates `gameId` and `sessionId` by
 default. Its explicit `Legacy` mode is intended only for a trusted older game and
 shows how to migrate that game to protocol v2.
