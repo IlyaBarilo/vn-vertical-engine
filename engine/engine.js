@@ -4,6 +4,70 @@
 (function () {
   "use strict";
 
+// Проверяет явно включённую через ?Debug= категорию и безопасно отключает её при ошибке конфигурации.
+function isExplicitDebugCategoryEnabled(category) {
+  try {
+    return typeof window.VN_DEBUG_ENABLED === "function" && window.VN_DEBUG_ENABLED(category);
+  } catch (error) {
+    return false;
+  }
+}
+
+// Определяет обычный режим диагностики без влияния на исполнение новеллы при неполной ранней загрузке.
+function isRuntimeDebugModeEnabled() {
+  try {
+    return getStoryMode() === "debug";
+  } catch (error) {
+    return false;
+  }
+}
+
+// Убирает query/hash и содержимое data/blob URL, чтобы диагностический журнал не раскрывал токены и встроенные данные.
+function sanitizeDiagnosticResource(value) {
+  var raw = String(value || "");
+  if (!raw) return "";
+  if (/^data:/i.test(raw)) return "[data-url]";
+  if (/^blob:/i.test(raw)) return "[blob-url]";
+
+  var queryIndex = raw.indexOf("?");
+  var hashIndex = raw.indexOf("#");
+  var cutIndex = raw.length;
+  if (queryIndex >= 0) cutIndex = Math.min(cutIndex, queryIndex);
+  if (hashIndex >= 0) cutIndex = Math.min(cutIndex, hashIndex);
+  return raw.substring(0, cutIndex);
+}
+
+// Очищает только URL-поля небольшого диагностического объекта, не обходя runtime-структуры истории.
+function sanitizeDiagnosticDetails(details) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return details;
+  var result = {};
+  Object.keys(details).forEach(function(key) {
+    var value = details[key];
+    if (/(?:src|url|file|poster|fallback)$/i.test(key)) {
+      result[key] = sanitizeDiagnosticResource(value);
+    } else {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+// Выводит краткую диагностику в debug или при явном ?Debug=runtime; ошибки используют прямой console.error/warn.
+function writeRuntimeDebug() {
+  if (!isRuntimeDebugModeEnabled() && !isExplicitDebugCategoryEnabled("runtime")) return;
+  try {
+    console.log.apply(console, arguments);
+  } catch (error) {}
+}
+
+// Оставляет старые подробные сообщения только для целевой диагностики ?Debug=runtime или ?Debug=all.
+function writeRuntimeVerbose() {
+  if (!isExplicitDebugCategoryEnabled("runtime")) return;
+  try {
+    console.log.apply(console, arguments);
+  } catch (error) {}
+}
+
 // =========================================================
 // ПРОФАЙЛЕР ВРЕМЕНИ
 // =========================================================
@@ -13,7 +77,7 @@ var profiler = {
   
   mark: function(name) {
     this.marks[name] = Date.now() - this.startTime;
-    console.log('[PROFILER]', name, ':', this.marks[name] + 'ms');
+    writeRuntimeVerbose('[PROFILER]', name, ':', this.marks[name] + 'ms');
   },
   
   getReport: function() {
@@ -366,7 +430,7 @@ function markFirstScreenReady(reason) {
   firstScreenMetrics.firstScreenShown = true;
   profiler.mark('First screen is ready');
 
-  console.log('[FIRST SCREEN]', {
+  writeRuntimeDebug('[VN DEBUG] Первый экран готов', {
     reason: reason,
     totalFromEngineStart: Date.now() - profiler.startTime,
     loaderStartExists: !!window.LOADER_STATS,
@@ -756,7 +820,7 @@ function startLicensedEngine() {
 
   resolveLicenseState().then(function(license) {
     window.VN_LICENSE = license;
-    console.log("[LICENSE]", license.status, license.mode, license.message);
+    writeRuntimeDebug("[VN DEBUG] Лицензия", license.status, license.mode);
     restart();
   }).catch(function(error) {
     window.VN_LICENSE = createLicenseState("check-error", false, null, error.message);
@@ -916,7 +980,7 @@ function syncStatsGameFrameWrapToStoryGameWindow() {
   elStatsGameFrameWrap.style.width = width + "px";
   elStatsGameFrameWrap.style.height = height + "px";
 
-  console.log("[GAME] syncStatsGameFrameWrapToStoryGameWindow", {
+  writeRuntimeVerbose("[GAME] syncStatsGameFrameWrapToStoryGameWindow", {
     left: left,
     top: top,
     width: width,
@@ -986,9 +1050,9 @@ var nameObserver = null;
 let currentSceneId = null;
 
 // Для отладки
-console.log('[Engine] blurBgLayer:', elBlurBgLayer);
-console.log('[Engine] blurBgImage:', elBlurBgImage);
-console.log('[Engine] blurBgVideo:', elBlurBgVideo);
+writeRuntimeVerbose('[Engine] blurBgLayer:', elBlurBgLayer);
+writeRuntimeVerbose('[Engine] blurBgImage:', elBlurBgImage);
+writeRuntimeVerbose('[Engine] blurBgVideo:', elBlurBgVideo);
 
 if (btnSettings) {
   btnSettings.addEventListener("click", function () {
@@ -1050,7 +1114,7 @@ elStage.addEventListener("click", function (e) {
   // При ожидании window.STORY движок делает return до инициализации state — не обращаемся к полям.
   if (!state) return;
 
-  console.log("[LOG] stage click", {
+  writeRuntimeVerbose("[LOG] stage click", {
     targetId: e.target && e.target.id,
     modalHidden: elGameModal.classList.contains("hidden"),
     inGame: state.inGame
@@ -1095,8 +1159,6 @@ profiler.mark('DOM has been loaded');
 
 
 
-
-// Добавьте в engine.js после объявления переменных
 
 // Элементы управления статистикой и графиком
 var btnShowFullGraph = document.getElementById("btnShowFullGraph");
@@ -1286,82 +1348,25 @@ function setStatsView(view) {
 
 
 
-// Функция для скрытия всех персонажей
+// Скрывает персонажа и инвалидирует старые асинхронные загрузки без отладочных измерений DOM.
 function hideAllCharacters() {
-  console.log('[Engine] hideAllCharacters START ==========');
-
   // Увеличиваем счётчик, чтобы отменить все старые загрузки
   __activeCharSeq++;
 
-
-  console.log('[Engine] hideAllCharacters START ==========');
-  console.log('[Engine] hideAllCharacters - DOM элемент elChar:', elChar);
-  
   if (elChar) {
-    // Логируем состояние ДО
-    console.log('[Engine] hideAllCharacters - ДО скрытия:', {
-      классы: elChar.classList.toString(),
-      src: elChar.src,
-      'data-char-id': elChar.dataset.charId,
-      стиль: {
-        display: elChar.style.display,
-        opacity: elChar.style.opacity,
-        visibility: elChar.style.visibility,
-        height: elChar.style.height
-      },
-      offsetHeight: elChar.offsetHeight,
-      видим_ли: !elChar.classList.contains('hidden')
-    });
-
     // Принудительное скрытие
     elChar.classList.add("hidden");
     elChar.src = "";
     elChar.removeAttribute('data-char-id');
     resetCharacterVisualLayout();
-    
-    // Логируем состояние ПОСЛЕ
-    console.log('[Engine] hideAllCharacters - ПОСЛЕ скрытия:', {
-      классы: elChar.classList.toString(),
-      src: elChar.src,
-      'data-char-id': elChar.dataset.charId,
-      стиль: {
-        display: elChar.style.display,
-        opacity: elChar.style.opacity,
-        visibility: elChar.style.visibility,
-        height: elChar.style.height
-      },
-      offsetHeight: elChar.offsetHeight,
-      скрыт_ли: elChar.classList.contains('hidden')
-    });
-    
-    // Проверяем через 100мс, что персонаж действительно скрыт
-    setTimeout(() => {
-      console.log('[Engine] hideAllCharacters - ПРОВЕРКА через 100мс:', {
-        классы: elChar.classList.toString(),
-        src: elChar.src,
-        'data-char-id': elChar.dataset.charId,
-        стиль: {
-          display: elChar.style.display,
-          height: elChar.style.height
-        },
-        offsetHeight: elChar.offsetHeight,
-        скрыт_ли: elChar.classList.contains('hidden'),
-        computedStyle: {
-          display: window.getComputedStyle(elChar).display,
-          opacity: window.getComputedStyle(elChar).opacity,
-          visibility: window.getComputedStyle(elChar).visibility
-        }
-      });
-    }, 100);
   } else {
-    console.log('[Engine] hideAllCharacters - ОШИБКА: elChar не найден!');
+    console.warn('[Engine] Не найден DOM-слой персонажа');
   }
-  console.log('[Engine] hideAllCharacters END ==========');
 }
 
 // Проверяем, есть ли ошибки парсинга
 if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
-  console.log('[Engine] Обнаружены ошибки парсинга, движок не запускается');
+  writeRuntimeVerbose('[Engine] Обнаружены ошибки парсинга, движок не запускается');
   
   // Показываем ошибку сразу после загрузки DOM
   setTimeout(function() {
@@ -1398,12 +1403,12 @@ if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
 
 // ---------- Проверка story ----------
 if (!window.STORY) {
-  console.log('[Engine] Ожидание window.STORY...');
+  writeRuntimeVerbose('[Engine] Ожидание window.STORY...');
   elText.textContent = t("loadingStory"); // "Загрузка сценария..."
   
   // Ждём загрузки от story-loader.js
   window.__onStoryLoaded = function(story) {
-    console.log('[Engine] Сценарий загружен, перезапускаем');
+    writeRuntimeVerbose('[Engine] Сценарий загружен, перезапускаем');
     profiler.mark('Сценарий загружен парсером');
 
     // Обновляем STORY
@@ -1436,18 +1441,8 @@ if (!window.STORY) {
 }
 
 var STORY = window.STORY;
-console.log('[Engine] Script found immediately:', STORY.meta.title);
 profiler.mark('Script found immediately');
 updateStatsButtonByStoryMode();
-
-console.log('[Engine] STORY.assets:', STORY.assets);
-if (STORY.assets) {
-  console.log('[Engine] STORY.assets.backgrounds:', STORY.assets.backgrounds);
-  console.log('[Engine] STORY.assets.characters:', STORY.assets.characters);
-  console.log('[Engine] STORY.assets.audio:', STORY.assets.audio);
-} else {
-  console.log('[Engine] STORY.assets is undefined!');
-}
 
 
 // Применяем настройки отступов
@@ -1464,13 +1459,13 @@ profiler.mark('Indentation settings applied');
 // 0.9 = немного меньше
 // 1.1 = немного больше
 var UI_FONT_SCALE = 1.4;
-console.log('[SCALE] UI_FONT_SCALE initialized:', UI_FONT_SCALE);
+writeRuntimeVerbose('[SCALE] UI_FONT_SCALE initialized:', UI_FONT_SCALE);
 
 // Дополнительный множитель масштаба интерфейса только при уверенном определении смартфона.
 // В applyUiScale итог: UI_FONT_SCALE * autoScale * (телефон ? UI_PHONE_EXTRA_FONT_SCALE : 1).
 // Значение 1.0 отключает эффект; >1 укрупняет текст и UI на телефонах поверх обычной формулы.
 var UI_PHONE_EXTRA_FONT_SCALE = 1.45;
-console.log('[SCALE] UI_PHONE_EXTRA_FONT_SCALE initialized:', UI_PHONE_EXTRA_FONT_SCALE);
+writeRuntimeVerbose('[SCALE] UI_PHONE_EXTRA_FONT_SCALE initialized:', UI_PHONE_EXTRA_FONT_SCALE);
 
 // Верхняя граница меньшей стороны viewport (CSS px) для «карманного» экрана; выше — не считаем телефоном.
 var UI_PHONE_VIEWPORT_MAX_SHORT_PX = 560;
@@ -1480,14 +1475,14 @@ var UI_PHONE_VIEWPORT_MIN_ASPECT = 1.35;
 // Высота экрана, под которую делался дизайн
 // используется для автоадаптации
 var UI_REFERENCE_HEIGHT = 1440;
-console.log('[SCALE] UI_REFERENCE_HEIGHT initialized:', UI_REFERENCE_HEIGHT);
+writeRuntimeVerbose('[SCALE] UI_REFERENCE_HEIGHT initialized:', UI_REFERENCE_HEIGHT);
 
 // Высота, от которой считаются визуальные эффекты: blur, тонкие бордеры и тени.
 // Минимум не даёт эффектам стать слишком тонкими на очень низком окне.
 var UI_VISUAL_REFERENCE_HEIGHT = UI_REFERENCE_HEIGHT;
 var UI_VISUAL_MIN_HEIGHT = 400;
-console.log('[SCALE] UI_VISUAL_REFERENCE_HEIGHT initialized:', UI_VISUAL_REFERENCE_HEIGHT);
-console.log('[SCALE] UI_VISUAL_MIN_HEIGHT initialized:', UI_VISUAL_MIN_HEIGHT);
+writeRuntimeVerbose('[SCALE] UI_VISUAL_REFERENCE_HEIGHT initialized:', UI_VISUAL_REFERENCE_HEIGHT);
+writeRuntimeVerbose('[SCALE] UI_VISUAL_MIN_HEIGHT initialized:', UI_VISUAL_MIN_HEIGHT);
 
 // ---------- Состояние движка ----------
 var state = {
@@ -1704,27 +1699,13 @@ var goto360Runtime = {
   buttonText: ""
 };
 
-// Отладка автосейва: в консоли фильтр [AUTOSAVE_DEBUG]. Выключить: window.VN_AUTOSAVE_DEBUG = false
-// Объявлено до startLicensedEngine/pagehide, чтобы не было ReferenceError при синхронном restart().
-if (typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === undefined) {
-  window.VN_AUTOSAVE_DEBUG = true;
-}
+// Подробная отладка автосохранения включается только через ?Debug=autosave или явный флаг window.VN_AUTOSAVE_DEBUG=true.
+// Обычные ошибки записи остаются прямыми console.warn и не зависят от диагностического режима.
 
-/** Укороченный стек для логов (кто вызвал flush/build). */
-function autosaveDebugShortStack() {
-  try {
-    var s = new Error().stack;
-    if (!s) return "";
-    var lines = s.split("\n");
-    return lines.slice(2, 7).join(" <- ");
-  } catch (err) {
-    return "";
-  }
-}
-
-/** Единая точка логов автосейва; не спамит, если window.VN_AUTOSAVE_DEBUG === false. */
+/** Выводит обезличенное состояние автосохранения только по явному запросу разработчика. */
 function autosaveDebugLog(tag, detail) {
-  if (typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === false) return;
+  var enabledByFlag = typeof window !== "undefined" && window.VN_AUTOSAVE_DEBUG === true;
+  if (!enabledByFlag && !isExplicitDebugCategoryEnabled("autosave")) return;
   if (detail !== undefined) console.log("[AUTOSAVE_DEBUG]", tag, detail);
   else console.log("[AUTOSAVE_DEBUG]", tag);
 }
@@ -3010,7 +2991,7 @@ function getCharacterDebugSnapshot(extra) {
     charSeq: typeof __charSeq !== "undefined" ? __charSeq : null,
     activeCharSeq: typeof __activeCharSeq !== "undefined" ? __activeCharSeq : null,
     focusOptions: options,
-    extra: extra || {},
+    extra: sanitizeDiagnosticDetails(extra || {}),
     viewport: {
       width: typeof window !== "undefined" ? window.innerWidth : null,
       height: typeof window !== "undefined" ? window.innerHeight : null
@@ -3054,8 +3035,8 @@ function getCharacterDebugSnapshot(extra) {
       offsetWidth: char.offsetWidth,
       offsetHeight: char.offsetHeight,
       datasetCharId: char.dataset ? char.dataset.charId || "" : "",
-      attrSrc: char.getAttribute("src") || "",
-      currentSrc: char.currentSrc || char.src || "",
+      attrSrc: sanitizeDiagnosticResource(char.getAttribute("src") || ""),
+      currentSrc: sanitizeDiagnosticResource(char.currentSrc || char.src || ""),
       rect: getCharacterDebugRect(char),
       inlineStyle: {
         left: char.style.left,
@@ -3083,21 +3064,30 @@ function getCharacterDebugSnapshot(extra) {
   };
 }
 
-// Единый лог персонажа: фильтруй консоль по "[CHAR DEBUG]" и присылай блоки вокруг неверного кадра.
+// Проверяет единый и совместимый старый флаг до построения дорогих DOM-снимков персонажа.
+function isCharacterDebugEnabled() {
+  var enabledByFlag = typeof window !== "undefined" && window.VN_CHAR_DEBUG === true;
+  return enabledByFlag || isExplicitDebugCategoryEnabled("character");
+}
+
+// Подробный снимок персонажа строится только через ?Debug=character или window.VN_CHAR_DEBUG=true.
 function logCharacterFocusDebug(label, extra) {
-  if (typeof window !== "undefined" && window.VN_CHAR_DEBUG === false) return;
+  if (!isCharacterDebugEnabled()) return;
   console.log("[CHAR DEBUG] " + label, getCharacterDebugSnapshot(extra));
 }
 
-// Плоская строка нужна для копирования из консоли без раскрытия вложенных объектов Chrome.
+// Плоская строка упрощает копирование явно включённой диагностики без раскрытия объектов Chrome.
 function logCharacterFrameLine(label, values) {
-  if (typeof window !== "undefined" && window.VN_CHAR_DEBUG === false) return;
+  if (!isCharacterDebugEnabled()) return;
   var data = values || {};
   var parts = [];
   Object.keys(data).forEach(function(key) {
     var value = data[key];
     if (typeof value === "number" && isFinite(value)) {
       value = roundCharacterDebugNumber(value);
+    }
+    if (/(?:src|url|file|poster|fallback)$/i.test(key)) {
+      value = sanitizeDiagnosticResource(value);
     }
     parts.push(key + "=" + value);
   });
@@ -3385,8 +3375,6 @@ function getBackgroundAssetScrollOptions(assetEntry) {
   return fromScroll;
 }
 
-var VISUAL_TRACE_ENABLED = true;
-
 function visualTraceMediaState(el) {
   // Собирает только диагностическое состояние слоя, не меняя DOM и порядок отрисовки.
   if (!el) return null;
@@ -3396,7 +3384,7 @@ function visualTraceMediaState(el) {
     id: el.id || "",
     hidden: el.classList ? el.classList.contains("hidden") : null,
     display: window.getComputedStyle ? window.getComputedStyle(el).display : "",
-    src: normalizeAssetUrl(el.currentSrc || el.src || ""),
+    src: sanitizeDiagnosticResource(normalizeAssetUrl(el.currentSrc || el.src || "")),
     currentTime: isMedia ? Number(el.currentTime.toFixed(3)) : null,
     readyState: isMedia ? el.readyState : null,
     paused: isMedia ? el.paused : null
@@ -3404,8 +3392,9 @@ function visualTraceMediaState(el) {
 }
 
 function visualTrace(label, data) {
-  // Диагностический лог порядка показа слоев; после отладки можно выключить VISUAL_TRACE_ENABLED.
-  if (!VISUAL_TRACE_ENABLED) return;
+  // Снимок стилей дорогой, поэтому строится только через ?Debug=visual или window.VN_VISUAL_DEBUG=true.
+  var enabledByFlag = typeof window !== "undefined" && window.VN_VISUAL_DEBUG === true;
+  if (!enabledByFlag && !isExplicitDebugCategoryEnabled("visual")) return;
 
   var now = (window.performance && typeof window.performance.now === "function")
     ? window.performance.now()
@@ -3414,7 +3403,7 @@ function visualTrace(label, data) {
   console.log("[VISUAL TRACE]", now.toFixed(1) + "ms", label, {
     sceneId: state && state.sceneId,
     actionIndex: state && state.actionIndex,
-    extra: data || null,
+    extra: sanitizeDiagnosticDetails(data || null),
     bg: visualTraceMediaState(elBg),
     bgVideo: visualTraceMediaState(elBgVideo),
     storyOverlay: visualTraceMediaState(elStoryVideoOverlay),
@@ -3446,24 +3435,24 @@ function getGraphImageSrc(src) {
 audio.bgm.loop = true;
 
 audio.bgm.addEventListener('play', function () {
-  console.log('[AUDIO EVENT] bgm play');
+  writeRuntimeVerbose('[AUDIO EVENT] bgm play');
   logAudioState('event: play');
 });
 
 audio.bgm.addEventListener('pause', function () {
-  console.log('[AUDIO EVENT] bgm pause');
+  writeRuntimeVerbose('[AUDIO EVENT] bgm pause');
   logAudioState('event: pause');
 });
 
 audio.bgm.addEventListener('ended', function () {
-  console.log('[AUDIO EVENT] bgm ended');
+  writeRuntimeVerbose('[AUDIO EVENT] bgm ended');
   logAudioState('event: ended');
 });
 
 audio.bgm.addEventListener('error', function () {
   var badSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
 
-  console.log('[AUDIO EVENT] bgm error', audio.bgm.error, badSrc);
+  writeRuntimeVerbose('[AUDIO EVENT] bgm error', audio.bgm.error && audio.bgm.error.code, sanitizeDiagnosticResource(badSrc));
   logAudioState('event: error');
 
   if (badSrc) {
@@ -3478,7 +3467,7 @@ audio.bgm.addEventListener('error', function () {
 });
 
 audio.bgm.addEventListener('canplay', function () {
-  console.log('[AUDIO EVENT] bgm canplay');
+  writeRuntimeVerbose('[AUDIO EVENT] bgm canplay');
   logAudioState('event: canplay');
 });
 
@@ -3544,7 +3533,7 @@ if (STORY.meta && STORY.meta.title) {
 // основной обработчик перехода (один!)
 elDialog.addEventListener("pointerup", function(e){
 
-  console.log("[LOG] dialog pointerup", {
+  writeRuntimeVerbose("[LOG] dialog pointerup", {
     targetId: e.target && e.target.id,
     modalHidden: elGameModal.classList.contains("hidden"),
     inGame: state.inGame,
@@ -3552,7 +3541,7 @@ elDialog.addEventListener("pointerup", function(e){
     nextLocked: state.nextLocked
   });
 
-  console.log(
+  writeRuntimeVerbose(
     "[VN] pointerup",
     "waitingNext:", state.waitingNext,
     "locked:", state.nextLocked,
@@ -3566,7 +3555,7 @@ elDialog.addEventListener("pointerup", function(e){
 
   // Защита от двойных кликов
   if (e.detail > 1) {
-    console.log("[VN] двойной клик проигнорирован");
+    writeRuntimeVerbose("[VN] двойной клик проигнорирован");
     return;
   }
 
@@ -3590,7 +3579,7 @@ btnRestart.addEventListener("click", function () {
 btnMute.addEventListener("click", function () {
   var wasMuted = audio.muted;
 
-  console.log('[AUDIO] btnMute click before toggle');
+  writeRuntimeVerbose('[AUDIO] btnMute click before toggle');
   logAudioState('btnMute before toggle');
 
   audio.muted = !audio.muted;
@@ -3598,7 +3587,7 @@ btnMute.addEventListener("click", function () {
   applyAudioSettings();
   updateMuteIcon();
 
-  console.log('[AUDIO] btnMute click after toggle');
+  writeRuntimeVerbose('[AUDIO] btnMute click after toggle');
   logAudioState('btnMute after toggle');
 
   if (wasMuted && !audio.muted) {
@@ -3612,7 +3601,7 @@ sliderVolume.addEventListener("input", function () {
   var v = parseInt(sliderVolume.value, 10);
   if (isNaN(v)) v = 20;
 
-  console.log('[AUDIO] slider input raw value =', sliderVolume.value);
+  writeRuntimeVerbose('[AUDIO] slider input raw value =', sliderVolume.value);
 
   audio.masterVolume = clamp(v / 100, 0, 1);
   applyAudioSettings();
@@ -3627,7 +3616,7 @@ sliderVolume.addEventListener("input", function () {
 });
 
 btnCloseGame.addEventListener("pointerup", function (e) {
-  console.log("[LOG] close pointerup", {
+  writeRuntimeVerbose("[LOG] close pointerup", {
     inGame: state.inGame,
     modalHidden: elGameModal.classList.contains("hidden"),
     waitingNext: state.waitingNext,
@@ -3641,7 +3630,7 @@ btnCloseGame.addEventListener("pointerup", function (e) {
 
   if (isCurrentStoryGameUrlMode()) {
     restartStandaloneGameFromUrl();
-    console.log("[LOG] after restartStandaloneGameFromUrl", {
+    writeRuntimeVerbose("[LOG] after restartStandaloneGameFromUrl", {
       inGame: state.inGame,
       modalHidden: elGameModal.classList.contains("hidden"),
       waitingNext: state.waitingNext,
@@ -3652,7 +3641,7 @@ btnCloseGame.addEventListener("pointerup", function (e) {
 
   closeGame({ manualClose: true, result: 0 });
 
-  console.log("[LOG] after closeGame", {
+  writeRuntimeVerbose("[LOG] after closeGame", {
     inGame: state.inGame,
     modalHidden: elGameModal.classList.contains("hidden"),
     waitingNext: state.waitingNext,
@@ -4266,8 +4255,7 @@ function buildAutosavePayload(opts) {
     walk360Active: !!(walk360Runtime && walk360Runtime.active),
     goto360Active: !!(goto360Runtime && goto360Runtime.active),
     choicesVisible: !!(elChoices && !elChoices.classList.contains("hidden")),
-    optsPersistOverride: typeof opts.persistActionIndex === "number",
-    stack: autosaveDebugShortStack()
+    optsPersistOverride: typeof opts.persistActionIndex === "number"
   });
 
   return {
@@ -4346,8 +4334,7 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
         inGame: state.inGame,
         inVideo: state.inVideo,
         sceneId: state.sceneId,
-        actionIndex: state.actionIndex,
-        stack: autosaveDebugShortStack()
+        actionIndex: state.actionIndex
       });
       return;
     }
@@ -4359,8 +4346,7 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
       sceneId: payload.sceneId,
       actionIndex: payload.actionIndex,
       waitingNext: payload.waitingNext,
-      nextLocked: payload.nextLocked,
-      stack: autosaveDebugShortStack()
+      nextLocked: payload.nextLocked
     });
   } catch (err) {
     console.warn("[AUTOSAVE] flush failed:", err);
@@ -4740,7 +4726,7 @@ function tryApplyAutosave() {
     elText.textContent = "";
   }
 
-  console.log("[AUTOSAVE] restored", data.sceneId, data.actionIndex);
+  writeRuntimeDebug("[VN DEBUG] Автосохранение восстановлено", data.sceneId, data.actionIndex);
   // Перед runCurrent передаём startGoto360 текущую панораму story360; иначе команда откроет стартовый узел.
   var story360RestorePending = buildStory360RestorePendingFromAutosave(data.story360, data.bgScroll);
   var restoreActionIsGoto360 = !!(restoreAction && restoreAction.type === "goto360");
@@ -4942,7 +4928,7 @@ function restart() {
 
   // Проверяем наличие ошибок парсинга
   if (window.PARSE_ERRORS && window.PARSE_ERRORS.length > 0) {
-    console.log('[Engine] Обнаружены ошибки парсинга, показываем сообщение');
+    writeRuntimeVerbose('[Engine] Обнаружены ошибки парсинга, показываем сообщение');
     // Здесь ничего не делаем, так как story-loader.js уже создал сцену с ошибкой
     // Просто продолжаем выполнение - движок покажет сцену с ошибкой
   }
@@ -5018,31 +5004,7 @@ function restart() {
 
 function runCurrent() {
   try {
-  console.log("[VN] runCurrent ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
-  console.log(
-    "[VN] runCurrent",
-    "scene:", state.sceneId,
-    "index:", state.actionIndex
-  );
-
-  console.log("[DEBUG] runCurrent - сцена:", state.sceneId, "индекс:", state.actionIndex);
-if (state.sceneId === 'scene_02') {
-  const scene = state.sceneMap[state.sceneId];
-  if (scene && scene.actions) {
-    console.log("[DEBUG] scene_02 actions:", scene.actions.map(a => a.type).join(', '));
-    if (scene.actions[0]) console.log("[DEBUG] action 0:", scene.actions[0]);
-    if (scene.actions[1]) console.log("[DEBUG] action 1:", scene.actions[1]);
-    if (scene.actions[2]) console.log("[DEBUG] action 2:", scene.actions[2]);
-  }
-}
-
-  console.log('[FLOW] runCurrent:start', {
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex,
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked,
-    inGame: state.inGame
-  });
+  writeRuntimeDebug('[VN DEBUG] Исполнение сцены', state.sceneId, 'с индекса', state.actionIndex);
 
   // безопасность: если сцены нет
   var scene = state.sceneMap[state.sceneId];
@@ -5067,7 +5029,7 @@ if (state.sceneId === 'scene_02') {
       state.actionIndex >= scene.actions.length &&
       (!Array.isArray(state.pendingActions) || state.pendingActions.length === 0)
     ) {
-      console.log('[VN] Достигнут конец сцены', state.sceneId);
+      writeRuntimeVerbose('[VN] Достигнут конец сцены', state.sceneId);
       autosaveDebugLog("runCurrent:end_of_scene", {
         sceneId: state.sceneId,
         actionIndex: state.actionIndex,
@@ -5099,41 +5061,21 @@ if (state.sceneId === 'scene_02') {
         state.actionIndex++;
       }
     }
-    console.log('[FLOW] runCurrent:action picked', {
-      sceneId: state.sceneId,
-      actionIndexBeforeInc: actionIndexBeforeInc,
-      action: action,
-      waitingNext: state.waitingNext,
-      nextLocked: state.nextLocked
-    });
-
     if (!action || !action.type) continue;
+
+    writeRuntimeDebug('[VN DEBUG] Действие', {
+      sceneId: state.sceneId,
+      actionIndex: actionFromPending ? -1 : actionIndexBeforeInc,
+      type: action.type,
+      pending: actionFromPending
+    });
 
     var shouldWait = executeAction(action);
     if (shouldWait === "async" && (action.type === "walk360" || action.type === "goto360")) {
       rememberActive360ActionForAutosave(action, actionFromPending, actionFromPending ? -1 : actionIndexBeforeInc, state.actionIndex);
     }
 
-    console.log('[FLOW] runCurrent:after executeAction', {
-      sceneId: state.sceneId,
-      actionIndexAfterInc: state.actionIndex,
-      actionType: action && action.type,
-      shouldWait: shouldWait,
-      waitingNext: state.waitingNext,
-      nextLocked: state.nextLocked
-    });
-
     if (shouldWait === "async") {
-
-      console.log('[FLOW] runCurrent:enter async wait', {
-        sceneId: state.sceneId,
-        actionIndex: state.actionIndex,
-        actionType: action && action.type,
-        waitingNextBefore: state.waitingNext,
-        nextLockedBefore: state.nextLocked
-      });
-
-
       // Ждём внутреннего завершения действия (например, загрузки персонажа),
       // но НЕ разрешаем пользовательский клик "дальше".
       state.waitingNext = false;
@@ -5142,14 +5084,6 @@ if (state.sceneId === 'scene_02') {
     }
 
     if (shouldWait === true) {
-      console.log('[FLOW] runCurrent:enter user wait', {
-        sceneId: state.sceneId,
-        actionIndex: state.actionIndex,
-        actionType: action && action.type,
-        waitingNextBefore: state.waitingNext,
-        nextLockedBefore: state.nextLocked
-      });
-
       // Обычное ожидание пользовательского next
       state.waitingNext = true;
       state.nextLocked = false;
@@ -5163,22 +5097,12 @@ if (state.sceneId === 'scene_02') {
 }
 
 
-// Добавьте в начало файла переменную
+// Ограничивает повторные click/pointerup одним переходом за короткий интервал.
 var lastNextTime = 0;
 var NEXT_COOLDOWN = 300; // миллисекунд
 var suppressAutoRunOnce = false;
 
 function onNext(e) {
-  console.log("[LOG] onNext enter", {
-    eventType: e && e.type,
-    targetId: e && e.target && e.target.id,
-    modalHidden: elGameModal.classList.contains("hidden"),
-    inGame: state.inGame,
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked,
-    dt: Date.now() - lastNextTime
-  });
-
   if (state.inGame || state.inVideo) {
     autosaveDebugLog("onNext:blocked", { reason: "inGame_or_inVideo", inGame: state.inGame, inVideo: state.inVideo });
     return;
@@ -5198,29 +5122,14 @@ function onNext(e) {
     return;
   }
 
-  console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
-  console.trace(); // <-- Добавьте это! Покажет стек вызовов
-
   // Защита от двойных кликов
   var now = Date.now();
   if (now - lastNextTime < NEXT_COOLDOWN) {
-    console.log("[VN] onNext проигнорирован (защита от двойного клика)");
     autosaveDebugLog("onNext:blocked", { reason: "cooldown_ms", dt: now - lastNextTime, NEXT_COOLDOWN: NEXT_COOLDOWN });
     return;
   }
-  console.log('[TIMING] Время между кликами:', now - lastNextTime, 'ms');
-  
-  lastNextTime = now;
 
-  console.log("[VN] onNext ВЫЗВАНА!", "Timestamp:", Date.now(), "ms");
-  console.log("[VN] onNext состояние:", {
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked,
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex,
-    choicesHidden: elChoices.classList.contains("hidden"),
-    inGame: state.inGame
-  });
+  lastNextTime = now;
 
   // Защита от всплытия
   if (e && typeof e.stopPropagation === "function") {
@@ -5238,7 +5147,6 @@ function onNext(e) {
 
   // ВАЖНО: проверяем, ждём ли мы следующего действия
   if (!state.waitingNext) {
-    console.log('[VN] onNext ignored - not waiting for next');
     autosaveDebugLog("onNext:blocked", { reason: "not_waitingNext" });
     return;
   }
@@ -5247,7 +5155,6 @@ function onNext(e) {
   var scene = state.sceneMap[state.sceneId];
   var pendingActionsLen = Array.isArray(state.pendingActions) ? state.pendingActions.length : 0;
   if (!scene || !Array.isArray(scene.actions)) {
-    console.log('[VN] Текущая сцена недоступна, игнорируем клик');
     autosaveDebugLog("onNext:blocked", {
       reason: "bad_scene",
       sceneId: state.sceneId
@@ -5255,7 +5162,6 @@ function onNext(e) {
     return;
   }
   if (pendingActionsLen === 0 && state.actionIndex >= scene.actions.length) {
-    console.log('[VN] Достигнут конец сценария, игнорируем клик');
     autosaveDebugLog("onNext:blocked", {
       reason: "past_end_of_scene",
       actionIndex: state.actionIndex,
@@ -5284,8 +5190,6 @@ function onNext(e) {
       state.nextLocked = false;
     }
   }, 100);
-
-  console.log("[VN] onNext ВЫПОЛНЯЕТСЯ, запускаем runCurrent()");
 
   runCurrent();
   // Клик "дальше" — гарантированный user gesture, поэтому пытаемся поднять звук фонового видео.
@@ -6172,12 +6076,12 @@ function prepareCharacterVisualAction(action) {
   var charAssetInfo = resolveCharacterAssetInfo(action.charId, action.emotion);
   var src = charAssetInfo.file;
   if (!src) {
-    console.log('[VISUAL BATCH] char skipped: image not found', action);
+    writeRuntimeVerbose('[VISUAL BATCH] char skipped: image not found', action && action.charId);
     return { kind: "skip", changesVisual: false };
   }
 
   if (areAllImageCandidatesFailed(src)) {
-    console.log('[VISUAL BATCH] char skipped: image marked failed', src);
+    writeRuntimeVerbose('[VISUAL BATCH] char skipped: image marked failed', sanitizeDiagnosticResource(src));
     return { kind: "skip", changesVisual: false };
   }
 
@@ -6795,14 +6699,6 @@ function executeVisualBatch(actions) {
 
 // Возвращает true, если надо "ждать" (клик дальше/выбор/игра)
 function executeAction(action) {
-  console.log(
-    "[VN] action",
-    action.type,
-    "scene:", state.sceneId,
-    "index:", state.actionIndex - 1,
-    action
-  );
-
   switch (action.type) {
     case "visual_batch":
       return executeVisualBatch(action.actions || []);
@@ -6844,42 +6740,22 @@ function executeAction(action) {
       return startGoto360(action);
 
     case "char":
-      console.log('[ENGINE] ПОЛУЧЕН CHAR ACTION:', JSON.stringify(action));
-      console.log('[ENGINE] Текущая сцена:', state.sceneId, 'индекс:', state.actionIndex-1);
-
-      console.log('[Engine CHAR] Processing char action:', action);
-      console.log('[Engine executeAction] CHAR action received:', JSON.stringify(action));
-
       // Любая команда без charId и без src - это скрытие
       if ((!action.charId || action.charId === null) && action.src === null) {
-        console.log('[ENGINE] ВЫПОЛНЯЕТСЯ HIDE ALL!');
+        writeRuntimeVerbose('[ENGINE] ВЫПОЛНЯЕТСЯ HIDE ALL!');
         hideAllCharacters();
-        console.log('[ENGINE] HIDE ALL ВЫПОЛНЕН, возвращаем false');
+        writeRuntimeVerbose('[ENGINE] HIDE ALL ВЫПОЛНЕН, возвращаем false');
         return false;
       }
       
       // Только новый формат:
       // { type: "char", charId: "anna", emotion: "neutral", pos: "center" }
-      console.log('[Engine CHAR] New format - charId:', action.charId, 'emotion:', action.emotion);
+      writeRuntimeVerbose('[Engine CHAR] New format - charId:', action.charId, 'emotion:', action.emotion);
 
       if (!action.charId) {
-        console.warn('[Engine CHAR] charId is missing in new format action:', action);
+        console.warn('[Engine CHAR] charId отсутствует:', state.sceneId, state.actionIndex - 1);
         setCharacter(null, action.pos, null);
         return false;
-      }
-
-      console.log('[Engine CHAR] STORY.assets:', STORY.assets);
-      console.log('[Engine CHAR] STORY.assets.characters:', STORY.assets?.characters);
-
-      if (STORY.assets?.characters) {
-        const char = STORY.assets.characters[action.charId];
-        console.log('[Engine CHAR] Character data for', action.charId, ':', char);
-
-        if (char?.images) {
-          console.log('[Engine CHAR] Available emotions:', Object.keys(char.images));
-          console.log('[Engine CHAR] Requested emotion:', action.emotion);
-          console.log('[Engine CHAR] Image path:', getCharacterImagePath(char.images[action.emotion]));
-        }
       }
 
       const charAssetInfo = resolveCharacterAssetInfo(action.charId, action.emotion);
@@ -6888,25 +6764,10 @@ function executeAction(action) {
         mergeCharacterFocusOptions(charAssetInfo.focusOptions, action),
         CHARACTER_FOCUS_DEFAULTS
       );
-      console.log('[Engine CHAR] Resolved src:', src);
-
-      console.log('[SCRIPT FLOW] char action -> setCharacter', {
-        actionIndex: state.actionIndex - 1,
-        action: action,
-        resolvedSrc: src,
-        pos: action.pos,
-        charId: action.charId,
-        focusOptions: charFocusOptions
-      });
+      writeRuntimeVerbose('[Engine CHAR] Resolved src:', sanitizeDiagnosticResource(src));
 
       // Если картинка не найдена — не показываем, но и не скрываем
       if (!src) {
-        console.log('[SCRIPT FLOW] char action(new) -> no image found, skipping', {
-          sceneId: state.sceneId,
-          actionIndex: state.actionIndex - 1,
-          action: action
-        });
-
         // Просто пропускаем, не меняем видимость
         return false;
       }
@@ -6914,9 +6775,6 @@ function executeAction(action) {
       if (!firstScreenMetrics.firstScreenShown) {
         firstScreenMetrics.waitingForCharacter = true;
       }
-
-      // Сохраняем индекс перед асинхронной загрузкой
-      var currentActionIndex = state.actionIndex - 1; // потому что мы уже увеличили индекс
 
       // Проверяем, нужно ли реально загружать изображение
       const currentSrc = elChar.getAttribute('src');
@@ -6926,25 +6784,17 @@ function executeAction(action) {
 
       // Если персонаж уже видим с тем же src и теми же focus/scale, загрузка и пересчет не нужны.
       if (imageUrlMatchesStoryCandidates(currentSrc, src) && !isHidden && focusAlreadyApplied) {
-        console.log('[Engine CHAR] Character already visible, continuing');
+        writeRuntimeVerbose('[Engine CHAR] Character already visible, continuing');
         firstScreenMetrics.waitingForCharacter = false;
         return false;
       }
 
       setCharacter(src, action.pos, action.charId, function() {
-        console.log('[FLOW] char(new):done callback start', {
-          sceneId: state.sceneId,
-          actionIndex: state.actionIndex,
-          savedIndex: currentActionIndex,
-          waitingNextBefore: state.waitingNext,
-          nextLockedBefore: state.nextLocked
-        });
-
         firstScreenMetrics.waitingForCharacter = false;
 
         // ✅ Если ожидаем клик пользователя – не продолжаем автоматически
         if (state.waitingNext) {
-          console.log('[FLOW] char(new):done callback but waiting for user click, skipping runCurrent');
+          writeRuntimeVerbose('[FLOW] char(new):done callback but waiting for user click, skipping runCurrent');
           state.nextLocked = false;      // снимаем блокировку, если была
           return;
         }
@@ -6953,38 +6803,25 @@ function executeAction(action) {
         state.waitingNext = false;
 
         if (suppressAutoRunOnce) {
-          console.log('[FLOW] char(new):done callback suppressed after manual game close');
+          writeRuntimeVerbose('[FLOW] char(new):done callback suppressed after manual game close');
           suppressAutoRunOnce = false;
           state.nextLocked = false;
           state.waitingNext = true;
           return;
         }
 
-        console.log('[FLOW] char(new):done callback before runCurrent', {
-          sceneId: state.sceneId,
-          actionIndex: state.actionIndex,
-          waitingNextAfterReset: state.waitingNext,
-          nextLockedAfterReset: state.nextLocked
-        });
-
         runCurrent();
       }, charFocusOptions);
-
-      console.log('[SCRIPT FLOW] char action(new) paused until image load', {
-        sceneId: state.sceneId,
-        actionIndex: state.actionIndex - 1,
-        action: action
-      });
 
       return "async";
 
     case "say":
-      console.log('[ENGINE SAY] Показываю диалог, возвращаю true');
+      writeRuntimeVerbose('[ENGINE SAY] Показываю диалог, возвращаю true');
       // Только новый формат:
       // { type: "say", charVar: "anna", text: "..." }
 
       if (!action.charVar) {
-        console.warn('[Engine] say: charVar is missing in new format action:', action);
+        console.warn('[Engine] say: charVar отсутствует:', state.sceneId, state.actionIndex - 1);
         showDialog(null, renderTextVars(action.text || ""));
         return true;
       }
@@ -7016,14 +6853,14 @@ function executeAction(action) {
       return "async";
 
     case "text":
-      console.log('[ENGINE TEXT] Показываю текст, возвращаю true');
+      writeRuntimeVerbose('[ENGINE TEXT] Показываю текст, возвращаю true');
       showDialog(null, renderTextVars(action.text));
 
       // ВАЖНО: принудительно устанавливаем ожидание
       state.waitingNext = true;
       state.nextLocked = false;
 
-      console.log('[VN] text action - waitingNext установлен в true');
+      writeRuntimeVerbose('[VN] text action - waitingNext установлен в true');
 
       return true;
 
@@ -7032,7 +6869,7 @@ function executeAction(action) {
       return true;
 
     case "goto":
-      console.log('[ENGINE GOTO] Переход, возвращаю false');
+      writeRuntimeVerbose('[ENGINE GOTO] Переход, возвращаю false');
       gotoScene(action.target);
       return false;
 
@@ -7061,7 +6898,7 @@ function executeAction(action) {
       var eqPos = action.expression.indexOf('=');
 
       if (eqPos === -1) {
-        console.error("[VN] set: неверное выражение", action.expression);
+        console.error("[VN] set: неверное выражение в сцене", state.sceneId, state.actionIndex - 1);
         return false;
       }
 
@@ -7069,16 +6906,15 @@ function executeAction(action) {
       var expr = action.expression.substring(eqPos + 1).trim();
 
       if (!varName) {
-        console.error("[VN] set: пустое имя переменной", action.expression);
+        console.error("[VN] set: пустое имя переменной в сцене", state.sceneId, state.actionIndex - 1);
         return false;
       }
 
       try {
         // set вычисляет только безопасное выражение без запуска JavaScript-кода из сценария.
         state.vars[varName] = evaluateSafeExpression(expr, state.vars);
-        console.log("[VN] set result:", varName, "=", state.vars[varName], "vars:", state.vars);
       } catch (e) {
-        console.error("[VN] set error:", action.expression, e);
+        console.error("[VN] set error для переменной", varName, e && e.message ? e.message : e);
       }
 
       return false;
@@ -7095,7 +6931,7 @@ function executeAction(action) {
 
         return false;
       } catch (e) {
-        console.error("[VN] if_expr error:", action.condition, e);
+        console.error("[VN] if_expr error в сцене", state.sceneId, state.actionIndex - 1, e && e.message ? e.message : e);
         return false;
       }
     }
@@ -7175,7 +7011,7 @@ function reset360InteractionStateForRestart(reason) {
 
   // Отключаем старый canvas и инвалидируем его отложенные загрузки, чтобы после сброса не вернулся прежний 360-фон.
   disableBg360Renderer();
-  console.log("[walk360] reset interaction state", reason || "");
+  writeRuntimeVerbose("[walk360] reset interaction state", reason || "");
 }
 
 // Прячет обычную реплику на время walk360 и убирает оставшийся текст/имя, чтобы не было пустой нижней плашки.
@@ -7326,7 +7162,6 @@ function shouldShowStory360MarkByVisibleIf(mark, vars, contextLabel) {
     console.warn("[story360] invalid visibleIf; mark hidden", {
       context: contextLabel || "",
       markId: mark && mark.id,
-      visibleIf: expression,
       error: parsed.error
     });
     return false;
@@ -7346,7 +7181,6 @@ function shouldShowStory360MarkByVisibleIf(mark, vars, contextLabel) {
     console.warn("[story360] visibleIf evaluation failed; mark hidden", {
       context: contextLabel || "",
       markId: mark && mark.id,
-      visibleIf: expression,
       error: e && e.message ? e.message : String(e)
     });
     return false;
@@ -7370,9 +7204,10 @@ function readStory360FocusField(source, focusKey) {
   return undefined;
 }
 
-// Включает подробные логи цепочки фокуса goto360: в консоли window.STORY360_DEBUG_FOCUS = true или GET ?debug360focus=1.
+// Включает фокус-диагностику через ?Debug=360; старые флаг и query сохраняются для совместимости.
 function story360DebugFocusLogEnabled() {
   if (typeof window === "undefined") return false;
+  if (isExplicitDebugCategoryEnabled("360")) return true;
   if (window.STORY360_DEBUG_FOCUS === true) return true;
   try {
     var q = window.location && window.location.search;
@@ -10808,7 +10643,7 @@ function syncBg360NavArrowsFromMarks() {
     navGroup.add(nvHeadMesh);
   }
 
-  console.log("[bg360-nav] arrows rebuilt: meshes=" + navGroup.children.length +
+  writeRuntimeVerbose("[bg360-nav] arrows rebuilt: meshes=" + navGroup.children.length +
     " marks=" + (Array.isArray(bg360MarksRuntime.marks) ? bg360MarksRuntime.marks.length : 0) +
     " anchorUV=" + cfg.anchorU.toFixed(3) + "," + cfg.anchorV.toFixed(3) +
     " nadirArrow=" + (cfg.nadirArrowEnabled ? "on" : "off"));
@@ -10900,7 +10735,7 @@ function finishWalk360(selectedId, targetScene) {
   var target = String(targetScene || "").trim();
   if (target) {
     if (state.sceneMap && state.sceneMap[target]) {
-      console.log("[walk360] targetScene jump ->", target, "(goto + runCurrent)");
+      writeRuntimeVerbose("[walk360] targetScene jump ->", target, "(goto + runCurrent)");
       gotoScene(target);
       // gotoScene только меняет состояние, а этот путь вызван из UI-события walk360.
       // Поэтому явно запускаем обработку новой сцены, иначе переход "зависнет" на actionIndex=0.
@@ -11235,7 +11070,7 @@ function executeIfBlock(action) {
         break;
       }
     } catch (e) {
-      console.error("[VN] if_block condition error:", branch.condition, e);
+      console.error("[VN] if_block error в сцене", state.sceneId, state.actionIndex - 1, e && e.message ? e.message : e);
       return false;
     }
   }
@@ -11297,17 +11132,9 @@ function buildSceneMap() {
 }
 
 function gotoScene(sceneId) {
-  console.log("[VN] goto scene ->", sceneId);
-  
-  // ДОБАВЬТЕ ЭТОТ БЛОК
-  console.log("[DEBUG] ДО перехода - состояние:", {
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex,
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked
-  });
-  
   if (!sceneId) return;
+
+  writeRuntimeDebug("[VN DEBUG] Переход сцены", state.sceneId, "->", sceneId);
   
   // ПОВЫШАЕМ СЧЁТЧИК, чтобы отменить все ожидающие загрузки
   __activeCharSeq++;
@@ -11326,12 +11153,6 @@ function gotoScene(sceneId) {
   // Скрываем персонажа по умолчанию при смене сцены
   hideAllCharacters();
 
-  console.log("[DEBUG] ПОСЛЕ перехода - состояние:", {
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex,
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked
-  });
 }
 
 
@@ -11661,7 +11482,7 @@ function ensureBg360HoldLayer() {
   hold.style.transition = "opacity 0.14s ease-out";
   elNovelWindow.appendChild(hold);
   elBg360Hold = hold;
-  console.log("[BG360 HOLD] layer created");
+  writeRuntimeVerbose("[BG360 HOLD] layer created");
   return hold;
 }
 
@@ -11676,7 +11497,7 @@ function hideBg360HoldLayer(immediate) {
     bg360Runtime.holdFadeTimer = null;
   }
   if (immediate) {
-    console.log("[BG360 HOLD] hide immediate");
+    writeRuntimeVerbose("[BG360 HOLD] hide immediate");
     elBg360Hold.classList.add("hidden");
     elBg360Hold.removeAttribute("src");
     elBg360Hold.style.opacity = "1";
@@ -11686,7 +11507,7 @@ function hideBg360HoldLayer(immediate) {
     elBg360Hold.style.transformOrigin = "";
     return;
   }
-  console.log("[BG360 HOLD] hide (fade)");
+  writeRuntimeVerbose("[BG360 HOLD] hide (fade)");
   // Гарантируем короткое затухание именно здесь, не полагаясь на наследуемый из reveal "1500ms".
   elBg360Hold.style.transition = "opacity 0.14s ease-out";
   elBg360Hold.style.opacity = "0";
@@ -11704,14 +11525,14 @@ function hideBg360HoldLayer(immediate) {
 // Делает снимок текущего 360-canvas, чтобы не показывать «черный» фон между загрузками.
 function showBg360HoldFromCurrentFrame() {
   if (!elBg360) {
-    console.log("[BG360 HOLD] skip capture: no canvas");
+    writeRuntimeVerbose("[BG360 HOLD] skip capture: no canvas");
     return false;
   }
   // Не требуем active: при первом включении 360 после 2D-фона снимок может быть пустым/тёмным,
   // но hold всё равно даёт плавное растворение вместо мгновенного cut (ветка revealMs && holdOk).
   var hold = ensureBg360HoldLayer();
   if (!hold) {
-    console.log("[BG360 HOLD] skip capture: no hold layer");
+    writeRuntimeVerbose("[BG360 HOLD] skip capture: no hold layer");
     return false;
   }
   try {
@@ -11719,7 +11540,7 @@ function showBg360HoldFromCurrentFrame() {
       clearTimeout(bg360Runtime.holdFadeTimer);
       bg360Runtime.holdFadeTimer = null;
     }
-    console.log("[BG360 HOLD] capture start", {
+    writeRuntimeVerbose("[BG360 HOLD] capture start", {
       width: elBg360.width,
       height: elBg360.height,
       clientWidth: elBg360.clientWidth,
@@ -11743,7 +11564,7 @@ function showBg360HoldFromCurrentFrame() {
     // JPEG-снимок легче PNG (~10x), декодируется быстрее — критично для растворения за 1.5s.
     hold.src = elBg360.toDataURL("image/jpeg", 0.85);
     hold.classList.remove("hidden");
-    console.log("[BG360 HOLD] capture success: hold shown", {
+    writeRuntimeVerbose("[BG360 HOLD] capture success: hold shown", {
       srcLength: hold.src ? hold.src.length : 0,
       hasMeshAtCapture: !!bg360Runtime.mesh
     });
@@ -12058,7 +11879,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.goto360ParallelZoomActive = false;
   }
   var packedDataUrl = "";
-  console.log("[BG360 HOLD] setBackground360 start", {
+  writeRuntimeVerbose("[BG360 HOLD] setBackground360 start", {
     src: normalizedSrc,
     fallback: normalizedFallback,
     hadActive360: !!bg360Runtime.active
@@ -12068,7 +11889,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", normalizedSrc);
+      console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", sanitizeDiagnosticResource(normalizedSrc));
       return;
     }
     var packState = ensureBg360PackLoaded(normalizedSrc, bg360Quality, function(ok) {
@@ -12088,7 +11909,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] JS-пакет загружен, но data-url не зарегистрирован:", selectedPackScriptUrl || normalizedSrc);
+      console.warn("[BG360] JS-пакет загружен, но data-url не зарегистрирован:", sanitizeDiagnosticResource(selectedPackScriptUrl || normalizedSrc));
       return;
     }
   }
@@ -12138,10 +11959,10 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
         holdKeep.style.opacity = "1";
         holdKeep.classList.remove("hidden");
       }
-      console.log("[BG360 HOLD] reuse snapshot after goto360 zoom (skip duplicate capture)");
+      writeRuntimeVerbose("[BG360 HOLD] reuse snapshot after goto360 zoom (skip duplicate capture)");
     } else {
       showBg360HoldFromCurrentFrame();
-      console.log("[BG360 HOLD] capture requested before swap");
+      writeRuntimeVerbose("[BG360 HOLD] capture requested before swap");
     }
     disableBackgroundScroll();
     if (elBg) elBg.classList.add("hidden");
@@ -12178,7 +11999,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   if (packedDataUrl) {
-    console.log("[BG360] Используется data-пакет для:", normalizedSrc);
+    writeRuntimeVerbose("[BG360] Используется data-пакет для:", normalizedSrc);
   }
 
   function onLoadTexture(texture) {
@@ -12262,7 +12083,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
 
     var holdEl = elBg360Hold;
     var holdOk = bg360HoldLayerHasUsableSnapshot(holdEl);
-    console.log("[BG360 HOLD] reveal decision", {
+    writeRuntimeVerbose("[BG360 HOLD] reveal decision", {
       revealMs: revealMs,
       holdOk: holdOk,
       holdHasSrc: !!(holdEl && holdEl.getAttribute("src")),
@@ -12291,11 +12112,13 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
         holdEl.style.transition = "opacity " + revealMs + "ms ease-out";
         requestAnimationFrame(function() {
           if (swapSeqForReveal !== bg360Runtime.loadSeq) return;
-          console.log("[BG360 HOLD] reveal start", {
-            revealMs: revealMs,
-            computedTransition: window.getComputedStyle(holdEl).transition,
-            computedOpacity: window.getComputedStyle(holdEl).opacity
-          });
+          if (isExplicitDebugCategoryEnabled("visual")) {
+            console.log("[BG360 HOLD] reveal start", {
+              revealMs: revealMs,
+              computedTransition: window.getComputedStyle(holdEl).transition,
+              computedOpacity: window.getComputedStyle(holdEl).opacity
+            });
+          }
           holdEl.style.opacity = "0";
         });
       });
@@ -12305,7 +12128,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
           resetBg360CanvasRevealStyles();
           return;
         }
-        console.log("[BG360 HOLD] reveal fallback fire (cleanup)");
+        writeRuntimeVerbose("[BG360 HOLD] reveal fallback fire (cleanup)");
         hideBg360HoldLayer(true);
         resetBg360CanvasRevealStyles();
       }, revealMs + 120);
@@ -12324,9 +12147,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
 
   function onLoadError() {
     if (!isCurrentBg360Load()) return;
-    console.warn("[BG360] Не удалось загрузить ресурс:", normalizedSrc);
+    console.warn("[BG360] Не удалось загрузить ресурс:", sanitizeDiagnosticResource(normalizedSrc));
     console.warn("[BG360 HOLD] texture load error: hide hold and fallback", {
-      src: normalizedSrc,
+      src: sanitizeDiagnosticResource(normalizedSrc),
       fallback: normalizedFallback
     });
     cancelGoto360ParallelZoomRaf();
@@ -12456,13 +12279,13 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
   var isVideo = isVideoAssetPath(normalizedSrc);
 
   if (use360) {
-    console.log("[BG360 HOLD] setBackground route -> 360");
+    writeRuntimeVerbose("[BG360 HOLD] setBackground route -> 360");
     setBackground360(normalizedSrc, normalizedFallbackSrc, normalizedScrollOptions);
     return;
   }
 
   disableBg360Renderer();
-  console.log("[BG360 HOLD] setBackground route -> non-360, hide hold");
+  writeRuntimeVerbose("[BG360 HOLD] setBackground route -> non-360, hide hold");
   hideBg360HoldLayer();
   visualTrace("setBackground:start", {
     src: normalizedSrc,
@@ -12473,12 +12296,12 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
 
   if (areAllImageCandidatesFailed(src)) {
     if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
-      console.warn('[IMG] skip failed background src:', src);
+      console.warn('[IMG] skip failed background src:', sanitizeDiagnosticResource(src));
       failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
     }
     disableBackgroundScroll();
     if (isVideo && normalizedFallbackSrc) {
-      console.warn('[VIDEO] primary marked as failed, using fallback:', normalizedFallbackSrc);
+      console.warn('[VIDEO] primary marked as failed, using fallback:', sanitizeDiagnosticResource(normalizedFallbackSrc));
       visualTrace("bgVideo:already-failed:fallback", {
         src: normalizedSrc,
         fallbackSrc: normalizedFallbackSrc
@@ -12504,7 +12327,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
       audio.currentBgVideoVolume = resolvedVideoVolume;
       elBgVideo.onerror = function() {
         var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
-        console.warn('[VIDEO] background load error:', badVideoSrc);
+        console.warn('[VIDEO] background load error:', sanitizeDiagnosticResource(badVideoSrc));
         visualTrace("bgVideo:error", {
           src: badVideoSrc,
           fallbackSrc: normalizedFallbackSrc
@@ -12517,7 +12340,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         }
 
         if (normalizedFallbackSrc) {
-          console.warn('[VIDEO] fallback image used:', normalizedFallbackSrc);
+          console.warn('[VIDEO] fallback image used:', sanitizeDiagnosticResource(normalizedFallbackSrc));
           visualTrace("bgVideo:error:fallback-image", {
             fallbackSrc: normalizedFallbackSrc
           });
@@ -12571,7 +12394,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
       var playPromise = elBgVideo.play();
       if (playPromise && typeof playPromise.catch === "function") {
         playPromise.catch(function (e) {
-          console.warn('[VIDEO] background autoplay blocked or failed:', normalizedSrc, e);
+          console.warn('[VIDEO] background autoplay blocked or failed:', sanitizeDiagnosticResource(normalizedSrc), e && e.message ? e.message : e);
           visualTrace("bgVideo:play-failed", { src: normalizedSrc, error: e && e.name ? e.name : String(e) });
         });
       }
@@ -12615,7 +12438,7 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
         flushAutosaveBgScrollRestorePending();
       },
       onAllFailed: function() {
-        console.warn('[IMG] background load error:', src);
+        console.warn('[IMG] background load error:', sanitizeDiagnosticResource(src));
         visualTrace("bgImage:error", { src: src });
         disableBackgroundScroll();
         elBg.removeAttribute('src');
@@ -12636,34 +12459,12 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
 }
 
 function setCharacter(src, pos, charId, done, focusOptions) {
-  
-  // В функции setCharacter, в самом начале добавьте:
-  console.log('[setCharacter] ТЕКУЩИЙ ИНДЕКС В НАЧАЛЕ:', state.actionIndex);
-
-  console.log('[Engine setCharacter] START - src:', src, 'charId:', charId);
-
-  console.log('[Engine setCharacter] START ==========');
-  console.log('[Engine setCharacter] Параметры:', { src, pos, charId, focusOptions });
-  console.log('[Engine setCharacter] elChar ДО:', {
-    классы: elChar.classList.toString(),
-    src: elChar.src,
-    'data-char-id': elChar.dataset.charId,
-    скрыт: elChar.classList.contains('hidden')
-  });
-
-
   // Если это команда скрыть
   if (src === null || src === "" || src === undefined) {
-    console.log('[Engine setCharacter] HIDE command received');
     hideAllCharacters();
     if (done) done();
-    console.log('[Engine setCharacter] END ==========');
     return;
   }
-
-
-  console.log('[Engine setCharacter] Called with:', { src, pos, charId, focusOptions });
-  console.log('[Engine setCharacter] elChar element:', elChar);
 
   const seq = ++__charSeq;
   __activeCharSeq = seq;
@@ -12673,7 +12474,7 @@ function setCharacter(src, pos, charId, done, focusOptions) {
   if (areAllImageCandidatesFailed(src)) {
     if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
       console.warn('[CHAR FLOW] skip failed character src', {
-        src: src,
+        src: sanitizeDiagnosticResource(src),
         charId: charId
       });
       failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
@@ -12685,16 +12486,6 @@ function setCharacter(src, pos, charId, done, focusOptions) {
     return;
   }
 
-  console.log('[CHAR FLOW] setCharacter:start', {
-    seq,
-    src,
-    pos,
-    charId,
-    currentSrc: elChar ? elChar.getAttribute('src') : null,
-    hidden: elChar ? elChar.classList.contains('hidden') : null,
-    currentHeight: elChar ? elChar.style.height : null,
-    focusOptions: focusOptions
-  });
   logCharacterFocusDebug("setCharacter:start", {
     seq: seq,
     src: src,
@@ -12707,15 +12498,14 @@ function setCharacter(src, pos, charId, done, focusOptions) {
 
   if (!src) {
     console.warn('[CHAR FLOW] hide character', {
-      src,
-      currentDomSrc: elChar.currentSrc || elChar.src,
+      src: sanitizeDiagnosticResource(src),
+      currentDomSrc: sanitizeDiagnosticResource(elChar.currentSrc || elChar.src),
       hiddenBeforeHide: elChar.classList.contains('hidden'),
       currentHeight: elChar.style.height,
       currentOffsetHeight: elChar.offsetHeight,
       charId: elChar.dataset ? elChar.dataset.charId : null
     });
 
-    console.log('[Engine setCharacter] No src, hiding character');
     elChar.classList.add("hidden");
     elChar.src = "";
     elChar.removeAttribute('data-char-id'); // очищаем ID персонажа
@@ -12749,7 +12539,6 @@ function setCharacter(src, pos, charId, done, focusOptions) {
 
   // Если это тот же персонаж с той же эмоцией и он уже видим
   if (imageUrlMatchesStoryCandidates(currentSrc, src) && !elChar.classList.contains('hidden')) {
-    console.log('[Engine setCharacter] Same image already visible, scheduling done asynchronously');
     if (elCharFrame) {
       elCharFrame.classList.remove("hidden");
     }
@@ -12767,14 +12556,10 @@ function setCharacter(src, pos, charId, done, focusOptions) {
 
   // Если это тот же персонаж, но с другой эмоцией - показываем новую эмоцию без перезагрузки
   if (currentCharId === charId && !imageUrlMatchesStoryCandidates(currentSrc, src) && !elChar.classList.contains('hidden')) {
-    console.log('[Engine setCharacter] Same character, changing emotion');
-
     assignRasterImageToElement(elChar, src, {
       seq: seq,
       activeSeq: __activeCharSeq,
       onLoad: function() {
-        console.log('[Engine setCharacter] Emotion changed successfully:', src);
-        console.log('[setCharacter] onload - ИНДЕКС ДО ВЫЗОВА callback:', state.actionIndex);
         logCharacterFocusDebug("setCharacter:emotionOnLoad", {
           seq: seq,
           src: src,
@@ -12787,13 +12572,10 @@ function setCharacter(src, pos, charId, done, focusOptions) {
         elChar.classList.remove("hidden");
         adjustCharacterScale("setCharacter:emotionOnLoad");
         if (done) {
-          console.log('[setCharacter] onload - ВЫЗЫВАЕМ done callback');
           done();
-          console.log('[setCharacter] onload - ИНДЕКС ПОСЛЕ callback:', state.actionIndex);
         }
       },
       onAllFailed: function() {
-        console.log('[Engine setCharacter] Failed to load new emotion:', src);
         if (done) done();
       }
     });
@@ -12824,21 +12606,10 @@ function setCharacter(src, pos, charId, done, focusOptions) {
   elChar.onload = null;
   elChar.onerror = null;
 
-  console.log('[Engine setCharacter] Setting src:', src);
   assignRasterImageToElement(elChar, src, {
     seq: seq,
     activeSeq: __activeCharSeq,
     onLoad: function() {
-      console.log('[Engine setCharacter] Image loaded successfully:', src);
-
-      console.log('[CHAR FLOW] onload', {
-        seq,
-        activeSeq: __activeCharSeq,
-        src,
-        domSrc: elChar.currentSrc || elChar.src,
-        hiddenBeforeShow: elChar.classList.contains('hidden'),
-        heightBeforeScale: elChar.style.height
-      });
       logCharacterFocusDebug("setCharacter:onLoad:beforeGuards", {
         seq: seq,
         activeSeq: __activeCharSeq,
@@ -12851,13 +12622,12 @@ function setCharacter(src, pos, charId, done, focusOptions) {
         console.warn('[CHAR FLOW] stale onload ignored', {
           seq,
           activeSeq: __activeCharSeq,
-          src
+          src: sanitizeDiagnosticResource(src)
         });
         return;
       }
 
       if (state.sceneId !== currentSceneId) {
-        console.log('[setCharacter] Сцена изменилась с', currentSceneId, 'на', state.sceneId, '- не восстанавливаем индекс');
         if (done) done();
         return;
       }
@@ -12879,14 +12649,6 @@ function setCharacter(src, pos, charId, done, focusOptions) {
       });
     },
     onAllFailed: function() {
-      console.log('[Engine setCharacter] Image failed to load:', src);
-      console.log('[CHAR FLOW] onerror', {
-        seq,
-        activeSeq: __activeCharSeq,
-        src: src,
-        domSrc: elChar.currentSrc || elChar.src
-      });
-
       if (seq !== __activeCharSeq) {
         return;
       }
@@ -12902,42 +12664,15 @@ function setCharacter(src, pos, charId, done, focusOptions) {
 }
 
 function showDialog(name, text, color) {
-  console.log('[showDialog] НАЧАЛО - waitingNext ДО:', state.waitingNext);
-  console.log(
-    "[VN] dialog",
-    name ? name : "(text)",
-    text
-  );
-  console.log("[VN] dialog display check:", { 
-    name: name, 
-    text: text, 
-    isFirstDialog: isFirstDialog,
-    elNameHidden: elName.classList.contains('hidden'),
-    elTextContent: elText.textContent
-  });
-
-  // ДОБАВЛЯЕМ ВРЕМЕННУЮ МЕТКУ
-  console.log("[VN] TIMESTAMP:", Date.now(), "ms - Показ диалога:", text.substring(0, 30) + "...");
-
   var dialogElement = document.getElementById('dialog');
 
   // Имя показываем ВСЕГДА, если оно есть
   if (name && String(name).trim() !== "") {
-    console.log('[showDialog] ПОКАЗЫВАЕМ ИМЯ:', name);
-    console.log('[showDialog] До применения классов:', elName.classList.toString());
-
-    
-
-
-
     elName.textContent = name;
     elName.classList.remove("hidden");
 
     // Добавляем защиту от скрытия
     elName.setAttribute('data-protected', 'true');
-
-    console.log('[showDialog] После применения классов:', elName.classList.toString());
-    console.log('[showDialog] display CSS:', window.getComputedStyle(elName).display);
 
     dialogElement.classList.add('has-name');
     dialogElement.classList.remove('no-name');
@@ -12960,11 +12695,8 @@ function showDialog(name, text, color) {
       nameObserver = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
           if (mutation.attributeName === 'class') {
-            console.log('[showDialog] КЛАСС ИЗМЕНИЛСЯ НА:', elName.className);
-            
             // Если имя должно быть видимо, но его скрыли - восстанавливаем
             if (elName.hasAttribute('data-protected') && elName.classList.contains('hidden')) {
-              console.log('[showDialog] ВОССТАНАВЛИВАЕМ имя от скрытия!');
               elName.classList.remove('hidden');
               elName.style.display = 'inline-block';
             }
@@ -13002,7 +12734,6 @@ function showDialog(name, text, color) {
       dialogElement.classList.add('no-hint');
     }
   }
-  console.log('[showDialog] КОНЕЦ - waitingNext ПОСЛЕ:', state.waitingNext);
 }
 
 
@@ -13470,7 +13201,7 @@ function hideKeptStoryVideoAfterBgReady(reason) {
   if (!storyVideoRuntime.keepUntilBgVideoReady) return;
   visualTrace("storyVideo:kept-layer-hide", { reason: reason || "bg ready" });
   cleanupStoryVideoVisualOnly();
-  console.log("[VIDEO] kept story video layer hidden:", reason || "bg ready");
+  writeRuntimeVerbose("[VIDEO] kept story video layer hidden:", reason || "bg ready");
 }
 
 function finishStoryVideo(reason) {
@@ -13674,7 +13405,7 @@ function prepareStoryVideoSeek(action) {
 function startStoryVideo(action) {
   // Команда video показывает полноэкранную вставку; при scroll разрешает двигать ролик/постер по горизонтали.
   if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
-    console.warn("[VIDEO] story video skipped: missing DOM or src", action);
+    console.warn("[VIDEO] story video skipped: missing DOM or src", state.sceneId, state.actionIndex - 1);
     state.inVideo = false;
     state.nextLocked = false;
     runCurrent();
@@ -13739,7 +13470,7 @@ function startStoryVideo(action) {
   elStoryVideo.classList.add("hidden");
 
   elStoryVideo.onerror = function () {
-    console.warn("[VIDEO] story video load error:", src);
+    console.warn("[VIDEO] story video load error:", sanitizeDiagnosticResource(src));
     visualTrace("storyVideo:error", { src: src });
     showStoryVideoFallback(action, "load error");
   };
@@ -14127,7 +13858,7 @@ function createActiveGameSession(gameId, frameKind, sandboxMode) {
 // Открывает сюжетную игру, применяет её sandbox до навигации и после загрузки отправляет единый gameInit.
 function openGame(action) {
   if (!action || !action.src) {
-    console.warn('[GAME] openGame: missing action.src', action);
+    console.warn('[GAME] openGame: missing action.src', state.sceneId, state.actionIndex - 1);
     return;
   }
 
@@ -14194,9 +13925,9 @@ function openGame(action) {
 
     try {
       gameWindow.postMessage(payload, '*');
-      console.log('[GAME] gameInit sent:', payload);
+      writeRuntimeDebug('[VN DEBUG] gameInit отправлен', openedGame.gameId);
     } catch (e) {
-      console.error('[GAME] failed to send gameInit', e);
+      console.error('[GAME] failed to send gameInit', e && e.message ? e.message : e);
     }
   };
 
@@ -14221,11 +13952,7 @@ function closeGame(resultData) {
     // В URL-режиме у новеллы нет точки возврата, поэтому результат только запоминаем и оставляем окно игры открытым.
     finishedGame.result = resultValue;
     finishedGame.finished = true;
-    console.log("[GAME] url game result received:", {
-      gameId: finishedGame.gameId,
-      difficulty: finishedGame.difficulty,
-      result: resultValue
-    });
+    writeRuntimeDebug("[VN DEBUG] Результат URL-игры принят", finishedGame.gameId);
     return;
   }
 
@@ -14264,7 +13991,7 @@ function closeGame(resultData) {
   // Обычный сюжетный режим игры
   if (finishedGame.resultVar) {
     state.vars[finishedGame.resultVar] = resultValue;
-    console.log("[GAME] result saved:", finishedGame.resultVar, "=", resultValue);
+    writeRuntimeDebug("[VN DEBUG] Результат игры сохранён", finishedGame.gameId, "->", finishedGame.resultVar);
   }
 
   state.currentGame = null;
@@ -14275,7 +14002,6 @@ function closeGame(resultData) {
     sceneId: state.sceneId,
     actionIndex: state.actionIndex,
     resultVar: finishedGame.resultVar,
-    resultValue: finishedGame.resultVar ? state.vars[finishedGame.resultVar] : undefined,
     manualClose: manualClose
   });
 
@@ -14401,7 +14127,7 @@ function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
   if (duration === 0 || Math.abs(start - target) < 0.0001) {
     audio.bgmDuckingMultiplier = target;
     applyAudioSettings();
-    console.log('[AUDIO] ducking set immediately', { reason: reason, target: target });
+    writeRuntimeVerbose('[AUDIO] ducking set immediately', { reason: reason, target: target });
     return;
   }
 
@@ -14420,7 +14146,7 @@ function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
       audio.bgmDuckingTimer = null;
       audio.bgmDuckingMultiplier = target;
       applyAudioSettings();
-      console.log('[AUDIO] ducking transition completed', { reason: reason, target: target });
+      writeRuntimeVerbose('[AUDIO] ducking transition completed', { reason: reason, target: target });
     }
   }, stepTime);
 }
@@ -14460,23 +14186,24 @@ function resumeBackgroundVideoIfNeeded(reason) {
     var p = elBgVideo.play();
     if (p && typeof p.then === "function") {
       p.then(function () {
-        console.log('[VIDEO] background play() success, reason =', reason);
+        writeRuntimeVerbose('[VIDEO] background play() success, reason =', reason);
       }).catch(function (err) {
-        console.log('[VIDEO] background play() blocked/failed, reason =', reason, err);
+        writeRuntimeVerbose('[VIDEO] background play() blocked/failed, reason =', reason, err);
       });
     }
   } catch (e) {
-    console.log('[VIDEO] background play() exception, reason =', reason, e);
+    writeRuntimeVerbose('[VIDEO] background play() exception, reason =', reason, e);
   }
 }
 
 function logAudioState(label) {
+  if (!isExplicitDebugCategoryEnabled("audio")) return;
   console.log('[AUDIO STATE]', label, {
     muted: audio.muted,
     masterVolume: audio.masterVolume,
     currentBgmVolume: audio.currentBgmVolume,
     bgmVolume: audio.bgm ? audio.bgm.volume : null,
-    bgmSrc: audio.bgm ? audio.bgm.src : null,
+    bgmSrc: audio.bgm ? sanitizeDiagnosticResource(audio.bgm.src) : null,
     bgmPaused: audio.bgm ? audio.bgm.paused : null,
     bgmEnded: audio.bgm ? audio.bgm.ended : null,
     bgmCurrentTime: audio.bgm ? audio.bgm.currentTime : null,
@@ -14489,52 +14216,53 @@ function resumeBgmIfNeeded(reason) {
   logAudioState('before resumeBgmIfNeeded: ' + reason);
 
   if (!audio || !audio.bgm) {
-    console.log('[AUDIO] resume skipped: no audio.bgm');
+    writeRuntimeVerbose('[AUDIO] resume skipped: no audio.bgm');
     return;
   }
   if (audio.muted) {
-    console.log('[AUDIO] resume skipped: muted');
+    writeRuntimeVerbose('[AUDIO] resume skipped: muted');
     return;
   }
   if (!audio.bgm.src) {
-    console.log('[AUDIO] resume skipped: no src');
+    writeRuntimeVerbose('[AUDIO] resume skipped: no src');
     return;
   }
 
   var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
   if (currentSrc && failedAssets.audio[currentSrc]) {
-    console.log('[AUDIO] resume skipped: failed src', currentSrc);
+    writeRuntimeVerbose('[AUDIO] resume skipped: failed src', sanitizeDiagnosticResource(currentSrc));
     return;
   }
 
   try {
     var p = audio.bgm.play();
-    console.log('[AUDIO] resume play() called, reason =', reason);
+    writeRuntimeVerbose('[AUDIO] resume play() called, reason =', reason);
 
     if (p && typeof p.then === "function") {
       p.then(function () {
-        console.log('[AUDIO] resume play() success, reason =', reason);
+        writeRuntimeVerbose('[AUDIO] resume play() success, reason =', reason);
         logAudioState('after resume success: ' + reason);
       }).catch(function (err) {
-        console.log('[AUDIO] resume play() blocked/failed, reason =', reason, err);
+        writeRuntimeVerbose('[AUDIO] resume play() blocked/failed, reason =', reason, err);
         logAudioState('after resume fail: ' + reason);
       });
     }
   } catch (e) {
-    console.log('[AUDIO] resume play() exception, reason =', reason, e);
+    writeRuntimeVerbose('[AUDIO] resume play() exception, reason =', reason, e);
   }
 }
 
 const DEFAULT_BGM_VOLUME = 0.2;
 
 function playBgm(src, loop, vol, fadeMs) {
-
-  console.log('[AUDIO] playBgm called', {
-    src: src,
-    loop: loop,
-    vol: vol,
-    fadeMs: fadeMs
-  });
+  if (isExplicitDebugCategoryEnabled("audio")) {
+    console.log('[AUDIO] playBgm called', {
+      src: sanitizeDiagnosticResource(src),
+      loop: loop,
+      vol: vol,
+      fadeMs: fadeMs
+    });
+  }
   logAudioState('playBgm start');
 
   if (!src) return;
@@ -14544,17 +14272,17 @@ function playBgm(src, loop, vol, fadeMs) {
   var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
 
   if (failedAssets.audio[normalizedSrc] || failedAssets.audio[currentSrc]) { 
-    console.warn('[AUDIO] skip failed bgm src:', normalizedSrc);
+    console.warn('[AUDIO] skip failed bgm src:', sanitizeDiagnosticResource(normalizedSrc));
     return;
   }
 
   audio.bgm.loop = loop !== false; // по умолчанию true
   audio.currentBgmVolume = clamp((typeof vol === "number" ? vol : DEFAULT_BGM_VOLUME), 0, 1);
-  console.log('[AUDIO] playBgm currentBgmVolume set to', audio.currentBgmVolume);
+  writeRuntimeVerbose('[AUDIO] playBgm currentBgmVolume set to', audio.currentBgmVolume);
 
   // Если тот же трек — просто обновим громкость/loop
   if (audio.bgm.src && endsWith(audio.bgm.src, normalizedSrc)) {
-    console.log('[AUDIO] playBgm same track detected');
+    writeRuntimeVerbose('[AUDIO] playBgm same track detected');
     applyAudioSettings();
 
 
@@ -14582,14 +14310,14 @@ function playBgm(src, loop, vol, fadeMs) {
     // В некоторых окружениях автозапуск может быть заблокирован до первого клика.
     // Но на интерактивном экране обычно пользователь кликает — после клика заведётся.
     var p = audio.bgm.play();
-    console.log('[AUDIO] playBgm quick play() called');
+    writeRuntimeVerbose('[AUDIO] playBgm quick play() called');
 
     if (p && typeof p.then === "function") {
       p.then(function () {
-        console.log('[AUDIO] playBgm quick play() success');
+        writeRuntimeVerbose('[AUDIO] playBgm quick play() success');
         logAudioState('playBgm quick success');
       }).catch(function (err) {
-        console.log('[AUDIO] playBgm quick play() blocked/failed', err);
+        writeRuntimeVerbose('[AUDIO] playBgm quick play() blocked/failed', err);
         logAudioState('playBgm quick fail');
       });
     }
@@ -14723,88 +14451,63 @@ function resolveCharacterAssetInfo(charId, emotion) {
 }
 
 function resolveAsset(ref, charId, emotion) {
-  console.log('[Engine resolveAsset] Called with:', { ref, charId, emotion });
-  
   // СНАЧАЛА проверяем персонажей, если есть charId и emotion
   if (charId && emotion && STORY.assets && STORY.assets.characters) {
-    console.log('[Engine resolveAsset] Looking for character:', charId, 'emotion:', emotion);
-    
     const char = STORY.assets.characters[charId];
-    console.log('[Engine resolveAsset] Character object:', char);
-    
+
     if (char && char.images) {
-      console.log('[Engine resolveAsset] Available emotions:', Object.keys(char.images));
       const imagePath = getCharacterImagePath(char.images[emotion]);
-      console.log('[Engine resolveAsset] Found image path:', imagePath);
-      
+
       if (imagePath) {
         if (areAllImageCandidatesFailed(imagePath)) {
-          console.log('[Engine resolveAsset] Character image marked as failed:', imagePath);
           return "";
         }
 
-        console.log('[Engine resolveAsset] Returning character path:', imagePath);
         return imagePath;
-      } else {
-        console.log('[Engine resolveAsset] Emotion not found:', emotion);
       }
-    } else {
-      console.log('[Engine resolveAsset] Character or images not found');
     }
   }
   
   // ТОЛЬКО ПОТОМ проверяем ref === null
   if (ref === null) {
-    console.log('[Engine resolveAsset] ref is null, returning null');
     return null;
   }
   
   if (!ref) {
-    console.log('[Engine resolveAsset] ref is empty, returning empty string');
     return "";
   }
   
   if (typeof ref !== "string") {
-    console.log('[Engine resolveAsset] ref is not a string:', ref);
     return "";
   }
   
   // Если это прямой путь (не алиас)
   if (ref.indexOf("@") !== 0) {
-    console.log('[Engine resolveAsset] ref is direct path:', ref);
     return ref;
   }
   
   // Обработка алиасов @bg.xxx, @audio.xxx
   var parts = ref.substring(1).split(".");
   if (parts.length < 2) {
-    console.log('[Engine resolveAsset] Invalid alias format:', ref);
     return "";
   }
 
   var group = parts[0];
   var key = parts.slice(1).join(".");
-  
-  console.log('[Engine resolveAsset] Alias - group:', group, 'key:', key);
-  
+
   if (!STORY.assets) {
-    console.log('[Engine resolveAsset] STORY.assets is missing');
     return "";
   }
 
   if (group === "bg") {
     if (!STORY.assets.backgrounds) {
-      console.log('[Engine resolveAsset] STORY.assets.backgrounds is missing');
       return "";
     }
-    console.log('[Engine resolveAsset] Available backgrounds:', Object.keys(STORY.assets.backgrounds));
-    
+
     const result = STORY.assets.backgrounds[key];
-    console.log('[Engine resolveAsset] Found background:', result);
     var bgPath = getBackgroundAssetPrimaryPath(result);
 
     if (bgPath && areAllImageCandidatesFailed(bgPath)) {
-      console.log('[Engine resolveAsset] Background marked as failed:', bgPath);
       return "";
     }
     return bgPath || "";
@@ -14812,16 +14515,12 @@ function resolveAsset(ref, charId, emotion) {
   
   if (group === "audio") {
     if (!STORY.assets.audio) {
-      console.log('[Engine resolveAsset] STORY.assets.audio is missing');
       return "";
     }
-    console.log('[Engine resolveAsset] Available audio:', Object.keys(STORY.assets.audio));
     const result = STORY.assets.audio[key];
-    console.log('[Engine resolveAsset] Found audio:', result);
     return getAudioAssetPrimaryPath(result);
   }
-  
-  console.log('[Engine resolveAsset] No match found for group:', group);
+
   return "";
 }
 
@@ -14969,24 +14668,26 @@ function applyUiScale() {
   var baseFontSize = baseFontPx * finalScale;
   document.documentElement.style.setProperty("--baseFontSize", baseFontSize + 'px');
 
-  console.log('[SCALE DEBUG]', {
-    innerWidth: window.innerWidth,
-    innerHeight: window.innerHeight,
-    referenceHeight: UI_REFERENCE_HEIGHT,
-    autoScale: autoScale,
-    visualReferenceHeight: visualReferenceHeight,
-    visualMinHeight: visualMinHeight,
-    visualScale: visualScale,
-    uiFontScale: UI_FONT_SCALE,
-    uiPhoneExtraFontScale: UI_PHONE_EXTRA_FONT_SCALE,
-    phoneBoostApplied: phoneExtra !== 1,
-    phoneExtra: phoneExtra,
-    finalScale: finalScale,
-    baseFontPx: baseFontPx,
-    baseFontSize: baseFontSize,
-    cssVarBaseFontSize: getComputedStyle(document.documentElement).getPropertyValue('--baseFontSize').trim(),
-    htmlFontSize: getComputedStyle(document.documentElement).fontSize
-  });
+  if (isExplicitDebugCategoryEnabled("visual")) {
+    console.log('[SCALE DEBUG]', {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      referenceHeight: UI_REFERENCE_HEIGHT,
+      autoScale: autoScale,
+      visualReferenceHeight: visualReferenceHeight,
+      visualMinHeight: visualMinHeight,
+      visualScale: visualScale,
+      uiFontScale: UI_FONT_SCALE,
+      uiPhoneExtraFontScale: UI_PHONE_EXTRA_FONT_SCALE,
+      phoneBoostApplied: phoneExtra !== 1,
+      phoneExtra: phoneExtra,
+      finalScale: finalScale,
+      baseFontPx: baseFontPx,
+      baseFontSize: baseFontSize,
+      cssVarBaseFontSize: getComputedStyle(document.documentElement).getPropertyValue('--baseFontSize').trim(),
+      htmlFontSize: getComputedStyle(document.documentElement).fontSize
+    });
+  }
 }
 
 
@@ -15010,17 +14711,6 @@ window.addEventListener("resize", function() {
 // ДИНАМИЧЕСКОЕ МАСШТАБИРОВАНИЕ ПЕРСОНАЖЕЙ
 // =========================================================
 function adjustCharacterScale(reason) {
-
-  console.log('[CHAR SCALE] start', {
-    reason: reason || "",
-    src: elChar ? (elChar.currentSrc || elChar.src) : null,
-    hidden: elChar ? elChar.classList.contains('hidden') : null,
-    styleHeightBefore: elChar ? elChar.style.height : null,
-    naturalWidth: elChar ? elChar.naturalWidth : null,
-    naturalHeight: elChar ? elChar.naturalHeight : null,
-    windowHeight: window.innerHeight
-  });
-
   var frame = elCharFrame || document.getElementById('charFrame');
   var char = document.getElementById('charLayer');
   if (!char) return;
@@ -15135,23 +14825,8 @@ function adjustCharacterScale(reason) {
   char.style.height = targetCharHeight + 'px';
   char.style.transform = '';
 
-  console.log('[CHAR SCALE] applied', {
-    reason: reason || "",
-    src: char.currentSrc || char.src,
-    baseCharHeight: baseCharHeight,
-    targetCharWidth: targetCharWidth,
-    targetCharHeight: targetCharHeight,
-    focusOptions: focusOptions,
-    frameLeft: frameLeft,
-    frameTop: frameTop,
-    innerLeft: innerLeft,
-    innerTop: innerTop,
-    imageViewportLeft: imageViewportLeft,
-    imageViewportTop: imageViewportTop,
-    styleHeightAfter: char.style.height,
-    offsetHeight: char.offsetHeight
-  });
-  logCharacterFocusDebug("scale:applied", {
+  if (isCharacterDebugEnabled()) {
+    logCharacterFocusDebug("scale:applied", {
     reason: reason || "",
     availableWidth: availableWidth,
     availableHeight: availableHeight,
@@ -15177,8 +14852,8 @@ function adjustCharacterScale(reason) {
     slotCenterX: slotCenterX,
     workCenterY: workCenterY,
     targetScale: targetScale
-  });
-  logCharacterFrameLine("applied", {
+    });
+    logCharacterFrameLine("applied", {
     reason: reason || "",
     scene: state ? state.sceneId : "",
     index: state ? state.actionIndex : "",
@@ -15203,23 +14878,12 @@ function adjustCharacterScale(reason) {
     charRectTop: getCharacterDebugRect(char) ? getCharacterDebugRect(char).top : "",
     frameRectLeft: frame && getCharacterDebugRect(frame) ? getCharacterDebugRect(frame).left : "",
     frameRectTop: frame && getCharacterDebugRect(frame) ? getCharacterDebugRect(frame).top : ""
-  });
+    });
+  }
 
   // Сбрасываем max-height, чтобы не было конфликтов
   char.style.maxHeight = 'none';
   
-  console.log('[Engine] Character scale applied:', {
-    windowHeight: window.innerHeight,
-    novelWindowHeight: elNovelWindow ? elNovelWindow.clientHeight : null,
-    availableHeight: availableHeight,
-    targetCharHeight: targetCharHeight,
-    actualHeight: char.offsetHeight
-  });
-
-  // Проверяем фактическую высоту после загрузки изображения
-  setTimeout(function() {
-    console.log('[Engine] Character actual height after load:', char.offsetHeight);
-  }, 200);
 }
 
 // Также вызываем при изменении размера
@@ -15332,7 +14996,7 @@ function tryResumeNovelAfterStatsClose(reason) {
 
   // Если блокировка "next" осталась после UI-оверлея, снимаем её и продолжаем выполнение сцены.
   state.nextLocked = false;
-  console.log("[STATS] resume novel flow after close", {
+  writeRuntimeVerbose("[STATS] resume novel flow after close", {
     reason: reason || "stats_close",
     sceneId: state.sceneId,
     actionIndex: state.actionIndex,
@@ -15555,9 +15219,9 @@ function openStatsGame(item, difficulty) {
 
     try {
       gameWindow.postMessage(payload, "*");
-      console.log("[GAME] stats gameInit sent:", payload);
+      writeRuntimeDebug("[VN DEBUG] gameInit статистики отправлен", openedGame.gameId);
     } catch (e) {
-      console.error("[GAME] failed to send stats gameInit", e);
+      console.error("[GAME] failed to send stats gameInit", e && e.message ? e.message : e);
     }
   };
 
@@ -16239,7 +15903,7 @@ function renderStats() {
 
   // Показываем индикатор загрузки
   elStatsBody.value = "Сбор информации...";
-  console.log("[STATS] renderStats:start");
+  writeRuntimeVerbose("[STATS] renderStats:start");
 
   // Сначала собираем информацию об окружении
   var envInfo = collectEnvironmentInfo();
@@ -16250,7 +15914,12 @@ function renderStats() {
   // Асинхронно проверяем файлы
   checkAssetsFiles()
   .then(function(fileStats) {
-    console.log("[STATS] checkAssetsFiles done", fileStats);
+    writeRuntimeVerbose("[STATS] checkAssetsFiles done", {
+      files: fileStats.files.length,
+      missing: fileStats.missing.length,
+      sizeErrors: fileStats.sizeErrors.length,
+      invalidNames: fileStats.invalidNames.length
+    });
     try {
       var stats = computeStoryStats(STORY);
       var errors = validateStory(STORY);
@@ -17354,9 +17023,6 @@ function checkAssetsFiles() {
 
     result.invalidNames = collectInvalidResourcePathNames(STORY);
 
-    console.log("[ASSET CHECK] STORY.assets.games =", STORY.assets.games);
-    console.log("[ASSET CHECK] allFiles after games =", allFiles);
-
     if (allFiles.length === 0) {
       resolve(result);
       return;
@@ -17371,11 +17037,7 @@ function checkAssetsFiles() {
       pathGroups[file.path].push(file);
     });
 
-    console.log("[ASSET CHECK] pathGroups =", pathGroups);
-
     const uniquePaths = Object.keys(pathGroups);
-
-    console.log("[ASSET CHECK] uniquePaths =", uniquePaths);
 
     let loadedCount = 0;
     let errorCount = 0;
@@ -17384,24 +17046,28 @@ function checkAssetsFiles() {
     const fileResults = {};
 
     function checkComplete() {
-      console.log("[ASSET CHECK] progress", {
-        totalPaths: totalPaths,
-        loadedCount: loadedCount,
-        errorCount: errorCount,
-        done: loadedCount + errorCount
-      });
+      if (isExplicitDebugCategoryEnabled("assets")) {
+        console.log("[ASSET CHECK] progress", {
+          totalPaths: totalPaths,
+          loadedCount: loadedCount,
+          errorCount: errorCount,
+          done: loadedCount + errorCount
+        });
+      }
 
       if (loadedCount + errorCount === totalPaths) {
           // Собираем результаты
           uniquePaths.forEach(path => {
 
-            console.log("[ASSET CHECK] checking path:", path, {
-              group: pathGroups[path],
-              isImage: /\.(jpg|jpeg|png|gif|webp)$/i.test(path),
-              isVideo: /\.(mp4|webm)$/i.test(path),
-              isAudio: /\.(mp3|wav|ogg|flac|m4a)$/i.test(path),
-              isGameHtml: /\.(html|htm)$/i.test(path)
-            });
+            if (isExplicitDebugCategoryEnabled("assets")) {
+              console.log("[ASSET CHECK] checking path:", sanitizeDiagnosticResource(path), {
+                refs: pathGroups[path].map(function(file) { return file.category + ": " + file.ref; }),
+                isImage: /\.(jpg|jpeg|png|gif|webp)$/i.test(path),
+                isVideo: /\.(mp4|webm)$/i.test(path),
+                isAudio: /\.(mp3|wav|ogg|flac|m4a)$/i.test(path),
+                isGameHtml: /\.(html|htm)$/i.test(path)
+              });
+            }
 
             if (fileResults[path] && fileResults[path].success) {
               result.files.push(fileResults[path].data);
@@ -17446,15 +17112,17 @@ function checkAssetsFiles() {
             }
           });
 
-          console.log("[ASSET CHECK] complete", {
-            totalPaths: totalPaths,
-            loadedCount: loadedCount,
-            errorCount: errorCount,
-            missing: result.missing.length,
-            sizeErrors: result.sizeErrors.length,
-            invalidNames: result.invalidNames.length,
-            files: result.files.length
-          });
+          if (isExplicitDebugCategoryEnabled("assets")) {
+            console.log("[ASSET CHECK] complete", {
+              totalPaths: totalPaths,
+              loadedCount: loadedCount,
+              errorCount: errorCount,
+              missing: result.missing.length,
+              sizeErrors: result.sizeErrors.length,
+              invalidNames: result.invalidNames.length,
+              files: result.files.length
+            });
+          }
           resolve(result);
         }
       }
@@ -17579,7 +17247,7 @@ function checkAssetsFiles() {
           loadedCount++;
           checkComplete();
         } else {
-          console.warn("[ASSET CHECK] unsupported file type:", path);
+          console.warn("[ASSET CHECK] unsupported file type:", sanitizeDiagnosticResource(path));
           errorCount++;
           checkComplete();
         }
@@ -18650,12 +18318,14 @@ function buildMermaidGraph(story, unreachableList, options) {
     }
   }
     
-  console.log('[DEBUG] Mermaid graph generated for nodes:');
-  nodes.forEach(function(node) {
-    if (node.allBgImages && node.allBgImages.length > 0) {
-      console.log('  Node', node.id, 'images:', node.allBgImages.map(function(bg) { return bg.id; }).join(', '));
-    }
-  });
+  if (isExplicitDebugCategoryEnabled("graph")) {
+    console.log('[GRAPH DEBUG] Mermaid nodes:', nodes.length);
+    nodes.forEach(function(node) {
+      if (node.allBgImages && node.allBgImages.length > 0) {
+        console.log('  Node', node.id, 'images:', node.allBgImages.map(function(bg) { return bg.id; }).join(', '));
+      }
+    });
+  }
 
   // ВАЖНО: Добавляем пунктирную связь от узла "Персонажи" к первой сцене
   mermaid += '\n    %% Character connections to the attached scene\n';
@@ -18671,8 +18341,6 @@ function getImgCountClass(count) {
   if (count <= 9) return 'imgcount3';
   return 'imgcount4';
 }
-
-// Добавьте после функции buildMermaidGraph или в любое место перед ее вызовом
 
 // Строит блок Characters: общий список персонажей и отдельные узлы с эмоциями.
 function buildCharactersGraph(story, options) {
@@ -19483,7 +19151,9 @@ function buildGamesGraph(story, options) {
     var gameId = gameIds[i];
     var game = games[gameId] || {};
     var isUsed = (gameUseCounts[gameId] || 0) > 0;
-    console.log('[GRAPH GAME]', gameId, game, 'used=', isUsed);
+    if (isExplicitDebugCategoryEnabled("graph")) {
+      console.log('[GRAPH GAME]', gameId, 'used=', isUsed);
+    }
 
     var safeGameId = escapeHtml(gameId);
     var safeTitle = escapeHtml(game.title || gameId);
@@ -20048,7 +19718,7 @@ function applySpacingSettings() {
     elBlurBgLayer.style.display = blurBackground ? 'block' : 'none';
   }
 
-  console.log('[Engine] novel window applied:', {
+  writeRuntimeVerbose('[Engine] novel window applied:', {
     manualMode: manualMode,
     requestedWindowMode: requestedWindowMode,
     layoutMode: layoutMode,
@@ -20095,26 +19765,18 @@ function copyBgVideoObjectPositionToBlur(sourceVideo, blurVideo) {
 }
 
 function updateBlurBackground(src) {
-  console.log('[Engine] updateBlurBackground called with src:', src);
-  console.log('[Engine] elBlurBgLayer:', elBlurBgLayer);
-  console.log('[Engine] elBlurBgImage:', elBlurBgImage);
-  console.log('[Engine] STORY.meta:', STORY.meta);
-  console.log('[Engine] STORY.meta.blurBackground:', STORY.meta?.blurBackground);
-
   if (!elBlurBgLayer || !elBlurBgImage) {
     console.warn('[Engine] Элементы размытого фона не найдены');
     return;
   }
 
   if (!STORY.meta || !STORY.meta.blurBackground) {
-    console.log('[Engine] Размытый фон отключен в метаданных');
     elBlurBgLayer.classList.add("hidden");
     hideBlurBackgroundVideo();
     return;
   }
 
   if (src && src !== "") {
-    console.log('[Engine] Устанавливаем размытый фон:', src);
     hideBlurBackgroundVideo();
     elBlurBgImage.classList.remove("hidden");
     assignRasterImageToElement(elBlurBgImage, src, {});
@@ -20127,7 +19789,6 @@ function updateBlurBackground(src) {
     elBlurBgImage.style.width = '100%';
     elBlurBgImage.style.height = '100%';
   } else {
-    console.log('[Engine] src пустой, скрываем размытый фон');
     elBlurBgLayer.classList.add("hidden");
     hideBlurBackgroundVideo();
   }
@@ -20279,9 +19940,7 @@ function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
 
 
 
-// Добавьте после объявления переменных для графиков
-
-// Переменные для panzoom
+// Элементы и состояние управления panzoom для графиков статистики.
 var panzoomWrapper = document.getElementById("panzoomWrapper");
 var panzoomContent = document.getElementById("panzoomContent");
 var mermaidWrapper = document.getElementById("mermaidWrapper");
@@ -21037,6 +20696,8 @@ function renderGraphViewWithPanzoomLifecycle(stateKey) {
 }
 
 function debugCharacterGraphLayout() {
+  if (!isExplicitDebugCategoryEnabled("graph")) return;
+
   try {
     var svg = mermaidGraph && mermaidGraph.querySelector('svg');
     if (!svg) {
@@ -21051,7 +20712,6 @@ function debugCharacterGraphLayout() {
       var fo = node.querySelector('foreignObject');
       var container = node.querySelector('.char-emotions-container');
       var thumbs = node.querySelectorAll('.char-emotion-thumbnail');
-      var labelText = (node.textContent || '').replace(/\s+/g, ' ').trim();
 
       if (!container && !thumbs.length) return;
 
@@ -21059,7 +20719,7 @@ function debugCharacterGraphLayout() {
       var foRect = fo ? fo.getBoundingClientRect() : null;
       var containerRect = container ? container.getBoundingClientRect() : null;
 
-      console.group('[GRAPH DEBUG NODE] ' + labelText);
+      console.group('[GRAPH DEBUG NODE] index=' + index);
       console.log('index =', index);
       console.log('thumbCount =', thumbs.length);
 
@@ -21125,8 +20785,7 @@ function debugCharacterGraphLayout() {
 }
 
 
-// Добавьте эту функцию для принудительного пересчета при переключении вкладок
-
+// Принудительно пересчитывает SVG после переключения вкладок статистики.
 function forceRedraw(element) {
   if (!element) return;
   

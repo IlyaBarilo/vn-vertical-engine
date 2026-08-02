@@ -203,6 +203,35 @@
     (function() {
       "use strict";
 
+      // Разбирает единый параметр Debug без учёта регистра и не влияет на работу движка при ошибке в URL.
+      function createDebugCategoryChecker(search) {
+        var categories = Object.create(null);
+
+        try {
+          var params = new URLSearchParams(search || "");
+          params.forEach(function(value, key) {
+            if (String(key || "").trim().toLowerCase() !== "debug") return;
+
+            String(value || "").split(/[\s,;]+/).forEach(function(category) {
+              var normalized = category.trim().toLowerCase();
+              if (!normalized) return;
+              if (normalized === "1" || normalized === "true") normalized = "all";
+              categories[normalized] = true;
+            });
+          });
+        } catch (error) {
+          categories = Object.create(null);
+        }
+
+        // Проверяет только запрошенную категорию; неизвестные значения URL безопасно игнорируются.
+        return function isDebugCategoryEnabled(category) {
+          var normalized = String(category || "").trim().toLowerCase();
+          return !!(normalized && (categories.all || categories[normalized]));
+        };
+      }
+
+      window.VN_DEBUG_ENABLED = createDebugCategoryChecker(window.location && window.location.search);
+
       var STORY_SCRIPT = "story.js";
       var STORY_EXAMPLE_SCRIPT = "story-example.js";
       var ENGINE_SCRIPTS = [
@@ -215,7 +244,7 @@
         { src: "engine/engine.js" }
       ];
 
-      // Динамически подключает JavaScript-файл и сообщает об ошибке только для обязательных файлов.
+      // Динамически подключает JavaScript-файл; отсутствие ожидаемого optional-файла не засоряет консоль.
       function loadScript(src, options) {
         options = options || {};
 
@@ -230,7 +259,6 @@
 
           script.onerror = function() {
             if (options.optional) {
-              console.info("[Bootstrap] Необязательный файл не найден:", src);
               resolve({ src: src, loaded: false });
               return;
             }

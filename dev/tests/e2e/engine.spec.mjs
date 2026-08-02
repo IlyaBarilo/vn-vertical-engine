@@ -139,6 +139,39 @@ function collectPageErrors(page) {
   return errors;
 }
 
+// Устанавливает ранний перехват console до загрузки index.html и сохраняет сериализованные аргументы для проверки утечек.
+async function installConsoleCapture(page) {
+  await page.addInitScript(function captureConsoleMessages() {
+    window.__vnE2eConsoleMessages = [];
+    ['log', 'info', 'warn', 'error', 'debug', 'trace'].forEach(function(method) {
+      const original = console[method];
+      console[method] = function captureConsoleCall(...args) {
+        const text = args.map(function(value) {
+          if (value === null || value === undefined) return String(value);
+          if (typeof value === 'string') return value;
+          if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+          try {
+            return JSON.stringify(value);
+          } catch (error) {
+            return Object.prototype.toString.call(value);
+          }
+        }).join(' ');
+        window.__vnE2eConsoleMessages.push({ method, text });
+        return original.apply(console, args);
+      };
+    });
+  });
+}
+
+// Возвращает накопленные браузером сообщения после завершения проверяемых действий.
+async function readConsoleMessages(page) {
+  return page.evaluate(function readCapturedConsoleMessages() {
+    return Array.isArray(window.__vnE2eConsoleMessages)
+      ? window.__vnE2eConsoleMessages.slice()
+      : [];
+  });
+}
+
 // Открывает реальный index.html с необязательной query-строкой и ждёт первую реплику синтетической истории.
 async function openStory(page, storyUrl = '/') {
   await installRepositoryRoutes(page);
@@ -191,6 +224,55 @@ test('движок запускает историю в браузере без 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что публичный режим не пишет информационные runtime-сообщения при загрузке и переходе Next.
+test('release-режим оставляет консоль без обычной диагностики', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
+
+  await openStory(page, '/?mode=release');
+  await advanceDialog(page);
+  await page.waitForTimeout(450);
+
+  const messages = await readConsoleMessages(page);
+  const informational = messages.filter(function(message) {
+    return ['log', 'info', 'debug', 'trace'].includes(message.method);
+  });
+  expect(informational).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+// Подтверждает документированное имя Debug и независимое включение только выбранной категории.
+test('параметр Debug включает выбранную категорию в release', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
+
+  await openStory(page, '/?mode=release&Debug=autosave');
+  await page.waitForTimeout(450);
+
+  const messages = await readConsoleMessages(page);
+  expect(messages.some(function(message) {
+    return message.text.includes('[AUTOSAVE_DEBUG]');
+  })).toBe(true);
+  expect(messages.some(function(message) {
+    return message.text.includes('[VN DEBUG]');
+  })).toBe(false);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет регистронезависимое чтение ключа Debug без изменения документированной записи с заглавной буквы.
+test('ключ Debug читается без учёта регистра', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
+
+  await openStory(page, '/?mode=release&dEbUg=runtime');
+
+  const messages = await readConsoleMessages(page);
+  expect(messages.some(function(message) {
+    return message.text.includes('[VN DEBUG]');
+  })).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
@@ -261,7 +343,7 @@ test('мини-игра обменивается сообщениями с дв�
   await expect(game.locator('#protocolVersion')).toHaveText('2');
   await expect(game.locator('#sessionId')).toHaveText(/^game-[a-z0-9]+/);
   await expect(game.locator('#difficulty')).toHaveText('2');
-  await expect(game.locator('#token')).toHaveText('e2e');
+  await expect(game.locator('#token')).toHaveText('private-token-do-not-log');
   await expect(game.locator('#parentDom')).toHaveText('заблокирован');
   await expect(game.locator('#parentStorage')).toHaveText('заблокировано');
   await expect(game.locator('#topNavigation')).toHaveText('заблокирована');
@@ -290,6 +372,28 @@ test('мини-игра обменивается сообщениями с дв�
   await expect(page.locator('#textBox')).toHaveText('Игра завершена: 7');
   await advanceDialog(page);
   await expect(page.locator('#textBox')).toHaveText('Финал: left, результат: 7');
+  expect(pageErrors).toEqual([]);
+});
+
+// Даже полная явно включённая диагностика не должна раскрывать текст истории, параметры игры и sessionId.
+test('Debug=all не выводит чувствительные данные новеллы и мини-игры', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
+
+  await openStory(page, '/?mode=release&Debug=all');
+  await chooseRoute(page, 'Левая ветка');
+  await advanceDialog(page);
+
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  const sessionId = await game.locator('#sessionId').textContent();
+  expect(sessionId).toBeTruthy();
+
+  const messages = await readConsoleMessages(page);
+  const consoleText = messages.map(function(message) { return message.text; }).join('\n');
+  expect(consoleText).not.toContain('private-token-do-not-log');
+  expect(consoleText).not.toContain(sessionId);
+  expect(consoleText).not.toContain('Первый экран E2E');
   expect(pageErrors).toEqual([]);
 });
 

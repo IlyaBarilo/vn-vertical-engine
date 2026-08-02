@@ -31,7 +31,7 @@ menu title="Выберите маршрут"
 scene left
 set route = "left"
 "Выбрана левая ветка"
-game testGame difficulty=2 result=gameResult token=e2e
+game testGame difficulty=2 result=gameResult token=private-token-do-not-log
 "Игра завершена: {gameResult}"
 goto ending
 

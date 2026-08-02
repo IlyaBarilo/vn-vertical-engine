@@ -352,7 +352,8 @@ Recommended enabled values are `true`, `1`, `yes`, and `on`; only `false`, `0`,
 `no`, or `off` explicitly disable the flag.
 
 Use `mode=release` or the short `release` URL flag to force release mode without
-editing `[meta]`. Both forms hide the statistics button but do not change the
+editing `[meta]`. Both forms hide the statistics button and regular debug
+messages while keeping warnings and errors available. They do not change the
 start scene or autosave behavior:
 
     index.html?mode=release

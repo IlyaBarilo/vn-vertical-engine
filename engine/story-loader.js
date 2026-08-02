@@ -4,6 +4,60 @@
 (function() {
   "use strict";
 
+  // Проверяет подробную категорию loader из единого ?Debug= и безопасно отключает её вне обычного index.html.
+  function isLoaderVerboseEnabled() {
+    try {
+      return typeof window.VN_DEBUG_ENABLED === 'function' && window.VN_DEBUG_ENABLED('loader');
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Выводит служебные этапы парсера только по явному ?Debug=loader, не раскрывая исходный текст истории.
+  function writeLoaderVerbose() {
+    if (!isLoaderVerboseEnabled()) return;
+    try {
+      console.log.apply(console, arguments);
+    } catch (error) {}
+  }
+
+  // Учитывает release из meta и URL ещё до загрузки engine.js, чтобы loader не оставлял ранний информационный лог.
+  function isLoaderReleaseMode(story) {
+    var metaMode = story && story.meta ? String(story.meta.mode || '').trim().toLowerCase() : '';
+    if (metaMode === 'release') return true;
+
+    try {
+      var search = window.location && window.location.search;
+      if (!search) return false;
+      var params = new URLSearchParams(search);
+      var values = Object.create(null);
+      params.forEach(function(value, key) {
+        values[String(key || '').trim().toLowerCase()] = String(value || '').trim().toLowerCase();
+      });
+      if (values.mode === 'release') return true;
+      if (!Object.prototype.hasOwnProperty.call(values, 'release')) return false;
+      return values.release !== 'false' && values.release !== '0' && values.release !== 'no' && values.release !== 'off';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Оставляет в debug один компактный итог парсинга; release остаётся тихим без отдельной системы логирования.
+  function writeLoaderSummary(story) {
+    if (isLoaderReleaseMode(story) && !isLoaderVerboseEnabled()) return;
+
+    console.log('[Loader] Сценарий разобран', {
+      scenes: window.LOADER_STATS.scenesCount,
+      actions: window.LOADER_STATS.actionsCount,
+      backgrounds: window.LOADER_STATS.backgroundsCount,
+      characters: window.LOADER_STATS.charactersCount,
+      audio: window.LOADER_STATS.audioCount,
+      games: window.LOADER_STATS.gamesCount,
+      videos: window.LOADER_STATS.videosCount,
+      errors: window.PARSE_ERRORS.length
+    });
+  }
+
 
   // ========== СОБСТВЕННЫЙ ПРОФАЙЛЕР ЗАГРУЗЧИКА ==========
   window.LOADER_STATS = {
@@ -20,12 +74,12 @@
   function loaderMark(name) {
     var time = Date.now() - window.LOADER_STATS.startTime;
     window.LOADER_STATS.marks[name] = time;
-    console.log('[LOADER TIME]', name + ':', time + 'ms');
+    writeLoaderVerbose('[LOADER TIME]', name + ':', time + 'ms');
     return time;
   }
 
   loaderMark('loader_start');
-  console.log('[Loader] Запуск парсера...');
+  writeLoaderVerbose('[Loader] Запуск парсера...');
 
   window.STORY_LANG = 'en';
 
@@ -38,7 +92,7 @@
   window.PARSE_ERROR_STOP = false;
 
 
-  // ЗАМЕНИТЬ существующую функцию addParseError на эту:
+  // Сохраняет полную ошибку для встроенной диагностики, но не дублирует исходную строку истории в консоль.
   function addParseError(lineNumber, line, message, isCritical = true) {
     const error = {
       lineNumber: lineNumber,
@@ -48,7 +102,7 @@
       isCritical: isCritical
     };
     window.PARSE_ERRORS.push(error);
-    console.error(`[PARSE ERROR] Строка ${lineNumber}: ${message} - "${line}"`);
+    console.error(`[PARSE ERROR] Строка ${lineNumber}: ${message}`);
     
     // Устанавливаем флаг остановки для критических ошибок
     if (isCritical) {
@@ -181,9 +235,7 @@
   }
 
   function parseStory(text) {
-    console.log('[Loader] Начинаем парсинг, длина:', text.length);
-    console.log('[Loader] ПЕРВЫЕ 500 символов текста:');
-    console.log(text.substring(0, 500));
+    writeLoaderVerbose('[Loader] Начинаем парсинг, длина:', text.length);
     loaderMark('Start parsing');
 
     // Структура для результата
@@ -230,7 +282,7 @@
     let lineNumber = 0;
 
     const lines = text.split(/\r?\n/);
-    console.log('[Loader] Всего строк:', lines.length);
+    writeLoaderVerbose('[Loader] Всего строк:', lines.length);
 
     for (let i = 0; i < lines.length; i++) {
       lineNumber = i + 1;
@@ -238,7 +290,7 @@
       
       // Проверяем, не было ли критической ошибки
       if (window.PARSE_ERROR_STOP) {
-        console.log('[Loader] Парсинг остановлен из-за критической ошибки');
+        writeLoaderVerbose('[Loader] Парсинг остановлен из-за критической ошибки');
         break;
       }
 
@@ -309,7 +361,6 @@
           parseAssetLine(lineNumber, line, 'backgrounds', story);
           break;
         case 'char':
-          console.log('[Loader CHAR] Processing line:', line);
           parseAssetLine(lineNumber, line, 'characters', story);
           break;
         case 'audio':
@@ -400,16 +451,16 @@
         if (story.scenes.length > 0) {
           const oldStart = story.meta.start;
           story.meta.start = story.scenes[0].id;
-          console.log(`[Loader] Start scene "${oldStart}" not found, corrected to "${story.meta.start}"`);
+          writeLoaderVerbose(`[Loader] Start scene "${oldStart}" not found, corrected to "${story.meta.start}"`);
         }
       } else {
-        console.log('[Loader] Start scene exists:', story.meta.start);
+        writeLoaderVerbose('[Loader] Start scene exists:', story.meta.start);
       }
     } else {
       addParseError(0, "Metadata", "Start scene (startScene) not specified");
       if (story.scenes.length > 0) {
         story.meta.start = story.scenes[0].id;
-        console.log('[Loader] Установлена первая сцена как стартовая:', story.meta.start);
+        writeLoaderVerbose('[Loader] Установлена первая сцена как стартовая:', story.meta.start);
       }
     }
 
@@ -422,9 +473,9 @@
     validateSceneReferences(story);
 
     loaderMark('Parsing complete');
-    console.log('[Loader] Парсинг завершён!');
-    console.log('[Loader] Найдено сцен:', story.scenes.length);
-    console.log('[Loader] Стартовая сцена:', story.meta.start);
+    writeLoaderVerbose('[Loader] Парсинг завершён!');
+    writeLoaderVerbose('[Loader] Найдено сцен:', story.scenes.length);
+    writeLoaderVerbose('[Loader] Стартовая сцена:', story.meta.start);
 
 
 
@@ -477,33 +528,22 @@
     }
 
     loaderMark('stats_collected');
-    console.log('[Loader] Статистика собрана:', {
-      scenes: window.LOADER_STATS.scenesCount,
-      actions: window.LOADER_STATS.actionsCount,
-      backgrounds: window.LOADER_STATS.backgroundsCount,
-      characters: window.LOADER_STATS.charactersCount,
-      audio: window.LOADER_STATS.audioCount,
-      games: window.LOADER_STATS.gamesCount,
-      videos: window.LOADER_STATS.videosCount
-    });
 
 
 
     // Передаём в движок
     window.STORY = story;
-    
+
     loaderMark('STORY has been transferred to the window');
-    console.log('[Loader] ФИНАЛЬНЫЙ STORY.assets:', story.assets);
-    console.log('[Loader] ФИНАЛЬНЫЙ backgrounds:', story.assets.backgrounds);
-    console.log('[Loader] ФИНАЛЬНЫЙ audio:', story.assets.audio);
+    writeLoaderSummary(story);
 
     // Уведомляем движок
     if (window.__onStoryLoaded) {
-      console.log('[Loader] Уведомляем движок');
+      writeLoaderVerbose('[Loader] Уведомляем движок');
       window.__onStoryLoaded(story);
       loaderMark('The engine has been notified');
     } else {
-      console.log('[Loader] Движок ещё не загружен, он подхватит window.STORY позже');
+      writeLoaderVerbose('[Loader] Движок ещё не загружен, он подхватит window.STORY позже');
       loaderMark('Waiting for the engine');
     }
   }
@@ -2173,13 +2213,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   function parseAssetLine(lineNumber, line, category, story) {
     line = stripAssetInlineComment(line);
     if (!line) return;
-    console.log('[Loader] parseAssetLine:', line, 'category:', category);
     
     // Сначала пробуем новый формат:
     // campusHall file=assets/...
     // anna emotion=smile file=... name="Анна"
     if (parseNewStyleAssetLine(lineNumber, line, category, story)) {
-      console.log('[Loader] parsed by new-style asset parser:', line);
       return;
     }
 
@@ -2203,18 +2241,14 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       return;
     }
 
-    console.log('[Loader] after comment removal:', line);
-    
     if (!line) return;
     
     // Более гибкое регулярное выражение - допускает пробелы вокруг =
     const match = line.match(/^(.+?)\s*=\s*(.+)$/);
-    console.log('[Loader] match:', match);
     
     if (match) {
       const key = match[1].trim();
       let value = match[2].trim();
-      console.log('[Loader] key:', key, 'value:', value);
       
 
 
@@ -2257,14 +2291,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       // Убираем кавычки из значений, если они есть
       if (value.startsWith('"') && value.endsWith('"')) {
         value = value.slice(1, -1);
-        console.log('[Loader] after quote removal:', value);
       }
       
       if (category === 'characters') {
-        console.log('[Loader CHAR] processing character line:', line);
         // Формат: "имя тип = значение" (anna image neutral, anna name, anna color)
         const keyParts = key.split(' ');
-        console.log('[Loader CHAR] keyParts:', keyParts);
         
         if (keyParts.length >= 2) {
             const charId = keyParts[0]; // anna, igor
@@ -2280,11 +2311,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
             
-            console.log('[Loader CHAR] charId:', charId, 'propType:', propType);
-            
             if (!story.assets.characters[charId]) {
                 story.assets.characters[charId] = {};
-                console.log('[Loader CHAR] Created new character object for:', charId);
             }
             
             if (propType === 'image') {
@@ -2294,14 +2322,10 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
                     story.assets.characters[charId].images = {};
                 }
                 story.assets.characters[charId].images[emotion] = value;
-                console.log(`[Loader CHAR] Added image for ${charId} (${emotion}): ${value}`);
-                console.log('[Loader CHAR] Current character data:', story.assets.characters[charId]);
             } else if (propType === 'name') {
                 story.assets.characters[charId].name = value;
-                console.log(`[Loader CHAR] Added name for ${charId}: ${value}`);
             } else if (propType === 'color') {
                 story.assets.characters[charId].color = value;
-                console.log(`[Loader CHAR] Added color for ${charId}: ${value}`);
             } else if (propType === 'focusx' || propType === 'focusy' || propType === 'scale') {
                 var oldStyleFocusArgs = {};
                 var oldStyleFocusTarget = story.assets.characters[charId];
@@ -2320,7 +2344,6 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
                 if (!applyCharacterFocusArgs(oldStyleFocusTarget, oldStyleFocusArgs, lineNumber, line)) {
                     return;
                 }
-                console.log(`[Loader CHAR] Added focus option for ${charId}: ${propType} = ${value}`);
             }
         } else {
             console.warn(`[Loader CHAR] Invalid character format: ${key}`);
@@ -2328,11 +2351,6 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       } else {
         // Для bg и audio оставляем как есть
         story.assets[category][key] = value;
-        console.log(`[Loader] Добавлен ${category}: ${key} = ${value}`);
-        
-        // ========== ДОБАВЬТЕ ЭТОТ КОД ==========
-        console.log(`[Loader] Текущее состояние ${category}:`, story.assets[category]);
-        // =======================================
       }
     }
   }
@@ -2522,10 +2540,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     const cleanLine = stripInlineComment(line);
     if (!cleanLine) return; // если строка была только комментарием
     
-    // Используем cleanLine для парсинга, но line для вывода ошибок
-
-    // Логируем ВСЕ строки
-    console.log(`[PARSER LINE ${lineNumber}] Clean:`, JSON.stringify(cleanLine));
+    // Используем cleanLine для парсинга, но исходную line сохраняем только во встроенном списке ошибок.
 
     // Новая сцена
     if (cleanLine.startsWith('scene ')) {
@@ -2754,7 +2769,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     // (пишет напрямую в menuAction.choices)
     const oldChoiceMatch = cleanLine.match(/^"(.+)"\s*->\s*(.+)$/);
     if (oldChoiceMatch) {
-      console.log(`[PARSER LINE ${lineNumber}] MATCH: choice (old)`);
+      writeLoaderVerbose(`[PARSER LINE ${lineNumber}] MATCH: choice (old)`);
       const choiceText = oldChoiceMatch[1].trim();
       const choiceTarget = oldChoiceMatch[2].trim();
 
@@ -3107,8 +3122,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     
     // hide all
     if (cleanLine === 'hide all') {
-      console.log('[PARSER] НАЙДЕНА КОМАНДА hide all на строке', lineNumber);
-      console.log('[PARSER] Текущая сцена:', currentScene?.id);
+      writeLoaderVerbose('[PARSER] НАЙДЕНА КОМАНДА hide all на строке', lineNumber);
+      writeLoaderVerbose('[PARSER] Текущая сцена:', currentScene?.id);
       actions.push({
         type: 'char',
         charId: null,  // Явно указываем null
@@ -3117,7 +3132,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         pos: null
       });
   
-      console.log('[PARSER] hide all action добавлен. Теперь в сцене', 
+      writeLoaderVerbose('[PARSER] hide all action добавлен. Теперь в сцене',
         currentScene.id, 'actions:', actions.map(a => a.type).join(', '));
       return;
     }
@@ -3271,7 +3286,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     // Диалог: переменная: "текст"
     const dialogMatch = cleanLine.match(/^([a-zA-Z0-9_]+):\s*"(.+)"$/);
     if (dialogMatch) {
-      console.log(`[PARSER LINE ${lineNumber}] MATCH: dialog`);
+      writeLoaderVerbose(`[PARSER LINE ${lineNumber}] MATCH: dialog`);
       const charVar = dialogMatch[1].trim(); // anna, igor
       let text = dialogMatch[2].trim();
       
@@ -3294,7 +3309,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     // Текст в кавычках (авторский)
     const textMatch = cleanLine.match(/^"(.+)"$/);
     if (textMatch) {
-      console.log(`[PARSER LINE ${lineNumber}] MATCH: text`);
+      writeLoaderVerbose(`[PARSER LINE ${lineNumber}] MATCH: text`);
       let text = textMatch[1].trim();
       if (!text) {
         addParseError(lineNumber, line, "Empty text in quotes", true);
@@ -3311,7 +3326,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     
     // Если ничего не подошло и это не комментарий
     if (cleanLine && !cleanLine.startsWith('#')) {
-      console.log(`[PARSER LINE ${lineNumber}] UNKNOWN FORMAT - добавляем ошибку`);
+      writeLoaderVerbose(`[PARSER LINE ${lineNumber}] UNKNOWN FORMAT - добавляем ошибку`);
       addParseError(lineNumber, line, "Unrecognized string format", true);
       return false;
     }
@@ -3319,7 +3334,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
   // Проверка всех ссылок на сцены (goto и choice)
   function validateSceneReferences(story) {
-    console.log('[Loader] Проверка ссылок на сцены...');
+    writeLoaderVerbose('[Loader] Проверка ссылок на сцены...');
     
     // Собираем все существующие ID сцен
     const sceneIds = new Set();
@@ -3331,8 +3346,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
     });
     
-    console.log('[Loader] Найдено сцен:', sceneIds.size);
-    console.log('[Loader] ID сцен:', Array.from(sceneIds).join(', '));
+    writeLoaderVerbose('[Loader] Найдено сцен:', sceneIds.size);
+    writeLoaderVerbose('[Loader] ID сцен:', Array.from(sceneIds).join(', '));
     
     // Проверяем каждый переход
     let linkCount = 0;
@@ -3419,11 +3434,11 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       validateActionList(scene.actions || [], scene.id);
     });
     
-    console.log('[Loader] Проверено ссылок:', linkCount);
+    writeLoaderVerbose('[Loader] Проверено ссылок:', linkCount);
     if (errorCount > 0) {
       console.warn('[Loader] Найдено ошибок в ссылках:', errorCount);
     } else {
-      console.log('[Loader] Все ссылки на сцены корректны');
+      writeLoaderVerbose('[Loader] Все ссылки на сцены корректны');
     }
     
     return { linkCount, errorCount };
@@ -3468,7 +3483,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
 
   function showParseError() {
-    console.log('[Loader] Показываю ошибку парсинга');
+    writeLoaderVerbose('[Loader] Показываю ошибку парсинга');
     
     // Формируем текст ошибки
     let errorText = "❌ SCRIPT PARSE ERROR:\n\n";
