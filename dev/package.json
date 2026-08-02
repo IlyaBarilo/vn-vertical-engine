@@ -12,7 +12,7 @@
     "test:360": "node --test tests/story360-commands.test.mjs",
     "test:stats": "node --test tests/loader-stats.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs",
-    "test:release": "node --test tests/release-package.test.mjs",
+    "test:release": "node --test tests/release-package.test.mjs tests/release-assets.test.mjs",
     "test:links": "node --test tests/markdown-links.test.mjs",
     "test:community": "node --test tests/discussion-forms.test.mjs",
     "browser:install": "playwright install chromium",

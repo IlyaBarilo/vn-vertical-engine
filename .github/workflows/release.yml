@@ -125,75 +125,11 @@ jobs:
           [ -f lib/three.min.js ] && cp lib/three.min.js "build/$APP_NAME/lib/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
-          # Копируем assets по типам файлов (для полной сборки).
-          # Оставляем явный контроль форматов, но покрываем современные расширения.
-          if [ -d assets/backgrounds ]; then
-            find assets/backgrounds -type f \( \
-              -iname "*.jpg" -o \
-              -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-              -iname "*.webp" -o \
-              -iname "*.gif" -o \
-              -iname "*.svg" -o \
-              -iname "*.avif" -o \
-              -iname "*.mp4" -o \
-              -iname "*.mov" \
-            \) -exec cp {} "build/$APP_NAME/assets/backgrounds/" \;
-          fi
-
-          if [ -d assets/characters ]; then
-            find assets/characters -type f \( \
-              -iname "*.jpg" -o \
-              -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-              -iname "*.webp" -o \
-              -iname "*.gif" -o \
-              -iname "*.svg" -o \
-              -iname "*.avif" -o \
-              -iname "*.mp4" -o \
-              -iname "*.mov" \
-            \) -exec cp {} "build/$APP_NAME/assets/characters/" \;
-          fi
-
-          if [ -d assets/audio ]; then
-            find assets/audio -type f \( \
-              -iname "*.mp3" -o \
-              -iname "*.wav" -o \
-              -iname "*.ogg" -o \
-              -iname "*.m4a" -o \
-              -iname "*.aac" \
-            \) -exec cp {} "build/$APP_NAME/assets/audio/" \;
-          fi
-
-          if [ -d assets/games ]; then
-            find assets/games -type f \( \
-              -iname "*.html" -o \
-              -iname "*.jpg" -o \
-              -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-              -iname "*.webp" -o \
-              -iname "*.gif" -o \
-              -iname "*.svg" -o \
-              -iname "*.avif" -o \
-              -iname "*.mp4" -o \
-              -iname "*.mov" \
-            \) -exec cp {} "build/$APP_NAME/assets/games/" \;
-          fi
-
-          if [ -d assets/video ]; then
-            find assets/video -type f \( \
-              -iname "*.jpg" -o \
-              -iname "*.jpeg" -o \
-              -iname "*.png" -o \
-              -iname "*.webp" -o \
-              -iname "*.gif" -o \
-              -iname "*.svg" -o \
-              -iname "*.avif" -o \
-              -iname "*.mp4" -o \
-              -iname "*.webm" -o \
-              -iname "*.mov" \
-            \) -exec cp {} "build/$APP_NAME/assets/video/" \;
-          fi
+          # Копируем разрешённые форматы ассетов, сохраняя вложенные каталоги.
+          # Helper также останавливает сборку при небезопасном пути или коллизии имён.
+          node dev/scripts/copy-release-assets.mjs \
+            --source assets \
+            --destination "build/$APP_NAME/assets"
 
 
           # Панорамы 360: копируем дерево каталогов целиком (сценарий ссылается на пути вида assets/360/B101/...).

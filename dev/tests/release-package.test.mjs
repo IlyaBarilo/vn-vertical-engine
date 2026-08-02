@@ -84,6 +84,28 @@ test('релизная сборка включает пользовательс�
   });
 });
 
+// Закрепляет единый helper, который сохраняет вложенные пути вместо плоского копирования файлов через shell.
+test('релизная сборка сохраняет структуру каталогов ассетов', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  assert.ok(releaseSource.includes('node dev/scripts/copy-release-assets.mjs'));
+  assert.ok(releaseSource.includes('--source assets'));
+  assert.ok(releaseSource.includes('--destination "build/$APP_NAME/assets"'));
+  [
+    'find assets/backgrounds',
+    'find assets/characters',
+    'find assets/audio',
+    'find assets/games',
+    'find assets/video'
+  ].forEach(function(flatCopyCommand) {
+    assert.equal(
+      releaseSource.includes(flatCopyCommand),
+      false,
+      `В release.yml осталось прямое копирование без helper: ${flatCopyCommand}`
+    );
+  });
+});
+
 // Защищает ручную проверку сборки от случайной публикации релиза или обновления GitHub Pages.
 test('ручная релизная сборка безопасна по умолчанию', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');

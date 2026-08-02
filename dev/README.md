@@ -190,6 +190,13 @@ Workflow `Build ZIP for Release` можно запустить во вкладк
 developer-файлов, а также отсутствие ассетов и корневого сценария в
 update-архиве. Artifact хранится семь дней.
 
+При подготовке полного архива `dev/scripts/copy-release-assets.mjs` копирует
+разрешённые форматы из `assets/backgrounds`, `assets/characters`,
+`assets/audio`, `assets/games` и `assets/video`, сохраняя вложенные каталоги и
+отклоняя коллизии путей без учёта регистра. Команда
+`npm --prefix dev run test:release` проверяет это на синтетических временных
+файлах и не читает пользовательские ассеты проекта.
+
 Включайте `upload_to_release` или `deploy_pages` только для настоящей
 публикации: эти параметры соответственно изменяют GitHub Release и демо на
 GitHub Pages. При событии публикации релиза оба действия по-прежнему
