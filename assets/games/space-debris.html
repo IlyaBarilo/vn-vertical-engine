@@ -309,6 +309,7 @@
     let difficulty = 3;
     let resultSent = false;
     let receivedGameInit = false;
+    let activeGameInit = null;
     let globalScale = 1;
 
     function applyDifficultySettings(level) {
@@ -320,6 +321,8 @@
 
     window.addEventListener("message", (event) => {
         if (!event.data || event.data.type !== "gameInit") return;
+        // Сохраняем идентификаторы запуска, чтобы strict-движок принял итог игры.
+        activeGameInit = event.data;
         applyDifficultySettings(event.data.difficulty ?? 3);
         receivedGameInit = true;
 
@@ -350,6 +353,16 @@
         joyContainer.style.pointerEvents = 'auto';
     });
 
+    // Добавляет идентификаторы запуска, когда их передал движок протокола v2.
+    function attachGameSession(message) {
+        if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+            message.gameId = activeGameInit.gameId;
+            message.sessionId = activeGameInit.sessionId;
+        }
+        return message;
+    }
+
+    // Завершает игру один раз и возвращает результат активной сессии движку.
     function finishGame(result) {
         if (resultSent) return;
         resultSent = true;
@@ -360,7 +373,10 @@
         joyContainer.style.pointerEvents = 'none';
 
         if (window.parent && window.parent !== window) {
-            window.parent.postMessage({ type: "gameResult", result: Number.isFinite(result) ? result : 0 }, "*");
+            window.parent.postMessage(attachGameSession({
+                type: "gameResult",
+                result: Number.isFinite(result) ? result : 0
+            }), "*");
         } else {
             console.log("Игра завершена, результат: " + result);
         }

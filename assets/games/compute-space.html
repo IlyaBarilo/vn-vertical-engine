@@ -1034,6 +1034,7 @@
   let scale = 1;
   let difficulty = 2;
   let initReceived = false;
+  let activeGameInit = null;
   let localInitPerformed = false;
   let resultSent = false;
   let gameStarted = false;
@@ -1299,15 +1300,28 @@
     return 0;
   }
 
+  // Добавляет идентификаторы запуска, когда их передал движок протокола v2.
+  function attachGameSession(message) {
+    if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+      message.gameId = activeGameInit.gameId;
+      message.sessionId = activeGameInit.sessionId;
+    }
+    return message;
+  }
+
+  // Завершает игру один раз и возвращает нормализованный результат движку.
   function finishGame(result) {
     if (resultSent) return;
     resultSent = true;
     gameStarted = false;
     blockAllInteraction();
     try {
-      parent.postMessage({ type: 'gameResult', result: Number.isFinite(result) ? result : 0 }, '*');
+      parent.postMessage(attachGameSession({
+        type: 'gameResult',
+        result: Number.isFinite(result) ? result : 0
+      }), '*');
     } catch (_) {
-      // no-op
+      // Ошибка отправки не должна разблокировать уже завершённую игру.
     }
   }
 
@@ -2764,6 +2778,8 @@
 
   function onMessage(event) {
     if (!event.data || event.data.type !== 'gameInit') return;
+    // Сохраняем служебные поля отдельно от игровых параметров сложности.
+    activeGameInit = event.data;
     initReceived = true;
     difficulty = Number(event.data.difficulty ?? difficulty) || difficulty;
     if (!gameStarted && !finished && !resultSent) {

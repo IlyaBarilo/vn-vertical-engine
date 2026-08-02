@@ -661,6 +661,7 @@
   let resultSent = false;
   let gameStarted = false;
   let initReceived = false;
+  let activeGameInit = null;
   let gameReady = false;
   let paused = false;
   let runLoopActive = true;
@@ -2031,6 +2032,16 @@ function getDifficultyPreset(level) {
     uiRoot.style.pointerEvents = 'none';
   }
 
+  // Добавляет к результату идентификаторы запуска, если их прислал движок протокола v2.
+  function attachGameSession(message) {
+    if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+      message.gameId = activeGameInit.gameId;
+      message.sessionId = activeGameInit.sessionId;
+    }
+    return message;
+  }
+
+  // Единожды отправляет итог текущей сессии и полностью блокирует дальнейший ввод.
   function sendGameResultOnce(result) {
     if (resultSent) return;
     resultSent = true;
@@ -2041,10 +2052,10 @@ function getDifficultyPreset(level) {
     releaseGameplayPointers();
     window.cancelAnimationFrame(animationFrameId);
 
-    parent.postMessage({
+    parent.postMessage(attachGameSession({
       type: 'gameResult',
       result: Number.isFinite(result) ? result : 0
-    }, '*');
+    }), '*');
   }
 
   function finishGame(result) {
@@ -2573,6 +2584,8 @@ function getDifficultyPreset(level) {
 
   window.addEventListener('message', (event) => {
     if (!event.data || event.data.type !== 'gameInit' || resultSent) return;
+    // Служебные поля возвращаются неизменными и связывают ответ с этим iframe.
+    activeGameInit = event.data;
     initReceived = true;
     usingLocalInit = false;
     configureFromInit(event.data);

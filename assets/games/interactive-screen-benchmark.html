@@ -254,6 +254,7 @@ const AUTO_DIAG_CASES = [
 
 const state = {
   initialized:false, started:false, finished:false, finishSent:false,
+  gameInit:null,
   starsEnabled:true,
   simpleMode:false,
   gameId:'screenBenchmark', difficulty:3,
@@ -977,6 +978,15 @@ function resetRun(){
 
 function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
 function commitResult(){ if(!state.finishSent) finishGame(state.summary ? state.summary.result : 0); }
+// Добавляет к результату идентификаторы активного запуска протокола v2.
+function attachGameSession(message){
+  if(state.gameInit && state.gameInit.gameId != null && state.gameInit.sessionId != null){
+    message.gameId = state.gameInit.gameId;
+    message.sessionId = state.gameInit.sessionId;
+  }
+  return message;
+}
+// Завершает тест один раз и блокирует ввод перед отправкой результата движку.
 function finishGame(result){
   if(state.finishSent) return;
 
@@ -993,10 +1003,10 @@ function finishGame(result){
   stageControls.style.pointerEvents = 'none';
 
   try{
-    parent.postMessage({
+    parent.postMessage(attachGameSession({
       type:'gameResult',
       result: Number.isFinite(Number(result)) ? Number(result) : 0
-    }, '*');
+    }), '*');
   }catch(_){}
 }
 function advanceStage(){
@@ -2799,13 +2809,15 @@ if(HAS_POINTER_EVENTS){
 }
 window.addEventListener('message', e => {
   if(!e.data || e.data.type !== 'gameInit') return;
+  // Локальный fallback не считается сессией движка и не получает служебные идентификаторы.
+  state.gameInit = e.data;
   initFromParams(e.data);
 });
 
 window.addEventListener('beforeunload', () => {
   if(!state.finishSent){
     try{
-      parent.postMessage({ type:'gameResult', result:0 }, '*');
+      parent.postMessage(attachGameSession({ type:'gameResult', result:0 }), '*');
     }catch(_){}
   }
 });

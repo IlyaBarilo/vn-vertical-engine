@@ -545,6 +545,7 @@
     let gameActive = false;     // разрешено управление и таймер
     let resultSent = false;
     let initReceived = false;
+    let activeGameInit = null;
     let difficulty = 3;
     let targetCollect = 5;
     let timeLimit = 45;         // секунд
@@ -1099,6 +1100,16 @@ for (let i = 0; i < dangerChips.length; i++) {
         startTimer();
     }
     
+    // Добавляет идентификаторы запуска, когда их передал движок протокола v2.
+    function attachGameSession(message) {
+        if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+            message.gameId = activeGameInit.gameId;
+            message.sessionId = activeGameInit.sessionId;
+        }
+        return message;
+    }
+
+    // Подтверждает финальный результат один раз и полностью блокирует игру.
     function confirmFinalResult() {
         if (resultSent) return;
         const winFlag = finishOverlay.dataset.win === "1";
@@ -1112,7 +1123,7 @@ for (let i = 0; i < dangerChips.length; i++) {
         const joyArea = document.getElementById('joystickArea');
         if (joyArea) joyArea.style.pointerEvents = 'none';
         // Отправка результата
-        parent.postMessage({ type: "gameResult", result: finalResult }, "*");
+        parent.postMessage(attachGameSession({ type: "gameResult", result: finalResult }), "*");
         // полная блокировка интерфейса
         startBtn.disabled = true;
         retryBtn.disabled = true;
@@ -1330,6 +1341,8 @@ if (joystickElement) {
     
     window.addEventListener('message', (e) => {
         if (e.data && e.data.type === 'gameInit') {
+            // Служебные поля возвращаются неизменными вместе с итогом этой сессии.
+            activeGameInit = e.data;
             initReceived = true;
             const newDiff = e.data.difficulty ?? 3;
             applyDifficulty(newDiff);

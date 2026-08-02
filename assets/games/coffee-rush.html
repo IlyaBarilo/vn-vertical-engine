@@ -686,6 +686,7 @@
 
       const state = {
         config: null,
+        gameInit: null,
         running: false,
         startedAt: 0,
         elapsedMs: 0,
@@ -897,12 +898,23 @@
         return 1;
       }
 
+      // Добавляет идентификаторы активного запуска, не ломая старые движки без sessionId.
+      function attachGameSession(message) {
+        const gameInit = state.gameInit;
+        if (gameInit && gameInit.gameId != null && gameInit.sessionId != null) {
+          message.gameId = gameInit.gameId;
+          message.sessionId = gameInit.sessionId;
+        }
+        return message;
+      }
+
+      // Формирует полный игровой результат для показа и последующей отправки движку.
       function buildResult() {
         const cfg = state.config;
         const isWin = state.score >= cfg.targetScore;
         const rating = getRating(state.score, cfg.targetScore);
 
-        return {
+        return attachGameSession({
           type: 'gameResult',
           gameId: cfg.gameId,
           difficulty: cfg.difficulty,
@@ -917,7 +929,7 @@
             falseHits: state.falseHits,
             targetScore: cfg.targetScore
           }
-        };
+        });
       }
 
       function finishGame() {
@@ -976,8 +988,9 @@
         window.parent.postMessage(result, '*');
       }
 
+      // Отправляет отмену как обычный результат той же активной игровой сессии.
       function cancelGame() {
-        window.parent.postMessage({
+        window.parent.postMessage(attachGameSession({
           type: 'gameResult',
           gameId: state.config.gameId,
           difficulty: state.config.difficulty,
@@ -988,10 +1001,14 @@
           rating: 1,
           durationMs: 0,
           meta: { hits: 0, misses: 0, falseHits: 0, targetScore: state.config.targetScore }
-        }, '*');
+        }), '*');
       }
 
+      // Применяет параметры движка и запоминает служебные поля только для настоящего gameInit.
       function handleGameInit(data) {
+        if (data && data.type === 'gameInit') {
+          state.gameInit = data;
+        }
         state.config = buildConfig(data || parseQuery());
         applyConfigView();
       }

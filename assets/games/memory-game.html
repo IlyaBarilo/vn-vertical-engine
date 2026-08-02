@@ -331,6 +331,7 @@ let difficulty = 3;
 let resultSent = false;
 let gameActive = false;
 let initReceived = false;
+let activeGameInit = null;
 const HAS_POINTER_EVENTS = 'PointerEvent' in window;
 
 // ========== UI ИЗОЛЯЦИЯ ==========
@@ -579,11 +580,21 @@ function gameLose(reason) {
     finishOverlay.classList.remove('hidden');
 }
 
-// Блокировка всего ввода после отправки результата
+// Блокировка всего ввода после отправки результата.
 function blockAllInteraction() {
     gameContainer.style.pointerEvents = 'none';
 }
 
+// Добавляет идентификаторы запуска, когда их передал движок протокола v2.
+function attachGameSession(message) {
+    if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+        message.gameId = activeGameInit.gameId;
+        message.sessionId = activeGameInit.sessionId;
+    }
+    return message;
+}
+
+// Завершает игру один раз и возвращает итог активной сессии движку.
 function finishGame() {
     if (resultSent) return;
     resultSent = true;
@@ -595,10 +606,10 @@ function finishGame() {
     // Вычисляем результат (0..1)
     let resultValue = (score >= maxScore) ? 1 : 0;
     
-    parent.postMessage({
+    parent.postMessage(attachGameSession({
         type: "gameResult",
         result: resultValue
-    }, "*");
+    }), "*");
 }
 
 function resetAttempt() {
@@ -700,6 +711,8 @@ bindUIButton(confirmButton, finishGame);
 // ========== ВЗАИМОДЕЙСТВИЕ С ДВИЖКОМ ==========
 window.addEventListener('message', (event) => {
     if (!event.data || event.data.type !== 'gameInit') return;
+    // Сохраняем служебные поля отдельно от игровых настроек сложности.
+    activeGameInit = event.data;
     initReceived = true;
     difficulty = Number(event.data.difficulty ?? 3);
     updateDifficultySettings();

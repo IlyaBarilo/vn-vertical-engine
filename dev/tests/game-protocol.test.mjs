@@ -2,9 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import test from 'node:test';
+import { Script } from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const protocol = require('../../engine/game-protocol.js');
+const BUNDLED_GAME_FILES = [
+  'coffee-rush.html',
+  'space-debris.html',
+  'interactive-screen-benchmark.html',
+  'snake-iso-game.html',
+  'memory-game.html',
+  'compute-space.html',
+  'board-under-voltage.html',
+  'word-search-game.html'
+];
 
 // Проверяет обязательные поля и передачу дополнительных параметров в искусственном gameInit.
 test('протокол создаёт сообщение gameInit с параметрами', function() {
@@ -226,4 +237,48 @@ test('модуль протокола подключён к runtime до engine.
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.createGameInitMessage'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.isGameResultEventAllowed'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.normalizeGameResult'));
+});
+
+// Не позволяет поставляемым примерам потерять поля сессии, обязательные для strict-режима.
+test('встроенные мини-игры возвращают идентификаторы протокола v2', async function() {
+  const sources = await Promise.all(BUNDLED_GAME_FILES.map(async function(fileName) {
+    return {
+      fileName,
+      source: await readFile(new URL(`../../assets/games/${fileName}`, import.meta.url), 'utf8')
+    };
+  }));
+
+  for (const { fileName, source } of sources) {
+    assert.match(source, /gameInit/, `${fileName}: отсутствует обработка gameInit`);
+    assert.match(source, /gameResult/, `${fileName}: отсутствует отправка gameResult`);
+    assert.match(source, /\bgameId\b/, `${fileName}: gameResult не связан с gameId`);
+    assert.match(source, /\bsessionId\b/, `${fileName}: gameResult не связан с sessionId`);
+    if (fileName !== 'word-search-game.html') {
+      assert.match(source, /attachGameSession/, `${fileName}: результат отправляется в обход адаптера сессии`);
+    }
+    const inlineScripts = [];
+    for (const match of source.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)) {
+      const attributes = match[1];
+      const typeMatch = attributes.match(/\btype\s*=\s*["']([^"']+)["']/i);
+      if (/\bsrc\s*=/i.test(attributes)) continue;
+      if (typeMatch && !/(?:java|ecma)script|module/i.test(typeMatch[1])) continue;
+      // vm.Script проверяет обычный JavaScript, поэтому удаляем уже известный статический import модуля.
+      const scriptSource = typeMatch && typeMatch[1].toLowerCase() === 'module'
+        ? match[2].replace(/^\s*import\s+[^;\r\n]+;\s*$/gm, '')
+        : match[2];
+      inlineScripts.push(scriptSource);
+    }
+    assert.ok(inlineScripts.length > 0, `${fileName}: не найден встроенный JavaScript`);
+    for (const scriptSource of inlineScripts) {
+      assert.doesNotThrow(() => new Script(scriptSource, { filename: fileName }));
+    }
+  }
+});
+
+// Фиксирует строгий режим новых новелл без временных legacy-исключений для встроенных игр.
+test('пример новеллы запускает все встроенные игры в strict-режиме', async function() {
+  const storySource = await readFile(new URL('../../story-example.js', import.meta.url), 'utf8');
+
+  assert.match(storySource, /^engine\.gameSandbox=strict\b/m);
+  assert.doesNotMatch(storySource, /\bsandbox=legacy\b/);
 });
