@@ -59,7 +59,7 @@ https://kjur.github.io/jsrsasign/license/
 ### Use in This Project
 
 The `jsrsasign-all-min.js` file is included in the repository without modifications and is located in the `lib/` directory.
-jsrsasign version: 11.1.0.
+jsrsasign version: 11.1.3.
 
 ## three.js
 

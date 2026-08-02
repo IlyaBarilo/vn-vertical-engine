@@ -3,10 +3,10 @@
   "libraries": [
     {
       "name": "jsrsasign",
-      "version": "11.1.0",
+      "version": "11.1.3",
       "file": "lib/jsrsasign-all-min.js",
-      "bytes": 339519,
-      "sha256": "6ccedfb9896ef454a92b081f29c229ca2a4969189661dcfa43f0eac12cb981a6",
+      "bytes": 342230,
+      "sha256": "2528d69f1bb31f2074ebb3f671180d6f8054a204257325dccafd874eb3823774",
       "license": "MIT",
       "upstream": "https://github.com/kjur/jsrsasign",
       "usedBy": [

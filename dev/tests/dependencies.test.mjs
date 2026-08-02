@@ -89,7 +89,7 @@ test('версии bundled-библиотек подтверждены файл�
   const manifest = await readDependencyManifest();
   const noticeSource = await readFile(noticePath, 'utf8');
   const versionEvidence = {
-    jsrsasign: 'jsrsasign(all) 11.1.0',
+    jsrsasign: 'jsrsasign(all) 11.1.3',
     mermaid: 'version:"11.13.0"',
     'three.js': 'const e="152"'
   };
