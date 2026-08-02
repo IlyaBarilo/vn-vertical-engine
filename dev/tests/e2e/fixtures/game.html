@@ -8,9 +8,12 @@
   <p id="status">Ожидание gameInit</p>
   <dl>
     <dt>gameId</dt><dd id="gameId">—</dd>
+    <dt>protocolVersion</dt><dd id="protocolVersion">—</dd>
+    <dt>sessionId</dt><dd id="sessionId">—</dd>
     <dt>difficulty</dt><dd id="difficulty">—</dd>
     <dt>token</dt><dd id="token">—</dd>
   </dl>
+  <button id="wrongSession" type="button" disabled>Отправить неверную сессию</button>
   <button id="finishGame" type="button" disabled>Завершить игру</button>
 
   <script>
@@ -24,22 +27,44 @@
       receivedInit = event.data;
       document.getElementById("status").textContent = "gameInit получен";
       document.getElementById("gameId").textContent = String(event.data.gameId || "");
+      document.getElementById("protocolVersion").textContent = String(event.data.protocolVersion || "");
+      document.getElementById("sessionId").textContent = String(event.data.sessionId || "");
       document.getElementById("difficulty").textContent = String(event.data.difficulty);
       document.getElementById("token").textContent = String(event.data.token || "");
+      document.getElementById("wrongSession").disabled = false;
       document.getElementById("finishGame").disabled = false;
     }
 
-    // Возвращает движку искусственный результат и завершает сюжетный шаг game.
+    // Имитирует результат прежнего запуска из правильного iframe, но с неверным идентификатором сессии.
+    function sendWrongSession() {
+      if (!receivedInit) return;
+      window.parent.postMessage({
+        type: "gameResult",
+        gameId: receivedInit.gameId,
+        sessionId: "outdated-session",
+        result: 99
+      }, "*");
+    }
+
+    // Возвращает корректный результат, а затем дубликат для проверки одноразовой обработки движком.
     function finishGame() {
       if (!receivedInit) return;
       window.parent.postMessage({
         type: "gameResult",
         gameId: receivedInit.gameId,
+        sessionId: receivedInit.sessionId,
         result: 7
+      }, "*");
+      window.parent.postMessage({
+        type: "gameResult",
+        gameId: receivedInit.gameId,
+        sessionId: receivedInit.sessionId,
+        result: 99
       }, "*");
     }
 
     window.addEventListener("message", handleGameMessage);
+    document.getElementById("wrongSession").addEventListener("click", sendWrongSession);
     document.getElementById("finishGame").addEventListener("click", finishGame);
   </script>
 </body>

@@ -12,6 +12,7 @@ transitionMs = 0
 
 [game]
 testGame file=/__e2e__/game.html title="Синтетическая мини-игра"
+legacyGame file=/__e2e__/legacy-game.html title="Legacy-мини-игра"
 
 [var]
 route = ""
@@ -24,6 +25,7 @@ scene intro
 menu title="Выберите маршрут"
 "Левая ветка" -> left
 "Правая ветка" -> right
+"Старая мини-игра" -> legacy
 
 scene left
 set route = "left"
@@ -35,6 +37,13 @@ goto ending
 scene right
 set route = "right"
 "Выбрана правая ветка"
+goto ending
+
+scene legacy
+set route = "legacy"
+"Выбрана legacy-ветка"
+game legacyGame difficulty=1 result=gameResult
+"Legacy-игра завершена: {gameResult}"
 goto ending
 
 scene ending

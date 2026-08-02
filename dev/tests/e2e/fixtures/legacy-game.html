@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Legacy-мини-игра</title>
+</head>
+<body>
+  <p id="status">Ожидание gameInit</p>
+  <button id="finishGame" type="button" disabled>Завершить старую игру</button>
+
+  <script>
+    "use strict";
+
+    var initReceived = false;
+
+    // Подтверждает получение современного gameInit, хотя результат намеренно отправляется в старом формате.
+    function handleGameMessage(event) {
+      if (!event || !event.data || event.data.type !== "gameInit") return;
+      initReceived = true;
+      document.getElementById("status").textContent = "gameInit получен";
+      document.getElementById("finishGame").disabled = false;
+    }
+
+    // Имитирует старую мини-игру без gameId и sessionId в сообщении gameResult.
+    function finishLegacyGame() {
+      if (!initReceived) return;
+      window.parent.postMessage({
+        type: "gameResult",
+        result: 5
+      }, "*");
+    }
+
+    window.addEventListener("message", handleGameMessage);
+    document.getElementById("finishGame").addEventListener("click", finishLegacyGame);
+  </script>
+</body>
+</html>

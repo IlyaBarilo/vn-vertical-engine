@@ -69,12 +69,16 @@ coffeeRush file=assets/games/coffeeRush.html
 {
   "type": "gameInit",
   "gameId": "coffeeRush",
+  "protocolVersion": 2,
+  "sessionId": "game-7f34a1...",
   "difficulty": 3
 }
 ```
 
 Дополнительно:
 - могут передаваться любые другие параметры (например: speed, time, targetScore)
+- `protocolVersion` задаёт версию служебного обмена между движком и игрой
+- `sessionId` уникален для каждого запуска игры и должен быть возвращён без изменений
 
 ---
 
@@ -89,6 +93,7 @@ coffeeRush file=assets/games/coffeeRush.html
 Игра ОБЯЗАНА:
 
 1. Слушать message type="gameInit"
+1.1. Сохранить полученные `gameId` и `sessionId` до завершения текущего запуска
 2. Использовать difficulty
 3. Если в игре есть управляемые или движущиеся объекты, их скорости, ускорения и максимальные пределы должны быть явно заданы в коде через отдельные переменные, коэффициенты или параметры конфигурации, а не скрыты внутри трудноизменяемых формул. Итоговые значения могут зависеть от difficulty и других входных параметров игры.
 3.1. Если в игре есть управляемые или движущиеся объекты, их перемещение, ускорение, замедление и иные изменения состояния, зависящие от времени, не должны зависеть от FPS, частоты обновления экрана или производительности устройства. Такая логика должна рассчитываться с учётом времени между кадрами (delta time / dt), чтобы поведение игры ощущалось одинаково на разных устройствах.
@@ -98,9 +103,21 @@ coffeeRush file=assets/games/coffeeRush.html
 ```js
 parent.postMessage({
   type: "gameResult",
+  gameId: gameInit.gameId,
+  sessionId: gameInit.sessionId,
   result: resultValue
 }, "*");
 ```
+
+Здесь `gameInit` — сохранённый объект последнего сообщения `gameInit` от движка.
+Движок принимает результат только от iframe активной игры, только для текущей сессии
+и только один раз. Поэтому новая игра должна возвращать оба служебных идентификатора.
+
+Для обратной совместимости движок также принимает старый формат
+`{ type: "gameResult", result: ... }` без `gameId` и `sessionId`, но только от
+iframe текущей активной игры. Старые новеллы и мини-игры после замены файлов
+движка продолжат работать; при изменении самой мини-игры рекомендуется перейти
+на формат версии 2.
 
 Финальная фиксация результата для движка — это момент, когда:
 - игрок подтвердил итоговый результат
@@ -173,6 +190,8 @@ parent.postMessage({
 ```js
 parent.postMessage({
   type: "gameResult",
+  gameId: gameInit.gameId,
+  sessionId: gameInit.sessionId,
   result: 0
 }, "*");
 ```
@@ -571,6 +590,7 @@ let difficulty = 3;
 let resultSent = false;
 let gameStarted = false;
 let initReceived = false;
+let activeGameInit = null;
 let mouseActive = false;
 
 const BASE_W = 810;
@@ -626,10 +646,18 @@ function finishGame(result) {
 
   blockAllInteraction();
 
-  parent.postMessage({
+  const resultMessage = {
     type: "gameResult",
     result: Number.isFinite(result) ? result : 0
-  }, "*");
+  };
+
+  // При запуске из движка возвращаем его служебные id; локальный HTML остаётся автономным.
+  if (activeGameInit) {
+    resultMessage.gameId = activeGameInit.gameId;
+    resultMessage.sessionId = activeGameInit.sessionId;
+  }
+
+  parent.postMessage(resultMessage, "*");
 }
 
 function onGameInputStart(event, x, y) {
@@ -780,6 +808,7 @@ window.addEventListener('message', (event) => {
   if (!event.data || event.data.type !== 'gameInit') return;
 
   initReceived = true;
+  activeGameInit = event.data;
   difficulty = Number(event.data.difficulty ?? 3) || 3;
   applyScale();
 
@@ -818,6 +847,7 @@ bindInput();
 ## ✅ Минимальный чек-лист совместимости
 
 - получает `gameInit`
+- возвращает полученные `gameId` и `sessionId` в `gameResult`
 - не ломается без него в локальном запуске
 - поддерживает mouse/touch
 - не зависит от FPS
@@ -834,6 +864,7 @@ bindInput();
 
 Совместимая мини-игра должна:
 - получить `gameInit` от движка
+- вернуть `gameId` и `sessionId` текущего запуска в `gameResult`
 - корректно отработать на mouse, touch и интерактивных экранах
 - использовать единое масштабирование интерфейса
 - не зависеть от FPS и производительности устройства там, где важна временная логика

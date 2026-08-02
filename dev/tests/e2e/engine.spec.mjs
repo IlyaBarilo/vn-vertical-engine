@@ -7,7 +7,8 @@ const repositoryRoot = path.dirname(fileURLToPath(new URL('../../../index.html',
 const fixtureRoot = path.dirname(fileURLToPath(new URL('./fixtures/story-fixture.js', import.meta.url)));
 const fixtureRoutes = new Map([
   ['/story.js', path.join(fixtureRoot, 'story-fixture.js')],
-  ['/__e2e__/game.html', path.join(fixtureRoot, 'game.html')]
+  ['/__e2e__/game.html', path.join(fixtureRoot, 'game.html')],
+  ['/__e2e__/legacy-game.html', path.join(fixtureRoot, 'legacy-game.html')]
 ]);
 const blockedLocalRoutes = new Set(['/story360.js', '/license-key.js']);
 
@@ -164,7 +165,7 @@ test('автосохранение восстанавливает прогрес
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет настоящий iframe, параметры gameInit, gameResult и продолжение сценария после игры.
+// Проверяет gameInit v2, блокировку поддельных и повторных результатов и продолжение сценария после игры.
 test('мини-игра обменивается сообщениями с движком', async function({ page }) {
   const pageErrors = collectPageErrors(page);
 
@@ -177,13 +178,99 @@ test('мини-игра обменивается сообщениями с дв�
   const game = page.frameLocator('#gameFrame');
   await expect(game.locator('#status')).toHaveText('gameInit получен');
   await expect(game.locator('#gameId')).toHaveText('testGame');
+  await expect(game.locator('#protocolVersion')).toHaveText('2');
+  await expect(game.locator('#sessionId')).toHaveText(/^game-[a-z0-9]+/);
   await expect(game.locator('#difficulty')).toHaveText('2');
   await expect(game.locator('#token')).toHaveText('e2e');
+
+  const sessionId = await game.locator('#sessionId').textContent();
+  // Отправляет сообщение с правильными id из родительского окна: движок обязан проверить event.source.
+  await page.evaluate(function sendForgedResult(activeSessionId) {
+    window.postMessage({
+      type: 'gameResult',
+      gameId: 'testGame',
+      sessionId: activeSessionId,
+      result: 99
+    }, '*');
+  }, sessionId);
+  await expect(page.locator('#gameModal')).toBeVisible();
+
+  await game.getByRole('button', { name: 'Отправить неверную сессию' }).click();
+  await expect(page.locator('#gameModal')).toBeVisible();
   await game.getByRole('button', { name: 'Завершить игру' }).click();
 
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
   await expect(page.locator('#textBox')).toHaveText('Игра завершена: 7');
   await advanceDialog(page);
   await expect(page.locator('#textBox')).toHaveText('Финал: left, результат: 7');
+  expect(pageErrors).toEqual([]);
+});
+
+// Подтверждает, что старая мини-игра без gameId и sessionId продолжает работать после замены файлов движка.
+test('legacy-мини-игра возвращает результат в старом формате', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+
+  await openStory(page);
+  await chooseRoute(page, 'Старая мини-игра');
+  await expect(page.locator('#textBox')).toHaveText('Выбрана legacy-ветка');
+  await advanceDialog(page);
+
+  await expect(page.locator('#gameModal')).toBeVisible();
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.getByRole('button', { name: 'Завершить старую игру' }).click();
+
+  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toHaveText('Legacy-игра завершена: 5');
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Финал: legacy, результат: 5');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет отдельную сессию iframe статистики, отклонение результата сюжетного iframe и ручное закрытие.
+test('игра из статистики изолирована от сюжетного iframe', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+
+  await openStory(page);
+  await page.locator('#btnStats').click();
+  await expect(page.locator('#statsPanel')).toBeVisible();
+  await page.locator('#btnShowGames').click();
+
+  const gameCard = page.locator('#gamesGrid .gameCatalogCard').filter({
+    hasText: 'Синтетическая мини-игра'
+  });
+  await gameCard.getByRole('button', { name: '3', exact: true }).click();
+  await expect(page.locator('#statsGameModal')).toBeVisible();
+
+  const statsGame = page.frameLocator('#statsGameFrame');
+  await expect(statsGame.locator('#status')).toHaveText('gameInit получен');
+  await expect(statsGame.locator('#protocolVersion')).toHaveText('2');
+
+  // Загружает служебный fixture в неактивный сюжетный iframe и имитирует legacy-результат от неверного окна.
+  await page.locator('#gameFrame').evaluate(function loadInactiveStoryFrame(frame) {
+    frame.src = '/__e2e__/legacy-game.html';
+  });
+  const inactiveStoryGame = page.frameLocator('#gameFrame');
+  await expect(inactiveStoryGame.locator('#status')).toHaveText('Ожидание gameInit');
+  await inactiveStoryGame.locator('body').evaluate(function sendResultFromWrongFrame() {
+    window.parent.postMessage({ type: 'gameResult', result: 99 }, '*');
+  });
+  await expect(page.locator('#statsGameModal')).toBeVisible();
+
+  await statsGame.getByRole('button', { name: 'Завершить игру' }).click();
+  await expect(page.locator('#statsGameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#gamesStatus')).toHaveText(
+    'Последний запуск: Синтетическая мини-игра, сложность 3, результат 7'
+  );
+  await expect(page.locator('#textBox')).toHaveText('Первый экран E2E');
+
+  await gameCard.getByRole('button', { name: '1', exact: true }).click();
+  await expect(page.locator('#statsGameModal')).toBeVisible();
+  await expect(statsGame.locator('#status')).toHaveText('gameInit получен');
+  await page.locator('#btnCloseStatsGame').click();
+  await expect(page.locator('#statsGameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#gamesStatus')).toHaveText(
+    'Последний запуск: Синтетическая мини-игра, сложность 1, игра закрыта вручную'
+  );
   expect(pageErrors).toEqual([]);
 });

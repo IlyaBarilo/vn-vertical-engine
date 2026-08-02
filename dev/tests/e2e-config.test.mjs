@@ -24,7 +24,8 @@ test('браузерный E2E-набор полностью описан в р�
     'dev/playwright.config.mjs',
     'dev/tests/e2e/engine.spec.mjs',
     'dev/tests/e2e/fixtures/story-fixture.js',
-    'dev/tests/e2e/fixtures/game.html'
+    'dev/tests/e2e/fixtures/game.html',
+    'dev/tests/e2e/fixtures/legacy-game.html'
   ];
 
   assert.equal(packageData.scripts['test:e2e'], 'playwright test');
