@@ -11,6 +11,7 @@
     "test:assets": "node --test tests/assets.test.mjs tests/media-options.test.mjs",
     "test:360": "node --test tests/story360-commands.test.mjs",
     "test:stats": "node --test tests/loader-stats.test.mjs",
+    "test:ui": "node --test tests/ui-config-runtime.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs",
     "test:release": "node --test tests/release-package.test.mjs tests/release-assets.test.mjs tests/release-checksums.test.mjs",
     "test:release:smoke": "node tests/release-smoke.mjs",

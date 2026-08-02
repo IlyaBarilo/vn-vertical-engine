@@ -770,6 +770,7 @@ function startLicensedEngine() {
 // default  — значение по умолчанию
 // unit     — единица измерения
 // type     — ожидаемый тип
+// query    — можно ли задавать параметр через URL
 // validate — дополнительная проверка значения
 const UI_STYLE_CONFIG = {
   topSpacing: {
@@ -777,6 +778,7 @@ const UI_STYLE_CONFIG = {
     default: 0,
     unit: 'px',
     type: 'int',
+    query: true,
     min: 0
   },
   rightSpacing: {
@@ -784,6 +786,7 @@ const UI_STYLE_CONFIG = {
     default: 0,
     unit: 'px',
     type: 'int',
+    query: true,
     min: 0
   },
   bottomSpacing: {
@@ -791,6 +794,7 @@ const UI_STYLE_CONFIG = {
     default: 0,
     unit: 'px',
     type: 'int',
+    query: true,
     min: 0
   },
   leftSpacing: {
@@ -798,6 +802,7 @@ const UI_STYLE_CONFIG = {
     default: 0,
     unit: 'px',
     type: 'int',
+    query: true,
     min: 0
   },
   blurStrength: {
@@ -19859,10 +19864,7 @@ function applyUIStyleVariables(meta) {
   Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
     var config = UI_STYLE_CONFIG[metaKey];
 
-    var hasMetaValue = meta
-      && meta[metaKey] !== undefined
-      && meta[metaKey] !== null
-      && isValidUIConfigValue(meta[metaKey], config);
+    var hasMetaValue = hasValidUIConfigProperty(meta, metaKey);
 
     if (hasMetaValue) {
       root.style.setProperty(
@@ -19876,181 +19878,73 @@ function applyUIStyleVariables(meta) {
   });
 }
 
-// Безопасный парсинг чисел из строки.
-// Если значение кривое, возвращаем null.
+// Разбирает URL-значение строго по объявленному типу, не принимая частично числовые строки.
 function parseUIParamValue(rawValue, type) {
-  console.log('[parseUIParamValue] raw=', rawValue, 'type=', type);
   if (rawValue === null || rawValue === undefined) return null;
 
   var value = String(rawValue).trim();
   if (value === '') return null;
 
   if (type === 'int') {
-    if (!/^-?\d+$/.test(value)) {
-      console.log('[parseUIParamValue] invalid int =', value);
-      return null;
-    }
-    var intValue = parseInt(value, 10);
-    console.log('[parseUIParamValue] intValue =', intValue);
-    return isNaN(intValue) ? null : intValue;
+    if (!/^-?\d+$/.test(value)) return null;
+    var intValue = Number(value);
+    return Number.isFinite(intValue) && Number.isInteger(intValue) ? intValue : null;
   }
 
   if (type === 'float') {
-    if (!/^-?\d+(\.\d+)?$/.test(value)) {
-      console.log('[parseUIParamValue] invalid float =', value);
-      return null;
-    }
-    var floatValue = parseFloat(value);
-    console.log('[parseUIParamValue] floatValue =', floatValue);
-    return isNaN(floatValue) ? null : floatValue;
+    if (!/^-?\d+(\.\d+)?$/.test(value)) return null;
+    var floatValue = Number(value);
+    return Number.isFinite(floatValue) ? floatValue : null;
   }
 
   return null;
 }
 
-// Читает параметры интерфейса из URL без учета регистра ключей.
-// topSpacing, TOPSPACING, topspacing, TopSpacing — всё работает одинаково.
-// Некорректные значения игнорируются.
-function getUIOverridesFromQuery() {
-  var params = new URLSearchParams(window.location.search);
-  console.log('[URL] search raw =', window.location.search);
-  var overrides = {};
-  var normalized = {};
-
-  // Нормализуем все ключи в нижний регистр
-  params.forEach(function(value, key) {
-    normalized[String(key).toLowerCase()] = value;
-  });
-
-  console.log('[URL] normalized =', JSON.stringify(normalized));
-
-  Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
-    var config = UI_STYLE_CONFIG[metaKey];
-    var queryKey = metaKey.toLowerCase();
-    console.log('[URL] check metaKey=' + metaKey + ', queryKey=' + queryKey + ', raw=' + normalized[queryKey]);
-
-    console.log('[URL] checking key:', {
-      metaKey: metaKey,
-      queryKey: queryKey,
-      hasParam: Object.prototype.hasOwnProperty.call(normalized, queryKey),
-      rawValue: normalized[queryKey]
-    });
-
-    if (!Object.prototype.hasOwnProperty.call(normalized, queryKey)) {
-      return;
-    }
-
-    var parsedValue = parseUIParamValue(normalized[queryKey], config.type);
-    console.log('[URL] parsed value for', metaKey, '=', parsedValue);
-    if (parsedValue === null) {
-      return;
-    }
-
-    if (!isValidUIConfigValue(parsedValue, config)) {
-      return;
-    }
-
-    // Явно записываем в правильное имя поля meta
-    if (metaKey === 'topSpacing') {
-      overrides.topSpacing = parsedValue;
-    }
-
-    if (metaKey === 'bottomSpacing') {
-      overrides.bottomSpacing = parsedValue;
-    }
-  });
-
-  return overrides;
-}
-
-// Проверка диапазонов из конфига
+// Проверяет число по типу, объявленным границам и дополнительному правилу UI-схемы.
 function isValidUIConfigValue(value, config) {
-  if (value === null || value === undefined) return false;
-  if (typeof value !== 'number' || isNaN(value)) return false;
+  if (!config || typeof value !== 'number' || !Number.isFinite(value)) return false;
+  if (config.type === 'int' && !Number.isInteger(value)) return false;
+  if (config.type !== 'int' && config.type !== 'float') return false;
 
   if (typeof config.min === 'number' && value < config.min) return false;
   if (typeof config.max === 'number' && value > config.max) return false;
+  if (typeof config.validate === 'function' && !config.validate(value)) return false;
 
   return true;
 }
 
-// Проверяет, допустимо ли значение по правилам конфига
-function isValidUIConfigValue(value, config) {
-  if (value === null || value === undefined) {
-    return false;
-  }
-
-  if (typeof config.validate === 'function') {
-    return !!config.validate(value);
-  }
-
-  return true;
+// Проверяет наличие явно заданного и допустимого значения в объекте meta или URL override.
+function hasValidUIConfigProperty(values, metaKey) {
+  return !!values
+    && Object.prototype.hasOwnProperty.call(values, metaKey)
+    && isValidUIConfigValue(values[metaKey], UI_STYLE_CONFIG[metaKey]);
 }
 
-// Читает параметры интерфейса из адресной строки.
-// Параметры не зависят от регистра.
-// Некорректные значения игнорируются.
-function getUIOverridesFromQuery() {
-  var params = new URLSearchParams(window.location.search);
-  console.log('[URL] window.location.search =', window.location.search);
+// Возвращает допустимое значение UI-схемы либо её безопасное значение по умолчанию.
+function getUIConfigValueOrDefault(values, metaKey) {
+  var config = UI_STYLE_CONFIG[metaKey];
+  return hasValidUIConfigProperty(values, metaKey) ? values[metaKey] : config.default;
+}
+
+// Читает только разрешённые UI-параметры из URL без учёта регистра и применяет общую схему валидации.
+function getUIOverridesFromQuery(search) {
+  var querySource = search === undefined ? window.location.search : search;
+  var params = new URLSearchParams(querySource);
   var overrides = {};
   var normalized = {};
 
-  // Нормализуем ключи: topSpacing, TOPSPACING, topspacing -> topspacing
   params.forEach(function(value, key) {
     normalized[String(key).toLowerCase()] = value;
   });
-  console.log('[URL] normalized params =', normalized);
 
-  // Проходим по конфигу и ищем соответствующие параметры в URL
   Object.keys(UI_STYLE_CONFIG).forEach(function(metaKey) {
     var config = UI_STYLE_CONFIG[metaKey];
     var normalizedKey = metaKey.toLowerCase();
-
-    if (!normalized.hasOwnProperty(normalizedKey)) {
-      return;
-    }
+    if (!config.query || !Object.prototype.hasOwnProperty.call(normalized, normalizedKey)) return;
 
     var parsedValue = parseUIParamValue(normalized[normalizedKey], config.type);
-
-    // Если значение не распарсилось — просто игнорируем
-    if (parsedValue === null) {
-      return;
-    }
-
-    // Если значение не прошло validate — тоже игнорируем
-    if (!isValidUIConfigValue(parsedValue, config)) {
-      return;
-    }
-
-    console.log('[URL] apply override:', metaKey, '=', parsedValue);
-    overrides[metaKey] = parsedValue;
+    if (isValidUIConfigValue(parsedValue, config)) overrides[metaKey] = parsedValue;
   });
-
-  console.log('[URL] final overrides =', overrides);
-  return overrides;
-}
-
-
-function getUIOverridesFromQuery() {
-  var params = new URLSearchParams(window.location.search);
-  var overrides = {};
-
-  // topSpacing
-  if (params.has('topSpacing')) {
-    var topSpacing = parseInt(params.get('topSpacing'), 10);
-    if (!isNaN(topSpacing)) {
-      overrides.topSpacing = topSpacing;
-    }
-  }
-
-  // bottomSpacing
-  if (params.has('bottomSpacing')) {
-    var bottomSpacing = parseInt(params.get('bottomSpacing'), 10);
-    if (!isNaN(bottomSpacing)) {
-      overrides.bottomSpacing = bottomSpacing;
-    }
-  }
 
   return overrides;
 }
@@ -20075,42 +19969,15 @@ function applyWindowLayoutClasses(layoutMode, requestedWindowMode, manualMode) {
 
 function applySpacingSettings() {
   var storyMeta = (window.STORY && window.STORY.meta) ? window.STORY.meta : {};
-  var queryOverrides = {};
-  var urlParams = new URLSearchParams(window.location.search);
-  var normalizedUrlParams = {};
-
-  urlParams.forEach(function(value, key) {
-    normalizedUrlParams[String(key).toLowerCase()] = value;
-  });
-
-  ['topSpacing', 'rightSpacing', 'bottomSpacing', 'leftSpacing'].forEach(function(key) {
-    var raw = normalizedUrlParams[key.toLowerCase()];
-    if (raw === undefined) return;
-
-    if (/^\d+$/.test(String(raw).trim())) {
-      queryOverrides[key] = parseInt(raw, 10);
-    } else {
-      console.log('[URL DIRECT] ignored invalid ' + key + ' =', raw);
-    }
-  });
+  // URL переопределяет meta только после разбора той же UI-схемой, что используется для CSS.
+  var queryOverrides = getUIOverridesFromQuery();
 
   var finalMeta = Object.assign({}, storyMeta, queryOverrides);
 
-  var hasExplicitTop =
-    Object.prototype.hasOwnProperty.call(storyMeta, 'topSpacing') ||
-    Object.prototype.hasOwnProperty.call(queryOverrides, 'topSpacing');
-
-  var hasExplicitRight =
-    Object.prototype.hasOwnProperty.call(storyMeta, 'rightSpacing') ||
-    Object.prototype.hasOwnProperty.call(queryOverrides, 'rightSpacing');
-
-  var hasExplicitBottom =
-    Object.prototype.hasOwnProperty.call(storyMeta, 'bottomSpacing') ||
-    Object.prototype.hasOwnProperty.call(queryOverrides, 'bottomSpacing');
-
-  var hasExplicitLeft =
-    Object.prototype.hasOwnProperty.call(storyMeta, 'leftSpacing') ||
-    Object.prototype.hasOwnProperty.call(queryOverrides, 'leftSpacing');
+  var hasExplicitTop = hasValidUIConfigProperty(finalMeta, 'topSpacing');
+  var hasExplicitRight = hasValidUIConfigProperty(finalMeta, 'rightSpacing');
+  var hasExplicitBottom = hasValidUIConfigProperty(finalMeta, 'bottomSpacing');
+  var hasExplicitLeft = hasValidUIConfigProperty(finalMeta, 'leftSpacing');
 
   // Если задан ЛЮБОЙ отступ — ручной режим.
   var manualMode =
@@ -20128,10 +19995,10 @@ function applySpacingSettings() {
   var effectiveLeft = 0;
 
   if (manualMode) {
-    effectiveTop = num(finalMeta.topSpacing, 0);
-    effectiveRight = num(finalMeta.rightSpacing, 0);
-    effectiveBottom = num(finalMeta.bottomSpacing, 0);
-    effectiveLeft = num(finalMeta.leftSpacing, 0);
+    effectiveTop = getUIConfigValueOrDefault(finalMeta, 'topSpacing');
+    effectiveRight = getUIConfigValueOrDefault(finalMeta, 'rightSpacing');
+    effectiveBottom = getUIConfigValueOrDefault(finalMeta, 'bottomSpacing');
+    effectiveLeft = getUIConfigValueOrDefault(finalMeta, 'leftSpacing');
   } else if (requestedWindowMode === STORY_WINDOW_VERTICAL) {
     var availableHeight = Math.max(0, window.innerHeight);
     var maxAllowedWidth = availableHeight * MAX_NOVEL_ASPECT_W / MAX_NOVEL_ASPECT_H;

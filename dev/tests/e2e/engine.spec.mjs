@@ -139,10 +139,10 @@ function collectPageErrors(page) {
   return errors;
 }
 
-// Открывает реальный index.html и ждёт первую реплику синтетической истории.
-async function openStory(page) {
+// Открывает реальный index.html с необязательной query-строкой и ждёт первую реплику синтетической истории.
+async function openStory(page, storyUrl = '/') {
   await installRepositoryRoutes(page);
-  await page.goto('/');
+  await page.goto(storyUrl);
   await expect(page.locator('#textBox')).toHaveText('Первый экран E2E');
 }
 
@@ -191,6 +191,23 @@ test('движок запускает историю в браузере без 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  expect(pageErrors).toEqual([]);
+});
+
+// Подтверждает реальное подключение единственного URL-parser и отсутствие верхнего лимита отступов.
+test('URL принимает большие отступы без учёта регистра', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+
+  await openStory(page, '/?TOPSPACING=5000&bottomSpacing=8000');
+
+  const spacing = await page.evaluate(function readAppliedSpacing() {
+    return {
+      top: document.documentElement.style.getPropertyValue('--topSpacing'),
+      bottom: document.documentElement.style.getPropertyValue('--bottomSpacing'),
+      manualMode: document.getElementById('novelWindow').classList.contains('window-manual')
+    };
+  });
+  expect(spacing).toEqual({ top: '5000px', bottom: '8000px', manualMode: true });
   expect(pageErrors).toEqual([]);
 });
 
