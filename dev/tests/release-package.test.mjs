@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 
 // Перечисляет пользовательские инструменты, которые должны быть доступны в полном и update-архивах.
 const requiredAuthoringTools = [
@@ -117,14 +117,18 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|tests/'));
+  assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
   assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
 });
 
-// Защищает пользовательский ZIP от developer-тестов, браузеров, отчётов и их конфигурации.
-test('релизная сборка не копирует developer-тесты', async function() {
+// Защищает пользовательский ZIP от каталога разработки, браузеров, отчётов и конфигурации.
+test('релизная сборка не копирует каталог dev', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
+  assert.equal(releaseSource.includes('[ -d dev ]'), false);
+  assert.equal(releaseSource.includes('cp -r dev'), false);
+  assert.equal(releaseSource.includes('cp -a dev'), false);
   assert.equal(releaseSource.includes('[ -d tests ]'), false);
   assert.equal(releaseSource.includes('cp -r tests'), false);
   assert.equal(releaseSource.includes('cp -a tests'), false);

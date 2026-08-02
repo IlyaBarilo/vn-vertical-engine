@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { getRepositoryRoot } from './helpers/run-story-loader.mjs';
 
-// Получает только отслеживаемые Git файлы, чтобы локальные черновики не меняли результат проверки.
+// Получает существующие отслеживаемые Git-файлы, учитывая переносы до выполнения пользователем git add.
 function listTrackedFiles(repositoryRoot) {
   const result = spawnSync('git', ['ls-files', '-z'], {
     cwd: repositoryRoot,
@@ -17,7 +17,11 @@ function listTrackedFiles(repositoryRoot) {
     throw new Error('Не удалось получить список файлов Git: ' + String(result.stderr || '').trim());
   }
 
-  return result.stdout.split('\0').filter(Boolean);
+  const trackedFiles = result.stdout.split('\0').filter(Boolean);
+  // Исключает старые пути перемещённых файлов, которых уже нет в рабочем дереве.
+  return trackedFiles.filter(function(filePath) {
+    return existsSync(path.join(repositoryRoot, filePath));
+  });
 }
 
 // Извлекает назначения обычных Markdown-ссылок, не включая изображения.

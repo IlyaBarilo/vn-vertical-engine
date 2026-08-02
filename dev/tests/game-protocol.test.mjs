@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const protocol = require('../engine/game-protocol.js');
+const protocol = require('../../engine/game-protocol.js');
 
 // Проверяет обязательные поля и передачу дополнительных параметров в искусственном gameInit.
 test('протокол создаёт сообщение gameInit с параметрами', function() {
@@ -83,8 +83,8 @@ test('протокол заменяет некорректный результ�
 // Защищает обязательное подключение общего модуля до основного кода движка.
 test('модуль протокола подключён к runtime до engine.js', async function() {
   const [indexSource, engineSource] = await Promise.all([
-    readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../engine/engine.js', import.meta.url), 'utf8')
+    readFile(new URL('../../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../../engine/engine.js', import.meta.url), 'utf8')
   ]);
   const protocolPosition = indexSource.indexOf('engine/game-protocol.js');
   const enginePosition = indexSource.indexOf('engine/engine.js');

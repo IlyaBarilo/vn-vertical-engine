@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 
 // Читает developer-файл относительно корня репозитория для статической проверки E2E-контура.
 function readRepositoryFile(relativePath) {
@@ -18,17 +18,18 @@ function accessRepositoryFile(relativePath) {
 
 // Проверяет наличие конфигурации, синтетических fixtures и отдельных npm-команд Playwright.
 test('браузерный E2E-набор полностью описан в репозитории', async function() {
-  const packageSource = await readRepositoryFile('package.json');
+  const packageSource = await readRepositoryFile('dev/package.json');
   const packageData = JSON.parse(packageSource);
   const requiredFiles = [
-    'playwright.config.mjs',
-    'tests/e2e/engine.spec.mjs',
-    'tests/e2e/fixtures/story-fixture.js',
-    'tests/e2e/fixtures/game.html'
+    'dev/playwright.config.mjs',
+    'dev/tests/e2e/engine.spec.mjs',
+    'dev/tests/e2e/fixtures/story-fixture.js',
+    'dev/tests/e2e/fixtures/game.html'
   ];
 
   assert.equal(packageData.scripts['test:e2e'], 'playwright test');
   assert.equal(packageData.scripts['test:e2e:headed'], 'playwright test --headed');
+  assert.equal(packageData.scripts['browser:install'], 'playwright install chromium');
   assert.equal(packageData.devDependencies['@playwright/test'], '1.62.1');
   await Promise.all(requiredFiles.map(accessRepositoryFile));
 });
@@ -41,6 +42,10 @@ test('GitHub Actions запускает браузерные E2E-тесты', as
   assert.ok(workflowSource.includes('run: npm ci'));
   assert.ok(workflowSource.includes('run: npx playwright install --with-deps chromium'));
   assert.ok(workflowSource.includes('run: npm run test:e2e'));
+  assert.ok(workflowSource.includes('cache-dependency-path: dev/package-lock.json'));
+  assert.ok(workflowSource.includes('working-directory: dev'));
+  assert.ok(workflowSource.includes('dev/.playwright/report/'));
+  assert.ok(workflowSource.includes('dev/.playwright/test-results/'));
   assert.ok(workflowSource.includes('uses: actions/upload-artifact@v7'));
   assert.ok(workflowSource.includes('if: failure()'));
 });

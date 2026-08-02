@@ -10,14 +10,14 @@
 - Node.js 22 или новее;
 - локальная копия Git-репозитория;
 - для основных Node-тестов установка npm-пакетов и подключение к сети не требуются;
-- для браузерных E2E-тестов один раз нужны `npm ci` и установка Chromium.
+- для браузерных E2E-тестов один раз нужны `npm --prefix dev ci` и установка Chromium.
 
 Тесты и Node.js не входят в пользовательский runtime движка и не нужны для
 запуска готовой новеллы.
 
 ## Запуск
 
-Полная проверка:
+Все команды ниже выполняются из корня репозитория. Полная проверка:
 
 ```powershell
 node --test
@@ -26,55 +26,56 @@ node --test
 Все проверки `story-loader.js`:
 
 ```powershell
-npm run test:parser
+npm --prefix dev run test:parser
 ```
 
 Метаданные и диагностика ошибок:
 
 ```powershell
-npm run test:meta
+npm --prefix dev run test:meta
 ```
 
 Команды сцен, переходы, условия и меню:
 
 ```powershell
-npm run test:scenes
+npm --prefix dev run test:scenes
 ```
 
 Переменные, синтаксис и runtime-вычисление выражений:
 
 ```powershell
-npm run test:variables
+npm --prefix dev run test:variables
 ```
 
 Объявления и параметры синтетических медиа:
 
 ```powershell
-npm run test:assets
+npm --prefix dev run test:assets
 ```
 
 Команды `bg360marks`, `walk360` и `goto360`:
 
 ```powershell
-npm run test:360
+npm --prefix dev run test:360
 ```
 
 Счётчики встроенной статистики загрузчика:
 
 ```powershell
-npm run test:stats
+npm --prefix dev run test:stats
 ```
 
 Протокол мини-игр, состав релиза и ссылки документации:
 
 ```powershell
-npm run test:protocol
-npm run test:release
-npm run test:links
+npm --prefix dev run test:protocol
+npm --prefix dev run test:release
+npm --prefix dev run test:links
 ```
 
-В PowerShell с запрещёнными сценариями `npm.ps1` используйте `node --test` для полного набора
-или команды `node --test tests/<имя>.test.mjs` для отдельных файлов.
+В PowerShell с запрещёнными сценариями `npm.ps1` используйте
+`node --test` для полного набора или команды
+`node --test dev/tests/<имя>.test.mjs` для отдельных файлов.
 
 Успешный запуск завершается кодом `0`. Любой проваленный тест возвращает
 ненулевой код, поэтому GitHub Actions и Codex могут автоматически остановить
@@ -85,20 +86,20 @@ npm run test:links
 Первичная установка developer-зависимостей и Chromium:
 
 ```powershell
-npm ci
-npx playwright install chromium
+npm --prefix dev ci
+npm --prefix dev run browser:install
 ```
 
 Запуск в фоновом Chromium:
 
 ```powershell
-npm run test:e2e
+npm --prefix dev run test:e2e
 ```
 
 Запуск с видимым окном браузера для ручной диагностики:
 
 ```powershell
-npm run test:e2e:headed
+npm --prefix dev run test:e2e:headed
 ```
 
 Playwright перехватывает все запросы внутри теста и блокирует внешнюю сеть. Он
@@ -159,9 +160,9 @@ Workflow `.github/workflows/tests.yml` запускает полный набо�
 - вручную через `workflow_dispatch`.
 
 Job `test` выполняет автономные Node-тесты. Параллельный job `Browser E2E`
-устанавливает developer-зависимости и Chromium, затем запускает синтетические
-браузерные сценарии. При сбое его HTML-отчёт, screenshot и trace сохраняются в
-GitHub Actions Artifacts на семь дней.
+работает из каталога `dev/`: устанавливает developer-зависимости и Chromium,
+затем запускает синтетические браузерные сценарии. При сбое его HTML-отчёт,
+screenshot и trace сохраняются в GitHub Actions Artifacts на семь дней.
 
 Release workflow повторяет тесты перед сборкой ZIP. Провал проверки не позволяет
 собрать и загрузить релизные архивы.
@@ -186,6 +187,6 @@ update-архиве. Artifact хранится семь дней.
 GitHub Pages. При событии публикации релиза оба действия по-прежнему
 выполняются автоматически.
 
-Каталог `tests/`, `package.json`, `package-lock.json`, `playwright.config.mjs` и
-этот документ нужны только разработчику и GitHub Actions. Release workflow не
-копирует их, браузеры или отчёты в пользовательские ZIP-архивы.
+Весь каталог `dev/` нужен только разработчику и GitHub Actions. Release workflow
+не копирует его, браузеры или отчёты в пользовательские ZIP-архивы и завершает
+сборку ошибкой, если `dev/` неожиданно появляется внутри архива.

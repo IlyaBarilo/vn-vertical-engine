@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.spec.mjs',
-  outputDir: 'test-results',
+  outputDir: '.playwright/test-results',
   timeout: 20_000,
   expect: {
     timeout: 7_000
@@ -13,7 +13,7 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI
-    ? [['line'], ['html', { open: 'never' }]]
+    ? [['line'], ['html', { open: 'never', outputFolder: '.playwright/report' }]]
     : [['line']],
   use: {
     baseURL: 'http://e2e.local',

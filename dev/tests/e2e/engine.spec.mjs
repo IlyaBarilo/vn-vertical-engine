@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = path.dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
+const repositoryRoot = path.dirname(fileURLToPath(new URL('../../../index.html', import.meta.url)));
 const fixtureRoot = path.dirname(fileURLToPath(new URL('./fixtures/story-fixture.js', import.meta.url)));
 const fixtureRoutes = new Map([
   ['/story.js', path.join(fixtureRoot, 'story-fixture.js')],

@@ -44,15 +44,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: dev/package-lock.json
 
       - name: Install test dependencies
         run: npm ci
+        working-directory: dev
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+        working-directory: dev
 
       - name: Run browser E2E tests
         run: npm run test:e2e
+        working-directory: dev
 
       - name: Upload browser failure report
         if: failure()
@@ -60,7 +64,7 @@ jobs:
         with:
           name: browser-e2e-report-${{ github.run_id }}
           path: |
-            playwright-report/
-            test-results/
+            dev/.playwright/report/
+            dev/.playwright/test-results/
           if-no-files-found: ignore
           retention-days: 7

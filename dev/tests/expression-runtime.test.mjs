@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
-const enginePath = path.resolve(testsDirectory, '..', 'engine', 'engine.js');
+const enginePath = path.resolve(testsDirectory, '..', '..', 'engine', 'engine.js');
 let evaluatorPromise = null;
 
 // Извлекает настоящий безопасный evaluator из engine.js, не запуская браузерную часть движка.

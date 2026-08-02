@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const helperDirectory = path.dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = path.resolve(helperDirectory, '..', '..');
+const repositoryRoot = path.resolve(helperDirectory, '..', '..', '..');
 const loaderPath = path.join(repositoryRoot, 'engine', 'story-loader.js');
 let loaderSourcePromise = null;
 
@@ -113,8 +113,8 @@ export async function loadStoryTextFromScript(relativePath) {
   return windowObject.STORY_TEXT;
 }
 
-// Читает текстовый fixture относительно каталога tests/fixtures.
+// Читает текстовый fixture относительно каталога dev/tests/fixtures.
 export async function loadStoryFixture(fileName) {
-  const fixturePath = path.join(repositoryRoot, 'tests', 'fixtures', fileName);
+  const fixturePath = path.join(repositoryRoot, 'dev', 'tests', 'fixtures', fileName);
   return readFile(fixturePath, 'utf8');
 }

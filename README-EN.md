@@ -258,15 +258,17 @@ project/
 ├── lib/                               bundled third-party libraries
 ├── docs/
 │   ├── specs/                         story and mini-game specifications
-│   ├── TESTING.md                     engine test instructions
 │   ├── demo/images/                   interface screenshots
 │   ├── 360/                           panorama examples
 │   ├── games/                         mini-game screenshots
 │   ├── kiosk/                         real installation photos
 │   ├── stat/                          checks, statistics, and graphs
 │   └── tools/                         authoring-tool screenshots
-├── tests/                             engine regression tests
-├── package.json                       optional npm test commands
+├── dev/                               engine development and verification
+│   ├── README.md                      automated-test instructions
+│   ├── package.json                   test commands and dependencies
+│   ├── playwright.config.mjs          browser-test configuration
+│   └── tests/                         unit and browser tests
 ├── .github/workflows/                 tests and release automation
 ├── FIRST-STEPS-EN.md                  English starting guide
 ├── FIRST-STEPS.md                     Russian starting guide
@@ -292,7 +294,7 @@ The current reference story remains available as
 - [Первые шаги на русском](FIRST-STEPS.md)
 - [Story specification (Russian)](docs/specs/spec-story.md)
 - [HTML mini-game specification (Russian)](docs/specs/spec-game.md)
-- [Engine automated tests (Russian)](docs/TESTING.md)
+- [Engine automated tests (Russian)](dev/README.md)
 - [Third-party notices](NOTICE.md)
 - [Commercial use](COMMERCIAL-USE.md)
 
@@ -317,11 +319,12 @@ intentionally disabled.
 ## Engine tests
 
 After changing the parser or validation logic, run `node --test`; this core
-suite remains dependency-free. Browser checks for the real UI, `localStorage`,
-and iframe messaging run separately with `npm run test:e2e` after `npm ci` and
-the Chromium installation. GitHub Actions runs both suites. These tests verify
-the engine itself and do not replace the statistics and graphs for a particular
-story. See [docs/TESTING.md](docs/TESTING.md).
+suite remains dependency-free. Browser checks for the real UI,
+`localStorage`, and iframe messaging run separately with
+`npm --prefix dev run test:e2e` after installing the developer dependencies.
+GitHub Actions runs both suites. These tests verify the engine itself and do not
+replace the statistics and graphs for a particular story. See
+[dev/README.md](dev/README.md).
 
 ## License
 
