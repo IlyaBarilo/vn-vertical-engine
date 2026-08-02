@@ -10,18 +10,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Тег версии, например v0.1.0.2"
+        description: "Версия или имя тестовой сборки, например v0.1.0.2 или test-build"
         required: true
         type: string
       upload_to_release:
-        description: "Загрузить архивы в релиз"
+        description: "Загрузить архивы в GitHub Release (только для публикации)"
         required: true
-        default: true
+        default: false
         type: boolean
       deploy_pages:
-        description: "Deploy demo to GitHub Pages"
+        description: "Обновить демо на GitHub Pages (только для публикации)"
         required: true
-        default: true
+        default: false
         type: boolean
 
 env:
@@ -240,6 +240,47 @@ jobs:
 
           cp "${APP_NAME}-${VERSION}.zip" "${APP_NAME}-latest.zip"
           cp "${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-latest-update.zip"
+
+      - name: Verify ZIP archives
+        shell: bash
+        run: |
+          # Проверяем целостность обоих архивов до публикации или выдачи пользователю.
+          unzip -tq "${APP_NAME}-${VERSION}.zip"
+          unzip -tq "${APP_NAME}-${VERSION}-update.zip"
+          unzip -Z1 "${APP_NAME}-${VERSION}.zip" > build/full-zip-contents.txt
+          unzip -Z1 "${APP_NAME}-${VERSION}-update.zip" > build/update-zip-contents.txt
+
+          # Полный архив должен содержать пример, ассеты, runtime и все авторские инструменты.
+          grep -Fxq "${APP_NAME}/story-example.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/assets/" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
+
+          # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
+          grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
+
+          # Developer-файлы не должны попадать ни в один пользовательский ZIP.
+          if grep -Eq "^${APP_NAME}/(tests/|package\\.json$|docs/TESTING\\.md$)" build/full-zip-contents.txt; then
+            echo "Полный архив содержит developer-файлы."
+            exit 1
+          fi
+          if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|tests/|package\\.json$|docs/TESTING\\.md$)" build/update-zip-contents.txt; then
+            echo "Update-архив содержит пользовательские данные или developer-файлы."
+            exit 1
+          fi
+
+      - name: Upload ZIP artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-zips-${{ github.run_id }}
+          path: |
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
       - name: Upload to release
         if: github.event_name == 'release' || inputs.upload_to_release == true

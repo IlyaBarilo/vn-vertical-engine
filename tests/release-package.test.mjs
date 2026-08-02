@@ -84,6 +84,42 @@ test('релизная сборка включает пользовательс�
   });
 });
 
+// Защищает ручную проверку сборки от случайной публикации релиза или обновления GitHub Pages.
+test('ручная релизная сборка безопасна по умолчанию', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  assert.match(
+    releaseSource,
+    /      upload_to_release:\r?\n        description:[^\r\n]+\r?\n        required: true\r?\n        default: false\r?\n        type: boolean/
+  );
+  assert.match(
+    releaseSource,
+    /      deploy_pages:\r?\n        description:[^\r\n]+\r?\n        required: true\r?\n        default: false\r?\n        type: boolean/
+  );
+});
+
+// Проверяет, что собранные ZIP доступны для ручного скачивания без создания GitHub Release.
+test('релизная сборка сохраняет временный artifact с двумя ZIP', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  assert.ok(releaseSource.includes('uses: actions/upload-artifact@v7'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip'));
+  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip'));
+  assert.ok(releaseSource.includes('if-no-files-found: error'));
+  assert.ok(releaseSource.includes('retention-days: 7'));
+});
+
+// Проверяет наличие проверки целостности и ключевых различий полного и update-архивов.
+test('релизный workflow проверяет фактический состав ZIP', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}.zip"'));
+  assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
+  assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|tests/'));
+});
+
 // Защищает пользовательский ZIP от случайного включения developer-тестов и их конфигурации.
 test('релизная сборка не копирует developer-тесты', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
