@@ -873,18 +873,15 @@
       <div class="row two">
         <div>
           <label for="spaceIdInput">ID пространства</label>
-          <input id="spaceIdInput" type="text" value="main360" />
+          <input id="spaceIdInput" type="text" value="main360" pattern="[A-Za-z0-9]+" title="Только латинские буквы и цифры" />
         </div>
         <div>
           <label for="panoramaIdInput">ID панорамы</label>
-          <input id="panoramaIdInput" type="text" value="start" />
+          <input id="panoramaIdInput" type="text" value="start" pattern="[A-Za-z0-9]+" title="Только латинские буквы и цифры" />
         </div>
       </div>
 
-      <div class="row">
-        <label for="bgImageInput">360-изображение (2:1 equirect)</label>
-        <input id="bgImageInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
-      </div>
+      <!-- Прямая загрузка 360-изображения удалена: временное превью файла не восстанавливается после F5 и создавало ложное ожидание поддержки растрового пути. -->
 
       <div class="row">
         <label for="bgIdInput">ID фона (создаётся автоматически)</label>
@@ -892,7 +889,7 @@
       </div>
 
       <div class="row">
-        <label for="assetPathInput">Путь изображения, CSS- или JS-пакета для story360</label>
+        <label for="assetPathInput">Путь CSS-пакета для story360</label>
         <input id="assetPathInput" type="text" value="" placeholder="assets/360/korpusnight/174-360.css" />
       </div>
 
@@ -901,19 +898,26 @@
         <button id="testTargetBtn" type="button">Перейти по выбранной метке</button>
       </div>
 
-      <div class="row">
-        <label for="packFileInput">Безопасное превью legacy JS-пакета</label>
-        <input id="packFileInput" type="file" accept=".js,text/javascript,text/plain" />
-        <p class="security-note">Для старого JS редактор извлекает только изображение и метаданные без выполнения кода. Для новых панорам используйте путь к <span class="mono">*-360.css</span>.</p>
-      </div>
+      <!--
+        Временно скрыто: несколько режимов работы с legacy JS-пакетами путали
+        пользователей после перехода на CSS. Разметка сохранена в комментарии,
+        а функции чтения и доверенной загрузки оставлены в скрипте для возможного
+        возврата совместимости.
 
-      <div class="row">
-        <label class="legacy-pack-toggle" for="legacyPackModeInput">
-          <input id="legacyPackModeInput" type="checkbox" />
-          <span>Доверенный legacy-режим: разрешить выполнение JS-пакета по пути</span>
-        </label>
-        <p id="legacyPackWarning" class="security-warning" role="alert">В этом режиме пакет получает доступ к странице редактора. Включайте его только для собственного или проверенного проекта; перед каждым новым путём редактор запросит подтверждение.</p>
-      </div>
+        <div class="row">
+          <label for="packFileInput">Безопасное превью legacy JS-пакета</label>
+          <input id="packFileInput" type="file" accept=".js,text/javascript,text/plain" />
+          <p class="security-note">Для старого JS редактор извлекает только изображение и метаданные без выполнения кода. Для новых панорам используйте путь к <span class="mono">*-360.css</span>.</p>
+        </div>
+
+        <div class="row">
+          <label class="legacy-pack-toggle" for="legacyPackModeInput">
+            <input id="legacyPackModeInput" type="checkbox" />
+            <span>Доверенный legacy-режим: разрешить выполнение JS-пакета по пути</span>
+          </label>
+          <p id="legacyPackWarning" class="security-warning" role="alert">В этом режиме пакет получает доступ к странице редактора. Включайте его только для собственного или проверенного проекта; перед каждым новым путём редактор запросит подтверждение.</p>
+        </div>
+      -->
 
       <div class="row two">
         <div>
@@ -1138,7 +1142,6 @@
     var marksOverlay = document.getElementById("marksOverlay");
     /** Родитель canvas — нужен для смещения координат оверлея относительно рамки. */
     var viewerWrap = viewerCanvas && viewerCanvas.parentElement ? viewerCanvas.parentElement : null;
-    var bgImageInput = document.getElementById("bgImageInput");
     var story360Input = document.getElementById("story360Input");
     var newPanoramaBtn = document.getElementById("newPanoramaBtn");
     var savePanoramaBtn = document.getElementById("savePanoramaBtn");
@@ -1150,6 +1153,7 @@
     var bgIdInput = document.getElementById("bgIdInput");
     var assetPathInput = document.getElementById("assetPathInput");
     var loadAssetPathBtn = document.getElementById("loadAssetPathBtn");
+    /** Legacy-элементы сейчас закомментированы в HTML; nullable-ссылки сохраняют функции для возможного возврата интерфейса. */
     var packFileInput = document.getElementById("packFileInput");
     var legacyPackModeInput = document.getElementById("legacyPackModeInput");
     var legacyPackWarning = document.getElementById("legacyPackWarning");
@@ -1512,6 +1516,52 @@
     }
 
     /**
+     * Удаляет из редактируемого ID всё, кроме латинских букв и цифр.
+     * Импортированные ключи не меняются автоматически: фильтр применяется только при пользовательском вводе.
+     */
+    function sanitizeStory360SimpleId(value) {
+      return String(value === undefined || value === null ? "" : value).replace(/[^A-Za-z0-9]/g, "");
+    }
+
+    /**
+     * Оставляет в ссылке на 360-панораму только ID и первую точку-разделитель пространства.
+     */
+    function sanitizeStory360TargetReference(value) {
+      var text = String(value === undefined || value === null ? "" : value).replace(/[^A-Za-z0-9.]/g, "");
+      var firstDot = text.indexOf(".");
+      if (firstDot < 0) return text;
+      return text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
+    }
+
+    /**
+     * Разбирает цель Panorama или Space.Panorama; явное пространство всегда заменяет текущее.
+     * Более свободная проверка частей сохраняет совместимость уже импортированных старых ID.
+     */
+    function parseStory360TargetReference(value, defaultSpaceId) {
+      var text = String(value === undefined || value === null ? "" : value).trim();
+      var match = text.match(/^([^.]+)(?:\.([^.]+))?$/);
+      if (!match) return null;
+      var hasExplicitSpace = match[2] !== undefined;
+      return {
+        spaceId: hasExplicitSpace ? String(match[1]).trim() : String(defaultSpaceId || "").trim(),
+        panoramaId: String(hasExplicitSpace ? match[2] : match[1]).trim(),
+        hasExplicitSpace: hasExplicitSpace
+      };
+    }
+
+    /**
+     * Собирает значение поля перехода из объектной цели story360, не теряя явно заданное пространство.
+     */
+    function formatStory360TargetReference(target) {
+      if (!target || typeof target !== "object") return "";
+      var panoramaId = String(target.panorama !== undefined ? target.panorama : target.panoramaId || "").trim();
+      if (!panoramaId) return "";
+      var rawSpaceId = target.space !== undefined ? target.space : target.spaceId;
+      var spaceId = rawSpaceId === undefined || rawSpaceId === null ? "" : String(rawSpaceId).trim();
+      return spaceId ? spaceId + "." + panoramaId : panoramaId;
+    }
+
+    /**
      * Создаёт пространство в story360Data при первом обращении.
      */
     function ensureSpace(spaceId) {
@@ -1735,15 +1785,14 @@
     }
 
     /**
-     * Строит шаблон из пути вида assets/.../174.jpg, assets/.../174-360.css или assets/.../174-360.js,
-     * чтобы автоматически находить соседние панорамы в том же формате.
+     * Строит шаблон только из CSS-пути вида assets/.../174-360.css, чтобы редактор не создавал неподдерживаемые растровые или JS-пути для соседних панорам.
      */
     function buildPanoramaAssetTemplate(path) {
       var value = String(path || "").trim().replace(/\\/g, "/");
       var slash = value.lastIndexOf("/");
       var dir = slash >= 0 ? value.slice(0, slash + 1) : "";
       var fileName = slash >= 0 ? value.slice(slash + 1) : value;
-      var match = fileName.match(/^(.*?)(\d+)((?:-360(?:-[a-z0-9_-]+)?)?\.(?:jpe?g|png|webp)|-360(?:-[a-z0-9_-]+)?\.(?:css|js))(?:\?.*)?$/i);
+      var match = fileName.match(/^(.*?)(\d+)(-360(?:-[a-z0-9_-]+)?\.css)(?:\?.*)?$/i);
       if (!match) return null;
       return {
         dir: dir,
@@ -1942,6 +1991,7 @@
 
     /**
      * Превращает поля target метки в компактный объект для story360.
+     * Явное Space.Panorama сохраняется через поле space и не зависит от текущего пространства.
      * Для 360 entry в target не задаём: движок всегда берёт ключ входа из панорамы «откуда пришли» и мержит с entries.default.
      */
     function buildPointTarget(point) {
@@ -1951,9 +2001,11 @@
         return sceneId ? { type: "scene", scene: sceneId } : null;
       }
       if (targetType === "360") {
-        var panoramaId = String(point.targetPanorama || "").trim();
-        if (!panoramaId) return null;
-        return { type: "360", panorama: panoramaId };
+        var targetRef = parseStory360TargetReference(point.targetPanorama, "");
+        if (!targetRef || !targetRef.panoramaId || (targetRef.hasExplicitSpace && !targetRef.spaceId)) return null;
+        var target360 = { type: "360", panorama: targetRef.panoramaId };
+        if (targetRef.hasExplicitSpace) target360.space = targetRef.spaceId;
+        return target360;
       }
       return null;
     }
@@ -2380,7 +2432,7 @@
           text: String((m && m.text) || ""),
           visibleIf: readMarkVisibleIf(m),
           targetType: targetType,
-          targetPanorama: targetType === "360" ? String(target.panorama || target.panoramaId || "") : "",
+          targetPanorama: targetType === "360" ? formatStory360TargetReference(target) : "",
           targetScene: targetType === "scene" ? String(target.scene || target.sceneId || "") : "",
           label: String((m && (m.label || m.title || m.name)) || ""),
           photoImages: normalizeEditorPhotoImages(m)
@@ -2403,7 +2455,7 @@
         setStatus("Данные панорамы загружены, загружаю изображение: " + targetSpaceId + "." + targetPanoramaId, false);
         loadAssetPath(assetPathInput.value);
       } else {
-        showPanoramaLoadError("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь изображения, CSS- или JS-пакета.");
+        showPanoramaLoadError("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь CSS-пакета.");
       }
     }
 
@@ -2486,29 +2538,10 @@
     }
 
     /**
-     * Проверяет расширение растровой панорамы; SVG и прочие активные или неподдерживаемые форматы не принимаются.
-     */
-    function isSupportedPanoramaImagePath(path) {
-      return /\.(?:jpe?g|png|webp)$/i.test(String(path || "").trim());
-    }
-
-    /**
      * Допускает только декларативные CSS-пакеты конвертера с явным суффиксом 360.
      */
     function isSupportedPanoramaCssPackPath(path) {
       return /-360(?:-[a-z0-9_-]+)?\.css$/i.test(String(path || "").trim());
-    }
-
-    /**
-     * Строит путь выбранного изображения для story360: браузер скрывает полный путь файла,
-     * поэтому редактор сохраняет текущую папку ассета и заменяет только имя файла.
-     */
-    function buildSelectedImageAssetPath(file) {
-      var fileName = String((file && file.name) || "").trim().replace(/\\/g, "/").split("/").pop();
-      if (!isSupportedPanoramaImagePath(fileName)) return "";
-      var currentPath = String(assetPathInput.value || "").trim().replace(/\\/g, "/");
-      var slash = currentPath.lastIndexOf("/");
-      return (slash >= 0 ? currentPath.slice(0, slash + 1) : "") + fileName;
     }
 
     /**
@@ -2569,51 +2602,6 @@
         return "Размер панорамы " + width + "x" + height + " превышает лимит WebGL " + maxTextureSize + " px.";
       }
       return "";
-    }
-
-    /**
-     * Загружает выбранное пользователем изображение как текстуру 360-сферы; при file:// оставляет его временным
-     * превью, потому что сохранённый растровый путь после F5 нельзя безопасно передать в WebGL.
-     */
-    function loadImageFile(file) {
-      if (!file) return;
-      var selectedAssetPath = buildSelectedImageAssetPath(file);
-      if (!selectedAssetPath) {
-        showPanoramaLoadError("Поддерживаются растровые 360-изображения JPEG, PNG и WebP.");
-        return;
-      }
-      var objectUrl = URL.createObjectURL(file);
-      var loader = new window.THREE.TextureLoader();
-
-      loader.load(
-        objectUrl,
-        function (tex) {
-          var sizeError = validatePanoramaTextureSize(tex);
-          if (sizeError) {
-            if (typeof tex.dispose === "function") tex.dispose();
-            showPanoramaLoadError(sizeError);
-            URL.revokeObjectURL(objectUrl);
-            return;
-          }
-          applySphereTexture(tex);
-          if (!window.location || window.location.protocol !== "file:") {
-            assetPathInput.value = selectedAssetPath;
-            refreshGeneratedBgId();
-            if (editorReady && !suppressEditorAutosave) {
-              storeCurrentPanoramaToData(false, true);
-            }
-            setStatus("Изображение загружено: " + file.name + ". Путь story360: " + selectedAssetPath, false);
-          } else {
-            setStatus("Изображение загружено как временное превью: " + file.name + ". Для автоматической загрузки после F5 укажите соответствующий *-360.css.", false);
-          }
-          URL.revokeObjectURL(objectUrl);
-        },
-        undefined,
-        function () {
-          showPanoramaLoadError("Ошибка загрузки изображения.");
-          URL.revokeObjectURL(objectUrl);
-        }
-      );
     }
 
     /**
@@ -2926,8 +2914,8 @@
      * Выполняет JS-пакет только в явно включённом доверенном legacy-режиме и после подтверждения нового пути.
      */
     function ensurePackScriptLoaded(path) {
-      if (!legacyPackModeInput.checked) {
-        return Promise.reject(new Error("Выполнение JS-пакетов выключено. Выберите пакет файлом для безопасного предпросмотра."));
+      if (!legacyPackModeInput || !legacyPackModeInput.checked) {
+        return Promise.reject(new Error("Выполнение legacy JS-пакетов временно недоступно в интерфейсе редактора. Используйте CSS-пакет."));
       }
 
       var projectPath;
@@ -3302,13 +3290,12 @@
     }
 
     /**
-     * Загружает относительный путь из story360: CSS-пакет изолированно, HTTP-изображение напрямую,
-     * а JS-пакет — только в явно включённом доверенном legacy-режиме.
+     * Загружает из story360 только изолированный CSS-пакет; сохранённые растровые пути отклоняются, а JS остаётся недоступным через скрытый legacy-интерфейс.
      */
     function loadAssetPath(path) {
       var value = String(path || "").trim();
       if (!value) {
-        showPanoramaLoadError("Укажите путь к изображению, CSS- или JS-пакету.");
+        showPanoramaLoadError("Укажите путь к CSS-пакету *-360.css.");
         return;
       }
       var projectPath;
@@ -3325,11 +3312,10 @@
         return;
       }
       if (/-360(?:-[a-z0-9_-]+)?\.js$/i.test(projectPath)) {
-        if (!legacyPackModeInput.checked) {
-          setStatus(
-            "Путь JS-пакета сохранён, но код не выполнен: " + projectPath +
-            ". Для безопасного превью выберите этот файл в поле «Безопасное превью JS-пакета».",
-            false
+        if (!legacyPackModeInput || !legacyPackModeInput.checked) {
+          showPanoramaLoadError(
+            "Предпросмотр legacy JS-пакетов временно скрыт в редакторе: " + projectPath +
+            ". Создайте и укажите соответствующий *-360.css."
           );
           return;
         }
@@ -3345,15 +3331,10 @@
         });
         return;
       }
-      if (!isSupportedPanoramaImagePath(projectPath)) {
-        showPanoramaLoadError("Путь панорамы должен вести к JPEG, PNG, WebP, CSS-пакету *-360.css или JS-пакету *-360.js.");
-        return;
-      }
-      if (window.location && window.location.protocol === "file:") {
-        showPanoramaLoadError("Локальное изображение нельзя автоматически передать в WebGL после F5. Используйте соответствующий *-360.css или legacy *-360.js.");
-        return;
-      }
-      loadTextureUrl(toToolRelativeUrl(projectPath), projectPath);
+      showPanoramaLoadError(
+        "Редактор загружает панорамы только из CSS-пакетов *-360.css: " + projectPath +
+        ". Сначала преобразуйте исходное изображение в конвертере."
+      );
     }
 
     /**
@@ -3620,7 +3601,7 @@
       var finalId = id;
       var suffix = 2;
       while (points.some(function (p) { return p.id === finalId; })) {
-        finalId = id + "_" + suffix;
+        finalId = id + suffix;
         suffix += 1;
       }
 
@@ -3692,11 +3673,16 @@
         setStatus("У метки не задан переход в 360-панораму.", true);
         return;
       }
-      saveCurrentPanoramaToData();
       var ids = getCurrentStory360Ids();
+      var targetRef = parseStory360TargetReference(point.targetPanorama, ids.spaceId);
+      if (!targetRef || !targetRef.spaceId || !targetRef.panoramaId) {
+        setStatus("Цель должна иметь формат Panorama или Space.Panorama с одной точкой.", true);
+        return;
+      }
+      saveCurrentPanoramaToData();
       // Как в движке при авто-entry: ключ прихода = id текущей панорамы.
       var previewArrivalKey = ids.panoramaId || "default";
-      loadPanoramaFromData(ids.spaceId, point.targetPanorama, previewArrivalKey);
+      loadPanoramaFromData(targetRef.spaceId, targetRef.panoramaId, previewArrivalKey);
     }
 
     /**
@@ -3734,17 +3720,19 @@
     }
 
     /**
-     * Проверяет, что целевая 360-панорама метки существует в текущем пространстве редактора.
+     * Проверяет наличие целевой 360-панорамы в текущем или явно указанном пространстве.
      */
     function isMissingPoint360Target(point) {
       if (!point) return false;
       if (String(point.targetType || "").trim().toLowerCase() !== "360") return false;
-      var targetPanoramaId = String(point.targetPanorama || "").trim();
-      if (!targetPanoramaId) return false;
+      var targetText = String(point.targetPanorama || "").trim();
+      if (!targetText) return false;
       var ids = getCurrentStory360Ids();
-      var space = story360Data.spaces && story360Data.spaces[ids.spaceId];
+      var targetRef = parseStory360TargetReference(targetText, ids.spaceId);
+      if (!targetRef || !targetRef.spaceId || !targetRef.panoramaId) return true;
+      var space = story360Data.spaces && story360Data.spaces[targetRef.spaceId];
       var panoramas = space && space.panoramas ? space.panoramas : null;
-      return !(panoramas && Object.prototype.hasOwnProperty.call(panoramas, targetPanoramaId));
+      return !(panoramas && Object.prototype.hasOwnProperty.call(panoramas, targetRef.panoramaId));
     }
 
     /**
@@ -3761,13 +3749,18 @@
     }
 
     /**
-     * Переименовывает метку с проверкой уникальности ID.
+     * Переименовывает метку, разрешая только латинские буквы/цифры и проверяя уникальность ID.
      */
     function renamePoint(index, nextIdRaw) {
       if (index < 0 || index >= points.length) return;
       var nextId = String(nextIdRaw || "").trim();
       if (!nextId) {
         setStatus("ID метки не может быть пустым.", true);
+        renderPointsList();
+        return;
+      }
+      if (!/^[A-Za-z0-9]+$/.test(nextId)) {
+        setStatus("ID метки может содержать только латинские буквы и цифры.", true);
         renderPointsList();
         return;
       }
@@ -3955,6 +3948,11 @@
         nameInput.type = "text";
         nameInput.value = p.id;
         nameInput.title = "ID метки";
+        nameInput.pattern = "[A-Za-z0-9]+";
+        nameInput.addEventListener("input", function () {
+          var filteredId = sanitizeStory360SimpleId(nameInput.value);
+          if (nameInput.value !== filteredId) nameInput.value = filteredId;
+        });
         nameInput.addEventListener("change", function () {
           renamePoint(idx, nameInput.value);
         });
@@ -4054,10 +4052,14 @@
         if ((p.targetType || "none") === "360") {
           var targetPanorama = document.createElement("input");
           targetPanorama.type = "text";
-          targetPanorama.placeholder = "target panorama id";
+          targetPanorama.placeholder = "Panorama или Space.Panorama";
           targetPanorama.value = p.targetPanorama || "";
+          targetPanorama.pattern = "[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)?";
+          targetPanorama.title = "Panorama — в текущем пространстве; Space.Panorama — в явно указанном";
           targetPanorama.addEventListener("input", function () {
-            points[idx].targetPanorama = targetPanorama.value;
+            var filteredTarget = sanitizeStory360TargetReference(targetPanorama.value);
+            if (targetPanorama.value !== filteredTarget) targetPanorama.value = filteredTarget;
+            points[idx].targetPanorama = filteredTarget;
             updateExport();
           });
           targetWrap.appendChild(targetPanorama);
@@ -6299,11 +6301,6 @@
         resizeViewer();
       });
 
-      bgImageInput.addEventListener("change", function () {
-        var file = bgImageInput.files && bgImageInput.files[0];
-        if (file) loadImageFile(file);
-      });
-
       story360Input.addEventListener("change", function () {
         var file = story360Input.files && story360Input.files[0];
         if (file) loadStory360File(file);
@@ -6347,20 +6344,25 @@
         loadAssetPath(assetPathInput.value);
       });
 
-      packFileInput.addEventListener("change", function () {
-        var file = packFileInput.files && packFileInput.files[0];
-        if (file) loadPackFileSafely(file);
-      });
+      // Legacy-обработчики остаются готовыми к возврату, но не регистрируются, пока соответствующая разметка закомментирована.
+      if (packFileInput) {
+        packFileInput.addEventListener("change", function () {
+          var file = packFileInput.files && packFileInput.files[0];
+          if (file) loadPackFileSafely(file);
+        });
+      }
 
-      legacyPackModeInput.addEventListener("change", function () {
-        var enabled = legacyPackModeInput.checked;
-        legacyPackWarning.classList.toggle("is-visible", enabled);
-        if (enabled) {
-          setStatus("Доверенный legacy-режим включён. Каждый новый JS-пакет по пути потребует отдельного подтверждения.", true);
-        } else {
-          setStatus("Безопасный режим включён: JS-пакеты по пути не выполняются.", false);
-        }
-      });
+      if (legacyPackModeInput && legacyPackWarning) {
+        legacyPackModeInput.addEventListener("change", function () {
+          var enabled = legacyPackModeInput.checked;
+          legacyPackWarning.classList.toggle("is-visible", enabled);
+          if (enabled) {
+            setStatus("Доверенный legacy-режим включён. Каждый новый JS-пакет по пути потребует отдельного подтверждения.", true);
+          } else {
+            setStatus("Безопасный режим включён: JS-пакеты по пути не выполняются.", false);
+          }
+        });
+      }
 
       testTargetBtn.addEventListener("click", function () {
         goToFirst360Target();
@@ -6411,10 +6413,14 @@
         updateExport();
       });
       spaceIdInput.addEventListener("input", function () {
+        var filteredSpaceId = sanitizeStory360SimpleId(spaceIdInput.value);
+        if (spaceIdInput.value !== filteredSpaceId) spaceIdInput.value = filteredSpaceId;
         refreshGeneratedBgId();
         updateExportWithoutAutosave();
       });
       panoramaIdInput.addEventListener("input", function () {
+        var filteredPanoramaId = sanitizeStory360SimpleId(panoramaIdInput.value);
+        if (panoramaIdInput.value !== filteredPanoramaId) panoramaIdInput.value = filteredPanoramaId;
         refreshGeneratedBgId();
         updateExportWithoutAutosave();
       });
@@ -6494,14 +6500,13 @@
         e.preventDefault();
       }, { passive: false });
 
-      // Drag-and-drop изображения прямо на viewer.
+      // Блокируем стандартное открытие брошенного файла браузером: основная панорама редактора загружается только из CSS-пакета.
       viewerCanvas.addEventListener("dragover", function (e) {
         e.preventDefault();
       });
       viewerCanvas.addEventListener("drop", function (e) {
         e.preventDefault();
-        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (file) loadImageFile(file);
+        showPanoramaLoadError("Перетаскивание 360-изображений отключено. Сначала создайте *-360.css в конвертере.");
       });
 
       bindMarksOverlayDragHandlers();
@@ -6509,7 +6514,7 @@
     }
 
     /**
-     * Подсказка для file:// рекомендует изолированный CSS и оставляет безопасное чтение JS для старых проектов.
+     * Подсказка для file:// направляет пользователя к единственному видимому автоматическому формату — изолированному CSS.
      */
     function appendFileProtocolTipIfNeeded() {
       if (String(window.location.protocol || "").toLowerCase() !== "file:") return;
@@ -6517,7 +6522,7 @@
       var needle = "file://";
       if (String(statusBox.textContent || "").indexOf(needle) !== -1) return;
       var tip =
-        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo сохраняйте от корня проекта, например assets/360/…. Для новых панорам используйте *-360.css; старый JS можно безопасно прочитать выбранным файлом, а выполнение по пути доступно только в доверенном legacy-режиме. Предупреждения про iframe в консоли можно игнорировать.";
+        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo сохраняйте от корня проекта, например assets/360/…. Для панорам используйте *-360.css. Предупреждения про iframe в консоли можно игнорировать.";
       statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
     }
 

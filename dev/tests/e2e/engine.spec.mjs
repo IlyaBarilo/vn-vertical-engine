@@ -86,6 +86,36 @@ function createScene360StorySource(assetPath) {
   }, null, 2)};\n`;
 }
 
+// Создаёт story360 с переходом между пространствами для проверки редактора и экспортируемой цели space/panorama.
+function createScene360CrossSpaceStorySource() {
+  return `window.STORY360 = ${JSON.stringify({
+    version: 1,
+    spaces: {
+      A: {
+        panoramas: {
+          P1: {
+            marks: [
+              {
+                id: 'toB2',
+                x: 0.5,
+                y: 0.5,
+                type: 'walk',
+                text: '',
+                target: { type: '360', space: 'B', panorama: 'P2' }
+              }
+            ]
+          }
+        }
+      },
+      B: {
+        panoramas: {
+          P2: { marks: [] }
+        }
+      }
+    }
+  }, null, 2)};\n`;
+}
+
 // Собирает синтетический пакет конвертера с заметным побочным эффектом для проверки отсутствия скрытого выполнения.
 function createScene360PackSource(datasetKey) {
   return [
@@ -337,7 +367,7 @@ async function openGameTester(page, gamePath, sandboxMode = 'strict') {
 async function openScene360Editor(page) {
   await installRepositoryRoutes(page);
   await page.goto('/tools/scene360-editor.html');
-  await expect(page.locator('#packFileInput')).toBeVisible();
+  await expect(page.locator('#assetPathInput')).toBeVisible();
 }
 
 // Проверяет загрузку настоящего интерфейса и применение title из синтетического сценария.
@@ -1104,47 +1134,34 @@ test('Scene360 Editor не выполняет пакет из импортиро
   });
 
   await expect(page.locator('#assetPathInput')).toHaveValue('assets/360/untrusted-360.js');
-  await expect(page.locator('#statusBox')).toContainText('код не выполнен');
+  await expect(page.locator('#statusBox')).toContainText('legacy JS-пакетов временно скрыт');
   expect(packRequestCount).toBe(0);
   await expect(page.locator('body')).not.toHaveAttribute('data-scene-untrusted-pack-executed', '1');
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет, что выбранный растр становится основным file текущей панорамы, а не остаётся только временным превью.
-test('Scene360 Editor заменяет JS-путь выбранным 360-изображением', async function({ page }) {
+// Закрепляет отсутствие файлового поля и функции временного растрового превью в CSS-only редакторе.
+test('Scene360 Editor не предлагает прямую загрузку 360-изображения', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await openScene360Editor(page);
-  await page.locator('#story360Input').setInputFiles({
-    name: 'story360.js',
-    mimeType: 'text/javascript',
-    buffer: Buffer.from(createScene360StorySource('assets/360/korpusnight/176-360.js'))
-  });
 
-  await expect(page.locator('#assetPathInput')).toHaveValue('assets/360/korpusnight/176-360.js');
-  await page.locator('#bgImageInput').setInputFiles({
-    name: '176.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
-  });
-
-  await expect(page.locator('#assetPathInput')).toHaveValue('assets/360/korpusnight/176.png');
-  await expect(page.locator('#statusBox')).toContainText('Путь story360: assets/360/korpusnight/176.png');
-  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  await expect(page.locator('#bgImageInput')).toHaveCount(0);
+  await expect(page.getByText('360-изображение (2:1 equirect)')).toHaveCount(0);
+  expect(await page.evaluate(function readRemovedImageLoaderType() {
+    return typeof window.loadImageFile;
+  })).toBe('undefined');
   expect(pageErrors).toEqual([]);
 });
 
-// Загружает растровый file прямо из story360 и доказывает, что для него не запускается legacy-ветка JS-пакетов.
-test('Scene360 Editor загружает 360-изображение по пути из story360', async function({ page }) {
+// Импортирует растровый путь и подтверждает отказ без сетевого запроса и без остатка прежней текстуры.
+test('Scene360 Editor отклоняет 360-изображение по пути из story360', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   const imagePath = 'assets/360/direct-panorama.png';
-  await openScene360Editor(page);
-  await page.route(`http://e2e.local/${imagePath}`, async function serveDirectPanorama(route) {
-    await route.fulfill({
-      status: 200,
-      contentType: 'image/png',
-      body: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
-    });
+  let imageRequestCount = 0;
+  page.on('request', function countUnexpectedImageRequest(request) {
+    if (new URL(request.url()).pathname === `/${imagePath}`) imageRequestCount += 1;
   });
+  await openScene360Editor(page);
   await page.locator('#story360Input').setInputFiles({
     name: 'story360.js',
     mimeType: 'text/javascript',
@@ -1152,7 +1169,15 @@ test('Scene360 Editor загружает 360-изображение по пут�
   });
 
   await expect(page.locator('#assetPathInput')).toHaveValue(imagePath);
-  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${imagePath}`);
+  await expect(page.locator('#statusBox')).toContainText('только из CSS-пакетов *-360.css');
+  expect(imageRequestCount).toBe(0);
+  expect(await page.evaluate(function readRejectedImageMaterial() {
+    var material = window.sphereMesh && window.sphereMesh.material;
+    return {
+      hasMap: Boolean(material && material.map),
+      color: material && material.color ? material.color.getHex() : null
+    };
+  })).toEqual({ hasMap: false, color: 0x000000 });
   await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
@@ -1397,12 +1422,10 @@ test('Scene360 Editor показывает чёрный фон при отсут
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет одинаковый запрет внешних схем и выхода из проекта даже после явного включения legacy-режима.
+// Проверяет одинаковый запрет внешних схем и выхода из проекта через общее поле пути без скрытого legacy-интерфейса.
 test('Scene360 Editor отклоняет опасные пути пакетов', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await openScene360Editor(page);
-  await page.locator('#legacyPackModeInput').check();
-  await expect(page.locator('#legacyPackWarning')).toBeVisible();
 
   await page.locator('#assetPathInput').fill('https://example.invalid/evil-360.js');
   await page.locator('#loadAssetPathBtn').click();
@@ -1414,15 +1437,68 @@ test('Scene360 Editor отклоняет опасные пути пакетов'
   expect(pageErrors).toEqual([]);
 });
 
-// Передаёт пакет с побочным эффектом через FileReader и проверяет загрузку картинки без исполнения остального JavaScript.
-test('Scene360 Editor безопасно читает выбранный JS-пакет как данные', async function({ page }) {
+// Ограничивает редактируемые ID и проверяет, что Space.Panorama переходит в явное пространство и так же экспортируется.
+test('Scene360 Editor поддерживает однозначный переход между пространствами', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await openScene360Editor(page);
-  await page.locator('#packFileInput').setInputFiles({
-    name: 'safe-preview-360.js',
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-cross-space.js',
     mimeType: 'text/javascript',
-    buffer: Buffer.from(createScene360PackSource('sceneSafePackExecuted'))
+    buffer: Buffer.from(createScene360CrossSpaceStorySource())
   });
+
+  const markItem = page.locator('.point-item').first();
+  const markIdInput = markItem.locator('input[title="ID метки"]');
+  const targetInput = markItem.locator('input[placeholder="Panorama или Space.Panorama"]');
+  await expect(targetInput).toHaveValue('B.P2');
+
+  await page.locator('#spaceIdInput').fill('A-Я_1');
+  await page.locator('#panoramaIdInput').fill('P-Я_1');
+  await markIdInput.fill('to-Б_2');
+  await markIdInput.blur();
+  await targetInput.fill('B..P2');
+
+  await expect(page.locator('#spaceIdInput')).toHaveValue('A1');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P1');
+  await expect(markIdInput).toHaveValue('to2');
+  await expect(targetInput).toHaveValue('B.P2');
+
+  await markItem.getByRole('button', { name: 'Перейти', exact: true }).click();
+  await expect(page.locator('#spaceIdInput')).toHaveValue('B');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P2');
+
+  const exportedTarget = await page.evaluate(function readCrossSpaceTarget() {
+    return window.story360Data.spaces.A1.panoramas.P1.marks[0].target;
+  });
+  expect(exportedTarget).toEqual({ type: '360', panorama: 'P2', space: 'B' });
+  expect(pageErrors).toEqual([]);
+});
+
+// Закрепляет временное отсутствие JS-управления в DOM, сохраняя legacy-функции для возможного возврата.
+test('Scene360 Editor скрывает элементы управления legacy JS-пакетами', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+
+  await expect(page.locator('#packFileInput')).toHaveCount(0);
+  await expect(page.locator('#legacyPackModeInput')).toHaveCount(0);
+  await expect(page.locator('#legacyPackWarning')).toHaveCount(0);
+  expect(await page.evaluate(function readLegacyFunctionTypes() {
+    return {
+      safeReader: typeof window.loadPackFileSafely,
+      trustedLoader: typeof window.ensurePackScriptLoaded
+    };
+  })).toEqual({ safeReader: 'function', trustedLoader: 'function' });
+  expect(pageErrors).toEqual([]);
+});
+
+// Вызывает сохранённую функцию напрямую и проверяет безопасный разбор JS без возвращения скрытого файлового поля.
+test('Scene360 Editor сохраняет безопасное чтение JS-пакета как внутреннюю функцию', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.evaluate(function loadLegacyPackThroughRetainedFunction(source) {
+    var file = new File([source], 'safe-preview-360.js', { type: 'text/javascript' });
+    window.loadPackFileSafely(file);
+  }, createScene360PackSource('sceneSafePackExecuted'));
 
   await expect(page.locator('#statusBox')).toContainText('безопасно прочитан без выполнения кода');
   await expect(page.locator('#statusBox')).toContainText('формат PNG');
@@ -1431,8 +1507,8 @@ test('Scene360 Editor безопасно читает выбранный JS-па
   expect(pageErrors).toEqual([]);
 });
 
-// Сначала отменяет, затем подтверждает тот же доверенный путь и доказывает, что legacy-код не запускается без согласия.
-test('Scene360 Editor выполняет legacy-пакет только после подтверждения', async function({ page }) {
+// Программно имитирует скрытый переключатель и закрепляет сохранённую проверку подтверждения для возможного возврата UI.
+test('Scene360 Editor сохраняет подтверждение во внутренней legacy-функции', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   const trustedPackSource = createScene360PackSource('sceneLegacyPackExecuted');
   await openScene360Editor(page);
@@ -1444,7 +1520,9 @@ test('Scene360 Editor выполняет legacy-пакет только посл
     });
   });
   await page.locator('#assetPathInput').fill('assets/360/trusted-test-360.js');
-  await page.locator('#legacyPackModeInput').check();
+  await page.evaluate(function enableRetainedLegacyFunctionForTest() {
+    window.legacyPackModeInput = { checked: true };
+  });
 
   page.once('dialog', async function dismissLegacyConfirmation(dialog) {
     expect(dialog.message()).toContain('Пакет получит доступ к странице редактора');
