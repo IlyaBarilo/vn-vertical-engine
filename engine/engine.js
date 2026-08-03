@@ -3272,7 +3272,7 @@ function getAutoBg360Quality() {
   return isConfidentPhoneForUiBoost() ? "mobile" : "normal";
 }
 
-// Переводит локальный quality и настройку истории в фактический вариант JS-пакета для загрузки.
+// Переводит локальный quality и настройку истории в фактический normal/mobile-вариант CSS- или JS-пакета.
 function resolveBg360EffectiveQuality(value) {
   var localQuality = normalizeBg360Quality(value, "auto");
   if (localQuality === "normal" || localQuality === "mobile") return localQuality;
@@ -4034,8 +4034,8 @@ function captureBg360ViewSnapshotForAutosave() {
     85
   );
   var q = "auto";
-  if (bg360Runtime.sourceSrc && /-360-mobile\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "mobile";
-  else if (bg360Runtime.sourceSrc && /-360\.js(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "normal";
+  if (bg360Runtime.sourceSrc && /-360-mobile\.(?:css|js)(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "mobile";
+  else if (bg360Runtime.sourceSrc && /-360\.(?:css|js)(\?.*)?$/i.test(bg360Runtime.sourceSrc)) q = "normal";
 
   return {
     yawDeg: yaw,
@@ -4888,9 +4888,9 @@ function tryApplyAutosave() {
       data.bgScroll && typeof data.bgScroll.fov === "number" ? data.bgScroll.fov : null,
       data.bgScroll && typeof data.bgScroll.quality === "string" ? data.bgScroll.quality : null
     );
-    // Для 360-пакетов (file=...-360.js) при восстановлении явно включаем 360-режим,
+    // Для 360-пакетов (file=...-360.css/js) при восстановлении явно включаем 360-режим,
     // иначе setBackground пойдёт в обычный image-слой и попытается загрузить JS как картинку.
-    var restoreIs360 = isBg360PackScriptPath(restoreBgSnapshot.src);
+    var restoreIs360 = isBg360PackPath(restoreBgSnapshot.src);
     if (!restoreIs360 && state.currentBgId) {
       try {
         var restoreBgAsset = resolveBackgroundAsset("@bg." + state.currentBgId);
@@ -4904,10 +4904,10 @@ function tryApplyAutosave() {
       restoreBgSnapshot && typeof restoreBgSnapshot.blurFallback === "string" ? restoreBgSnapshot.blurFallback : "";
     if (restoreIs360 && !blurFb && state.currentBgId) {
       // Для 360 без явного blurFallback пытаемся взять fallback из ассета, чтобы blur-слой
-      // не получал JS-путь вида *-360.js.
+      // не получал путь пакета вида *-360.css/js.
       try {
         var blurAsset = resolveBackgroundAsset("@bg." + state.currentBgId);
-        if (blurAsset && blurAsset.fallback && !isBg360PackScriptPath(blurAsset.fallback)) {
+        if (blurAsset && blurAsset.fallback && !isBg360PackPath(blurAsset.fallback)) {
           blurFb = blurAsset.fallback;
         }
       } catch (e) {}
@@ -10223,12 +10223,12 @@ function stripBg360NavigationOverlayPendingLoad() {
   elBg360Marks.classList.remove("is-interactive", "is-webgl-nav-only");
 }
 
-// Возвращает true, пока для текущего loadSeq ещё не применена текстура к сфере (асинхронная загрузка или догрузка *-360.js).
+// Возвращает true, пока для текущего loadSeq ещё не применена текстура к сфере (асинхронная загрузка CSS/JS-пакета).
 function bg360ShouldDeferMarksUntilTextureReady() {
   if (!ensureBg360Renderer()) return false;
   var src = String(bg360Runtime.sourceSrc || "");
   if (!src) return false;
-  if (!isBg360PackScriptPath(src) && !bg360Runtime.isVideoSource) return false;
+  if (!isBg360PackPath(src) && !bg360Runtime.isVideoSource) return false;
   return bg360Runtime.textureReadyLoadSeq !== bg360Runtime.loadSeq;
 }
 
@@ -11412,9 +11412,19 @@ function disableBg360Renderer() {
   hideBg360HoldLayer(true);
 }
 
-// Проверяет, что путь указывает на JS-пакет 360, а не на исходную картинку.
+// Проверяет, что путь указывает на совместимый legacy JS-пакет 360.
 function isBg360PackScriptPath(path) {
   return /-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(String(path || ""));
+}
+
+// Проверяет, что путь указывает на декларативный CSS-пакет 360.
+function isBg360PackCssPath(path) {
+  return /-360(?:-[a-z0-9_-]+)?\.css(\?.*)?$/i.test(String(path || ""));
+}
+
+// Объединяет безопасный CSS и совместимый JS в один тип источника для runtime, графов и автосохранения.
+function isBg360PackPath(path) {
+  return isBg360PackCssPath(path) || isBg360PackScriptPath(path);
 }
 
 // Собирает варианты ключа для поиска: абсолютный URL, декодированный URL и путь от index.html.
@@ -11499,7 +11509,7 @@ function readBg360PackDataUrlByKey(key, quality) {
     : "";
 }
 
-// Пытается найти data-url 360-пакета по JS-пути из file=... и выбранному normal/mobile.
+// Пытается найти data-url legacy JS-пакета по исходному CSS/JS-пути и выбранному normal/mobile.
 function resolveBg360PackDataUrl(sourceUrl, quality) {
   var packStores = getBg360PackStores();
   if (!packStores.length) return "";
@@ -11526,26 +11536,379 @@ function resolveBg360PackDataUrl(sourceUrl, quality) {
   return "";
 }
 
-// Хранит состояние динамической загрузки *-360.js, чтобы не дублировать <script> и колбэки.
+// Хранит состояние динамической загрузки legacy *-360.js, чтобы не дублировать <script> и колбэки.
 var bg360PackScriptState = Object.create(null);
 
-// По пути из file=... выбирает JS-пакет: scene-360.js или scene-360-mobile.js, даже если в истории указан конкретный вариант.
+// По любому CSS/JS-пути выбирает декларативный CSS-вариант нужного качества; именно его движок проверяет первым.
+function getBg360PackCssUrl(sourceUrl, quality) {
+  var normalized = normalizeAssetUrl(sourceUrl);
+  var normalizedQuality = resolveBg360EffectiveQuality(quality);
+  if (!isBg360PackPath(normalized)) return "";
+
+  var cssUrl = normalized.replace(/\.(?:css|js)(\?.*)?$/i, ".css$1");
+  if (normalizedQuality === "normal" && /-360-mobile\.css(\?.*)?$/i.test(cssUrl)) {
+    return cssUrl.replace(/-360-mobile\.css(\?.*)?$/i, "-360.css$1");
+  }
+  if (normalizedQuality === "mobile" && /-360\.css(\?.*)?$/i.test(cssUrl)) {
+    return cssUrl.replace(/-360\.css(\?.*)?$/i, "-360-mobile.css$1");
+  }
+  return cssUrl;
+}
+
+// По любому CSS/JS-пути выбирает legacy JS-вариант нужного качества для фолбэка после CSS.
 function getBg360PackScriptUrl(sourceUrl, quality) {
   var normalized = normalizeAssetUrl(sourceUrl);
   var normalizedQuality = resolveBg360EffectiveQuality(quality);
-  if (!isBg360PackScriptPath(normalized)) {
-    return "";
+  if (!isBg360PackPath(normalized)) return "";
+
+  var scriptUrl = normalized.replace(/\.(?:css|js)(\?.*)?$/i, ".js$1");
+  if (normalizedQuality === "normal" && /-360-mobile\.js(\?.*)?$/i.test(scriptUrl)) {
+    return scriptUrl.replace(/-360-mobile\.js(\?.*)?$/i, "-360.js$1");
   }
-  if (normalizedQuality === "normal" && /-360-mobile\.js(\?.*)?$/i.test(normalized)) {
-    return normalized.replace(/-360-mobile\.js(\?.*)?$/i, "-360.js$1");
+  if (normalizedQuality === "mobile" && /-360\.js(\?.*)?$/i.test(scriptUrl)) {
+    return scriptUrl.replace(/-360\.js(\?.*)?$/i, "-360-mobile.js$1");
   }
-  if (normalizedQuality === "mobile" && /-360\.js(\?.*)?$/i.test(normalized)) {
-    return normalized.replace(/-360\.js(\?.*)?$/i, "-360-mobile.js$1");
-  }
-  return normalized;
+  return scriptUrl;
 }
 
-// Запрашивает js-пакет для 360-фона и сообщает, нужно ли подождать перед рендером.
+// Ограничения совпадают с редактором: большие панорамы разрешены, но CSS не может заставить runtime читать бесконечные данные.
+var BG360_CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
+var BG360_CSS_PACK_MAX_CHUNKS = 8192;
+var BG360_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
+// CSS-Blob хранится только до завершения декодирования текущей текстуры; пройденные панорамы не накапливаются в памяти.
+var bg360CssPackState = Object.create(null);
+
+// Читает строго двойную строку custom property; CSS-escape и вычисляемые выражения не считаются данными пакета.
+function readBg360CssQuotedValue(computedStyle, propertyName) {
+  var raw = String(computedStyle.getPropertyValue(propertyName) || "").trim();
+  var match = raw.match(/^"([^"\\]*)"$/);
+  if (!match) throw new Error("CSS-пакет не содержит корректное свойство " + propertyName + ".");
+  return match[1];
+}
+
+// Декодирует выровненную часть base64 в отдельный Uint8Array и сохраняет начало файла для проверки сигнатуры.
+function appendBg360CssDecodedPart(encodedPart, binaryParts, signatureBytes) {
+  if (!encodedPart) return;
+  var binary = atob(encodedPart);
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) {
+    var byteValue = binary.charCodeAt(i);
+    bytes[i] = byteValue;
+    if (signatureBytes.length < 12) signatureBytes.push(byteValue);
+  }
+  binaryParts.push(bytes);
+}
+
+// Проверяет JPEG/PNG/WebP по magic bytes, чтобы CSS с произвольным содержимым не передавался декодеру изображения.
+function isBg360CssImageSignatureValid(mimeType, bytes) {
+  if (mimeType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === "image/png") {
+    return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  }
+  if (mimeType === "image/webp") {
+    return bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  }
+  return false;
+}
+
+// Извлекает только известные свойства декларативного CSS-пакета и собирает Blob порциями без выполнения кода.
+function extractBg360CssPackBlob(computedStyle) {
+  var schema = readBg360CssQuotedValue(computedStyle, "--vn360-schema");
+  if (schema !== "vn360-css-pack-v1") throw new Error("Неподдерживаемая версия CSS-пакета 360.");
+
+  var mode = readBg360CssQuotedValue(computedStyle, "--vn360-mode");
+  if (mode !== "normal" && mode !== "mobile") throw new Error("Некорректный режим CSS-пакета 360.");
+  var mimeType = readBg360CssQuotedValue(computedStyle, "--vn360-mime").toLowerCase();
+  if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
+
+  var chunkCount = Number(readBg360CssQuotedValue(computedStyle, "--vn360-chunk-count"));
+  if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > BG360_CSS_PACK_MAX_CHUNKS) {
+    throw new Error("Некорректное количество частей CSS-пакета 360.");
+  }
+  var declaredWidth = Number(readBg360CssQuotedValue(computedStyle, "--vn360-width"));
+  var declaredHeight = Number(readBg360CssQuotedValue(computedStyle, "--vn360-height"));
+  var declaredSize = Number(readBg360CssQuotedValue(computedStyle, "--vn360-size"));
+  if (!Number.isInteger(declaredWidth) || declaredWidth < 1 || !Number.isInteger(declaredHeight) || declaredHeight < 1) {
+    throw new Error("CSS-пакет не содержит корректный размер панорамы.");
+  }
+  if (!Number.isInteger(declaredSize) || declaredSize < 1) throw new Error("CSS-пакет не содержит корректный размер изображения.");
+  var maxTextureSize = Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
+  if (maxTextureSize > 0 && (declaredWidth > maxTextureSize || declaredHeight > maxTextureSize)) {
+    throw new Error("Размер CSS-панорамы " + declaredWidth + "x" + declaredHeight + " превышает лимит WebGL " + maxTextureSize + " px.");
+  }
+
+  var binaryParts = [];
+  var signatureBytes = [];
+  var pendingBase64 = "";
+  var encodedLength = 0;
+  for (var index = 0; index < chunkCount; index++) {
+    var cssChunk = readBg360CssQuotedValue(computedStyle, "--vn360-data-" + index);
+    if (index === 0) {
+      var prefixMatch = cssChunk.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/i);
+      if (!prefixMatch) throw new Error("Первая часть CSS-пакета не содержит ожидаемый data:image base64.");
+      if (prefixMatch[1].toLowerCase() !== mimeType) throw new Error("MIME CSS-пакета не совпадает с данными изображения.");
+      cssChunk = prefixMatch[2];
+    }
+    if (!/^[a-z0-9+/]*={0,2}$/i.test(cssChunk) || (index < chunkCount - 1 && cssChunk.indexOf("=") !== -1)) {
+      throw new Error("CSS-пакет содержит недопустимые символы base64.");
+    }
+    encodedLength += cssChunk.length;
+    if (encodedLength > BG360_CSS_PACK_MAX_ENCODED_LENGTH) throw new Error("CSS-пакет превышает допустимый размер.");
+    pendingBase64 += cssChunk;
+    if (index < chunkCount - 1 && pendingBase64.length >= BG360_CSS_DECODE_BATCH_LENGTH) {
+      var readyLength = pendingBase64.length - (pendingBase64.length % 4);
+      appendBg360CssDecodedPart(pendingBase64.slice(0, readyLength), binaryParts, signatureBytes);
+      pendingBase64 = pendingBase64.slice(readyLength);
+    }
+  }
+
+  if (!pendingBase64 || pendingBase64.length % 4 !== 0) throw new Error("CSS-пакет содержит обрезанные данные base64.");
+  appendBg360CssDecodedPart(pendingBase64, binaryParts, signatureBytes);
+  if (!isBg360CssImageSignatureValid(mimeType, signatureBytes)) throw new Error("Сигнатура изображения в CSS-пакете не совпадает с MIME.");
+
+  var blob = new Blob(binaryParts, { type: mimeType });
+  if (blob.size !== declaredSize) throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
+  return {
+    blob: blob,
+    meta: {
+      schema: schema,
+      mode: mode,
+      type: mimeType,
+      size: blob.size,
+      width: declaredWidth,
+      height: declaredHeight,
+      quality: readBg360CssQuotedValue(computedStyle, "--vn360-quality")
+    }
+  };
+}
+
+// Создаёт случайный nonce для единственной разрешённой таблицы стилей; без Web Crypto загрузка завершается безопасной ошибкой.
+function createBg360CssStyleNonce() {
+  if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
+    throw new Error("Браузер не поддерживает безопасный генератор для загрузки CSS-пакета.");
+  }
+  var bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  var nonce = "";
+  for (var i = 0; i < bytes.length; i++) nonce += bytes[i].toString(16).padStart(2, "0");
+  return nonce;
+}
+
+// Загружает пользовательский CSS во временный sandbox-iframe: nonce разрешает только корневой <link>, а @import и прочие ресурсы блокирует CSP.
+function readBg360CssPack(cssUrl) {
+  return new Promise(function(resolve, reject) {
+    var settled = false;
+    var initialized = false;
+    var timeoutId = null;
+    var styleNonce = createBg360CssStyleNonce();
+    var frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.setAttribute("aria-hidden", "true");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.setAttribute("data-bg360-css-pack-loader", cssUrl);
+    frame.srcdoc = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + styleNonce + "'; style-src-attr 'none'; script-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\"><div id=\"vn360-pack\"></div>";
+
+    function finish(error, result) {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      frame.onload = null;
+      if (frame.parentNode) frame.parentNode.removeChild(frame);
+      if (error) reject(error);
+      else resolve(result);
+    }
+
+    frame.onload = function() {
+      if (initialized || settled) return;
+      initialized = true;
+      try {
+        var frameDocument = frame.contentDocument;
+        var marker = frameDocument && frameDocument.getElementById("vn360-pack");
+        if (!frameDocument || !marker) throw new Error("Не удалось создать изолированный загрузчик CSS-пакета.");
+        var link = frameDocument.createElement("link");
+        link.rel = "stylesheet";
+        link.nonce = styleNonce;
+        link.referrerPolicy = "no-referrer";
+        link.onload = function() {
+          try {
+            finish(null, extractBg360CssPackBlob(frame.contentWindow.getComputedStyle(marker)));
+          } catch (err) {
+            finish(err);
+          }
+        };
+        link.onerror = function() {
+          finish(new Error("Не удалось загрузить CSS-пакет: " + cssUrl));
+        };
+        link.href = cssUrl;
+        frameDocument.head.appendChild(link);
+      } catch (err) {
+        finish(err);
+      }
+    };
+
+    timeoutId = setTimeout(function() {
+      finish(new Error("Истекло время загрузки CSS-пакета: " + cssUrl));
+    }, 30000);
+    document.body.appendChild(frame);
+  });
+}
+
+// Запускает одну загрузку CSS на URL и будит всех ожидающих; ошибка остаётся в кэше до F5, чтобы сразу перейти к JS.
+function ensureBg360CssPackLoaded(sourceUrl, quality, onReady) {
+  var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
+  if (!cssUrl) return "none";
+  var state = bg360CssPackState[cssUrl];
+  if (state && state.status === "loaded") return "ready";
+  if (state && state.status === "loading") {
+    if (typeof onReady === "function") state.waiters.push(onReady);
+    return "loading";
+  }
+  if (state && state.status === "error") return "none";
+
+  state = bg360CssPackState[cssUrl] = {
+    status: "loading",
+    waiters: typeof onReady === "function" ? [onReady] : [],
+    blob: null,
+    meta: null,
+    refs: 0
+  };
+  readBg360CssPack(cssUrl).then(function(pack) {
+    var entry = bg360CssPackState[cssUrl];
+    if (!entry || entry !== state) return;
+    entry.status = "loaded";
+    entry.blob = pack.blob;
+    entry.meta = pack.meta;
+    var waiters = entry.waiters.slice();
+    entry.waiters.length = 0;
+    for (var i = 0; i < waiters.length; i++) {
+      try { waiters[i](true); } catch (e) {}
+    }
+    // Если экран уже сменился и ни один waiter не забрал Blob, не оставляем большую панораму в кэше.
+    setTimeout(function() {
+      var current = bg360CssPackState[cssUrl];
+      if (current === entry && current.status === "loaded" && current.refs === 0) {
+        current.blob = null;
+        current.meta = null;
+        delete bg360CssPackState[cssUrl];
+      }
+    }, 0);
+  }).catch(function(error) {
+    var entry = bg360CssPackState[cssUrl];
+    if (!entry || entry !== state) return;
+    entry.status = "error";
+    entry.blob = null;
+    entry.meta = null;
+    writeRuntimeVerbose("[BG360] CSS-пакет недоступен, используется legacy JS", {
+      css: sanitizeDiagnosticResource(cssUrl),
+      reason: error && error.message ? error.message : String(error || "")
+    });
+    var waiters = entry.waiters.slice();
+    entry.waiters.length = 0;
+    for (var i = 0; i < waiters.length; i++) {
+      try { waiters[i](false); } catch (e) {}
+    }
+  });
+  return "loading";
+}
+
+// Создаёт отдельный Blob URL для одного декодирования и увеличивает счётчик активных потребителей CSS-пакета.
+function acquireBg360CssPackResource(sourceUrl, quality) {
+  var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
+  var state = cssUrl ? bg360CssPackState[cssUrl] : null;
+  if (!state || state.status !== "loaded" || !state.blob) return null;
+  var objectUrl;
+  try {
+    objectUrl = URL.createObjectURL(state.blob);
+  } catch (e) {
+    state.status = "error";
+    state.blob = null;
+    state.meta = null;
+    return null;
+  }
+  state.refs++;
+  return {
+    kind: "css",
+    src: objectUrl,
+    meta: state.meta,
+    expectedQuality: resolveBg360EffectiveQuality(quality),
+    cssUrl: cssUrl,
+    cssState: state,
+    released: false
+  };
+}
+
+// Освобождает Blob URL после декодирования; при повреждённой картинке помечает CSS ошибочным и оставляет JS-фолбэк.
+function releaseBg360PackResource(resource, markCssError) {
+  if (!resource || resource.kind !== "css" || resource.released) return;
+  resource.released = true;
+  try { URL.revokeObjectURL(resource.src); } catch (e) {}
+  var state = resource.cssState;
+  if (!state) return;
+  state.refs = Math.max(0, Number(state.refs || 0) - 1);
+  if (markCssError) {
+    state.status = "error";
+    state.blob = null;
+    state.meta = null;
+  }
+  if (state.refs === 0 && state.status !== "error") {
+    // Обнуляем Blob и в самом state: callback изображения может ещё жить внутри texture.image и не должен удерживать архив панорамы.
+    state.blob = null;
+    state.meta = null;
+    if (bg360CssPackState[resource.cssUrl] === state) delete bg360CssPackState[resource.cssUrl];
+  }
+}
+
+// Разрешает ресурс строго в порядке CSS → legacy JS; callback просит вызывающий код повторить выбор после async-загрузки.
+function resolveBg360PackResource(sourceUrl, quality, onReady, options) {
+  var opts = options || {};
+  if (!opts.skipCss) {
+    var cssState = ensureBg360CssPackLoaded(sourceUrl, quality, onReady);
+    if (cssState === "loading") return { status: "loading" };
+    if (cssState === "ready") {
+      var cssResource = acquireBg360CssPackResource(sourceUrl, quality);
+      if (cssResource) {
+        cssResource.status = "ready";
+        return cssResource;
+      }
+    }
+  }
+
+  var scriptUrl = getBg360PackScriptUrl(sourceUrl, quality);
+  var dataUrl = resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(scriptUrl, quality);
+  if (dataUrl) return { status: "ready", kind: "js", src: dataUrl, meta: null };
+  var jsState = ensureBg360PackLoaded(sourceUrl, quality, onReady);
+  if (jsState === "loading") return { status: "loading" };
+  dataUrl = resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(scriptUrl, quality);
+  return dataUrl
+    ? { status: "ready", kind: "js", src: dataUrl, meta: null }
+    : { status: "none" };
+}
+
+// Сверяет фактический размер декодированной CSS-картинки с метаданными и лимитом текущего WebGL-устройства.
+function validateBg360PackTexture(texture, resource) {
+  if (!resource || resource.kind !== "css") return "";
+  var image = texture && texture.image;
+  var width = Number(image && (image.naturalWidth || image.videoWidth || image.width)) || 0;
+  var height = Number(image && (image.naturalHeight || image.videoHeight || image.height)) || 0;
+  var meta = resource.meta || {};
+  if (meta.mode !== resource.expectedQuality) {
+    return "Режим CSS-пакета " + meta.mode + " не совпадает с запрошенным качеством " + resource.expectedQuality + ".";
+  }
+  if (width !== Number(meta.width) || height !== Number(meta.height)) {
+    return "Фактический размер CSS-панорамы " + width + "x" + height + " не совпадает с метаданными " + meta.width + "x" + meta.height + ".";
+  }
+  var maxTextureSize = Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
+  if (maxTextureSize > 0 && (width > maxTextureSize || height > maxTextureSize)) {
+    return "Размер CSS-панорамы " + width + "x" + height + " превышает лимит WebGL " + maxTextureSize + " px.";
+  }
+  return "";
+}
+
+// Запрашивает legacy JS-фолбэк для 360-фона и сообщает, нужно ли подождать перед рендером.
 // Возвращает:
 // - "ready": данные уже есть;
 // - "loading": пакет грузится, рендер нужно отложить;
@@ -11601,13 +11964,14 @@ function ensureBg360PackLoaded(sourceUrl, quality, onReady) {
   return "loading";
 }
 
-// Включает 360-рендер для equirectangular-фона из JS-пакета или видео и применяет стартовые focus/fov.
-function setBackground360(src, fallbackSrc, scrollOptions) {
+// Включает 360-рендер: сначала ищет изолированный CSS-пакет, затем legacy JS, либо использует видео.
+function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
   if (!src) {
     disableBg360Renderer();
     return;
   }
 
+  var resolveOptions = packOptions || {};
   var normalized = normalizeBackgroundScrollOptions(scrollOptions);
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
@@ -11619,8 +11983,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   bg360Runtime.isVideoSource = !!isVideo;
   // На этом шаге auto превращается в normal/mobile с учетом [meta] и текущего устройства.
   var bg360Quality = resolveBg360EffectiveQuality(normalized.quality);
+  var selectedPackCssUrl = getBg360PackCssUrl(normalizedSrc, bg360Quality);
   var selectedPackScriptUrl = getBg360PackScriptUrl(normalizedSrc, bg360Quality);
-  var isPackScriptSource = isBg360PackScriptPath(normalizedSrc);
+  var isPackSource = isBg360PackPath(normalizedSrc);
   // Поколение загрузки защищает рестарт и смену фона от старых image/video callbacks.
   var bg360LoadSeq = ++bg360Runtime.loadSeq;
   function isCurrentBg360Load() {
@@ -11630,42 +11995,44 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   if (deferSwapUntilTexture) {
     bg360Runtime.goto360ParallelZoomActive = false;
   }
-  var packedDataUrl = "";
+  var packResource = null;
   writeRuntimeVerbose("[BG360 HOLD] setBackground360 start", {
     src: normalizedSrc,
     fallback: normalizedFallback,
     hadActive360: !!bg360Runtime.active
   });
   if (!isVideo) {
-    if (!isPackScriptSource) {
+    if (!isPackSource) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] 360-фон должен ссылаться на JS-пакет *-360.js:", sanitizeDiagnosticResource(normalizedSrc));
+      console.warn("[BG360] 360-фон должен ссылаться на пакет *-360.css или *-360.js:", sanitizeDiagnosticResource(normalizedSrc));
       return;
     }
-    var packState = ensureBg360PackLoaded(normalizedSrc, bg360Quality, function(ok) {
-      if (ok && isCurrentBg360Load()) {
-        setBackground360(src, fallbackSrc, scrollOptions);
+    packResource = resolveBg360PackResource(normalizedSrc, bg360Quality, function() {
+      if (isCurrentBg360Load()) {
+        setBackground360(src, fallbackSrc, scrollOptions, resolveOptions);
       }
-    });
-    // Важно: пока пакет подгружается, не трогаем текущие слои, иначе при restore возможен «черный экран».
-    if (packState === "loading") {
+    }, resolveOptions);
+    // Пока CSS или JS подгружается, не трогаем текущие слои: старая панорама остаётся видимой до готовности новой.
+    if (packResource.status === "loading") {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
       return;
     }
-    packedDataUrl = resolveBg360PackDataUrl(normalizedSrc, bg360Quality) || resolveBg360PackDataUrl(selectedPackScriptUrl, bg360Quality);
-    if (isPackScriptSource && !packedDataUrl) {
+    if (packResource.status !== "ready" || !packResource.src) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] JS-пакет загружен, но data-url не зарегистрирован:", sanitizeDiagnosticResource(selectedPackScriptUrl || normalizedSrc));
+      console.warn("[BG360] CSS и JS пакеты панорамы недоступны:", {
+        css: sanitizeDiagnosticResource(selectedPackCssUrl || normalizedSrc),
+        js: sanitizeDiagnosticResource(selectedPackScriptUrl || normalizedSrc)
+      });
       return;
     }
   }
-  var textureSource = packedDataUrl || normalizedSrc;
+  var textureSource = packResource ? packResource.src : normalizedSrc;
 
   function buildNonWebgl360FallbackOptions(baseOptions) {
     // Фолбэк без WebGL: включаем drag по широкой 2:1-картинке, чтобы 360 не превращался в полностью статичный фон.
@@ -11680,6 +12047,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
   if (!ensureBg360Renderer()) {
     console.warn("[BG360] WebGL/THREE недоступны, включен drag-фолбэк без 3D");
+    releaseBg360PackResource(packResource, false);
     cancelGoto360ParallelZoomRaf();
     cancelGoto360HoldZoomRaf();
     bg360Runtime.goto360ParallelZoomActive = false;
@@ -11750,16 +12118,25 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.geometry = geometry;
   }
 
-  if (packedDataUrl) {
-    writeRuntimeVerbose("[BG360] Используется data-пакет для:", normalizedSrc);
+  if (packResource) {
+    writeRuntimeVerbose("[BG360] Используется " + packResource.kind.toUpperCase() + "-пакет для:", normalizedSrc);
   }
 
   function onLoadTexture(texture) {
     if (!isCurrentBg360Load()) {
       // Если пользователь успел сделать сброс или включился другой фон, старую текстуру только освобождаем.
+      releaseBg360PackResource(packResource, false);
       if (texture && typeof texture.dispose === "function") texture.dispose();
       return;
     }
+    var textureValidationError = validateBg360PackTexture(texture, packResource);
+    if (textureValidationError) {
+      if (texture && typeof texture.dispose === "function") texture.dispose();
+      console.warn("[BG360] CSS-пакет отклонён после декодирования:", textureValidationError);
+      onLoadError();
+      return;
+    }
+    releaseBg360PackResource(packResource, false);
     resetBg360CanvasRevealStyles();
     if (deferSwapUntilTexture) {
       cancelGoto360ParallelZoomRaf();
@@ -11888,9 +12265,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
     if (typeof updateBlurBackground === "function") {
-      // Для 360-пакета sourceSrc указывает на JS; blur-слой должен получать только изображение/видео fallback.
+      // Для 360-пакета sourceSrc указывает на CSS/JS; blur-слой должен получать только изображение/видео fallback.
       var blurSource = normalizedFallback || "";
-      if (!blurSource && !isPackScriptSource) {
+      if (!blurSource && !isPackSource) {
         blurSource = normalizedSrc;
       }
       if (blurSource) updateBlurBackground(blurSource);
@@ -11898,7 +12275,18 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   function onLoadError() {
-    if (!isCurrentBg360Load()) return;
+    if (!isCurrentBg360Load()) {
+      releaseBg360PackResource(packResource, false);
+      return;
+    }
+    if (packResource && packResource.kind === "css") {
+      // Декодер мог отклонить картинку после успешного чтения CSS: помечаем этот CSS ошибочным и повторяем выбор сразу с JS.
+      releaseBg360PackResource(packResource, true);
+      bg360Runtime.suppressNextHoldCapture = true;
+      setBackground360(src, fallbackSrc, scrollOptions, { skipCss: true });
+      return;
+    }
+    releaseBg360PackResource(packResource, false);
     console.warn("[BG360] Не удалось загрузить ресурс:", sanitizeDiagnosticResource(normalizedSrc));
     console.warn("[BG360 HOLD] texture load error: hide hold and fallback", {
       src: sanitizeDiagnosticResource(normalizedSrc),
@@ -11948,7 +12336,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   // Для file:// TextureLoader может падать из-за CORS (origin null).
   // В этом режиме грузим картинку через HTMLImageElement без crossOrigin и оборачиваем в THREE.Texture вручную.
   if (window.location && window.location.protocol === "file:") {
-    if (packedDataUrl) {
+    if (packResource) {
       var fileImagePacked = new Image();
       fileImagePacked.onload = function() {
         var texturePacked = new window.THREE.Texture(fileImagePacked);
@@ -11979,7 +12367,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   var loader = new window.THREE.TextureLoader();
-  if (!packedDataUrl && isEngineImageOptimizationEnabled() && isRasterImagePathForOptimization(src)) {
+  if (!packResource && isEngineImageOptimizationEnabled() && isRasterImagePathForOptimization(src)) {
     loadRasterImageResource(src, {
       onLoad: function(_img, resolvedUrl) {
         loader.load(
@@ -17628,7 +18016,7 @@ function buildMermaidGraph(story, unreachableList, options) {
             }
 
             // Разделяем вызовы по типам, чтобы в сцене были отдельные счетчики 🖼️ и 🌐.
-            if (bgSrc && isBg360PackScriptPath(bgSrc)) {
+            if (bgSrc && isBg360PackPath(bgSrc)) {
               sceneBg360Count++;
               uniqueBg360[bgId] = true;
             } else if (bgSrc && !isVideoAssetPath(bgSrc)) {
@@ -17845,7 +18233,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         if (!bg0) continue;
         if (isVideoAssetPath(bg0.src)) {
           if (bg0.id) sceneVideoBgCount++;
-        } else if (isBg360PackScriptPath(bg0.src)) {
+        } else if (isBg360PackPath(bg0.src)) {
           sceneBg360ImagesOnly.push(bg0);
         } else {
           sceneBgImagesOnly.push(bg0);
@@ -17956,7 +18344,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         var panoImgClass = "imgcount1";
         panoLabel += "<div class='scene-bg-images-container " + panoImgClass + " story360-graph-preview'>";
 
-        if (isBg360PackScriptPath(panoNode.file)) {
+        if (isBg360PackPath(panoNode.file)) {
           panoLabel += "<span class='scene-bg-frame scene-bg360-frame " + panoImgClass + "'>" +
             "<img " +
             "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + panoImgClass + "' " +
@@ -18380,7 +18768,7 @@ function buildBackgroundsGraph(story, options) {
   for (var j = 0; j < bgIds.length; j++) {
     var bid = bgIds[j];
     var primary = allUniqueBgs[bid];
-    if (isBg360PackScriptPath(primary)) {
+    if (isBg360PackPath(primary)) {
       bg360Ids.push(bid);
     } else if (isVideoAssetPath(primary)) {
       videoBgIds.push(bid);
@@ -18512,23 +18900,23 @@ function hydrateBg360GraphThumbnails(root) {
     var quality = img.getAttribute("data-bg360-quality") || "auto";
     if (!sourceUrl) return;
 
-    var readyDataUrl = resolveBg360PackDataUrl(sourceUrl, quality);
-    if (readyDataUrl) {
-      img.src = readyDataUrl;
+    var resource = resolveBg360PackResource(sourceUrl, quality, function() {
+      // После CSS/JS-загрузки повторно читаем атрибуты: граф мог быть перерисован или закрыт.
+      if (img && img.isConnected) hydrateSingleBg360Thumb(img);
+    });
+    if (!resource || resource.status !== "ready" || !resource.src) {
       return;
     }
-
-    ensureBg360PackLoaded(sourceUrl, quality, function(ok) {
-      // После асинхронной загрузки повторно читаем атрибуты конкретной миниатюры.
-      if (!img || !img.isConnected) return;
-      var cbSourceUrl = img.getAttribute("data-bg360-src") || "";
-      var cbQuality = img.getAttribute("data-bg360-quality") || "auto";
-      if (!cbSourceUrl) return;
-      var cbDataUrl = ok ? resolveBg360PackDataUrl(cbSourceUrl, cbQuality) : "";
-      if (cbDataUrl) {
-        img.src = cbDataUrl;
-      }
-    });
+    if (resource.kind === "css") {
+      var releaseThumbResource = function() {
+        img.removeEventListener("load", releaseThumbResource);
+        img.removeEventListener("error", releaseThumbResource);
+        releaseBg360PackResource(resource, false);
+      };
+      img.addEventListener("load", releaseThumbResource);
+      img.addEventListener("error", releaseThumbResource);
+    }
+    img.src = resource.src;
   }
 
   for (var i = 0; i < thumbs.length; i++) {

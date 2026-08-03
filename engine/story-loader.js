@@ -1146,12 +1146,12 @@ function hasPanorama360Flag(rawText, optionsObject) {
   return modeValue === "360" || projectionValue === "360";
 }
 
-// Проверяет, что 360-фон указывает на новый JS-пакет или на настоящий видеофайл, а не на исходную картинку.
+// Проверяет, что 360-фон указывает на декларативный CSS, совместимый JS-пакет или настоящий видеофайл.
 function validateBg360SourcePath(rawPath, lineNumber, line) {
   var path = String(rawPath || "").trim();
-  if (/-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(path)) return true;
+  if (/-360(?:-[a-z0-9_-]+)?\.(?:css|js)(\?.*)?$/i.test(path)) return true;
   if (/\.(mp4|webm)(\?.*)?$/i.test(path)) return true;
-  addParseError(lineNumber, line, `360 background file must be a -360.js package or video, got "${rawPath}".`, true);
+  addParseError(lineNumber, line, `360 background file must be a -360.css/-360.js package or video, got "${rawPath}".`, true);
   return false;
 }
 

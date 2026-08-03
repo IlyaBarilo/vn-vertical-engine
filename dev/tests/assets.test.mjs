@@ -54,6 +54,25 @@ test('парсер регистрирует синтетические ассе�
   assert.equal(result.story.assets.games.puzzle.sandbox, 'strict');
 });
 
+// Принимает безопасный CSS-пакет как основной 360-источник, сохраняя тот же объект настроек normal/mobile.
+test('парсер принимает CSS-пакет 360-фона', async function() {
+  const storyText = createSyntheticStory([
+    '[bg]',
+    'sphere file=synthetic/360/sphere-360.css 360 quality=normal',
+    '',
+    '[scene]',
+    'scene intro',
+    'bg sphere',
+    '"Текст"'
+  ]);
+  const result = await runStoryLoader(storyText);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.story.assets.backgrounds.sphere.file, 'synthetic/360/sphere-360.css');
+  assert.equal(result.story.assets.backgrounds.sphere.is360, true);
+  assert.equal(result.story.assets.backgrounds.sphere.quality, 'normal');
+});
+
 // Отклоняет опечатку в локальном режиме sandbox, чтобы игра не получила legacy-права молча.
 test('парсер отклоняет неизвестный режим sandbox игры', async function() {
   const storyText = createSyntheticStory([
@@ -104,7 +123,7 @@ test('парсер отклоняет картинку вместо пакета
 
   assert.equal(result.story, null);
   assert.ok(result.errors.some(function(error) {
-    return error.message.includes('360 background file must be a -360.js package or video');
+    return error.message.includes('360 background file must be a -360.css/-360.js package or video');
   }));
 });
 

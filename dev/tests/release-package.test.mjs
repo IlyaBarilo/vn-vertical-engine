@@ -10,7 +10,7 @@ const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', im
 const requiredAuthoringTools = [
   'tools/game-tester.html',
   'tools/media-focus-editor.html',
-  'tools/convert-360-img-to-js.html',
+  'tools/convert-360-img-to-css.html',
   'tools/panorama-cleaner.html',
   'tools/scene360-editor.html'
 ];

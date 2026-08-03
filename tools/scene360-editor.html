@@ -883,7 +883,7 @@
 
       <div class="row">
         <label for="bgImageInput">360-изображение (2:1 equirect)</label>
-        <input id="bgImageInput" type="file" accept="image/*" />
+        <input id="bgImageInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
       </div>
 
       <div class="row">
@@ -892,8 +892,8 @@
       </div>
 
       <div class="row">
-        <label for="assetPathInput">Путь изображения или JS-пакета для story360</label>
-        <input id="assetPathInput" type="text" value="" placeholder="assets/360/korpusnight/174-360.js" />
+        <label for="assetPathInput">Путь изображения, CSS- или JS-пакета для story360</label>
+        <input id="assetPathInput" type="text" value="" placeholder="assets/360/korpusnight/174-360.css" />
       </div>
 
       <div class="row two">
@@ -902,9 +902,9 @@
       </div>
 
       <div class="row">
-        <label for="packFileInput">Безопасное превью JS-пакета (рекомендуется)</label>
+        <label for="packFileInput">Безопасное превью legacy JS-пакета</label>
         <input id="packFileInput" type="file" accept=".js,text/javascript,text/plain" />
-        <p class="security-note">Пакет читается как текст: редактор извлекает только растровое изображение и метаданные, не выполняя JavaScript.</p>
+        <p class="security-note">Для старого JS редактор извлекает только изображение и метаданные без выполнения кода. Для новых панорам используйте путь к <span class="mono">*-360.css</span>.</p>
       </div>
 
       <div class="row">
@@ -1386,6 +1386,12 @@
     var story360Data = createEmptyStory360Data();
     /** Уже подтверждённые и выполненные в этой вкладке legacy-пакеты; повторное подключение одного URL не требуется. */
     var loadedPackScripts = {};
+    /** Верхняя граница декларативного CSS-пакета защищает редактор от случайно огромной base64-строки. */
+    var PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
+    /** Число частей ограничено отдельно, чтобы вредный пакет не заставил выполнять неограниченный цикл чтения свойств. */
+    var PANORAMA_CSS_PACK_MAX_CHUNKS = 8192;
+    /** Base64 декодируется ограниченными порциями, чтобы мобильный браузер не создавал огромную промежуточную binary-string. */
+    var PANORAMA_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
     var editorReady = false;
     var suppressEditorAutosave = false;
     // Ссылка на панораму, которую сейчас редактируем в story360Data (нужна для корректного переименования по полям ID).
@@ -1729,14 +1735,15 @@
     }
 
     /**
-     * Строит шаблон из пути вида assets/.../174-360.js, чтобы автоматически находить соседние панорамы.
+     * Строит шаблон из пути вида assets/.../174.jpg, assets/.../174-360.css или assets/.../174-360.js,
+     * чтобы автоматически находить соседние панорамы в том же формате.
      */
     function buildPanoramaAssetTemplate(path) {
       var value = String(path || "").trim().replace(/\\/g, "/");
       var slash = value.lastIndexOf("/");
       var dir = slash >= 0 ? value.slice(0, slash + 1) : "";
       var fileName = slash >= 0 ? value.slice(slash + 1) : value;
-      var match = fileName.match(/^(.*?)(\d+)(-360(?:-[a-z0-9_-]+)?\.js(?:\?.*)?)$/i);
+      var match = fileName.match(/^(.*?)(\d+)((?:-360(?:-[a-z0-9_-]+)?)?\.(?:jpe?g|png|webp)|-360(?:-[a-z0-9_-]+)?\.(?:css|js))(?:\?.*)?$/i);
       if (!match) return null;
       return {
         dir: dir,
@@ -1746,10 +1753,10 @@
     }
 
     /**
-     * Возвращает числовую часть ID панорамы, если по ней можно вывести имя JS-пакета.
+     * Возвращает последнюю числовую часть ID панорамы, чтобы сохранять составные префиксы вроде 1_008.
      */
     function getPanoramaAssetNumber(panoramaId) {
-      var match = String(panoramaId || "").match(/(\d+)/);
+      var match = String(panoramaId || "").match(/(\d+)(?!.*\d)/);
       return match ? match[1] : "";
     }
 
@@ -2283,7 +2290,7 @@
     }
 
     /**
-     * Загружает панораму из story360Data в форму редактора.
+     * Загружает панораму из story360Data в форму; чёрный фон ставится только при отсутствии пути или ошибке нового превью.
      */
     function loadPanoramaFromData(spaceId, panoramaId, entryId, options) {
       var loadOptions = options || {};
@@ -2396,7 +2403,7 @@
         setStatus("Данные панорамы загружены, загружаю изображение: " + targetSpaceId + "." + targetPanoramaId, false);
         loadAssetPath(assetPathInput.value);
       } else {
-        setStatus("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь JS-пакета или картинки.", true);
+        showPanoramaLoadError("Панорама загружена без file/src/path. ID создан автоматически, но для превью нужен путь изображения, CSS- или JS-пакета.");
       }
     }
 
@@ -2479,58 +2486,379 @@
     }
 
     /**
-     * Загружает выбранное пользователем изображение как текстуру 360-сферы.
+     * Проверяет расширение растровой панорамы; SVG и прочие активные или неподдерживаемые форматы не принимаются.
+     */
+    function isSupportedPanoramaImagePath(path) {
+      return /\.(?:jpe?g|png|webp)$/i.test(String(path || "").trim());
+    }
+
+    /**
+     * Допускает только декларативные CSS-пакеты конвертера с явным суффиксом 360.
+     */
+    function isSupportedPanoramaCssPackPath(path) {
+      return /-360(?:-[a-z0-9_-]+)?\.css$/i.test(String(path || "").trim());
+    }
+
+    /**
+     * Строит путь выбранного изображения для story360: браузер скрывает полный путь файла,
+     * поэтому редактор сохраняет текущую папку ассета и заменяет только имя файла.
+     */
+    function buildSelectedImageAssetPath(file) {
+      var fileName = String((file && file.name) || "").trim().replace(/\\/g, "/").split("/").pop();
+      if (!isSupportedPanoramaImagePath(fileName)) return "";
+      var currentPath = String(assetPathInput.value || "").trim().replace(/\\/g, "/");
+      var slash = currentPath.lastIndexOf("/");
+      return (slash >= 0 ? currentPath.slice(0, slash + 1) : "") + fileName;
+    }
+
+    /**
+     * Применяет готовую текстуру к 360-сфере и освобождает предыдущий GPU-ресурс.
+     */
+    function applySphereTexture(texture) {
+      if (!texture || !sphereMesh || !window.THREE) return;
+      if (sphereTexture && typeof sphereTexture.dispose === "function") {
+        sphereTexture.dispose();
+      }
+      if (sphereMesh.material && typeof sphereMesh.material.dispose === "function") {
+        sphereMesh.material.dispose();
+      }
+      sphereTexture = texture;
+      sphereTexture.minFilter = window.THREE.LinearFilter;
+      sphereTexture.magFilter = window.THREE.LinearFilter;
+      sphereTexture.generateMipmaps = false;
+      sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
+      sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
+    }
+
+    /**
+     * Удаляет прежнюю текстуру и оставляет сплошную чёрную сферу, чтобы ошибка новой загрузки не показывала старую панораму.
+     */
+    function clearSphereTextureToBlack() {
+      if (!sphereMesh || !window.THREE) return;
+      if (sphereTexture && typeof sphereTexture.dispose === "function") {
+        sphereTexture.dispose();
+      }
+      if (sphereMesh.material && typeof sphereMesh.material.dispose === "function") {
+        sphereMesh.material.dispose();
+      }
+      sphereTexture = null;
+      sphereMesh.material = new window.THREE.MeshBasicMaterial({ color: 0x000000 });
+    }
+
+    /**
+     * Показывает ошибку панорамы только после очистки превью, включая ошибки чтения пакета до запуска TextureLoader.
+     */
+    function showPanoramaLoadError(message) {
+      clearSphereTextureToBlack();
+      setStatus(message, true);
+    }
+
+    /**
+     * Проверяет фактический размер декодированной панорамы по метаданным CSS-пакета и лимиту WebGL до передачи в GPU.
+     */
+    function validatePanoramaTextureSize(texture, expectedSize) {
+      var image = texture && texture.image;
+      var width = Number(image && (image.naturalWidth || image.videoWidth || image.width)) || 0;
+      var height = Number(image && (image.naturalHeight || image.videoHeight || image.height)) || 0;
+      if (expectedSize && (width !== Number(expectedSize.width) || height !== Number(expectedSize.height))) {
+        return "Фактический размер панорамы " + width + "x" + height +
+          " не совпадает с метаданными CSS-пакета " + expectedSize.width + "x" + expectedSize.height + ".";
+      }
+      var maxTextureSize = Number(renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || 0;
+      if (maxTextureSize > 0 && (width > maxTextureSize || height > maxTextureSize)) {
+        return "Размер панорамы " + width + "x" + height + " превышает лимит WebGL " + maxTextureSize + " px.";
+      }
+      return "";
+    }
+
+    /**
+     * Загружает выбранное пользователем изображение как текстуру 360-сферы; при file:// оставляет его временным
+     * превью, потому что сохранённый растровый путь после F5 нельзя безопасно передать в WebGL.
      */
     function loadImageFile(file) {
       if (!file) return;
+      var selectedAssetPath = buildSelectedImageAssetPath(file);
+      if (!selectedAssetPath) {
+        showPanoramaLoadError("Поддерживаются растровые 360-изображения JPEG, PNG и WebP.");
+        return;
+      }
       var objectUrl = URL.createObjectURL(file);
       var loader = new window.THREE.TextureLoader();
 
       loader.load(
         objectUrl,
         function (tex) {
-          if (sphereTexture && typeof sphereTexture.dispose === "function") {
-            sphereTexture.dispose();
+          var sizeError = validatePanoramaTextureSize(tex);
+          if (sizeError) {
+            if (typeof tex.dispose === "function") tex.dispose();
+            showPanoramaLoadError(sizeError);
+            URL.revokeObjectURL(objectUrl);
+            return;
           }
-          sphereTexture = tex;
-          sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
-          sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
-          setStatus("Изображение загружено: " + file.name, false);
+          applySphereTexture(tex);
+          if (!window.location || window.location.protocol !== "file:") {
+            assetPathInput.value = selectedAssetPath;
+            refreshGeneratedBgId();
+            if (editorReady && !suppressEditorAutosave) {
+              storeCurrentPanoramaToData(false, true);
+            }
+            setStatus("Изображение загружено: " + file.name + ". Путь story360: " + selectedAssetPath, false);
+          } else {
+            setStatus("Изображение загружено как временное превью: " + file.name + ". Для автоматической загрузки после F5 укажите соответствующий *-360.css.", false);
+          }
           URL.revokeObjectURL(objectUrl);
         },
         undefined,
         function () {
-          setStatus("Ошибка загрузки изображения.", true);
+          showPanoramaLoadError("Ошибка загрузки изображения.");
           URL.revokeObjectURL(objectUrl);
         }
       );
     }
 
     /**
-     * Загружает texture из URL или data-url; общий путь для обычных картинок и JS-паков.
-     * details добавляет к статусу сведения о сохранении пака, если они есть в новом JS-формате.
+     * Загружает texture из HTTP/data/blob URL; локальный file:// растр сюда не передаётся из-за WebGL CORS.
+     * Необязательные onSettled и expectedSize освобождают временный URL и сверяют CSS-метаданные после декодирования.
      */
-    function loadTextureUrl(textureUrl, label, details) {
-      if (!textureUrl || !window.THREE || !sphereMesh) return;
+    function loadTextureUrl(textureUrl, label, details, onSettled, expectedSize) {
+      if (!textureUrl || !window.THREE || !sphereMesh) {
+        showPanoramaLoadError("Не удалось подготовить загрузку панорамы: " + (label || textureUrl || "путь не указан"));
+        if (typeof onSettled === "function") onSettled(false);
+        return;
+      }
       var loader = new window.THREE.TextureLoader();
       loader.load(
         textureUrl,
         function (tex) {
-          if (sphereTexture && typeof sphereTexture.dispose === "function") {
-            sphereTexture.dispose();
+          var sizeError = validatePanoramaTextureSize(tex, expectedSize);
+          if (sizeError) {
+            if (typeof tex.dispose === "function") tex.dispose();
+            showPanoramaLoadError(sizeError);
+            if (typeof onSettled === "function") onSettled(false);
+            return;
           }
-          sphereTexture = tex;
-          sphereTexture.colorSpace = window.THREE.SRGBColorSpace || sphereTexture.colorSpace;
-          sphereMesh.material = new window.THREE.MeshBasicMaterial({ map: sphereTexture });
+          applySphereTexture(tex);
           var statusText = "Панорама загружена: " + (label || textureUrl);
           if (details) statusText += ". " + details;
           setStatus(statusText, false);
+          if (typeof onSettled === "function") onSettled(true);
         },
         undefined,
         function () {
-          setStatus("Не удалось загрузить панораму: " + (label || textureUrl), true);
+          showPanoramaLoadError("Не удалось загрузить панораму: " + (label || textureUrl));
+          if (typeof onSettled === "function") onSettled(false);
         }
       );
+    }
+
+    /**
+     * Читает строго двойную строку custom property; CSS-escape и вычисляемые выражения не принимаются как данные пакета.
+     */
+    function readPanoramaCssQuotedValue(computedStyle, propertyName) {
+      var raw = String(computedStyle.getPropertyValue(propertyName) || "").trim();
+      var match = raw.match(/^"([^"\\]*)"$/);
+      if (!match) throw new Error("CSS-пакет не содержит корректное свойство " + propertyName + ".");
+      return match[1];
+    }
+
+    /**
+     * Декодирует одну выровненную часть base64 в Uint8Array и сохраняет первые байты для проверки сигнатуры изображения.
+     */
+    function appendPanoramaCssDecodedPart(encodedPart, binaryParts, signatureBytes) {
+      if (!encodedPart) return;
+      var binary = atob(encodedPart);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) {
+        var byteValue = binary.charCodeAt(i);
+        bytes[i] = byteValue;
+        if (signatureBytes.length < 12) signatureBytes.push(byteValue);
+      }
+      binaryParts.push(bytes);
+    }
+
+    /**
+     * Проверяет сигнатуру JPEG/PNG/WebP независимо от объявленного в CSS MIME, чтобы произвольные данные не дошли до декодера текстуры.
+     */
+    function isPanoramaImageSignatureValid(mimeType, bytes) {
+      if (mimeType === "image/jpeg") {
+        return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+      }
+      if (mimeType === "image/png") {
+        return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+          bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+      }
+      if (mimeType === "image/webp") {
+        return bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+          bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+      }
+      return false;
+    }
+
+    /**
+     * Извлекает декларативный CSS-пакет из computed style и собирает Blob порциями, не создавая полный data-url в памяти страницы.
+     */
+    function extractPanoramaCssPackBlob(computedStyle) {
+      var schema = readPanoramaCssQuotedValue(computedStyle, "--vn360-schema");
+      if (schema !== "vn360-css-pack-v1") throw new Error("Неподдерживаемая версия CSS-пакета 360.");
+
+      var mode = readPanoramaCssQuotedValue(computedStyle, "--vn360-mode");
+      if (mode !== "normal" && mode !== "mobile") throw new Error("Некорректный режим CSS-пакета 360.");
+      var mimeType = readPanoramaCssQuotedValue(computedStyle, "--vn360-mime").toLowerCase();
+      if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
+
+      var chunkCount = Number(readPanoramaCssQuotedValue(computedStyle, "--vn360-chunk-count"));
+      if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > PANORAMA_CSS_PACK_MAX_CHUNKS) {
+        throw new Error("Некорректное количество частей CSS-пакета 360.");
+      }
+
+      var declaredWidth = Number(readPanoramaCssQuotedValue(computedStyle, "--vn360-width"));
+      var declaredHeight = Number(readPanoramaCssQuotedValue(computedStyle, "--vn360-height"));
+      var declaredSize = Number(readPanoramaCssQuotedValue(computedStyle, "--vn360-size"));
+      if (!Number.isInteger(declaredWidth) || declaredWidth < 1 || !Number.isInteger(declaredHeight) || declaredHeight < 1) {
+        throw new Error("CSS-пакет не содержит корректный размер панорамы.");
+      }
+      if (!Number.isInteger(declaredSize) || declaredSize < 1) throw new Error("CSS-пакет не содержит корректный размер изображения.");
+      var maxTextureSize = Number(renderer && renderer.capabilities && renderer.capabilities.maxTextureSize) || 0;
+      if (maxTextureSize > 0 && (declaredWidth > maxTextureSize || declaredHeight > maxTextureSize)) {
+        throw new Error("Размер CSS-панорамы " + declaredWidth + "x" + declaredHeight + " превышает лимит WebGL " + maxTextureSize + " px.");
+      }
+
+      var binaryParts = [];
+      var signatureBytes = [];
+      var pendingBase64 = "";
+      var encodedLength = 0;
+      for (var index = 0; index < chunkCount; index++) {
+        var cssChunk = readPanoramaCssQuotedValue(computedStyle, "--vn360-data-" + index);
+        if (index === 0) {
+          var prefixMatch = cssChunk.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/i);
+          if (!prefixMatch) throw new Error("Первая часть CSS-пакета не содержит ожидаемый data:image base64.");
+          if (prefixMatch[1].toLowerCase() !== mimeType) throw new Error("MIME CSS-пакета не совпадает с данными изображения.");
+          cssChunk = prefixMatch[2];
+        }
+        if (!/^[a-z0-9+/]*={0,2}$/i.test(cssChunk) || (index < chunkCount - 1 && cssChunk.indexOf("=") !== -1)) {
+          throw new Error("CSS-пакет содержит недопустимые символы base64.");
+        }
+        encodedLength += cssChunk.length;
+        if (encodedLength > PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH) throw new Error("CSS-пакет превышает допустимый размер.");
+        pendingBase64 += cssChunk;
+
+        if (index < chunkCount - 1 && pendingBase64.length >= PANORAMA_CSS_DECODE_BATCH_LENGTH) {
+          var readyLength = pendingBase64.length - (pendingBase64.length % 4);
+          appendPanoramaCssDecodedPart(pendingBase64.slice(0, readyLength), binaryParts, signatureBytes);
+          pendingBase64 = pendingBase64.slice(readyLength);
+        }
+      }
+
+      if (!pendingBase64 || pendingBase64.length % 4 !== 0) throw new Error("CSS-пакет содержит обрезанные данные base64.");
+      appendPanoramaCssDecodedPart(pendingBase64, binaryParts, signatureBytes);
+      if (!isPanoramaImageSignatureValid(mimeType, signatureBytes)) throw new Error("Сигнатура изображения в CSS-пакете не совпадает с MIME.");
+
+      var blob = new Blob(binaryParts, { type: mimeType });
+      if (blob.size !== declaredSize) throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
+      return {
+        blob: blob,
+        meta: {
+          schema: schema,
+          mode: mode,
+          type: mimeType,
+          size: blob.size,
+          width: declaredWidth,
+          height: declaredHeight,
+          quality: readPanoramaCssQuotedValue(computedStyle, "--vn360-quality")
+        }
+      };
+    }
+
+    /**
+     * Создаёт случайный nonce для единственной разрешённой таблицы стилей; без Web Crypto загрузка завершается безопасной ошибкой.
+     */
+    function createPanoramaCssStyleNonce() {
+      if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
+        throw new Error("Браузер не поддерживает безопасный генератор для загрузки CSS-пакета.");
+      }
+      var bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      var nonce = "";
+      for (var i = 0; i < bytes.length; i++) nonce += bytes[i].toString(16).padStart(2, "0");
+      return nonce;
+    }
+
+    /**
+     * Подключает пользовательский CSS во временный sandbox-iframe: nonce разрешает только корневой link,
+     * затем проверенный Blob возвращается редактору, а iframe полностью удаляется.
+     */
+    function readPanoramaCssPack(projectPath) {
+      return new Promise(function (resolve, reject) {
+        var settled = false;
+        var initialized = false;
+        var timeoutId = null;
+        var styleNonce = createPanoramaCssStyleNonce();
+        var frame = document.createElement("iframe");
+        frame.hidden = true;
+        frame.setAttribute("aria-hidden", "true");
+        frame.setAttribute("sandbox", "allow-same-origin");
+        frame.setAttribute("data-scene360-css-pack-loader", projectPath);
+        frame.srcdoc = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + styleNonce + "'; style-src-attr 'none'; script-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\"><div id=\"vn360-pack\"></div>";
+
+        function finish(error, result) {
+          if (settled) return;
+          settled = true;
+          if (timeoutId !== null) clearTimeout(timeoutId);
+          frame.onload = null;
+          if (frame.parentNode) frame.parentNode.removeChild(frame);
+          if (error) reject(error);
+          else resolve(result);
+        }
+
+        frame.onload = function () {
+          if (initialized || settled) return;
+          initialized = true;
+          try {
+            var frameDocument = frame.contentDocument;
+            var marker = frameDocument && frameDocument.getElementById("vn360-pack");
+            if (!frameDocument || !marker) throw new Error("Не удалось создать изолированный загрузчик CSS-пакета.");
+            var link = frameDocument.createElement("link");
+            link.rel = "stylesheet";
+            link.nonce = styleNonce;
+            link.referrerPolicy = "no-referrer";
+            link.onload = function () {
+              try {
+                var computedStyle = frame.contentWindow.getComputedStyle(marker);
+                finish(null, extractPanoramaCssPackBlob(computedStyle));
+              } catch (err) {
+                finish(err);
+              }
+            };
+            link.onerror = function () {
+              finish(new Error("Не удалось загрузить CSS-пакет: " + projectPath));
+            };
+            link.href = new URL(toToolRelativeUrl(projectPath), window.location.href).href;
+            frameDocument.head.appendChild(link);
+          } catch (err) {
+            finish(err);
+          }
+        };
+
+        timeoutId = setTimeout(function () {
+          finish(new Error("Истекло время загрузки CSS-пакета: " + projectPath));
+        }, 30000);
+        document.body.appendChild(frame);
+      });
+    }
+
+    /**
+     * Загружает проверенный CSS-пакет как blob-текстуру основной 360-сферы и освобождает временный URL после декодирования.
+     */
+    function loadPanoramaCssPack(projectPath) {
+      setStatus("Загрузка безопасного CSS-пакета: " + projectPath, false);
+      readPanoramaCssPack(projectPath).then(function (pack) {
+        var objectUrl = URL.createObjectURL(pack.blob);
+        loadTextureUrl(objectUrl, projectPath, formatLoadedPackMetaSummary(pack.meta), function () {
+          URL.revokeObjectURL(objectUrl);
+        }, { width: pack.meta.width, height: pack.meta.height });
+      }).catch(function (err) {
+        showPanoramaLoadError(err && err.message ? err.message : "Не удалось загрузить CSS-пакет.");
+      });
     }
 
     /**
@@ -2567,7 +2895,7 @@
         throw new Error("Разрешены только относительные пути внутри проекта; URL и системные пути запрещены.");
       }
       if (value.charAt(0) === "/" || value.indexOf("//") === 0) {
-        throw new Error("Абсолютный путь запрещён. Укажите путь от корня проекта, например assets/360/panorama-360.js.");
+        throw new Error("Абсолютный путь запрещён. Укажите путь от корня проекта, например assets/360/panorama-360.css.");
       }
       if (/[?#]/.test(value)) {
         throw new Error("Параметры URL и фрагменты в пути ассета не поддерживаются.");
@@ -2756,7 +3084,7 @@
     function loadPackFileSafely(file) {
       if (!file) return;
       if (!/-360(?:-[a-z0-9_-]+)?\.js$/i.test(String(file.name || ""))) {
-        setStatus("Выберите JS-пакет с именем *-360.js.", true);
+        showPanoramaLoadError("Выберите JS-пакет с именем *-360.js.");
         return;
       }
 
@@ -2770,11 +3098,11 @@
           if (metaSummary) details += ". " + metaSummary;
           loadTextureUrl(dataUrl, file.name, details);
         } catch (err) {
-          setStatus("Не удалось безопасно прочитать JS-пакет: " + (err && err.message ? err.message : err), true);
+          showPanoramaLoadError("Не удалось безопасно прочитать JS-пакет: " + (err && err.message ? err.message : err));
         }
       };
       reader.onerror = function () {
-        setStatus("Ошибка чтения выбранного JS-пакета.", true);
+        showPanoramaLoadError("Ошибка чтения выбранного JS-пакета.");
       };
       reader.readAsText(file);
     }
@@ -2856,7 +3184,7 @@
     }
 
     /**
-     * Собирает короткую сводку по настройкам, с которыми JS-пакет был сохранён.
+     * Собирает короткую сводку по настройкам, с которыми CSS- или JS-пакет был сохранён.
      */
     function formatLoadedPackMetaSummary(meta) {
       if (!meta || typeof meta !== "object") return "";
@@ -2876,7 +3204,7 @@
       }
       if (targetHeightLabel) parts.push("целевая высота " + targetHeightLabel);
 
-      return parts.length ? "Сохранено в JS: " + parts.join(", ") : "";
+      return parts.length ? "Сохранено в пакете: " + parts.join(", ") : "";
     }
 
     /**
@@ -2974,23 +3302,28 @@
     }
 
     /**
-     * Загружает относительный путь из story360: изображение сразу, а JS-пакет — только в доверенном legacy-режиме.
+     * Загружает относительный путь из story360: CSS-пакет изолированно, HTTP-изображение напрямую,
+     * а JS-пакет — только в явно включённом доверенном legacy-режиме.
      */
     function loadAssetPath(path) {
       var value = String(path || "").trim();
       if (!value) {
-        setStatus("Укажите путь к изображению или JS-пакету.", true);
+        showPanoramaLoadError("Укажите путь к изображению, CSS- или JS-пакету.");
         return;
       }
       var projectPath;
       try {
         projectPath = normalizeProjectAssetPath(value);
       } catch (err) {
-        setStatus(err && err.message ? err.message : "Недопустимый путь к ассету.", true);
+        showPanoramaLoadError(err && err.message ? err.message : "Недопустимый путь к ассету.");
         return;
       }
       refreshGeneratedBgId();
       if (editorReady && !suppressEditorAutosave) storeCurrentPanoramaToData(false, false);
+      if (isSupportedPanoramaCssPackPath(projectPath)) {
+        loadPanoramaCssPack(projectPath);
+        return;
+      }
       if (/-360(?:-[a-z0-9_-]+)?\.js$/i.test(projectPath)) {
         if (!legacyPackModeInput.checked) {
           setStatus(
@@ -3003,13 +3336,21 @@
         ensurePackScriptLoaded(projectPath).then(function () {
           var dataUrl = resolveLoadedPackDataUrl(projectPath);
           if (!dataUrl) {
-            setStatus("Legacy-пакет выполнен, но data-url не найден: " + projectPath, true);
+            showPanoramaLoadError("Legacy-пакет выполнен, но data-url не найден: " + projectPath);
             return;
           }
           loadTextureUrl(dataUrl, projectPath, formatLoadedPackMetaSummary(resolveLoadedPackMeta(projectPath)));
         }).catch(function (err) {
-          setStatus(err && err.message ? err.message : "Не удалось загрузить доверенный legacy-пакет.", true);
+          showPanoramaLoadError(err && err.message ? err.message : "Не удалось загрузить доверенный legacy-пакет.");
         });
+        return;
+      }
+      if (!isSupportedPanoramaImagePath(projectPath)) {
+        showPanoramaLoadError("Путь панорамы должен вести к JPEG, PNG, WebP, CSS-пакету *-360.css или JS-пакету *-360.js.");
+        return;
+      }
+      if (window.location && window.location.protocol === "file:") {
+        showPanoramaLoadError("Локальное изображение нельзя автоматически передать в WebGL после F5. Используйте соответствующий *-360.css или legacy *-360.js.");
         return;
       }
       loadTextureUrl(toToolRelativeUrl(projectPath), projectPath);
@@ -6168,7 +6509,7 @@
     }
 
     /**
-     * Подсказка для file:// объясняет офлайн-пути и безопасный выбор JS-пакета без скрытого выполнения.
+     * Подсказка для file:// рекомендует изолированный CSS и оставляет безопасное чтение JS для старых проектов.
      */
     function appendFileProtocolTipIfNeeded() {
       if (String(window.location.protocol || "").toLowerCase() !== "file:") return;
@@ -6176,7 +6517,7 @@
       var needle = "file://";
       if (String(statusBox.textContent || "").indexOf(needle) !== -1) return;
       var tip =
-        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo сохраняйте от корня проекта, например assets/360/…. Для безопасного превью JS-пакета выберите сам файл; выполнение по пути доступно только в доверенном legacy-режиме. Предупреждения про iframe в консоли можно игнорировать.";
+        "[Режим file://] Открытие напрямую из папки поддерживается. Пути к 360 и photo сохраняйте от корня проекта, например assets/360/…. Для новых панорам используйте *-360.css; старый JS можно безопасно прочитать выбранным файлом, а выполнение по пути доступно только в доверенном legacy-режиме. Предупреждения про iframe в консоли можно игнорировать.";
       statusBox.textContent = tip + "\n\n" + String(statusBox.textContent || "");
     }
 

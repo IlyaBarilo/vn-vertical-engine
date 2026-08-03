@@ -41,6 +41,34 @@ function createAutosaveProjectStorySource(projectId, label) {
   return lines.join('\n');
 }
 
+// Создаёт минимальную историю с 360-фоном, чтобы проверять порядок CSS → JS в настоящем runtime движка.
+function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = CSS 360 E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    `bg360Quality = ${quality}`,
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    `runtimePano file=${assetPath} 360 quality=${quality}`,
+    '',
+    '[scene]',
+    'scene intro',
+    'bg runtimePano scroll',
+    '"Панорама CSS E2E"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт минимальный story360.js с одним путём, чтобы проверять загрузку редактора без пользовательских файлов.
 function createScene360StorySource(assetPath) {
   return `window.STORY360 = ${JSON.stringify({
@@ -74,6 +102,34 @@ function createScene360PackSource(datasetKey) {
     '  window.VN360_PACKS_VARIANTS[packKey] = { normal: dataUrl };',
     '  window.VN360_PACKS_META_VARIANTS[packKey] = { normal: packMeta };',
     '})();',
+    ''
+  ].join('\n');
+}
+
+// Собирает декларативный CSS-пакет с агрессивным стилем и необязательным @import для проверки CSP-изоляции.
+function createScene360CssPackSource(mode = 'normal', importPath = '') {
+  const payload = tinyPanoramaDataUrl.split(',')[1];
+  const imageBytes = Buffer.from(payload, 'base64').length;
+  const chunks = [];
+  for (let offset = 0; offset < tinyPanoramaDataUrl.length; offset += 32) {
+    chunks.push(tinyPanoramaDataUrl.slice(offset, offset + 32));
+  }
+  return [
+    ...(importPath ? [`@import url(${JSON.stringify(importPath)});`] : []),
+    'html, body { display: none !important; --scene360-css-injection: "1"; }',
+    '#vn360-pack {',
+    '  --vn360-schema: "vn360-css-pack-v1";',
+    `  --vn360-mode: "${mode}";`,
+    '  --vn360-mime: "image/png";',
+    '  --vn360-width: "1";',
+    '  --vn360-height: "1";',
+    `  --vn360-size: "${imageBytes}";`,
+    '  --vn360-quality: "1";',
+    `  --vn360-chunk-count: "${chunks.length}";`,
+    ...chunks.map(function(chunk, index) {
+      return `  --vn360-data-${index}: "${chunk}";`;
+    }),
+    '}',
     ''
   ].join('\n');
 }
@@ -293,6 +349,121 @@ test('движок запускает историю в браузере без 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  expect(pageErrors).toEqual([]);
+});
+
+// Даже при сохранённом JS-пути выбирает mobile CSS первым и не позволяет стилям пакета воздействовать на страницу новеллы.
+test('движок загружает mobile CSS-пакет 360 раньше JS', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const sourcePath = 'assets/360/runtime-priority-360.js';
+  const cssPath = 'assets/360/runtime-priority-360-mobile.css';
+  const jsPath = 'assets/360/runtime-priority-360-mobile.js';
+  let cssRequestCount = 0;
+  let jsRequestCount = 0;
+  await installRepositoryRoutes(page, {
+    storySource: createBg360RuntimeStorySource(sourcePath, 'mobile')
+  });
+  await page.route(`http://e2e.local/${cssPath}`, async function serveRuntimeCssPanorama(route) {
+    cssRequestCount++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource('mobile')
+    });
+  });
+  await page.route(`http://e2e.local/${jsPath}`, async function rejectUnexpectedRuntimeJs(route) {
+    jsRequestCount++;
+    await route.fulfill({ status: 500, contentType: 'text/plain', body: 'JS must not be requested' });
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#textBox')).toHaveText('Панорама CSS E2E');
+  await expect(page.locator('#bg360Layer')).not.toHaveClass(/hidden/);
+  await expect(page.locator('iframe[data-bg360-css-pack-loader]')).toHaveCount(0);
+  expect(cssRequestCount).toBeGreaterThanOrEqual(1);
+  expect(jsRequestCount).toBe(0);
+  expect(await page.locator('body').evaluate(function(body) {
+    return {
+      display: getComputedStyle(body).display,
+      injectedValue: getComputedStyle(body).getPropertyValue('--scene360-css-injection').trim()
+    };
+  })).toEqual({ display: 'block', injectedValue: '' });
+  expect(pageErrors).toEqual([]);
+});
+
+// Пакет с @import должен быть отклонён целиком без запроса импорта, после чего движок безопасно использует JS-фолбэк.
+test('движок блокирует CSS @import панорамы и использует JS-пакет', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const sourcePath = 'assets/360/runtime-import-360.css';
+  const cssPath = 'assets/360/runtime-import-360.css';
+  const jsPath = 'assets/360/runtime-import-360.js';
+  const blockedImportPath = '/__e2e__/runtime-imported-style.css';
+  let cssRequestCount = 0;
+  let jsRequestCount = 0;
+  let importRequestCount = 0;
+  await installRepositoryRoutes(page, {
+    storySource: createBg360RuntimeStorySource(sourcePath, 'normal')
+  });
+  await page.route(`http://e2e.local/${cssPath}`, async function serveRuntimeCssWithImport(route) {
+    cssRequestCount++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource('normal', blockedImportPath)
+    });
+  });
+  await page.route(`http://e2e.local${blockedImportPath}`, async function rejectRuntimeCssImport(route) {
+    importRequestCount++;
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '#vn360-pack { --vn360-import-ran: "1"; }' });
+  });
+  await page.route(`http://e2e.local/${jsPath}`, async function serveRuntimeImportFallback(route) {
+    jsRequestCount++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      body: createScene360PackSource('runtimeImportFallbackExecuted')
+    });
+  });
+  await page.goto('/');
+
+  await expect(page.locator('body')).toHaveAttribute('data-runtime-import-fallback-executed', '1');
+  await expect(page.locator('#bg360Layer')).not.toHaveClass(/hidden/);
+  expect(cssRequestCount).toBeGreaterThanOrEqual(1);
+  expect(jsRequestCount).toBeGreaterThanOrEqual(1);
+  expect(importRequestCount).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Имитирует отсутствие CSS и подтверждает последовательный переход к прежнему исполняемому JS-пакету.
+test('движок использует JS-пакет 360 после ошибки CSS', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const sourcePath = 'assets/360/runtime-fallback-360.css';
+  const cssPath = 'assets/360/runtime-fallback-360.css';
+  const jsPath = 'assets/360/runtime-fallback-360.js';
+  let cssRequestCount = 0;
+  let jsRequestCount = 0;
+  await installRepositoryRoutes(page, {
+    storySource: createBg360RuntimeStorySource(sourcePath, 'normal')
+  });
+  await page.route(`http://e2e.local/${cssPath}`, async function rejectMissingRuntimeCss(route) {
+    cssRequestCount++;
+    await route.fulfill({ status: 404, contentType: 'text/css; charset=utf-8', body: '' });
+  });
+  await page.route(`http://e2e.local/${jsPath}`, async function serveRuntimeLegacyJs(route) {
+    jsRequestCount++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      body: createScene360PackSource('runtimeLegacyFallbackExecuted')
+    });
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#textBox')).toHaveText('Панорама CSS E2E');
+  await expect(page.locator('body')).toHaveAttribute('data-runtime-legacy-fallback-executed', '1');
+  await expect(page.locator('#bg360Layer')).not.toHaveClass(/hidden/);
+  expect(cssRequestCount).toBeGreaterThanOrEqual(1);
+  expect(jsRequestCount).toBeGreaterThanOrEqual(1);
   expect(pageErrors).toEqual([]);
 });
 
@@ -936,6 +1107,293 @@ test('Scene360 Editor не выполняет пакет из импортиро
   await expect(page.locator('#statusBox')).toContainText('код не выполнен');
   expect(packRequestCount).toBe(0);
   await expect(page.locator('body')).not.toHaveAttribute('data-scene-untrusted-pack-executed', '1');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что выбранный растр становится основным file текущей панорамы, а не остаётся только временным превью.
+test('Scene360 Editor заменяет JS-путь выбранным 360-изображением', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource('assets/360/korpusnight/176-360.js'))
+  });
+
+  await expect(page.locator('#assetPathInput')).toHaveValue('assets/360/korpusnight/176-360.js');
+  await page.locator('#bgImageInput').setInputFiles({
+    name: '176.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+  });
+
+  await expect(page.locator('#assetPathInput')).toHaveValue('assets/360/korpusnight/176.png');
+  await expect(page.locator('#statusBox')).toContainText('Путь story360: assets/360/korpusnight/176.png');
+  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Загружает растровый file прямо из story360 и доказывает, что для него не запускается legacy-ветка JS-пакетов.
+test('Scene360 Editor загружает 360-изображение по пути из story360', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const imagePath = 'assets/360/direct-panorama.png';
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${imagePath}`, async function serveDirectPanorama(route) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+    });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(imagePath))
+  });
+
+  await expect(page.locator('#assetPathInput')).toHaveValue(imagePath);
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${imagePath}`);
+  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Передаёт результат настоящего конвертера в редактор, чтобы формат CSS не расходился между двумя инструментами.
+test('Конвертер создаёт совместимый CSS-пакет 360', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/convert-360-img-to-css.html');
+  await page.locator('#fileInput').setInputFiles({
+    name: 'converter-source.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+  });
+  await expect(page.locator('#status')).toContainText('Можно генерировать JS и CSS');
+  await page.locator('#btnGenerate').click();
+  await expect(page.locator('#status')).toContainText('для сохранения выбран CSS');
+  await expect(page.locator('#btnDownload')).toBeEnabled();
+  await expect(page.locator('#btnDownload')).toHaveText('Скачать оба CSS');
+  await page.locator('#resultGrid').getByRole('button', { name: 'Показать CSS' }).first().click();
+  const cssSource = await page.locator('#output').inputValue();
+  expect(cssSource).toContain('--vn360-schema: "vn360-css-pack-v1"');
+  expect(cssSource).toContain('--vn360-data-0: "data:image/');
+  expect(cssSource).not.toContain('window.VN360_PACKS');
+
+  const cssPath = 'assets/360/converter-source-360.css';
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${cssPath}`, async function serveConvertedCssPanorama(route) {
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: cssSource });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(cssPath))
+  });
+
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${cssPath}`);
+  await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
+  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет общий список разрешений и единый выбор CSS/JS, чтобы одиночный и пакетный экспорт не расходились.
+test('Конвертер сохраняет только выбранный формат пакета', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/convert-360-img-to-css.html');
+  const expectedHeightOptions = ['source', '3840', '2880', '1920', '1440', '1080'];
+  for (const selector of ['#normalHeight', '#mobileHeight', '#batchNormalHeight', '#batchMobileHeight']) {
+    await expect(page.locator(`${selector} option`)).toHaveCount(expectedHeightOptions.length);
+    expect(await page.locator(selector).locator('option').evaluateAll(function(options) {
+      return options.map(function(option) { return option.value; });
+    })).toEqual(expectedHeightOptions);
+  }
+  await page.locator('#fileInput').setInputFiles({
+    name: 'format-source.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+  });
+  await page.locator('#btnGenerate').click();
+  await expect(page.locator('#btnDownload')).toBeEnabled();
+
+  await page.locator('#packOutputFormat').selectOption('js');
+  await expect(page.locator('#btnDownload')).toHaveText('Скачать оба JS');
+  await expect(page.locator('#resultGrid').getByRole('button', { name: 'Скачать CSS', exact: true })).toHaveCount(0);
+  const jsDownloadPromise = page.waitForEvent('download');
+  await page.locator('#resultGrid').getByRole('button', { name: 'Скачать JS', exact: true }).first().click();
+  const jsDownload = await jsDownloadPromise;
+  expect(jsDownload.suggestedFilename()).toBe('format-source-360.js');
+
+  await page.locator('#packOutputFormat').selectOption('css');
+  await expect(page.locator('#btnDownload')).toHaveText('Скачать оба CSS');
+  await expect(page.locator('#btnBatchStart')).toHaveText('Пакетно преобразовать и скачать CSS');
+  await expect(page.locator('#resultGrid').getByRole('button', { name: 'Скачать JS', exact: true })).toHaveCount(0);
+  const cssDownloadPromise = page.waitForEvent('download');
+  await page.locator('#resultGrid').getByRole('button', { name: 'Скачать CSS', exact: true }).first().click();
+  const cssDownload = await cssDownloadPromise;
+  expect(cssDownload.suggestedFilename()).toBe('format-source-360.css');
+
+  await page.locator('#tabBatch').click();
+  await page.locator('#batchMobileChk').uncheck();
+  await page.locator('#batchFileInput').setInputFiles({
+    name: 'batch-source.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+  });
+  const batchDownloadPromise = page.waitForEvent('download');
+  await page.locator('#btnBatchStart').click();
+  const batchDownload = await batchDownloadPromise;
+  expect(batchDownload.suggestedFilename()).toBe('batch-source-360.css');
+  await expect(page.locator('#batchStatus')).toContainText('скачано CSS: 1');
+  expect(pageErrors).toEqual([]);
+});
+
+// Загружает CSS только во временный iframe, проверяет отсутствие влияния его правил на редактор и повторную загрузку из Local после F5.
+test('Scene360 Editor изолированно загружает CSS-пакет после F5', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const cssPath = 'assets/360/safe-test-360.css';
+  let cssRequestCount = 0;
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${cssPath}`, async function serveCssPanorama(route) {
+    cssRequestCount++;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource()
+    });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(cssPath))
+  });
+
+  await expect(page.locator('#assetPathInput')).toHaveValue(cssPath);
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${cssPath}`);
+  await expect(page.locator('#statusBox')).toContainText('формат PNG');
+  await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
+  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  expect(await page.locator('body').evaluate(function(body) {
+    return {
+      display: getComputedStyle(body).display,
+      injectedValue: getComputedStyle(body).getPropertyValue('--scene360-css-injection').trim()
+    };
+  })).toEqual({ display: 'block', injectedValue: '' });
+
+  await page.reload();
+  await expect(page.locator('#assetPathInput')).toHaveValue(cssPath);
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${cssPath}`);
+  await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
+  expect(cssRequestCount).toBeGreaterThanOrEqual(2);
+  expect(pageErrors).toEqual([]);
+});
+
+// Редактор отклоняет CSS с @import и не обращается к импортируемому ресурсу, даже если сам пакет содержит корректную панораму.
+test('Scene360 Editor блокирует CSS @import панорамы', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const cssPath = 'assets/360/editor-import-360.css';
+  const blockedImportPath = '/__e2e__/scene360-editor-import.css';
+  let importRequestCount = 0;
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${cssPath}`, async function serveEditorCssWithImport(route) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource('normal', blockedImportPath)
+    });
+  });
+  await page.route(`http://e2e.local${blockedImportPath}`, async function rejectEditorCssImport(route) {
+    importRequestCount++;
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '#vn360-pack { --vn360-import-ran: "1"; }' });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(cssPath))
+  });
+
+  await expect(page.locator('#statusBox')).toContainText(`Не удалось загрузить CSS-пакет: ${cssPath}`);
+  await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
+  expect(importRequestCount).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Во время новой загрузки сохраняет прежнее превью, а после ошибки MIME заменяет его чёрным фоном.
+test('Scene360 Editor отклоняет подменённые данные CSS-пакета', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const validCssPath = 'assets/360/valid-before-error-360.css';
+  const cssPath = 'assets/360/invalid-test-360.css';
+  const invalidCssSource = createScene360CssPackSource().replace('data:image/png;base64,', 'data:text/html;base64,');
+  let releaseInvalidCssResponse;
+  const invalidCssResponseGate = new Promise(function(resolve) {
+    releaseInvalidCssResponse = resolve;
+  });
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${validCssPath}`, async function serveValidCssPanorama(route) {
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: createScene360CssPackSource() });
+  });
+  await page.route(`http://e2e.local/${cssPath}`, async function serveInvalidCssPanorama(route) {
+    await invalidCssResponseGate;
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: invalidCssSource });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(validCssPath))
+  });
+
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${validCssPath}`);
+  expect(await page.evaluate(function hasLoadedPanoramaTexture() {
+    return Boolean(window.sphereMesh && window.sphereMesh.material && window.sphereMesh.material.map);
+  })).toBe(true);
+  await page.locator('#assetPathInput').fill(cssPath);
+  await page.locator('#loadAssetPathBtn').click();
+  await expect(page.locator('#statusBox')).toContainText(`Загрузка безопасного CSS-пакета: ${cssPath}`);
+  expect(await page.evaluate(function keepsPreviousTextureWhileLoading() {
+    return Boolean(window.sphereMesh && window.sphereMesh.material && window.sphereMesh.material.map);
+  })).toBe(true);
+  releaseInvalidCssResponse();
+  await expect(page.locator('#statusBox')).toContainText('Первая часть CSS-пакета не содержит ожидаемый data:image base64');
+  await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
+  await expect(page.locator('script[data-scene360-legacy-pack]')).toHaveCount(0);
+  expect(await page.evaluate(function readPanoramaFallbackMaterial() {
+    var material = window.sphereMesh && window.sphereMesh.material;
+    return {
+      hasMap: Boolean(material && material.map),
+      color: material && material.color ? material.color.getHex() : null,
+      wireframe: Boolean(material && material.wireframe)
+    };
+  })).toEqual({ hasMap: false, color: 0x000000, wireframe: false });
+  expect(pageErrors).toEqual([]);
+});
+
+// После успешного превью загружает панораму без file и проверяет тот же чёрный фон без остатка прежней текстуры.
+test('Scene360 Editor показывает чёрный фон при отсутствии изображения', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const validCssPath = 'assets/360/valid-before-empty-360.css';
+  await openScene360Editor(page);
+  await page.route(`http://e2e.local/${validCssPath}`, async function serveValidCssPanorama(route) {
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: createScene360CssPackSource() });
+  });
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-with-image.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(validCssPath))
+  });
+  await expect(page.locator('#statusBox')).toContainText(`Панорама загружена: ${validCssPath}`);
+
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-without-image.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360StorySource(''))
+  });
+  await expect(page.locator('#statusBox')).toContainText('Панорама загружена без file/src/path');
+  expect(await page.evaluate(function readEmptyPanoramaMaterial() {
+    var material = window.sphereMesh && window.sphereMesh.material;
+    return {
+      hasMap: Boolean(material && material.map),
+      color: material && material.color ? material.color.getHex() : null
+    };
+  })).toEqual({ hasMap: false, color: 0x000000 });
   expect(pageErrors).toEqual([]);
 });
 

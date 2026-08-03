@@ -179,7 +179,7 @@ script or a separate `story360.js`.
 
 Browser-based authoring helpers in the repository include:
 
-- `tools/convert-360-img-to-js.html` for offline panorama packages;
+- `tools/convert-360-img-to-css.html` for offline CSS/JS panorama packages;
 - `tools/scene360-editor.html` for routes and navigation points;
 - `tools/media-focus-editor.html` for image and video focus points;
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
@@ -267,7 +267,7 @@ project/
 │
 ├── tools/
 │   ├── scene360-editor.html           360° route editor
-│   ├── convert-360-img-to-js.html     panorama converter
+│   ├── convert-360-img-to-css.html    panorama converter
 │   ├── panorama-cleaner.html          two-shot panorama cleanup
 │   ├── media-focus-editor.html        media focus editor
 │   └── game-tester.html               mini-game protocol tester
