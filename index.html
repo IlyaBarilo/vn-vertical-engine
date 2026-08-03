@@ -199,6 +199,7 @@
 
   </div>
 
+  <script src="engine/story-sandbox-loader.js"></script>
   <script>
     (function() {
       "use strict";
@@ -234,8 +235,8 @@
 
       var STORY_SCRIPT = "story.js";
       var STORY_EXAMPLE_SCRIPT = "story-example.js";
+      var STORY360_SCRIPT = "story360.js";
       var ENGINE_SCRIPTS = [
-        { src: "story360.js", optional: true },
         { src: "engine/expression.js" },
         { src: "engine/story-loader.js" },
         { src: "license-key.js", optional: true },
@@ -271,15 +272,60 @@
         });
       }
 
-      // Загружает пользовательский story.js, а пример подключает только если основного файла нет.
+      // Возвращает доверенный sandbox-загрузчик и останавливает запуск, если runtime-файл потерян.
+      function getStorySandboxLoader() {
+        var loader = window.VNStorySandboxLoader;
+        if (!loader || typeof loader.loadStoryText !== "function" || typeof loader.loadStory360 !== "function") {
+          throw new Error("Не удалось загрузить engine/story-sandbox-loader.js");
+        }
+        return loader;
+      }
+
+      // Превращает статус sandbox в понятную bootstrap-ошибку, не раскрывая содержимое сценария.
+      function createSandboxLoadError(result) {
+        var source = result && result.source ? result.source : "пользовательский файл";
+        var detail = result && result.message ? result.message : "Неизвестная ошибка sandbox-загрузчика.";
+        return new Error("Не удалось принять данные из " + source + ": " + detail);
+      }
+
+      // Принимает обязательный сценарий только как строку и запоминает фактический источник для диагностики парсера.
+      function applyStoryTextResult(result) {
+        if (!result || result.status !== "loaded") throw createSandboxLoadError(result);
+        window.STORY_TEXT = result.value;
+        window.STORY_SCRIPT_SOURCE = result.source;
+      }
+
+      // Загружает пользовательский story.js в sandbox, а пример подключает только при отсутствии основного файла.
       function loadStoryScript() {
-        return loadScript(STORY_SCRIPT).then(function(result) {
-          window.STORY_SCRIPT_SOURCE = result.src;
-        }).catch(function() {
+        var loader = getStorySandboxLoader();
+        return loader.loadStoryText(STORY_SCRIPT).then(function(result) {
+          if (result.status === "loaded") {
+            applyStoryTextResult(result);
+            return;
+          }
+          if (result.status !== "missing") throw createSandboxLoadError(result);
+
           console.warn("[Bootstrap] story.js не найден, используется story-example.js");
-          return loadScript(STORY_EXAMPLE_SCRIPT).then(function(result) {
-            window.STORY_SCRIPT_SOURCE = result.src;
+          return loader.loadStoryText(STORY_EXAMPLE_SCRIPT).then(function(exampleResult) {
+            applyStoryTextResult(exampleResult);
           });
+        });
+      }
+
+      // Загружает optional story360.js в отдельном sandbox; отсутствие карты не мешает обычным сценам.
+      function loadStory360Script() {
+        var loader = getStorySandboxLoader();
+        return loader.loadStory360(STORY360_SCRIPT).then(function(result) {
+          if (result.status === "missing") return;
+          if (result.status !== "loaded") {
+            console.warn("[Bootstrap] story360.js отключён:", createSandboxLoadError(result).message);
+            return;
+          }
+
+          window.STORY360 = result.value;
+          window.STORY360_SCRIPT_SOURCE = result.source;
+        }).catch(function(error) {
+          console.warn("[Bootstrap] story360.js отключён:", error && error.message ? error.message : error);
         });
       }
 
@@ -308,6 +354,9 @@
       }
 
       loadStoryScript()
+        .then(function() {
+          return loadStory360Script();
+        })
         .then(function() {
           return loadScriptsInOrder(ENGINE_SCRIPTS);
         })

@@ -38,12 +38,26 @@ function collectRequiredEngineScripts(indexSource) {
   return requiredScripts;
 }
 
+// Извлекает статические runtime-скрипты, которые index.html должен получить до запуска inline-bootstrap.
+function collectRequiredStaticScripts(indexSource) {
+  const requiredScripts = [];
+  const scriptPattern = /<script\s+[^>]*src="([^"]+)"[^>]*><\/script>/g;
+  let match;
+
+  while ((match = scriptPattern.exec(indexSource)) !== null) {
+    requiredScripts.push(match[1]);
+  }
+
+  return requiredScripts;
+}
+
 // Проверяет существование обязательных runtime-файлов без чтения story.js и каталогов с ассетами.
 test('обязательные runtime-файлы из index.html существуют', async function() {
   const indexSource = await readRepositoryFile('index.html');
   const requiredPaths = [
     'index.html',
     'engine/engine.css',
+    ...collectRequiredStaticScripts(indexSource),
     ...collectRequiredEngineScripts(indexSource)
   ];
 
@@ -61,6 +75,7 @@ test('релизная сборка включает обязательные ru
   const requiredPaths = [
     'index.html',
     'engine/engine.css',
+    ...collectRequiredStaticScripts(indexSource),
     ...collectRequiredEngineScripts(indexSource)
   ];
 
@@ -165,6 +180,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
   assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));
   assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
+  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt'));
+  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../../index.html', import.meta.url)));
 const fixtureRoot = path.dirname(fileURLToPath(new URL('./fixtures/story-fixture.js', import.meta.url)));
@@ -261,6 +261,16 @@ async function handleEngineRoute(route, routeOptions = {}) {
     pathname = pathname.slice(virtualBasePath.length) || '/';
   }
 
+  if (pathname === '/story360.js' && typeof routeOptions.story360Source === 'string') {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      headers: { 'Cache-Control': 'no-store' },
+      body: routeOptions.story360Source
+    });
+    return;
+  }
+
   if (blockedLocalRoutes.has(pathname)) {
     await route.fulfill({ status: 404, contentType: 'text/plain; charset=utf-8', body: 'Not Found' });
     return;
@@ -411,6 +421,118 @@ test('движок запускает историю в браузере без 
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
   expect(pageErrors).toEqual([]);
+});
+
+// Пользовательский story.js сохраняет прежний формат, но не получает DOM и localStorage основной страницы.
+test('story.js выполняется в sandbox и передаёт наружу только STORY_TEXT', async function({ page }) {
+  const maliciousSource = [
+    'try { window.parent.document.body.dataset.storySandboxEscaped = "1"; } catch (error) {}',
+    'try { window.parent.localStorage.setItem("story-sandbox-escaped", "1"); } catch (error) {}',
+    createAutosaveProjectStorySource('sandbox-story', 'sandbox')
+  ].join('\n');
+
+  await openStory(page, '/', {
+    storySource: maliciousSource,
+    expectedText: 'Начало sandbox'
+  });
+
+  const securityState = await page.evaluate(function readStorySandboxSecurityState() {
+    return {
+      escapedDataset: document.body.dataset.storySandboxEscaped || '',
+      escapedStorage: localStorage.getItem('story-sandbox-escaped'),
+      source: window.STORY_SCRIPT_SOURCE
+    };
+  });
+
+  expect(securityState).toEqual({
+    escapedDataset: '',
+    escapedStorage: null,
+    source: 'story.js'
+  });
+});
+
+// Существующий, но повреждённый story.js должен дать ошибку проекта вместо незаметного запуска демо.
+test('повреждённый story.js не подменяется story-example.js', async function({ page }) {
+  await installRepositoryRoutes(page, {
+    storySource: 'window.NOT_STORY_TEXT = "broken";'
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#textBox')).toHaveText(
+    'Не удалось запустить новеллу. Проверьте наличие story.js или story-example.js.'
+  );
+  expect(await page.evaluate(function readBrokenStorySource() {
+    return window.STORY_SCRIPT_SOURCE || '';
+  })).toBe('');
+});
+
+// Корневая карта 360 проходит отдельный sandbox и становится объектом без пользовательского прототипа.
+test('story360.js выполняется отдельно и передаёт проверенную карту пространств', async function({ page }) {
+  const story360Source = [
+    'try { window.parent.document.body.dataset.story360SandboxEscaped = "1"; } catch (error) {}',
+    'window.STORY360 = {',
+    '  version: 1,',
+    '  spaces: {',
+    '    sandboxSpace: {',
+    '      panoramas: { P1: { file: "assets/360/sandbox/P1-360.css", marks: [] } }',
+    '    }',
+    '  }',
+    '};'
+  ].join('\n');
+
+  await openStory(page, '/', { story360Source });
+
+  const securityState = await page.evaluate(function readStory360SandboxSecurityState() {
+    return {
+      escapedDataset: document.body.dataset.story360SandboxEscaped || '',
+      source: window.STORY360_SCRIPT_SOURCE,
+      hasPanorama: Boolean(
+        window.STORY360 &&
+        window.STORY360.spaces &&
+        window.STORY360.spaces.sandboxSpace &&
+        window.STORY360.spaces.sandboxSpace.panoramas.P1
+      ),
+      spacesHaveNullPrototype: Object.getPrototypeOf(window.STORY360.spaces) === null
+    };
+  });
+
+  expect(securityState).toEqual({
+    escapedDataset: '',
+    source: 'story360.js',
+    hasPanorama: true,
+    spacesHaveNullPrototype: true
+  });
+});
+
+// Опасный ключ в optional-карте отклоняется, но обычная история продолжает запускаться.
+test('небезопасный story360.js отключается без остановки обычных сцен', async function({ page }) {
+  const unsafeStory360Source = [
+    'window.STORY360 = JSON.parse(',
+    '  \'{"version":1,"spaces":{"__proto__":{"panoramas":{}}}}\'',
+    ');'
+  ].join('\n');
+
+  await openStory(page, '/', { story360Source: unsafeStory360Source });
+
+  expect(await page.evaluate(function readRejectedStory360State() {
+    return {
+      hasStory360: Boolean(window.STORY360),
+      source: window.STORY360_SCRIPT_SOURCE || ''
+    };
+  })).toEqual({ hasStory360: false, source: '' });
+});
+
+// Проверяет главный автономный контракт: без story.js и story360.js пример запускается напрямую через file://.
+test('sandbox-загрузчик сохраняет fallback на story-example.js через file://', async function({ page }) {
+  const indexUrl = pathToFileURL(path.join(repositoryRoot, 'index.html')).href;
+  await page.goto(indexUrl);
+
+  await expect.poll(function readLoadedStorySource() {
+    return page.evaluate(function readStorySourceInPage() {
+      return window.STORY_SCRIPT_SOURCE || '';
+    });
+  }).toBe('story-example.js');
+  await expect(page).toHaveTitle('Вуз: демо-новелла с выбором');
 });
 
 // Даже при сохранённом JS-пути выбирает mobile CSS первым и не позволяет стилям пакета воздействовать на страницу новеллы.

@@ -168,6 +168,13 @@ The format can be edited in any text editor and reviewed independently from
 the engine code. The complete command reference is currently maintained in
 Russian: [story specification](docs/specs/spec-story.md).
 
+Author-owned `story.js` and optional `story360.js` run in separate short-lived
+Web Workers. The main page receives only the story text and a validated
+JSON-like 360 map, so the file format and manual editing stay unchanged while
+their code no longer runs in the novel DOM. This is privilege reduction rather
+than a passive data format; legacy panorama image packages `*-360.js` remain a
+separate trusted fallback.
+
 ## 360° scenes and mini-games
 
 Panoramas can form connected spaces, with their routes stored in the main
@@ -261,6 +268,7 @@ project/
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── game-protocol.js               engine and mini-game messages
+│   ├── story-sandbox-loader.js         isolated author JS data loader
 │   └── story-loader.js                story loading and parsing
 │
 ├── assets/
