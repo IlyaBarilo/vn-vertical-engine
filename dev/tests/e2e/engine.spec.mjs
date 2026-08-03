@@ -94,6 +94,7 @@ function createScene360CrossSpaceStorySource() {
       A: {
         panoramas: {
           P1: {
+            comment: 'Главный вход',
             marks: [
               {
                 id: 'toB2',
@@ -109,7 +110,37 @@ function createScene360CrossSpaceStorySource() {
       },
       B: {
         panoramas: {
-          P2: { marks: [] }
+          P2: { comment: 'Второй этаж', marks: [] }
+        }
+      }
+    }
+  }, null, 2)};\n`;
+}
+
+// Создаёт цепочку из трёх панорам, чтобы проверять многошаговую историю возврата редактора.
+function createScene360HistoryStorySource() {
+  function panoramaWithTarget(targetPanorama) {
+    return {
+      marks: [
+        {
+          id: `to${targetPanorama}`,
+          x: 0.5,
+          y: 0.5,
+          type: 'walk',
+          text: '',
+          target: { type: '360', panorama: targetPanorama }
+        }
+      ]
+    };
+  }
+  return `window.STORY360 = ${JSON.stringify({
+    version: 1,
+    spaces: {
+      Route: {
+        panoramas: {
+          P1: panoramaWithTarget('P2'),
+          P2: panoramaWithTarget('P3'),
+          P3: { marks: [] }
         }
       }
     }
@@ -1140,6 +1171,210 @@ test('Scene360 Editor не выполняет пакет из импортиро
   expect(pageErrors).toEqual([]);
 });
 
+// Закрепляет упрощённые подписи, служебные секции и отсутствие неоднозначных глобальных действий.
+test('Scene360 Editor показывает упрощённый интерфейс редактирования', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+
+  await expect(page).toHaveTitle('Редактор сцен 360');
+  await expect(page.getByRole('heading', { name: 'Редактор сцен 360', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Проект 360', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Текущая панорама', exact: true })).toBeVisible();
+  await expect(page.locator('#testTargetBtn')).toHaveCount(0);
+  await expect(page.locator('#readFocusBtn')).toHaveCount(0);
+  await expect(page.locator('#savePanoramaBtn')).toHaveCount(0);
+  await expect(page.locator('#saveDefaultFocusBtn')).toHaveText('Сохранить текущий ракурс как стартовый');
+  await expect(page.locator('#saveStory360LocalBtn')).toHaveText('Сохранить версию в браузере');
+  await expect(page.locator('#downloadStory360JsBtn')).toHaveText('Скачать обновлённый story360.js');
+  await expect(page.locator('#panoramaAutosaveStatus')).toContainText('сразу применяются к открытой рабочей копии');
+  await expect(page.locator('#projectSaveStatus')).toContainText('Нет сохранённой версии в браузере');
+  await expect(page.locator('#recoveryOffer')).toBeHidden();
+  await expect(page.locator('.viewer-wrap > #backPanoramaBtn')).toBeVisible();
+  expect(await page.locator('#newPointTypeInput option').allTextContents()).toEqual([
+    'Переход',
+    'Текст',
+    'Направление обзора',
+    'Фотогалерея'
+  ]);
+  await expect(page.locator('#bgIdInput')).toHaveAttribute('readonly', '');
+  await expect(page.getByText('Автоматически', { exact: true })).toBeVisible();
+  await expect(page.locator('#exportBox')).toBeVisible();
+  await expect(page.locator('#statusBox')).toBeHidden();
+  await expect(page.locator('#assetStatusBox')).toContainText('CSS-пакет панорамы ещё не загружен');
+  expect(await page.evaluate(function checkAssetStatusOrder() {
+    var pathInput = document.getElementById('assetPathInput');
+    var status = document.getElementById('assetStatusBox');
+    var loadButton = document.getElementById('loadAssetPathBtn');
+    return Boolean(
+      pathInput && status && loadButton &&
+      (pathInput.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (status.compareDocumentPosition(loadButton) & Node.DOCUMENT_POSITION_FOLLOWING)
+    );
+  })).toBe(true);
+  expect(await page.evaluate(function checkBulkButtonOrder() {
+    var download = document.getElementById('downloadStory360JsBtn');
+    var bulk = document.getElementById('openBulkModalBtn');
+    return Boolean(download && bulk && (download.compareDocumentPosition(bulk) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
+  expect(await page.evaluate(function checkProjectAndPanoramaSectionOrder() {
+    var fileInput = document.getElementById('story360Input');
+    var projectSave = document.getElementById('saveStory360LocalBtn');
+    var panoramaHeading = document.querySelector('.panorama-section-heading');
+    var panoramaCreate = document.getElementById('newPanoramaBtn');
+    return Boolean(
+      fileInput && projectSave && panoramaHeading && panoramaCreate &&
+      (fileInput.compareDocumentPosition(projectSave) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (projectSave.compareDocumentPosition(panoramaHeading) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (panoramaHeading.compareDocumentPosition(panoramaCreate) & Node.DOCUMENT_POSITION_FOLLOWING)
+    );
+  })).toBe(true);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет сохранение авторской заметки панорамы и её отображение после ID в выпадающем списке.
+test('Scene360 Editor сохраняет и показывает комментарии панорам', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-comments.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360CrossSpaceStorySource())
+  });
+
+  await expect(page.locator('#panoramaCommentInput')).toHaveValue('Главный вход');
+  expect(await page.locator('#panoramaSelect option').allTextContents()).toEqual([
+    'A.P1 "Главный вход"',
+    'B.P2 "Второй этаж"'
+  ]);
+
+  await page.locator('#panoramaCommentInput').fill('Вход в учебный корпус');
+  await expect(page.locator('#panoramaSelect option:checked')).toHaveText('A.P1 "Вход в учебный корпус"');
+  expect(await page.evaluate(function readPanoramaComment() {
+    return window.story360Data.spaces.A.panoramas.P1.comment;
+  })).toBe('Вход в учебный корпус');
+
+  await page.locator('#panoramaSelect').selectOption('B.P2');
+  await expect(page.locator('#panoramaCommentInput')).toHaveValue('Второй этаж');
+  await page.locator('#panoramaSelect').selectOption('A.P1');
+  await expect(page.locator('#panoramaCommentInput')).toHaveValue('Вход в учебный корпус');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что ручная версия остаётся точкой возврата, а более свежая аварийная копия восстанавливается только по выбору пользователя.
+test('Scene360 Editor разделяет сохранённую версию и аварийное восстановление', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-checkpoint.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360CrossSpaceStorySource())
+  });
+
+  await expect(page.locator('#spaceIdInput')).toHaveValue('A');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P1');
+  await expect(page.locator('#projectSaveStatus')).toContainText('принят как сохранённая версия');
+
+  await page.locator('#panoramaIdInput').fill('P9');
+  await page.locator('#panoramaIdInput').press('Enter');
+  await expect(page.locator('#projectSaveStatus')).toContainText('Есть несохранённые изменения');
+  expect(await page.evaluate(function checkSeparateStorageCopies() {
+    return Boolean(
+      localStorage.getItem(window.getDraftStorageKey()) &&
+      localStorage.getItem(window.getRecoveryStorageKey())
+    );
+  })).toBe(true);
+
+  let firstDialogType = '';
+  page.once('dialog', async function acceptUnsavedReload(dialog) {
+    firstDialogType = dialog.type();
+    await dialog.accept();
+  });
+  await page.reload();
+  expect(firstDialogType).toBe('beforeunload');
+
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P1');
+  await expect(page.locator('#recoveryOffer')).toBeVisible();
+  await page.locator('#restoreRecoveryBtn').click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P9');
+  await expect(page.locator('#projectSaveStatus')).toContainText('Аварийная копия восстановлена');
+
+  await page.locator('#saveStory360LocalBtn').click();
+  await expect(page.locator('#projectSaveStatus')).toContainText('Версия сохранена в браузере');
+  await expect(page.locator('#recoveryOffer')).toBeHidden();
+  expect(await page.evaluate(function checkRecoveryWasCleared() {
+    return localStorage.getItem(window.getRecoveryStorageKey());
+  })).toBeNull();
+
+  await page.locator('#panoramaIdInput').fill('P8');
+  await page.locator('#panoramaIdInput').press('Enter');
+  let secondDialogType = '';
+  page.once('dialog', async function acceptSecondUnsavedReload(dialog) {
+    secondDialogType = dialog.type();
+    await dialog.accept();
+  });
+  await page.reload();
+  expect(secondDialogType).toBe('beforeunload');
+
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P9');
+  await expect(page.locator('#recoveryOffer')).toBeVisible();
+  await page.locator('#discardRecoveryBtn').click();
+  await expect(page.locator('#recoveryOffer')).toBeHidden();
+  await expect(page.locator('#projectSaveStatus')).toContainText('Аварийная копия удалена');
+  expect(await page.evaluate(function checkDiscardedRecoveryWasCleared() {
+    return localStorage.getItem(window.getRecoveryStorageKey());
+  })).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет, что создание пустой сцены больше не копирует текущие метки, а отдельное дублирование копирует их явно.
+test('Scene360 Editor разделяет пустую панораму и дублирование', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-copy-controls.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360CrossSpaceStorySource())
+  });
+
+  await expect(page.locator('.point-item')).toHaveCount(1);
+  await page.locator('#duplicatePanoramaBtn').click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('new');
+  await expect(page.locator('.point-item')).toHaveCount(1);
+
+  await page.locator('#newPanoramaBtn').click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('new2');
+  await expect(page.locator('#assetPathInput')).toHaveValue('');
+  await expect(page.locator('.point-item')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проходит цепочку P1→P2→P3 и возвращается по стеку дважды, включая динамическую подпись назначения.
+test('Scene360 Editor возвращается по многошаговой истории панорам', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openScene360Editor(page);
+  await page.locator('#story360Input').setInputFiles({
+    name: 'story360-history.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360HistoryStorySource())
+  });
+
+  await page.locator('.point-item').first().getByRole('button', { name: 'Перейти', exact: true }).click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P2');
+  await expect(page.locator('#backPanoramaBtn')).toHaveText('← Назад к Route.P1');
+
+  await page.locator('.point-item').first().getByRole('button', { name: 'Перейти', exact: true }).click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P3');
+  await expect(page.locator('#backPanoramaBtn')).toHaveText('← Назад к Route.P2');
+
+  await page.locator('#backPanoramaBtn').click();
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P2');
+  await expect(page.locator('#backPanoramaBtn')).toHaveText('← Назад к Route.P1');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P1');
+  await expect(page.locator('#backPanoramaBtn')).toBeDisabled();
+  expect(pageErrors).toEqual([]);
+});
+
 // Закрепляет отсутствие файлового поля и функции временного растрового превью в CSS-only редакторе.
 test('Scene360 Editor не предлагает прямую загрузку 360-изображения', async function({ page }) {
   const pageErrors = collectPageErrors(page);
@@ -1453,13 +1688,17 @@ test('Scene360 Editor поддерживает однозначный перех
   await expect(targetInput).toHaveValue('B.P2');
 
   await page.locator('#spaceIdInput').fill('A-Я_1');
-  await page.locator('#panoramaIdInput').fill('P-Я_1');
+  await page.locator('#panoramaIdInput').fill('P-Я_3');
+  await page.locator('#panoramaIdInput').press('Enter');
+  expect(await page.evaluate(function readAutomaticallyRenamedPanorama() {
+    return Boolean(window.story360Data.spaces.A1 && window.story360Data.spaces.A1.panoramas.P3);
+  })).toBe(true);
   await markIdInput.fill('to-Б_2');
   await markIdInput.blur();
   await targetInput.fill('B..P2');
 
   await expect(page.locator('#spaceIdInput')).toHaveValue('A1');
-  await expect(page.locator('#panoramaIdInput')).toHaveValue('P1');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P3');
   await expect(markIdInput).toHaveValue('to2');
   await expect(targetInput).toHaveValue('B.P2');
 
@@ -1467,8 +1706,15 @@ test('Scene360 Editor поддерживает однозначный перех
   await expect(page.locator('#spaceIdInput')).toHaveValue('B');
   await expect(page.locator('#panoramaIdInput')).toHaveValue('P2');
 
+  await page.locator('#spaceIdInput').fill('A1');
+  await page.locator('#panoramaIdInput').fill('P3');
+  await page.locator('#panoramaIdInput').press('Enter');
+  await expect(page.locator('#spaceIdInput')).toHaveValue('B');
+  await expect(page.locator('#panoramaIdInput')).toHaveValue('P2');
+  await expect(page.locator('#panoramaAutosaveStatus')).toContainText('уже существует');
+
   const exportedTarget = await page.evaluate(function readCrossSpaceTarget() {
-    return window.story360Data.spaces.A1.panoramas.P1.marks[0].target;
+    return window.story360Data.spaces.A1.panoramas.P3.marks[0].target;
   });
   expect(exportedTarget).toEqual({ type: '360', panorama: 'P2', space: 'B' });
   expect(pageErrors).toEqual([]);

@@ -186,12 +186,17 @@ Browser-based authoring helpers in the repository include:
 - `tools/game-tester.html` for testing mini-games before integration.
 
 `scene360-editor.html` imports `story360.js` as data and does not automatically
-execute JavaScript packages referenced by it. For a safe preview, select the
-required `*-360.js` in the dedicated file field: the editor extracts only the
-raster image and metadata without running JavaScript. Loading a package by path
-is available only through an explicit legacy mode for a trusted project and
-requires confirmation for every new path. External URLs, absolute paths, and
-`..` traversal are rejected.
+execute JavaScript packages referenced by it. The editor previews relative
+`*-360.css` packages in an isolated sandbox. Direct JPEG, PNG, and WebP input,
+as well as the legacy JS package controls, are currently hidden. An imported JS
+path is preserved as data but is not executed by the editor. External URLs,
+absolute paths, and `..` traversal are rejected.
+
+Each panorama may contain an optional author-only `comment`, shown after its ID
+in the panorama list. Editing happens in a working copy. “Save version in
+browser” creates an explicit reload checkpoint, while a newer emergency copy is
+kept separately and is restored only after user confirmation. Downloading
+`story360.js` does not overwrite that browser checkpoint.
 
 The game tester uses strict isolation and validates `gameId` and `sessionId` by
 default. Its explicit `Legacy` mode is intended only for a trusted older game and

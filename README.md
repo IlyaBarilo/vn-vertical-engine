@@ -299,7 +299,7 @@ legacy-пакетов `*-360.js` в редакторе отключены. Пу�
 </p>
 
 <p align="center">
-  <img src="docs/tools/converter-img360-to-js.webp" width="300" alt="Конвертер панорамного изображения в автономный JavaScript-пакет">
+  <img src="docs/tools/converter-img360-to-js.webp" width="300" alt="Конвертер панорамного изображения в автономный CSS/JS-пакет">
   <img src="docs/tools/game-tester-2.webp" width="560" alt="Проверка HTML-мини-игры и протокола обмена данными">
 </p>
 
