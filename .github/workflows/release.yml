@@ -119,6 +119,7 @@ jobs:
           [ -f docs/specs/spec-story.md ] && cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
           [ -f docs/specs/spec-game.md ] && cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
           [ -f docs/student-project-review.md ] && cp docs/student-project-review.md "build/$APP_NAME/docs/"
+          [ -f docs/360-first-steps.md ] && cp docs/360-first-steps.md "build/$APP_NAME/docs/"
           [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
           [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
           [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
@@ -207,6 +208,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/student-project-review.md" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/docs/360-first-steps.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
 
           # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
@@ -217,6 +219,7 @@ jobs:
           grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/tools/student-project-auditor.html" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/student-project-review.md" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/docs/360-first-steps.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
 
           # Developer-файлы не должны попадать ни в один пользовательский ZIP.

@@ -21,6 +21,11 @@ const requiredReviewDocuments = [
   'docs/student-project-review.md'
 ];
 
+// Перечисляет руководства из README, которые должны оставаться доступными внутри полного и update-архивов.
+const requiredReleaseGuides = [
+  'docs/360-first-steps.md'
+];
+
 // Читает отслеживаемый файл относительно корня репозитория для проверки состава runtime и релиза.
 function readRepositoryFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
@@ -117,6 +122,23 @@ test('релизная сборка включает документы пров
   });
 });
 
+// Проверяет, что ссылки README на подробные руководства не становятся битыми после распаковки релизного ZIP.
+test('релизная сборка включает руководства, на которые ссылается README', async function() {
+  const [releaseSource, readmeSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release.yml'),
+    readRepositoryFile('README.md')
+  ]);
+
+  for (const relativePath of requiredReleaseGuides) {
+    await access(path.join(repositoryRoot, relativePath));
+    assert.ok(readmeSource.includes('(' + relativePath + ')'), 'README.md не ссылается на ' + relativePath);
+    assert.ok(
+      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath + ' "build/$APP_NAME/docs/"'),
+      'В release.yml отсутствует копирование ' + relativePath
+    );
+  }
+});
+
 // Закрепляет единый helper, который сохраняет вложенные пути вместо плоского копирования файлов через shell.
 test('релизная сборка сохраняет структуру каталогов ассетов', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
@@ -210,6 +232,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/student-project-auditor.html'));
   assert.ok(releaseSource.includes('${APP_NAME}/docs/student-project-review.md'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/docs/student-project-review.md'));
+  assert.ok(releaseSource.includes('${APP_NAME}/docs/360-first-steps.md'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/docs/360-first-steps.md'));
   assert.ok(releaseSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
   assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
