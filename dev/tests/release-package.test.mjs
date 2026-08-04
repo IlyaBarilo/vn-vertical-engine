@@ -8,7 +8,7 @@ const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', im
 
 // Перечисляет пользовательские инструменты, которые должны быть доступны в полном и update-архивах.
 const requiredAuthoringTools = [
-  'tools/student-game-auditor.html',
+  'tools/student-project-auditor.html',
   'tools/game-tester.html',
   'tools/media-focus-editor.html',
   'tools/convert-360-img-to-css.html',
@@ -203,8 +203,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}/tools/student-game-auditor.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/student-game-auditor.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}/tools/student-project-auditor.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/student-project-auditor.html'));
   assert.ok(releaseSource.includes('${APP_NAME}/docs/student-project-review.md'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/docs/student-project-review.md'));
   assert.ok(releaseSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));

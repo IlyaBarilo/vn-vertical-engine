@@ -11439,10 +11439,16 @@ function getBg360PackCssUrl(sourceUrl, quality) {
   return cssUrl;
 }
 
-// Ограничения совпадают с редактором: большие панорамы разрешены, но CSS не может заставить runtime читать бесконечные данные.
+// Ограничения совпадают с редактором: они отсекают заведомо вредные пакеты, но сохраняют поддержку панорам будущих камер.
 var BG360_CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
-var BG360_CSS_PACK_MAX_CHUNKS = 8192;
+var BG360_CSS_PACK_MAX_DECODED_SIZE = 96 * 1024 * 1024;
+var BG360_CSS_PACK_MAX_CHUNKS = 4096;
+var BG360_CSS_PACK_MAX_CHUNK_LENGTH = 32 * 1024;
 var BG360_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
+var BG360_CSS_IMAGE_MAX_WIDTH = 20000;
+var BG360_CSS_IMAGE_MAX_HEIGHT = 15000;
+var BG360_CSS_IMAGE_MAX_PIXELS = 300000000;
+var BG360_CSS_IMAGE_HEADER_MAX_BYTES = 4 * 1024 * 1024;
 // CSS-Blob хранится только до завершения декодирования текущей текстуры; пройденные панорамы не накапливаются в памяти.
 var bg360CssPackState = Object.create(null);
 
@@ -11483,6 +11489,99 @@ function isBg360CssImageSignatureValid(mimeType, bytes) {
   return false;
 }
 
+// Возвращает нужное начало изображения без объединения всего сжатого файла во второй большой буфер.
+function collectBg360CssImageHeader(binaryParts, maxLength) {
+  var availableLength = 0;
+  for (var i = 0; i < binaryParts.length; i++) availableLength += binaryParts[i].length;
+  var headerLength = Math.min(availableLength, maxLength);
+  var header = new Uint8Array(headerLength);
+  var offset = 0;
+  for (var partIndex = 0; partIndex < binaryParts.length && offset < headerLength; partIndex++) {
+    var part = binaryParts[partIndex];
+    var copyLength = Math.min(part.length, headerLength - offset);
+    header.set(part.subarray(0, copyLength), offset);
+    offset += copyLength;
+  }
+  return header;
+}
+
+// Читает 32-битное целое с прямым порядком байтов без знакового преобразования JavaScript.
+function readBg360Uint32Be(bytes, offset) {
+  return bytes[offset] * 0x1000000 + bytes[offset + 1] * 0x10000 + bytes[offset + 2] * 0x100 + bytes[offset + 3];
+}
+
+// Находит фактические размеры JPEG по SOF-маркеру, не передавая потенциально огромный кадр браузерному декодеру.
+function readBg360JpegDimensions(header) {
+  var offset = 2;
+  while (offset + 1 < header.length) {
+    while (offset < header.length && header[offset] !== 0xff) offset++;
+    while (offset < header.length && header[offset] === 0xff) offset++;
+    if (offset >= header.length) break;
+    var marker = header[offset++];
+    if (marker === 0x00 || marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (marker === 0xd9 || marker === 0xda || offset + 1 >= header.length) break;
+    var segmentLength = header[offset] * 0x100 + header[offset + 1];
+    if (segmentLength < 2 || offset + segmentLength > header.length) break;
+    var isStartOfFrame = (marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf);
+    if (isStartOfFrame) {
+      if (segmentLength < 7) break;
+      return {
+        width: header[offset + 5] * 0x100 + header[offset + 6],
+        height: header[offset + 3] * 0x100 + header[offset + 4]
+      };
+    }
+    offset += segmentLength;
+  }
+  throw new Error("Не удалось определить размер JPEG до запуска декодера изображения.");
+}
+
+// Извлекает размеры из обязательного заголовка PNG, JPEG или WebP до создания Blob URL.
+function readBg360CssImageDimensions(mimeType, binaryParts) {
+  var header = collectBg360CssImageHeader(binaryParts, mimeType === "image/jpeg" ? BG360_CSS_IMAGE_HEADER_MAX_BYTES : 30);
+  if (mimeType === "image/png") {
+    if (header.length < 24 || header[12] !== 0x49 || header[13] !== 0x48 || header[14] !== 0x44 || header[15] !== 0x52) {
+      throw new Error("PNG в CSS-пакете не содержит корректный заголовок IHDR.");
+    }
+    return { width: readBg360Uint32Be(header, 16), height: readBg360Uint32Be(header, 20) };
+  }
+  if (mimeType === "image/jpeg") return readBg360JpegDimensions(header);
+  if (mimeType === "image/webp") {
+    if (header.length < 30) throw new Error("WebP в CSS-пакете содержит обрезанный заголовок.");
+    var chunkType = String.fromCharCode(header[12], header[13], header[14], header[15]);
+    if (chunkType === "VP8X") {
+      return {
+        width: 1 + header[24] + header[25] * 0x100 + header[26] * 0x10000,
+        height: 1 + header[27] + header[28] * 0x100 + header[29] * 0x10000
+      };
+    }
+    if (chunkType === "VP8L" && header[20] === 0x2f) {
+      return {
+        width: 1 + header[21] + (header[22] & 0x3f) * 0x100,
+        height: 1 + ((header[22] & 0xc0) >> 6) + header[23] * 4 + (header[24] & 0x0f) * 0x400
+      };
+    }
+    if (chunkType === "VP8 " && header[23] === 0x9d && header[24] === 0x01 && header[25] === 0x2a) {
+      return {
+        width: (header[26] + header[27] * 0x100) & 0x3fff,
+        height: (header[28] + header[29] * 0x100) & 0x3fff
+      };
+    }
+    throw new Error("WebP в CSS-пакете содержит неподдерживаемый заголовок изображения.");
+  }
+  throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
+}
+
+// Ограничивает стороны и площадь кадра единообразно для normal/mobile; это предохранитель от явно вредных размеров.
+function validateBg360CssImageDimensions(width, height) {
+  if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+    throw new Error("CSS-пакет не содержит корректный размер панорамы.");
+  }
+  if (width > BG360_CSS_IMAGE_MAX_WIDTH || height > BG360_CSS_IMAGE_MAX_HEIGHT || width * height > BG360_CSS_IMAGE_MAX_PIXELS) {
+    throw new Error("Размер CSS-панорамы " + width + "x" + height + " превышает предел 20000x15000 px или 300000000 пикселей.");
+  }
+}
+
 // Извлекает только известные свойства декларативного CSS-пакета и собирает Blob порциями без выполнения кода.
 function extractBg360CssPackBlob(computedStyle) {
   var schema = readBg360CssQuotedValue(computedStyle, "--vn360-schema");
@@ -11500,10 +11599,10 @@ function extractBg360CssPackBlob(computedStyle) {
   var declaredWidth = Number(readBg360CssQuotedValue(computedStyle, "--vn360-width"));
   var declaredHeight = Number(readBg360CssQuotedValue(computedStyle, "--vn360-height"));
   var declaredSize = Number(readBg360CssQuotedValue(computedStyle, "--vn360-size"));
-  if (!Number.isInteger(declaredWidth) || declaredWidth < 1 || !Number.isInteger(declaredHeight) || declaredHeight < 1) {
-    throw new Error("CSS-пакет не содержит корректный размер панорамы.");
+  validateBg360CssImageDimensions(declaredWidth, declaredHeight);
+  if (!Number.isInteger(declaredSize) || declaredSize < 1 || declaredSize > BG360_CSS_PACK_MAX_DECODED_SIZE) {
+    throw new Error("CSS-пакет содержит недопустимый размер изображения.");
   }
-  if (!Number.isInteger(declaredSize) || declaredSize < 1) throw new Error("CSS-пакет не содержит корректный размер изображения.");
   var maxTextureSize = Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
   if (maxTextureSize > 0 && (declaredWidth > maxTextureSize || declaredHeight > maxTextureSize)) {
     throw new Error("Размер CSS-панорамы " + declaredWidth + "x" + declaredHeight + " превышает лимит WebGL " + maxTextureSize + " px.");
@@ -11515,6 +11614,7 @@ function extractBg360CssPackBlob(computedStyle) {
   var encodedLength = 0;
   for (var index = 0; index < chunkCount; index++) {
     var cssChunk = readBg360CssQuotedValue(computedStyle, "--vn360-data-" + index);
+    if (cssChunk.length > BG360_CSS_PACK_MAX_CHUNK_LENGTH) throw new Error("Часть CSS-пакета превышает допустимый размер.");
     if (index === 0) {
       var prefixMatch = cssChunk.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/i);
       if (!prefixMatch) throw new Error("Первая часть CSS-пакета не содержит ожидаемый data:image base64.");
@@ -11538,8 +11638,16 @@ function extractBg360CssPackBlob(computedStyle) {
   appendBg360CssDecodedPart(pendingBase64, binaryParts, signatureBytes);
   if (!isBg360CssImageSignatureValid(mimeType, signatureBytes)) throw new Error("Сигнатура изображения в CSS-пакете не совпадает с MIME.");
 
+  var decodedSize = 0;
+  for (var partIndex = 0; partIndex < binaryParts.length; partIndex++) decodedSize += binaryParts[partIndex].length;
+  if (decodedSize !== declaredSize) throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
+  var actualDimensions = readBg360CssImageDimensions(mimeType, binaryParts);
+  validateBg360CssImageDimensions(actualDimensions.width, actualDimensions.height);
+  if (actualDimensions.width !== declaredWidth || actualDimensions.height !== declaredHeight) {
+    throw new Error("Размер изображения в заголовке " + actualDimensions.width + "x" + actualDimensions.height +
+      " не совпадает с метаданными CSS-пакета " + declaredWidth + "x" + declaredHeight + ".");
+  }
   var blob = new Blob(binaryParts, { type: mimeType });
-  if (blob.size !== declaredSize) throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
   return {
     blob: blob,
     meta: {

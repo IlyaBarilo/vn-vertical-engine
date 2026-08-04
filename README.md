@@ -437,7 +437,7 @@ project/
 | Создать первую 360-новеллу | `docs/360-first-steps.md` |
 | Изучить команды сценария | `docs/specs/spec-story.md` |
 | Подключить мини-игру | `docs/specs/spec-game.md` и `tools/game-tester.html` |
-| Проверить студенческий проект | `docs/student-project-review.md` и `tools/student-game-auditor.html` |
+| Проверить студенческий проект | `docs/student-project-review.md` и `tools/student-project-auditor.html` |
 | Собрать маршрут из панорам | `tools/scene360-editor.html` |
 | Удалить людей или объекты с панорамы | `tools/panorama-cleaner.html` |
 | Заменить материалы демонстрации | `assets/` |

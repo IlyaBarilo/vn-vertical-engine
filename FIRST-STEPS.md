@@ -20,7 +20,7 @@ ZIP-архив `-update`, когда копируете новую версию 
 Внутри update-архива текущий пример доступен как `docs/examples/story-example.js`.
 
 Для приёмки студенческой работы сначала скопируйте update-архив поверх проекта,
-а затем проверьте итоговый каталог через `tools/student-game-auditor.html`.
+а затем проверьте итоговый каталог через `tools/student-project-auditor.html`.
 Порядок проверки и готовый промпт для ИИ-чата описаны в
 `docs/student-project-review.md`.
 

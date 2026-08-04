@@ -145,7 +145,7 @@ parent.postMessage({
 
 Перед приёмкой преподаватель должен заменить системные файлы проекта актуальным
 update-архивом и проверить итоговый каталог через
-`tools/student-game-auditor.html`. Аудитор читает HTML-игры как текст и не
+`tools/student-project-auditor.html`. Аудитор читает HTML-игры как текст и не
 запускает их. Подробный порядок и готовый промпт находятся в
 `docs/student-project-review.md`.
 

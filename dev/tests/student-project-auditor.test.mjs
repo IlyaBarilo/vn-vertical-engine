@@ -6,18 +6,18 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
-const auditorPath = path.join(repositoryRoot, 'tools', 'student-game-auditor.html');
+const auditorPath = path.join(repositoryRoot, 'tools', 'student-project-auditor.html');
 
 // Загружает чистое ядро аудитора из single-file HTML без выполнения DOM-интерфейса.
 async function loadAuditorCore() {
   const html = await readFile(auditorPath, 'utf8');
-  const match = html.match(/\/\* STUDENT_GAME_AUDITOR_CORE_START \*\/([\s\S]*?)\/\* STUDENT_GAME_AUDITOR_CORE_END \*\//);
+  const match = html.match(/\/\* STUDENT_PROJECT_AUDITOR_CORE_START \*\/([\s\S]*?)\/\* STUDENT_PROJECT_AUDITOR_CORE_END \*\//);
   assert.ok(match, 'В HTML-аудиторе не найдены маркеры тестируемого ядра.');
 
   const context = vm.createContext({});
-  vm.runInContext(match[1], context, { filename: 'student-game-auditor-core.js' });
-  assert.ok(context.VNStudentGameAuditorCore, 'Ядро аудитора не экспортировано в globalThis.');
-  return { core: context.VNStudentGameAuditorCore, html };
+  vm.runInContext(match[1], context, { filename: 'student-project-auditor-core.js' });
+  assert.ok(context.VNStudentProjectAuditorCore, 'Ядро аудитора не экспортировано в globalThis.');
+  return { core: context.VNStudentProjectAuditorCore, html };
 }
 
 // Читает файл репозитория в UTF-8 для проверки реального демонстрационного комплекта.
@@ -131,13 +131,14 @@ test('аудитор обнаруживает опасные файлы в по�
     'docs/examples/story-example.js',
     'tools/convert-360-img-to-css.html',
     'tools/convert-360-img-to-js.html',
+    'assets/360/oversized-360.css',
     'assets/games/registered.html',
     'assets/games/hidden.html',
     'assets/360/hall-360-mobile.js',
     'assets/scripts/custom.js'
   ];
   const records = requiredPaths.map(function(filePath) {
-    return { path: filePath, size: 1 };
+    return { path: filePath, size: filePath === 'assets/360/oversized-360.css' ? 131 * 1024 * 1024 : 1 };
   });
   const issues = Array.from(core.inspectInventory(records, ['assets/games/registered.html']));
   const issueCodes = issues.map(function(issue) {
@@ -147,6 +148,7 @@ test('аудитор обнаруживает опасные файлы в по�
   assert.ok(issueCodes.includes('PANORAMA_JS_FILE'));
   assert.ok(issueCodes.includes('UNEXPECTED_JAVASCRIPT'));
   assert.ok(issueCodes.includes('UNREGISTERED_HTML'));
+  assert.ok(issueCodes.includes('PANORAMA_CSS_TOO_LARGE'));
   assert.equal(issueCodes.includes('RUNTIME_MISSING'), false);
   assert.equal(issues.some(function(issue) {
     return issue.path === 'docs/examples/story-example.js' && issue.code === 'UNEXPECTED_JAVASCRIPT';

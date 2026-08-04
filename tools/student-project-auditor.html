@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Аудитор студенческой игры</title>
+  <title>Аудитор студенческой новеллы и мини-игр</title>
   <style>
     :root {
       color-scheme: dark;
@@ -196,7 +196,7 @@
 </head>
 <body>
   <main>
-    <h1>Аудитор студенческой игры</h1>
+    <h1>Аудитор студенческой новеллы и мини-игр</h1>
     <p class="lead">Локально проверяет состав проекта, читает только сценарии и HTML-мини-игры и формирует компактный пакет для проверки в ИИ-чате. Изображения, аудио, видео и содержимое панорамных CSS-пакетов в отчёт не включаются.</p>
 
     <div class="notice"><strong>Перед началом:</strong> скопируйте содержимое актуального update-архива поверх студенческого проекта с заменой файлов. Не запускайте недоверенный проект до первичной проверки.</div>
@@ -248,12 +248,13 @@
   <script>
     'use strict';
 
-    /* STUDENT_GAME_AUDITOR_CORE_START */
+    /* STUDENT_PROJECT_AUDITOR_CORE_START */
 
     const AUDITOR_VERSION = '1.0';
     const MAX_FILE_COUNT = 10000;
     const MAX_REVIEW_FILE_BYTES = 2 * 1024 * 1024;
     const MAX_REVIEW_TOTAL_BYTES = 8 * 1024 * 1024;
+    const MAX_PANORAMA_CSS_FILE_BYTES = 130 * 1024 * 1024;
 
     const TRUSTED_JAVASCRIPT_PATHS = new Set([
       'story.js',
@@ -285,7 +286,7 @@
 
     const TRUSTED_HTML_PATHS = new Set([
       'index.html',
-      'tools/student-game-auditor.html',
+      'tools/student-project-auditor.html',
       'tools/game-tester.html',
       'tools/media-focus-editor.html',
       'tools/convert-360-img-to-css.html',
@@ -632,6 +633,9 @@
         if (extension === '.css' && lowerPath !== 'engine/engine.css' && !/-360(?:-[a-z0-9_-]+)?\.css$/i.test(record.path)) {
           issues.push(createIssue('error', 'UNEXPECTED_CSS', 'Дополнительный CSS запрещён; стили мини-игры должны быть встроены в её HTML.', record.path));
         }
+        if (/-360(?:-[a-z0-9_-]+)?\.css$/i.test(record.path) && record.size > MAX_PANORAMA_CSS_FILE_BYTES) {
+          issues.push(createIssue('error', 'PANORAMA_CSS_TOO_LARGE', 'CSS-пакет панорамы превышает предельный размер 130 МиБ.', record.path));
+        }
         if (extension === '.html' && !TRUSTED_HTML_PATHS.has(lowerPath) && !registered.has(lowerPath)) {
           issues.push(createIssue('error', 'UNREGISTERED_HTML', 'Пользовательский HTML не зарегистрирован в секции [game].', record.path));
         }
@@ -648,7 +652,7 @@
       return issues;
     }
 
-    globalThis.VNStudentGameAuditorCore = Object.freeze({
+    globalThis.VNStudentProjectAuditorCore = Object.freeze({
       normalizePath: normalizePath,
       getExtension: getExtension,
       isPanoramaJavaScript: isPanoramaJavaScript,
@@ -660,7 +664,7 @@
       inspectInventory: inspectInventory
     });
 
-    /* STUDENT_GAME_AUDITOR_CORE_END */
+    /* STUDENT_PROJECT_AUDITOR_CORE_END */
 
     const dropZone = document.getElementById('dropZone');
     const chooseButton = document.getElementById('chooseButton');

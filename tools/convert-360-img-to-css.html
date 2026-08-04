@@ -542,6 +542,14 @@
     var batchPreviewGridEl = document.getElementById("batchPreviewGrid");
     var batchLogEl = document.getElementById("batchLog");
     var syncingExportSettings = false;
+    /** Единые пределы формата совпадают с движком и редактором; normal/mobile различаются сжатием, а не безопасностью размеров. */
+    var PANORAMA_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
+    var PANORAMA_PACK_MAX_IMAGE_BYTES = 96 * 1024 * 1024;
+    var PANORAMA_PACK_MAX_CHUNKS = 4096;
+    var PANORAMA_PACK_CHUNK_LENGTH = 32 * 1024;
+    var PANORAMA_PACK_MAX_WIDTH = 20000;
+    var PANORAMA_PACK_MAX_HEIGHT = 15000;
+    var PANORAMA_PACK_MAX_PIXELS = 300000000;
 
     var generatedPacks = { normal: null, mobile: null };
     var suggestedFileNames = { normal: "asset-360.css", mobile: "asset-360-mobile.css" };
@@ -963,6 +971,16 @@
       };
     }
 
+    // Проверяет размер экспортируемого кадра до выделения canvas; правило одинаково для normal и mobile.
+    function validatePanoramaPackDimensions(width, height) {
+      if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+        throw new Error("Не удалось определить корректный размер панорамы.");
+      }
+      if (width > PANORAMA_PACK_MAX_WIDTH || height > PANORAMA_PACK_MAX_HEIGHT || width * height > PANORAMA_PACK_MAX_PIXELS) {
+        throw new Error("Размер панорамы " + width + "x" + height + " превышает предел 20000x15000 px или 300000000 пикселей.");
+      }
+    }
+
     // Создает вариант пакета из переданного источника: пакетная очередь не меняет состояние одиночного предпросмотра.
     function buildImageVariantFromSource(mode, title, settings, sourceImage, sourceMeta) {
       if (!sourceImage || !sourceMeta) throw new Error("Изображение еще не загружено.");
@@ -973,6 +991,7 @@
       var requestedHeight = useSourceSize ? sourceHeight : Math.max(1, Number(settings.targetHeight) || sourceHeight);
       var targetHeight = Math.min(requestedHeight, sourceHeight);
       var targetWidth = Math.max(1, Math.round(sourceWidth * targetHeight / sourceHeight));
+      validatePanoramaPackDimensions(targetWidth, targetHeight);
       var canvas = document.createElement("canvas");
       canvas.width = targetWidth;
       canvas.height = targetHeight;
@@ -1155,7 +1174,13 @@
     // Формирует декларативный *-360.css: изображение разбито на короткие custom properties,
     // чтобы редактор и движок могли извлечь только проверенные данные без выполнения пользовательского JavaScript.
     function buildPackCss(variant) {
-      var chunks = chunkString(variant.dataUrl, 32768);
+      validatePanoramaPackDimensions(Number(variant.width), Number(variant.height));
+      var encodedPayload = String(variant.dataUrl || "").replace(/^data:image\/(?:jpeg|png|webp);base64,/i, "");
+      if (encodedPayload.length > PANORAMA_PACK_MAX_ENCODED_LENGTH || Number(variant.imageBytes) > PANORAMA_PACK_MAX_IMAGE_BYTES) {
+        throw new Error("Сжатое изображение превышает предел CSS-пакета: 128 МиБ Base64 или 96 МиБ бинарных данных.");
+      }
+      var chunks = chunkString(variant.dataUrl, PANORAMA_PACK_CHUNK_LENGTH);
+      if (chunks.length > PANORAMA_PACK_MAX_CHUNKS) throw new Error("CSS-пакет содержит слишком много частей.");
       var meta = buildPackMeta(variant);
       var lines = [
         "/* VN360 CSS pack v1: подключать только через изолированный загрузчик панорам. */",
