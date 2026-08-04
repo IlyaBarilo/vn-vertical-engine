@@ -32,7 +32,7 @@ test('парсер сохраняет значения meta по умолчан�
   assert.equal(result.story.meta.bg360Quality, 'normal');
   assert.equal(result.story.meta.engine.loadsafe, true);
   assert.equal(result.story.meta.engine.optimized, 'false');
-  assert.equal(result.story.meta.engine.gameSandbox, 'legacy');
+  assert.equal(result.story.meta.engine.gameSandbox, 'strict');
   assert.equal(result.story.vars.mode, 'debug');
 });
 
@@ -146,8 +146,8 @@ test('парсер отклоняет недопустимые режимы meta
     },
     {
       name: 'sandbox мини-игр',
-      line: 'engine.gameSandbox = sometimes',
-      message: 'The "engine.gameSandbox" value must be strict or legacy.'
+      line: 'engine.gameSandbox = legacy',
+      message: 'The "engine.gameSandbox" value must be strict. Legacy game mode is no longer supported.'
     }
   ];
 

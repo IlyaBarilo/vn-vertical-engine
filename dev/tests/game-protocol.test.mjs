@@ -112,7 +112,6 @@ test('активная сессия принимает корректный game
     gameId: 'puzzle',
     sessionId: 'session-123',
     expectedSource: gameWindow,
-    allowLegacyResult: false,
     resultAccepted: false
   };
   const event = {
@@ -128,8 +127,8 @@ test('активная сессия принимает корректный game
   assert.equal(protocol.isGameResultEventAllowed(event, session), true);
 });
 
-// Явно сохраняет поддержку старых мини-игр, которые возвращают только type и result.
-test('активная сессия принимает legacy-gameResult из своего iframe', function() {
+// Старый флаг совместимости больше не разрешает принять результат без идентификаторов протокола v2.
+test('активная сессия отклоняет legacy-gameResult даже со старым флагом', function() {
   const gameWindow = {};
   const session = {
     gameId: 'legacyGame',
@@ -142,17 +141,16 @@ test('активная сессия принимает legacy-gameResult из с
   assert.equal(protocol.isGameResultEventAllowed({
     source: gameWindow,
     data: { type: 'gameResult', result: 5 }
-  }, session), true);
+  }, session), false);
 });
 
-// Требует оба служебных идентификатора, когда игра запущена в строгом sandbox-режиме.
-test('strict-сессия отклоняет legacy-gameResult без id', function() {
+// Требует оба служебных идентификатора во всех активных сессиях.
+test('активная сессия отклоняет gameResult без id', function() {
   const gameWindow = {};
   const session = {
     gameId: 'strictGame',
     sessionId: 'session-strict',
     expectedSource: gameWindow,
-    allowLegacyResult: false,
     resultAccepted: false
   };
 

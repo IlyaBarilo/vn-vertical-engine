@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -41,7 +42,7 @@ function createAutosaveProjectStorySource(projectId, label) {
   return lines.join('\n');
 }
 
-// Создаёт минимальную историю с 360-фоном, чтобы проверять порядок CSS → JS в настоящем runtime движка.
+// Создаёт минимальную историю с 360-фоном, чтобы проверять CSS-only загрузку в настоящем runtime движка.
 function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   return [
     'window.STORY_TEXT = `',
@@ -64,6 +65,32 @@ function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
     'scene intro',
     'bg runtimePano scroll',
     '"Панорама CSS E2E"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
+// Создаёт историю с HTML-подобными подписями, которые не должны стать активным DOM при построении графа.
+function createGraphSecurityStorySource() {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = "Граф <img src=x onerror=\'document.body.dataset.graphTitleXss=1\'>"',
+    'lang = ru',
+    'startScene = intro',
+    'mode = debug',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'engine.gameSandbox = strict',
+    '',
+    '[game]',
+    'unsafeCard file=/__e2e__/game.html title="<img src=x onerror=\'document.body.dataset.graphCardXss=1\'>" description="<svg onload=\'document.body.dataset.graphDescriptionXss=1\'>"',
+    '',
+    '[scene]',
+    'scene intro',
+    '"Граф безопасности"',
     '`;',
     ''
   ].join('\n');
@@ -389,11 +416,10 @@ async function chooseRoute(page, routeLabel) {
   await choices.getByRole('button', { name: routeLabel }).click();
 }
 
-// Открывает настоящий тестер и загружает в него синтетическую игру через выбранный режим изоляции.
-async function openGameTester(page, gamePath, sandboxMode = 'strict') {
+// Открывает настоящий тестер и загружает в него синтетическую игру в обязательном строгом sandbox.
+async function openGameTester(page, gamePath) {
   await installRepositoryRoutes(page);
   await page.goto('/tools/game-tester.html');
-  await page.locator('#sandboxMode').selectOption(sandboxMode);
   await page.locator('#gameUrl').fill(gamePath);
   await page.locator('#gameId').fill('testGame');
   await page.locator('#workspaceTabInput').click();
@@ -524,6 +550,8 @@ test('небезопасный story360.js отключается без ост�
 
 // Проверяет главный автономный контракт: без story.js и story360.js пример запускается напрямую через file://.
 test('sandbox-загрузчик сохраняет fallback на story-example.js через file://', async function({ page }) {
+  // Рабочий авторский story.js является допустимым локальным файлом и делает сценарий «файл отсутствует» невоспроизводимым.
+  test.skip(existsSync(path.join(repositoryRoot, 'story.js')), 'В рабочей копии присутствует пользовательский story.js.');
   const indexUrl = pathToFileURL(path.join(repositoryRoot, 'index.html')).href;
   await page.goto(indexUrl);
 
@@ -535,10 +563,45 @@ test('sandbox-загрузчик сохраняет fallback на story-example.
   await expect(page).toHaveTitle('Вуз: демо-новелла с выбором');
 });
 
-// Даже при сохранённом JS-пути выбирает mobile CSS первым и не позволяет стилям пакета воздействовать на страницу новеллы.
-test('движок загружает mobile CSS-пакет 360 раньше JS', async function({ page }) {
+// HTML-подобные данные истории остаются текстом, а очищенный SVG не содержит активных узлов, событий и внешних URL.
+test('Mermaid-граф очищает пользовательский HTML перед вставкой в DOM', async function({ page }) {
   const pageErrors = collectPageErrors(page);
-  const sourcePath = 'assets/360/runtime-priority-360.js';
+  await openStory(page, '/', {
+    storySource: createGraphSecurityStorySource(),
+    expectedText: 'Граф безопасности'
+  });
+
+  await page.locator('#btnStats').click();
+  await page.locator('#btnShowFullGraph').click();
+  await expect(page.locator('#mermaidGraph svg')).toBeVisible();
+
+  const securityState = await page.evaluate(function inspectSanitizedMermaidGraph() {
+    var host = document.getElementById('mermaidGraph');
+    return {
+      titleXss: document.body.dataset.graphTitleXss || '',
+      cardXss: document.body.dataset.graphCardXss || '',
+      descriptionXss: document.body.dataset.graphDescriptionXss || '',
+      activeGraphNodes: host.querySelectorAll('script,iframe,object,embed,a,[onload],[onerror],[srcdoc]').length,
+      externalGraphUrls: Array.from(host.querySelectorAll('[href],[src],[srcset]')).filter(function(element) {
+        return /^(?:javascript:|https?:)/i.test(element.getAttribute('href') || element.getAttribute('src') || element.getAttribute('srcset') || '');
+      }).length
+    };
+  });
+
+  expect(securityState).toEqual({
+    titleXss: '',
+    cardXss: '',
+    descriptionXss: '',
+    activeGraphNodes: 0,
+    externalGraphUrls: 0
+  });
+  expect(pageErrors).toEqual([]);
+});
+
+// Выбирает mobile CSS-вариант и никогда не запрашивает одноимённый исполняемый JS.
+test('движок загружает только mobile CSS-пакет 360', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const sourcePath = 'assets/360/runtime-priority-360.css';
   const cssPath = 'assets/360/runtime-priority-360-mobile.css';
   const jsPath = 'assets/360/runtime-priority-360-mobile.js';
   let cssRequestCount = 0;
@@ -574,8 +637,8 @@ test('движок загружает mobile CSS-пакет 360 раньше JS'
   expect(pageErrors).toEqual([]);
 });
 
-// Пакет с @import должен быть отклонён целиком без запроса импорта, после чего движок безопасно использует JS-фолбэк.
-test('движок блокирует CSS @import панорамы и использует JS-пакет', async function({ page }) {
+// Пакет с @import отклоняется без запроса импорта и без попытки исполнить одноимённый JS.
+test('движок блокирует CSS @import панорамы без JS-фолбэка', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   const sourcePath = 'assets/360/runtime-import-360.css';
   const cssPath = 'assets/360/runtime-import-360.css';
@@ -609,16 +672,17 @@ test('движок блокирует CSS @import панорамы и испол
   });
   await page.goto('/');
 
-  await expect(page.locator('body')).toHaveAttribute('data-runtime-import-fallback-executed', '1');
-  await expect(page.locator('#bg360Layer')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toHaveText('Панорама CSS E2E');
+  await expect(page.locator('#bg360Layer')).toHaveClass(/hidden/);
+  await expect(page.locator('body')).not.toHaveAttribute('data-runtime-import-fallback-executed', '1');
   expect(cssRequestCount).toBeGreaterThanOrEqual(1);
-  expect(jsRequestCount).toBeGreaterThanOrEqual(1);
+  expect(jsRequestCount).toBe(0);
   expect(importRequestCount).toBe(0);
   expect(pageErrors).toEqual([]);
 });
 
-// Имитирует отсутствие CSS и подтверждает последовательный переход к прежнему исполняемому JS-пакету.
-test('движок использует JS-пакет 360 после ошибки CSS', async function({ page }) {
+// Отсутствующий CSS не запускает одноимённый JS и оставляет 360-слой выключенным.
+test('движок не использует JS-пакет 360 после ошибки CSS', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   const sourcePath = 'assets/360/runtime-fallback-360.css';
   const cssPath = 'assets/360/runtime-fallback-360.css';
@@ -643,10 +707,10 @@ test('движок использует JS-пакет 360 после ошибк�
   await page.goto('/');
 
   await expect(page.locator('#textBox')).toHaveText('Панорама CSS E2E');
-  await expect(page.locator('body')).toHaveAttribute('data-runtime-legacy-fallback-executed', '1');
-  await expect(page.locator('#bg360Layer')).not.toHaveClass(/hidden/);
+  await expect(page.locator('body')).not.toHaveAttribute('data-runtime-legacy-fallback-executed', '1');
+  await expect(page.locator('#bg360Layer')).toHaveClass(/hidden/);
   expect(cssRequestCount).toBeGreaterThanOrEqual(1);
-  expect(jsRequestCount).toBeGreaterThanOrEqual(1);
+  expect(jsRequestCount).toBe(0);
   expect(pageErrors).toEqual([]);
 });
 
@@ -983,6 +1047,8 @@ test('projectId сохраняет повреждённый legacy-слот бе
   const pageErrors = collectPageErrors(page);
   const storySource = createAutosaveProjectStorySource('corrupt-check', 'проверки повреждения');
   await page.addInitScript(function seedCorruptLegacyAutosave() {
+    // Инициализация хранилища нужна только верхней странице: строгие игровые iframe намеренно не имеют localStorage.
+    if (window.parent !== window) return;
     window.localStorage.setItem('vn_engine_autosave_v1', '{broken-json');
   });
 
@@ -1075,50 +1141,30 @@ test('Debug=all не выводит чувствительные данные н
   expect(pageErrors).toEqual([]);
 });
 
-// Подтверждает, что старая мини-игра без gameId и sessionId продолжает работать после замены файлов движка.
-test('legacy-мини-игра возвращает результат в старом формате', async function({ page }) {
+// Даже подменённый старый AST не может снять sandbox или вернуть результат без идентификаторов протокола v2.
+test('legacy-настройки старого AST не ослабляют мини-игру', async function({ page }) {
   const pageErrors = collectPageErrors(page);
 
   await openStory(page);
-  await chooseRoute(page, 'Старая мини-игра');
-  await expect(page.locator('#textBox')).toHaveText('Выбрана legacy-ветка');
-  await advanceDialog(page);
-
-  await expect(page.locator('#gameModal')).toBeVisible();
-  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
-  expect(await page.locator('#gameFrame').getAttribute('referrerpolicy')).toBeNull();
-  const game = page.frameLocator('#gameFrame');
-  await expect(game.locator('#status')).toHaveText('gameInit получен');
-  await game.getByRole('button', { name: 'Завершить старую игру' }).click();
-
-  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
-  await expect(page.locator('#textBox')).toHaveText('Legacy-игра завершена: 5');
-  await advanceDialog(page);
-  await expect(page.locator('#textBox')).toHaveText('Финал: legacy, результат: 5');
-  expect(pageErrors).toEqual([]);
-});
-
-// Имитирует AST старой новеллы без новой meta-настройки и проверяет прежние права и формат результата.
-test('новелла без gameSandbox сохраняет legacy-поведение', async function({ page }) {
-  const pageErrors = collectPageErrors(page);
-
-  await openStory(page);
-  await page.evaluate(function useLegacyDefaultFromOldStory() {
+  await page.evaluate(function injectLegacySettingsIntoAst() {
     window.STORY.meta.engine.gameSandbox = 'legacy';
-    delete window.STORY.assets.games.legacyGame.sandbox;
+    window.STORY.assets.games.testGame.sandbox = 'legacy';
   });
-  await chooseRoute(page, 'Старая мини-игра');
-  await expect(page.locator('#textBox')).toHaveText('Выбрана legacy-ветка');
+  await chooseRoute(page, 'Левая ветка');
+  await expect(page.locator('#textBox')).toHaveText('Выбрана левая ветка');
   await advanceDialog(page);
 
   await expect(page.locator('#gameModal')).toBeVisible();
-  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
   const game = page.frameLocator('#gameFrame');
   await expect(game.locator('#status')).toHaveText('gameInit получен');
-  await game.getByRole('button', { name: 'Завершить старую игру' }).click();
+  await game.getByRole('button', { name: 'Отправить результат без сессии' }).click();
+  await expect(page.locator('#gameModal')).toBeVisible();
+  await game.getByRole('button', { name: 'Завершить игру' }).click();
 
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
-  await expect(page.locator('#textBox')).toHaveText('Legacy-игра завершена: 5');
+  await expect(page.locator('#textBox')).toHaveText('Игра завершена: 7');
   expect(pageErrors).toEqual([]);
 });
 
@@ -1176,7 +1222,7 @@ test('тестер мини-игр безопасно проверяет strict-
   const pageErrors = collectPageErrors(page);
   const game = await openGameTester(page, '/__e2e__/game.html');
 
-  await expect(page.locator('#sandboxMode')).toHaveValue('strict');
+  await expect(page.locator('#sandboxMode')).toHaveCount(0);
   await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
   await expect(game.locator('#gameId')).toHaveText('testGame');
@@ -1191,7 +1237,7 @@ test('тестер мини-игр безопасно проверяет strict-
   await expect(page.locator('body')).not.toHaveAttribute('data-xss', '1');
 
   await game.getByRole('button', { name: 'Отправить результат без сессии' }).click();
-  await expect(page.locator('#status')).toContainText('strict-режим требует gameId и sessionId');
+  await expect(page.locator('#status')).toContainText('протокол v2 требует gameId и sessionId');
   await game.getByRole('button', { name: 'Отправить неверную сессию' }).click();
   await expect(page.locator('#status')).toContainText('sessionId не совпадает');
 
@@ -1231,8 +1277,8 @@ test('тестер сохраняет диагностику локальног�
   expect(pageErrors).toEqual([]);
 });
 
-// Сохраняет прежние настройки v4, но безопасно выбирает strict при отсутствии нового поля режима.
-test('старые настройки тестера получают strict-режим по умолчанию', async function({ page }) {
+// Игнорирует сохранённый legacy-режим из старых настроек и не возвращает небезопасный переключатель.
+test('старые настройки тестера не возвращают legacy-режим', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await installRepositoryRoutes(page);
   await page.goto('/tools/game-tester.html');
@@ -1240,34 +1286,28 @@ test('старые настройки тестера получают strict-р�
     localStorage.setItem('vn-game-tester-settings-v4', JSON.stringify({
       gameUrl: '/__e2e__/legacy-game.html',
       gameId: 'oldGame',
-      difficulty: '2'
+      difficulty: '2',
+      sandboxMode: 'legacy'
     }));
   });
   await page.reload();
 
-  await expect(page.locator('#sandboxMode')).toHaveValue('strict');
+  await expect(page.locator('#sandboxMode')).toHaveCount(0);
   await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
-  await expect(page.locator('#legacyModeHelp')).toBeHidden();
   expect(pageErrors).toEqual([]);
 });
 
-// Подтверждает явный legacy-режим, предупреждение о доверии и приём результата старой игры.
-test('тестер сохраняет явную поддержку доверенных legacy-игр', async function({ page }) {
+// Старая игра может загрузиться для диагностики, но её result без идентификаторов больше не принимается.
+test('тестер отклоняет результат legacy-игры', async function({ page }) {
   const pageErrors = collectPageErrors(page);
-  const game = await openGameTester(page, '/__e2e__/legacy-game.html', 'legacy');
+  const game = await openGameTester(page, '/__e2e__/legacy-game.html');
 
-  expect(await page.locator('#gameFrame').getAttribute('sandbox')).toBeNull();
-  expect(await page.locator('#gameFrame').getAttribute('referrerpolicy')).toBeNull();
-  await page.locator('#workspaceTabSetup').click();
-  await expect(page.locator('#legacyModeHelp')).toBeVisible();
-  await expect(page.locator('#legacyModeHelp')).toContainText('нейросети');
-  await expect(page.locator('#legacyModeHelp')).toContainText('gameId');
-  await expect(page.locator('#legacyModeHelp')).toContainText('sessionId');
-  await expect(page.locator('#legacyModeHelp a')).toHaveAttribute('href', '../docs/specs/spec-game.md');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
 
   await game.getByRole('button', { name: 'Завершить старую игру' }).click();
-  await expect(page.locator('#status')).toHaveText('Получен gameResult: 5');
-  await expect(page.locator('#messageLog')).toContainText('[принят]');
+  await expect(page.locator('#status')).toContainText('протокол v2 требует gameId и sessionId');
+  await expect(page.locator('#messageLog')).toContainText('[отклонено');
   expect(pageErrors).toEqual([]);
 });
 
@@ -1549,7 +1589,7 @@ test('Конвертер создаёт совместимый CSS-пакет 36
     mimeType: 'image/png',
     buffer: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
   });
-  await expect(page.locator('#status')).toContainText('Можно генерировать JS и CSS');
+  await expect(page.locator('#status')).toContainText('Можно генерировать CSS');
   await page.locator('#btnGenerate').click();
   await expect(page.locator('#status')).toContainText('для сохранения выбран CSS');
   await expect(page.locator('#btnDownload')).toBeEnabled();
@@ -1577,8 +1617,8 @@ test('Конвертер создаёт совместимый CSS-пакет 36
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет общий список разрешений и единый выбор CSS/JS, чтобы одиночный и пакетный экспорт не расходились.
-test('Конвертер сохраняет только выбранный формат пакета', async function({ page }) {
+// Проверяет, что одиночный и пакетный экспорт создают только декларативные CSS-пакеты.
+test('Конвертер сохраняет только CSS-пакеты', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await installRepositoryRoutes(page);
   await page.goto('/tools/convert-360-img-to-css.html');
@@ -1597,18 +1637,12 @@ test('Конвертер сохраняет только выбранный фо
   await page.locator('#btnGenerate').click();
   await expect(page.locator('#btnDownload')).toBeEnabled();
 
-  await page.locator('#packOutputFormat').selectOption('js');
-  await expect(page.locator('#btnDownload')).toHaveText('Скачать оба JS');
-  await expect(page.locator('#resultGrid').getByRole('button', { name: 'Скачать CSS', exact: true })).toHaveCount(0);
-  const jsDownloadPromise = page.waitForEvent('download');
-  await page.locator('#resultGrid').getByRole('button', { name: 'Скачать JS', exact: true }).first().click();
-  const jsDownload = await jsDownloadPromise;
-  expect(jsDownload.suggestedFilename()).toBe('format-source-360.js');
-
-  await page.locator('#packOutputFormat').selectOption('css');
+  await expect(page.locator('#packOutputFormat option')).toHaveCount(1);
+  await expect(page.locator('#packOutputFormat')).toHaveValue('css');
   await expect(page.locator('#btnDownload')).toHaveText('Скачать оба CSS');
   await expect(page.locator('#btnBatchStart')).toHaveText('Пакетно преобразовать и скачать CSS');
   await expect(page.locator('#resultGrid').getByRole('button', { name: 'Скачать JS', exact: true })).toHaveCount(0);
+  expect(await page.locator('#output').inputValue()).not.toContain('window.VN360_PACKS');
   const cssDownloadPromise = page.waitForEvent('download');
   await page.locator('#resultGrid').getByRole('button', { name: 'Скачать CSS', exact: true }).first().click();
   const cssDownload = await cssDownloadPromise;

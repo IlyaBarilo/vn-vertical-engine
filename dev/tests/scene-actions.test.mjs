@@ -73,7 +73,7 @@ test('парсер собирает основные команды сцены',
   assert.equal(actions[6].src, null);
   assert.equal(actions[7].type, 'game');
   assert.equal(actions[7].gameId, 'puzzle');
-  assert.equal(actions[7].sandboxMode, 'strict');
+  assert.equal(Object.prototype.hasOwnProperty.call(actions[7], 'sandboxMode'), false);
   assert.equal(actions[7].resultVar, 'gameResult');
   assert.equal(actions[7].params.difficulty, 2);
   assert.equal(actions[7].params.mode, 'timed');

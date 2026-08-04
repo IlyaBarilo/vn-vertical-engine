@@ -67,7 +67,7 @@
     return !!(data && typeof data === "object" && data.type === "gameResult");
   }
 
-  // Принимает результат только от активного iframe; отсутствие id разрешает лишь явно совместимая legacy-сессия.
+  // Принимает результат только от активного iframe и всегда требует идентификаторы протокола v2.
   function isGameResultEventAllowed(event, session) {
     if (!event || !isGameResultMessage(event.data)) return false;
     if (!session || session.resultAccepted || !session.expectedSource) return false;
@@ -76,15 +76,9 @@
     var data = event.data;
     var hasGameId = Object.prototype.hasOwnProperty.call(data, "gameId");
     var hasSessionId = Object.prototype.hasOwnProperty.call(data, "sessionId");
-    if (session.allowLegacyResult === false && (!hasGameId || !hasSessionId)) return false;
-    if (
-      hasGameId &&
-      String(data.gameId) !== String(session.gameId)
-    ) return false;
-    if (
-      hasSessionId &&
-      String(data.sessionId) !== String(session.sessionId)
-    ) return false;
+    if (!hasGameId || !hasSessionId) return false;
+    if (String(data.gameId) !== String(session.gameId)) return false;
+    if (String(data.sessionId) !== String(session.sessionId)) return false;
 
     return true;
   }

@@ -463,7 +463,8 @@ function configureMermaidLibrary() {
 
   window.mermaid.initialize({
     startOnLoad: false,
-    securityLevel: "loose",
+    // Strict запрещает Mermaid добавлять активные ссылки и необработанный HTML из текста диаграммы.
+    securityLevel: "strict",
     suppressErrorRendering: false,
 
     // главное для больших графов
@@ -2699,7 +2700,7 @@ function getGraphRasterImgDataAttr(storyPath) {
   if (!story || !isGraphRasterImagePath(story)) {
     return "";
   }
-  return " data-vnv-story-img='" + escapeHtml(story) + "'";
+  return " data-vnv-story-img='" + escapeMermaidLabelText(story) + "'";
 }
 
 // После отрисовки графа всегда подставляет рабочий src: Mermaid может удалить src из HTML-лейбла.
@@ -3512,7 +3513,7 @@ function getGraphImageSrc(src) {
       break;
     }
   }
-  return escapeHtml(pick);
+  return escapeMermaidLabelText(pick);
 }
 
 // Чтобы музыка не включалась слишком громко при старте
@@ -10223,7 +10224,7 @@ function stripBg360NavigationOverlayPendingLoad() {
   elBg360Marks.classList.remove("is-interactive", "is-webgl-nav-only");
 }
 
-// Возвращает true, пока для текущего loadSeq ещё не применена текстура к сфере (асинхронная загрузка CSS/JS-пакета).
+// Возвращает true, пока для текущего loadSeq ещё не применена текстура к сфере после асинхронной загрузки CSS-пакета.
 function bg360ShouldDeferMarksUntilTextureReady() {
   if (!ensureBg360Renderer()) return false;
   var src = String(bg360Runtime.sourceSrc || "");
@@ -11412,140 +11413,23 @@ function disableBg360Renderer() {
   hideBg360HoldLayer(true);
 }
 
-// Проверяет, что путь указывает на совместимый legacy JS-пакет 360.
-function isBg360PackScriptPath(path) {
-  return /-360(?:-[a-z0-9_-]+)?\.js(\?.*)?$/i.test(String(path || ""));
-}
-
 // Проверяет, что путь указывает на декларативный CSS-пакет 360.
 function isBg360PackCssPath(path) {
   return /-360(?:-[a-z0-9_-]+)?\.css(\?.*)?$/i.test(String(path || ""));
 }
 
-// Объединяет безопасный CSS и совместимый JS в один тип источника для runtime, графов и автосохранения.
+// Считает 360-пакетом только декларативный CSS; исполняемые JS-варианты намеренно не поддерживаются.
 function isBg360PackPath(path) {
-  return isBg360PackCssPath(path) || isBg360PackScriptPath(path);
+  return isBg360PackCssPath(path);
 }
 
-// Собирает варианты ключа для поиска: абсолютный URL, декодированный URL и путь от index.html.
-function getBg360PackLookupKeys(sourceUrl) {
-  var result = [];
-  function addKey(value) {
-    var key = String(value || "");
-    if (key && result.indexOf(key) === -1) result.push(key);
-  }
-
-  var source = String(sourceUrl || "");
-  addKey(source);
-  var normalizedSource = normalizeAssetUrl(source);
-  addKey(normalizedSource);
-
-  try {
-    var decodedSource = decodeURIComponent(normalizedSource);
-    addKey(decodedSource);
-  } catch (e) {
-    addKey(normalizedSource);
-  }
-
-  // Пакет регистрирует и абсолютный URL, и путь от index.html, чтобы перенос папки проекта не ломал ключи.
-  var baseHref = window.location.href;
-  var slashIndex = baseHref.lastIndexOf("/");
-  var baseDirHref = slashIndex >= 0 ? baseHref.slice(0, slashIndex + 1) : baseHref;
-  if (normalizedSource.indexOf(baseDirHref) === 0) {
-    var rel = normalizedSource.slice(baseDirHref.length);
-    addKey(rel);
-    addKey("./" + rel);
-    addKey("/" + rel);
-  }
-
-  return result;
-}
-
-// Возвращает зарегистрированные хранилища 360-паков: новое variant-хранилище и legacy-карту старых пакетов, если она есть.
-function getBg360PackStores() {
-  var stores = [];
-  if (window.VN360_PACKS_VARIANTS && typeof window.VN360_PACKS_VARIANTS === "object") {
-    stores.push(window.VN360_PACKS_VARIANTS);
-  }
-  if (window.VN360_PACKS && typeof window.VN360_PACKS === "object") {
-    stores.push(window.VN360_PACKS);
-  }
-  return stores;
-}
-
-// Достаёт data-url из записи пака; для нового формата качество строгое, legacy-записи могут быть одной строкой без normal/mobile.
-function readBg360PackDataUrlFromEntry(entry, normalizedQuality, strictQuality) {
-  if (typeof entry === "string") return entry;
-  if (!entry || typeof entry !== "object") return "";
-
-  if (normalizedQuality && typeof entry[normalizedQuality] === "string") {
-    return entry[normalizedQuality];
-  }
-  if (typeof entry.dataUrl === "string") return entry.dataUrl;
-
-  if (!strictQuality) {
-    if (typeof entry.normal === "string") return entry.normal;
-    if (typeof entry.mobile === "string") return entry.mobile;
-    var keys = Object.keys(entry);
-    for (var i = 0; i < keys.length; i++) {
-      if (typeof entry[keys[i]] === "string") return entry[keys[i]];
-    }
-  }
-  return "";
-}
-
-// Достаёт data-url из нового variant-хранилища или legacy-карты; meta-поля не обязательны для работы старых пакетов.
-function readBg360PackDataUrlByKey(key, quality) {
-  var normalizedQuality = resolveBg360EffectiveQuality(quality);
-  var variants = window.VN360_PACKS_VARIANTS;
-  var found = variants && typeof variants === "object"
-    ? readBg360PackDataUrlFromEntry(variants[key], normalizedQuality, true)
-    : "";
-  if (found) return found;
-
-  var legacy = window.VN360_PACKS;
-  return legacy && typeof legacy === "object"
-    ? readBg360PackDataUrlFromEntry(legacy[key], normalizedQuality, false)
-    : "";
-}
-
-// Пытается найти data-url legacy JS-пакета по исходному CSS/JS-пути и выбранному normal/mobile.
-function resolveBg360PackDataUrl(sourceUrl, quality) {
-  var packStores = getBg360PackStores();
-  if (!packStores.length) return "";
-
-  var lookupKeys = getBg360PackLookupKeys(sourceUrl);
-  for (var i = 0; i < lookupKeys.length; i++) {
-    var found = readBg360PackDataUrlByKey(lookupKeys[i], quality);
-    if (found) return found;
-  }
-
-  // Последний шанс: нормализуем ключи из всех известных хранилищ пака и сравниваем с целевым URL.
-  var normalizedSource = normalizeAssetUrl(sourceUrl);
-  for (var s = 0; s < packStores.length; s++) {
-    var allKeys = Object.keys(packStores[s]);
-    for (var j = 0; j < allKeys.length; j++) {
-      var key = allKeys[j];
-      if (normalizeAssetUrl(key) === normalizedSource) {
-        var value = readBg360PackDataUrlByKey(key, quality);
-        if (value) return value;
-      }
-    }
-  }
-
-  return "";
-}
-
-// Хранит состояние динамической загрузки legacy *-360.js, чтобы не дублировать <script> и колбэки.
-var bg360PackScriptState = Object.create(null);
-
-// По любому CSS/JS-пути выбирает декларативный CSS-вариант нужного качества; именно его движок проверяет первым.
+// Выбирает декларативный CSS-вариант нужного качества только для уже допустимого CSS-пути.
 function getBg360PackCssUrl(sourceUrl, quality) {
   var normalized = normalizeAssetUrl(sourceUrl);
   var normalizedQuality = resolveBg360EffectiveQuality(quality);
-  if (!isBg360PackPath(normalized)) return "";
+  if (!isBg360PackCssPath(normalized)) return "";
 
-  var cssUrl = normalized.replace(/\.(?:css|js)(\?.*)?$/i, ".css$1");
+  var cssUrl = normalized;
   if (normalizedQuality === "normal" && /-360-mobile\.css(\?.*)?$/i.test(cssUrl)) {
     return cssUrl.replace(/-360-mobile\.css(\?.*)?$/i, "-360.css$1");
   }
@@ -11553,22 +11437,6 @@ function getBg360PackCssUrl(sourceUrl, quality) {
     return cssUrl.replace(/-360\.css(\?.*)?$/i, "-360-mobile.css$1");
   }
   return cssUrl;
-}
-
-// По любому CSS/JS-пути выбирает legacy JS-вариант нужного качества для фолбэка после CSS.
-function getBg360PackScriptUrl(sourceUrl, quality) {
-  var normalized = normalizeAssetUrl(sourceUrl);
-  var normalizedQuality = resolveBg360EffectiveQuality(quality);
-  if (!isBg360PackPath(normalized)) return "";
-
-  var scriptUrl = normalized.replace(/\.(?:css|js)(\?.*)?$/i, ".js$1");
-  if (normalizedQuality === "normal" && /-360-mobile\.js(\?.*)?$/i.test(scriptUrl)) {
-    return scriptUrl.replace(/-360-mobile\.js(\?.*)?$/i, "-360.js$1");
-  }
-  if (normalizedQuality === "mobile" && /-360\.js(\?.*)?$/i.test(scriptUrl)) {
-    return scriptUrl.replace(/-360\.js(\?.*)?$/i, "-360-mobile.js$1");
-  }
-  return scriptUrl;
 }
 
 // Ограничения совпадают с редактором: большие панорамы разрешены, но CSS не может заставить runtime читать бесконечные данные.
@@ -11757,7 +11625,7 @@ function readBg360CssPack(cssUrl) {
   });
 }
 
-// Запускает одну загрузку CSS на URL и будит всех ожидающих; ошибка остаётся в кэше до F5, чтобы сразу перейти к JS.
+// Запускает одну загрузку CSS на URL и будит всех ожидающих; ошибка остаётся в кэше до F5 без небезопасного фолбэка.
 function ensureBg360CssPackLoaded(sourceUrl, quality, onReady) {
   var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
   if (!cssUrl) return "none";
@@ -11802,7 +11670,7 @@ function ensureBg360CssPackLoaded(sourceUrl, quality, onReady) {
     entry.status = "error";
     entry.blob = null;
     entry.meta = null;
-    writeRuntimeVerbose("[BG360] CSS-пакет недоступен, используется legacy JS", {
+    writeRuntimeVerbose("[BG360] CSS-пакет недоступен", {
       css: sanitizeDiagnosticResource(cssUrl),
       reason: error && error.message ? error.message : String(error || "")
     });
@@ -11841,7 +11709,7 @@ function acquireBg360CssPackResource(sourceUrl, quality) {
   };
 }
 
-// Освобождает Blob URL после декодирования; при повреждённой картинке помечает CSS ошибочным и оставляет JS-фолбэк.
+// Освобождает Blob URL после декодирования; при повреждённой картинке помечает CSS-пакет ошибочным.
 function releaseBg360PackResource(resource, markCssError) {
   if (!resource || resource.kind !== "css" || resource.released) return;
   resource.released = true;
@@ -11862,30 +11730,18 @@ function releaseBg360PackResource(resource, markCssError) {
   }
 }
 
-// Разрешает ресурс строго в порядке CSS → legacy JS; callback просит вызывающий код повторить выбор после async-загрузки.
-function resolveBg360PackResource(sourceUrl, quality, onReady, options) {
-  var opts = options || {};
-  if (!opts.skipCss) {
-    var cssState = ensureBg360CssPackLoaded(sourceUrl, quality, onReady);
-    if (cssState === "loading") return { status: "loading" };
-    if (cssState === "ready") {
-      var cssResource = acquireBg360CssPackResource(sourceUrl, quality);
-      if (cssResource) {
-        cssResource.status = "ready";
-        return cssResource;
-      }
+// Разрешает только CSS-ресурс; callback просит вызывающий код повторить выбор после асинхронной загрузки.
+function resolveBg360PackResource(sourceUrl, quality, onReady) {
+  var cssState = ensureBg360CssPackLoaded(sourceUrl, quality, onReady);
+  if (cssState === "loading") return { status: "loading" };
+  if (cssState === "ready") {
+    var cssResource = acquireBg360CssPackResource(sourceUrl, quality);
+    if (cssResource) {
+      cssResource.status = "ready";
+      return cssResource;
     }
   }
-
-  var scriptUrl = getBg360PackScriptUrl(sourceUrl, quality);
-  var dataUrl = resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(scriptUrl, quality);
-  if (dataUrl) return { status: "ready", kind: "js", src: dataUrl, meta: null };
-  var jsState = ensureBg360PackLoaded(sourceUrl, quality, onReady);
-  if (jsState === "loading") return { status: "loading" };
-  dataUrl = resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(scriptUrl, quality);
-  return dataUrl
-    ? { status: "ready", kind: "js", src: dataUrl, meta: null }
-    : { status: "none" };
+  return { status: "none" };
 }
 
 // Сверяет фактический размер декодированной CSS-картинки с метаданными и лимитом текущего WebGL-устройства.
@@ -11908,70 +11764,13 @@ function validateBg360PackTexture(texture, resource) {
   return "";
 }
 
-// Запрашивает legacy JS-фолбэк для 360-фона и сообщает, нужно ли подождать перед рендером.
-// Возвращает:
-// - "ready": данные уже есть;
-// - "loading": пакет грузится, рендер нужно отложить;
-// - "none": грузить нечего (или уже была ошибка).
-function ensureBg360PackLoaded(sourceUrl, quality, onReady) {
-  if (resolveBg360PackDataUrl(sourceUrl, quality)) return "ready";
-
-  var packScriptUrl = getBg360PackScriptUrl(sourceUrl, quality);
-  if (!packScriptUrl) return "none";
-  if (resolveBg360PackDataUrl(packScriptUrl, quality)) return "ready";
-
-  var state = bg360PackScriptState[packScriptUrl];
-  if (state && state.status === "loaded") {
-    return (resolveBg360PackDataUrl(sourceUrl, quality) || resolveBg360PackDataUrl(packScriptUrl, quality)) ? "ready" : "none";
-  }
-  if (state && state.status === "loading") {
-    if (typeof onReady === "function") state.waiters.push(onReady);
-    return "loading";
-  }
-  if (state && state.status === "error") {
-    return "none";
-  }
-
-  bg360PackScriptState[packScriptUrl] = {
-    status: "loading",
-    waiters: typeof onReady === "function" ? [onReady] : []
-  };
-
-  var script = document.createElement("script");
-  script.src = packScriptUrl;
-  script.async = true;
-  script.onload = function() {
-    var entry = bg360PackScriptState[packScriptUrl];
-    if (!entry) return;
-    entry.status = "loaded";
-    var waiters = entry.waiters.slice();
-    entry.waiters.length = 0;
-    for (var i = 0; i < waiters.length; i++) {
-      try { waiters[i](true); } catch (e) {}
-    }
-  };
-  script.onerror = function() {
-    var entry = bg360PackScriptState[packScriptUrl];
-    if (!entry) return;
-    entry.status = "error";
-    var waiters = entry.waiters.slice();
-    entry.waiters.length = 0;
-    for (var i = 0; i < waiters.length; i++) {
-      try { waiters[i](false); } catch (e) {}
-    }
-  };
-  document.body.appendChild(script);
-  return "loading";
-}
-
-// Включает 360-рендер: сначала ищет изолированный CSS-пакет, затем legacy JS, либо использует видео.
-function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
+// Включает 360-рендер только из изолированного CSS-пакета либо из видео.
+function setBackground360(src, fallbackSrc, scrollOptions) {
   if (!src) {
     disableBg360Renderer();
     return;
   }
 
-  var resolveOptions = packOptions || {};
   var normalized = normalizeBackgroundScrollOptions(scrollOptions);
   var normalizedSrc = normalizeAssetUrl(src);
   var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
@@ -11984,7 +11783,6 @@ function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
   // На этом шаге auto превращается в normal/mobile с учетом [meta] и текущего устройства.
   var bg360Quality = resolveBg360EffectiveQuality(normalized.quality);
   var selectedPackCssUrl = getBg360PackCssUrl(normalizedSrc, bg360Quality);
-  var selectedPackScriptUrl = getBg360PackScriptUrl(normalizedSrc, bg360Quality);
   var isPackSource = isBg360PackPath(normalizedSrc);
   // Поколение загрузки защищает рестарт и смену фона от старых image/video callbacks.
   var bg360LoadSeq = ++bg360Runtime.loadSeq;
@@ -12006,15 +11804,15 @@ function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] 360-фон должен ссылаться на пакет *-360.css или *-360.js:", sanitizeDiagnosticResource(normalizedSrc));
+      console.warn("[BG360] 360-фон должен ссылаться на пакет *-360.css:", sanitizeDiagnosticResource(normalizedSrc));
       return;
     }
     packResource = resolveBg360PackResource(normalizedSrc, bg360Quality, function() {
       if (isCurrentBg360Load()) {
-        setBackground360(src, fallbackSrc, scrollOptions, resolveOptions);
+        setBackground360(src, fallbackSrc, scrollOptions);
       }
-    }, resolveOptions);
-    // Пока CSS или JS подгружается, не трогаем текущие слои: старая панорама остаётся видимой до готовности новой.
+    });
+    // Пока CSS подгружается, не трогаем текущие слои: старая панорама остаётся видимой до готовности новой.
     if (packResource.status === "loading") {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
@@ -12025,10 +11823,7 @@ function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] CSS и JS пакеты панорамы недоступны:", {
-        css: sanitizeDiagnosticResource(selectedPackCssUrl || normalizedSrc),
-        js: sanitizeDiagnosticResource(selectedPackScriptUrl || normalizedSrc)
-      });
+      console.warn("[BG360] CSS-пакет панорамы недоступен:", sanitizeDiagnosticResource(selectedPackCssUrl || normalizedSrc));
       return;
     }
   }
@@ -12265,7 +12060,7 @@ function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
     if (bg360Runtime.frameId) cancelAnimationFrame(bg360Runtime.frameId);
     bg360Runtime.frameId = requestAnimationFrame(renderBg360Frame);
     if (typeof updateBlurBackground === "function") {
-      // Для 360-пакета sourceSrc указывает на CSS/JS; blur-слой должен получать только изображение/видео fallback.
+      // Для 360-пакета sourceSrc указывает на CSS; blur-слой должен получать только изображение/видео fallback.
       var blurSource = normalizedFallback || "";
       if (!blurSource && !isPackSource) {
         blurSource = normalizedSrc;
@@ -12280,13 +12075,11 @@ function setBackground360(src, fallbackSrc, scrollOptions, packOptions) {
       return;
     }
     if (packResource && packResource.kind === "css") {
-      // Декодер мог отклонить картинку после успешного чтения CSS: помечаем этот CSS ошибочным и повторяем выбор сразу с JS.
+      // Декодер мог отклонить картинку после успешного чтения CSS: помечаем пакет ошибочным без исполнения JS-фолбэка.
       releaseBg360PackResource(packResource, true);
-      bg360Runtime.suppressNextHoldCapture = true;
-      setBackground360(src, fallbackSrc, scrollOptions, { skipCss: true });
-      return;
+    } else {
+      releaseBg360PackResource(packResource, false);
     }
-    releaseBg360PackResource(packResource, false);
     console.warn("[BG360] Не удалось загрузить ресурс:", sanitizeDiagnosticResource(normalizedSrc));
     console.warn("[BG360 HOLD] texture load error: hide hold and fallback", {
       src: sanitizeDiagnosticResource(normalizedSrc),
@@ -13855,7 +13648,7 @@ function appendGameParamsToUrl(src, params) {
   return base + (base.indexOf("?") >= 0 ? "&" : "?") + queryParts.join("&") + hash;
 }
 
-// Собирает action для URL-запуска из [game], включая выбранный для ассета режим sandbox.
+// Собирает action для URL-запуска из [game]; изоляция всегда задаётся runtime в строгом режиме.
 function createStandaloneGameAction(launch) {
   if (!launch || !launch.gameId) return null;
 
@@ -13865,13 +13658,11 @@ function createStandaloneGameAction(launch) {
 
   var file = "";
   var title = launch.gameId;
-  var sandboxMode = null;
   if (typeof rawGame === "string") {
     file = rawGame;
   } else if (rawGame && typeof rawGame === "object") {
     file = String(rawGame.file || "").trim();
     title = rawGame.title || launch.gameId;
-    sandboxMode = rawGame.sandbox || null;
   }
 
   if (!file) return null;
@@ -13882,7 +13673,6 @@ function createStandaloneGameAction(launch) {
     gameId: launch.gameId,
     title: title,
     src: file,
-    sandboxMode: sandboxMode,
     difficulty: launch.difficulty,
     resultVar: null,
     params: copyGameParams(launch.params)
@@ -13933,64 +13723,21 @@ function isCurrentStoryGameUrlMode() {
   return !!(state && state.currentGame && state.currentGame.mode === "url");
 }
 
-// Возвращает строгий режим только для явного strict, сохраняя legacy-поведение для старых AST и сценариев.
-function normalizeGameSandboxMode(value) {
-  return String(value || "").trim().toLowerCase() === "strict" ? "strict" : "legacy";
-}
-
-// Выбирает локальную настройку игры или общий режим из [meta], если у игры нет собственного переопределения.
-function resolveGameSandboxMode(gameOverride) {
-  if (gameOverride !== undefined && gameOverride !== null && gameOverride !== "") {
-    return normalizeGameSandboxMode(gameOverride);
-  }
-
-  var engineMeta = STORY && STORY.meta && STORY.meta.engine;
-  return normalizeGameSandboxMode(engineMeta && engineMeta.gameSandbox);
-}
-
-// Восстанавливает исходный атрибут iframe, чтобы legacy-режим не стирал пользовательскую настройку index.html.
-function restoreGameFrameAttribute(frame, name, value) {
-  if (value === null) {
-    frame.removeAttribute(name);
-  } else {
-    frame.setAttribute(name, value);
-  }
-}
-
-// Настраивает iframe до навигации: strict оставляет скрипты и autoplay, legacy возвращает исходные атрибуты.
-function applyGameFrameSandbox(frame, sandboxMode) {
+// Настраивает iframe до каждой навигации и не позволяет данным сценария снять строгую изоляцию.
+function applyGameFrameSandbox(frame) {
   if (!frame) return;
-
-  if (!frame.__vnGameFrameSecurityBaseline) {
-    // Базовые значения запоминаются один раз до первого запуска и могут быть настроены автором оболочки.
-    frame.__vnGameFrameSecurityBaseline = {
-      sandbox: frame.getAttribute("sandbox"),
-      allow: frame.getAttribute("allow"),
-      referrerpolicy: frame.getAttribute("referrerpolicy")
-    };
-  }
-
-  if (sandboxMode === "strict") {
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.setAttribute("allow", "autoplay");
-    frame.setAttribute("referrerpolicy", "no-referrer");
-    return;
-  }
-
-  var baseline = frame.__vnGameFrameSecurityBaseline;
-  restoreGameFrameAttribute(frame, "sandbox", baseline.sandbox);
-  restoreGameFrameAttribute(frame, "allow", baseline.allow);
-  restoreGameFrameAttribute(frame, "referrerpolicy", baseline.referrerpolicy);
+  frame.setAttribute("sandbox", "allow-scripts");
+  frame.setAttribute("allow", "autoplay");
+  frame.setAttribute("referrerpolicy", "no-referrer");
 }
 
-// Создаёт одноразовую сессию и разрешает старый result без id только iframe в legacy-режиме.
-function createActiveGameSession(gameId, frameKind, sandboxMode) {
+// Создаёт одноразовую сессию протокола v2; результат без gameId/sessionId всегда отклоняется.
+function createActiveGameSession(gameId, frameKind) {
   return {
     gameId: String(gameId),
     sessionId: window.VN_GAME_PROTOCOL.createGameSessionId(),
     expectedSource: null,
     frameKind: frameKind,
-    allowLegacyResult: sandboxMode !== "strict",
     resultAccepted: false
   };
 }
@@ -14030,7 +13777,6 @@ function openGame(action) {
   }
 
   var currentGameId = action.gameId || 'game';
-  var sandboxMode = resolveGameSandboxMode(action.sandboxMode);
   state.inGame = true;
   state.currentGame = {
     mode: action.mode || null,
@@ -14038,16 +13784,16 @@ function openGame(action) {
     title: action.title || currentGameId,
     difficulty: normalizedParams.difficulty,
     src: action.src,
-    sandboxMode: sandboxMode,
+    sandboxMode: "strict",
     resultVar: action.resultVar || null,
     params: normalizedParams,
-    session: createActiveGameSession(currentGameId, "story", sandboxMode)
+    session: createActiveGameSession(currentGameId, "story")
   };
   var openedGame = state.currentGame;
 
   updateStoryGameControlButtonLabel(state.currentGame.mode);
   elGameModal.classList.remove("hidden");
-  applyGameFrameSandbox(elGameFrame, sandboxMode);
+  applyGameFrameSandbox(elGameFrame);
 
   // После загрузки привязываем сессию к фактическому contentWindow и отправляем игре все named params.
   elGameFrame.onload = function () {
@@ -15154,7 +14900,7 @@ function hideStatsPanel() {
 }
 
 
-// Собирает каталог игр вместе с локальным режимом sandbox, который понадобится при запуске из статистики.
+// Собирает каталог игр без параметров доверия: статистика запускает каждую игру только в строгом sandbox.
 function getGamesCatalogItems() {
   var games = (STORY && STORY.assets && STORY.assets.games) ? STORY.assets.games : {};
   var gameIds = Object.keys(games);
@@ -15168,8 +14914,7 @@ function getGamesCatalogItems() {
       file: "",
       title: gameId,
       description: "",
-      cover: "",
-      sandboxMode: null
+      cover: ""
     };
 
     if (typeof raw === "string") {
@@ -15179,7 +14924,6 @@ function getGamesCatalogItems() {
       item.title = raw.title || gameId;
       item.description = raw.description || "";
       item.cover = raw.cover || "";
-      item.sandboxMode = raw.sandbox || null;
     }
 
     items.push(item);
@@ -15312,7 +15056,7 @@ function renderGamesCatalog() {
   });
 }
 
-// Открывает игру из статистики с теми же sandbox-правилами и контрактом gameInit, что у сюжетного запуска.
+// Открывает игру из статистики с обязательным строгим sandbox и контрактом gameInit v2.
 function openStatsGame(item, difficulty) {
   if (!item || !item.file) {
     if (gamesStatus) {
@@ -15323,26 +15067,25 @@ function openStatsGame(item, difficulty) {
     return;
   }
 
-  var sandboxMode = resolveGameSandboxMode(item.sandboxMode);
   state.inGame = true;
   state.currentGame = {
     mode: "stats",
     gameId: item.id,
     title: item.title || item.id,
     difficulty: difficulty,
-    sandboxMode: sandboxMode,
+    sandboxMode: "strict",
     resultVar: null,
     params: {
       difficulty: difficulty,
       source: "statsGamesPanel"
     },
-    session: createActiveGameSession(item.id, "stats", sandboxMode)
+    session: createActiveGameSession(item.id, "stats")
   };
   var openedGame = state.currentGame;
 
   elStatsGameModal.classList.remove("hidden");
   syncStatsGameFrameWrapToStoryGameWindow();
-  applyGameFrameSandbox(elStatsGameFrame, sandboxMode);
+  applyGameFrameSandbox(elStatsGameFrame);
 
   elStatsGameFrame.onload = function () {
     if (state.currentGame !== openedGame || !openedGame.session) return;
@@ -17518,15 +17261,19 @@ function forEachOutgoingStory360Target(actions, cb, currentLabel) {
   }
 }
 
-// Превращает id 360-пространства или панорамы в безопасную часть Mermaid-id без потери читаемой привязки.
-function sanitizeStory360GraphIdPart(value) {
-  var safe = String(value || "").trim().replace(/[^A-Za-z0-9_]/g, "_");
-  return safe || "id";
+// Кодирует пользовательский идентификатор в Mermaid-id только из ASCII и без коллизий от замены спецсимволов.
+function getMermaidSafeNodeId(prefix, value) {
+  var source = String(value === undefined || value === null ? "" : value);
+  var encoded = [];
+  for (var index = 0; index < source.length; index++) {
+    encoded.push(source.charCodeAt(index).toString(36));
+  }
+  return String(prefix || "node").replace(/[^A-Za-z0-9_]/g, "_") + "_" + (encoded.length ? encoded.join("_") : "empty");
 }
 
 // Создаёт стабильный id узла Mermaid для 360-панорамы, чтобы он не конфликтовал с id обычных сцен.
 function getStory360GraphNodeId(spaceId, panoramaId) {
-  return "story360_" + sanitizeStory360GraphIdPart(spaceId) + "__" + sanitizeStory360GraphIdPart(panoramaId);
+  return getMermaidSafeNodeId("story360", String(spaceId || "") + "\u0000" + String(panoramaId || ""));
 }
 
 // Возвращает человекочитаемую ссылку на 360-панораму в формате space.panorama.
@@ -17697,7 +17444,8 @@ function buildRenderableStory360Edges(edges) {
           from: sourceEdge.from,
           to: sourceEdge.to,
           label: sourceGroup.labels.join(", "),
-          bidirectional: true
+          bidirectional: true,
+          kind: "360-to-360"
         });
         continue;
       }
@@ -17707,7 +17455,8 @@ function buildRenderableStory360Edges(edges) {
       from: sourceEdge.from,
       to: sourceEdge.to,
       label: String(sourceEdge.label || ""),
-      bidirectional: false
+      bidirectional: false,
+      kind: sourceEdge.kind || ""
     });
   }
 
@@ -17920,8 +17669,8 @@ function buildMermaidGraph(story, unreachableList, options) {
   var scope = options.scope || "full";
   
   var scenes = story.scenes || [];
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
-  var attachSceneId = startId;
+  var startSceneId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
+  var attachSceneId = getMermaidSafeNodeId("scene", startSceneId);
 
   // Набор недостижимых сцен для подсветки
   var unreachableSet = {};
@@ -18088,15 +17837,15 @@ function buildMermaidGraph(story, unreachableList, options) {
         if (lbl.length > 40) lbl = lbl.substring(0, 40) + "...";
 
         edges.push({
-          from: scene.id,
-          to: edge.to,
+          from: getMermaidSafeNodeId("scene", scene.id),
+          to: getMermaidSafeNodeId("scene", edge.to),
           label: lbl
         });
 
         outgoingEdges[scene.id] = (outgoingEdges[scene.id] || 0) + 1;
         // Учитываем только переходы в "не стартовую" сцену:
         // ссылка обратно в стартовую сцену допускается у финала.
-        if (edge.to !== startId) {
+        if (edge.to !== startSceneId) {
           outgoingEdgesNonStart[scene.id] = (outgoingEdgesNonStart[scene.id] || 0) + 1;
         }
 
@@ -18111,7 +17860,8 @@ function buildMermaidGraph(story, unreachableList, options) {
     });
 
     nodes.push({
-      id: scene.id,
+      id: getMermaidSafeNodeId("scene", scene.id),
+      sceneId: scene.id,
       characters: keysSorted(charSet),
       games: keysSorted(gameSet),
       phraseCount: (sayCount + textCount),
@@ -18133,11 +17883,6 @@ function buildMermaidGraph(story, unreachableList, options) {
 
 
 
-
-  var nodesById = {};
-  for (var ni = 0; ni < nodes.length; ni++) {
-    nodesById[nodes[ni].id] = nodes[ni];
-  }
 
   var story360GraphData = scope === "resources" ? { nodes: [], edges: [] } : buildStory360GraphData(story);
   var combinedReachability = scope === "resources"
@@ -18163,7 +17908,7 @@ function buildMermaidGraph(story, unreachableList, options) {
   var mermaid = "graph LR;\n";  // LR = Left to Right (как в DOT)
 
   // Добавляем заголовок
-  mermaid += "%% " + ((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
+  mermaid += "%% " + escapeMermaidComment((story.meta && story.meta.title) ? story.meta.title : "Visual Novel") + "\n";
 
   // Стили для узлов. Основные настройки производятся в CSS
   mermaid += "%% Defining styles for scenes\n";
@@ -18209,15 +17954,15 @@ function buildMermaidGraph(story, unreachableList, options) {
   // Создаем узлы с многострочными метками
   for (var n = 0; n < nodes.length; n++) {
     var node = nodes[n];
-    if (scope === "resources" && node.id !== startId) {
+    if (scope === "resources" && node.sceneId !== startSceneId) {
       continue;
     }
 
-    var chars = node.characters.length ? node.characters.join(", ") : "(none)";
+    var chars = node.characters.length ? node.characters.map(escapeMermaidLabelText).join(", ") : "(none)";
     var games = (node.games && node.games.length) ? node.games : [];
 
     // Формируем многострочную метку - ВАЖНО: порядок элементов
-    var label = node.id + "<br/>";
+    var label = escapeMermaidLabelText(node.sceneId) + "<br/>";
 
     // Параметры настройки
     var imageSize = 80;           // Размер миниатюр
@@ -18251,7 +17996,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         for (var b = 0; b < sceneBgImagesOnly.length; b++) {
           var bg = sceneBgImagesOnly[b];
           var imgSrc = getGraphImageSrc(bg.src);
-          var safeBgId = escapeHtml(bg.id || "");
+          var safeBgId = escapeMermaidLabelText(bg.id || "");
 
           // Рамка вынесена в отдельную обёртку, чтобы изображение не перекрывало скруглённый контур.
           label += "<span class='scene-bg-frame " + sceneBgCountClass + "'>" +
@@ -18273,7 +18018,7 @@ function buildMermaidGraph(story, unreachableList, options) {
 
         for (var b360 = 0; b360 < sceneBg360ImagesOnly.length; b360++) {
           var bg360 = sceneBg360ImagesOnly[b360];
-          var safeBg360Id = escapeHtml(bg360.id || "");
+          var safeBg360Id = escapeMermaidLabelText(bg360.id || "");
           var bgAsset = (story.assets && story.assets.backgrounds && bg360.id) ? story.assets.backgrounds[bg360.id] : null;
           var bg360AssetQuality = getBackgroundAssetQuality(bgAsset) || "auto";
 
@@ -18282,8 +18027,8 @@ function buildMermaidGraph(story, unreachableList, options) {
                   "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + sceneBg360CountClass + "' " +
                   "data-id='" + safeBg360Id + "' " +
                   "data-index='" + b360 + "' " +
-                  "data-bg360-src='" + escapeHtml(bg360.src || "") + "' " +
-                  "data-bg360-quality='" + escapeHtml(bg360AssetQuality) + "' " +
+                  "data-bg360-src='" + escapeMermaidLabelText(bg360.src || "") + "' " +
+                  "data-bg360-quality='" + escapeMermaidLabelText(bg360AssetQuality) + "' " +
                   "title='" + safeBg360Id + "' " +
                   "alt='' />" +
                   "</span> ";
@@ -18301,7 +18046,7 @@ function buildMermaidGraph(story, unreachableList, options) {
     }
 
     if (games.length > 0) {
-      statsParts.push("<div>🎮 " + games.join(", ") + "</div>");
+      statsParts.push("<div>🎮 " + games.map(escapeMermaidLabelText).join(", ") + "</div>");
     }
 
     // Добавляем счетчики
@@ -18336,9 +18081,9 @@ function buildMermaidGraph(story, unreachableList, options) {
     mermaid += "\n    %% Story360 panorama nodes\n";
     for (var panoIndex = 0; panoIndex < story360GraphData.nodes.length; panoIndex++) {
       var panoNode = story360GraphData.nodes[panoIndex];
-      var panoSafeTitle = escapeHtml(panoNode.ref || panoNode.id);
+      var panoSafeTitle = escapeMermaidLabelText(panoNode.ref || panoNode.id);
       // Название 360-панорамы ставим первой строкой, чтобы узел читался так же, как обычная сцена.
-      var panoLabel = "\uD83C\uDF10 " + escapeHtml(panoNode.ref) + "<br/>";
+      var panoLabel = "\uD83C\uDF10 " + escapeMermaidLabelText(panoNode.ref) + "<br/>";
 
       if (!compact && panoNode.file) {
         var panoImgClass = "imgcount1";
@@ -18348,10 +18093,10 @@ function buildMermaidGraph(story, unreachableList, options) {
           panoLabel += "<span class='scene-bg-frame scene-bg360-frame " + panoImgClass + "'>" +
             "<img " +
             "class='scene-bg-thumbnail scene-bg360-thumbnail bg360-graph-thumbnail " + panoImgClass + "' " +
-            "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
+            "data-id='" + escapeMermaidLabelText(panoNode.bgId || panoNode.ref || "") + "' " +
             "data-index='0' " +
-            "data-bg360-src='" + escapeHtml(panoNode.file || "") + "' " +
-            "data-bg360-quality='" + escapeHtml(panoNode.quality || "auto") + "' " +
+            "data-bg360-src='" + escapeMermaidLabelText(panoNode.file || "") + "' " +
+            "data-bg360-quality='" + escapeMermaidLabelText(panoNode.quality || "auto") + "' " +
             "title='" + panoSafeTitle + "' " +
             "alt='' />" +
             "</span>";
@@ -18359,7 +18104,7 @@ function buildMermaidGraph(story, unreachableList, options) {
           panoLabel += "<span class='scene-bg-frame " + panoImgClass + "'>" +
             "<img src='" + getGraphImageSrc(panoNode.file) + "'" + getGraphRasterImgDataAttr(panoNode.file) + " " +
             "class='scene-bg-thumbnail " + panoImgClass + "' " +
-            "data-id='" + escapeHtml(panoNode.bgId || panoNode.ref || "") + "' " +
+            "data-id='" + escapeMermaidLabelText(panoNode.bgId || panoNode.ref || "") + "' " +
             "data-index='0' " +
             "title='" + panoSafeTitle + "' " +
             "alt='' />" +
@@ -18383,12 +18128,12 @@ function buildMermaidGraph(story, unreachableList, options) {
     var classes = [];
     
     // Проверяем, является ли сцена стартовой
-    if (node.id === startId) {
+    if (node.sceneId === startSceneId) {
       classes.push("start");
     }
     
     // Проверяем, является ли сцена недостижимой
-    if (unreachableSet[node.id]) {
+    if (unreachableSet[node.sceneId]) {
       classes.push("unreachable");
     }
     
@@ -18397,10 +18142,10 @@ function buildMermaidGraph(story, unreachableList, options) {
     // Допускается возврат в стартовую сцену (например, "Начать заново"),
     // он не лишает сцену статуса финала.
     // Также сцена не должна быть стартовой и не должна быть недостижимой.
-    if (!unreachableSet[node.id] &&
-      node.id !== startId &&
-      incomingEdges[node.id] > 0 &&
-      (!outgoingEdgesNonStart[node.id] || outgoingEdgesNonStart[node.id] === 0)) {
+    if (!unreachableSet[node.sceneId] &&
+      node.sceneId !== startSceneId &&
+      incomingEdges[node.sceneId] > 0 &&
+      (!outgoingEdgesNonStart[node.sceneId] || outgoingEdgesNonStart[node.sceneId] === 0)) {
       classes.push("final");
     }
     
@@ -18425,14 +18170,14 @@ function buildMermaidGraph(story, unreachableList, options) {
     var ed = edges[e];
 
     if (scope === "resources") {
-      if (ed.from !== startId || ed.to !== startId) {
+      if (ed.from !== attachSceneId || ed.to !== attachSceneId) {
         continue;
       }
     }
 
     if (ed.label && ed.label.trim() !== "") {
-      // Экранируем кавычки и спецсимволы в метках
-      var label = ed.label.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Экранируем HTML, кавычки и управляющие символы до вставки в синтаксис Mermaid.
+      var label = escapeMermaidLabelText(ed.label);
       mermaid += '    ' + ed.from + ' -->|"' + label + '"| ' + ed.to + ';\n';
     } else {
       mermaid += '    ' + ed.from + ' --> ' + ed.to + ';\n';
@@ -18448,12 +18193,18 @@ function buildMermaidGraph(story, unreachableList, options) {
       if (story360Label.length > 40) story360Label = story360Label.substring(0, 40) + "...";
       var story360Arrow = story360Edge.bidirectional ? " <--> " : " --> ";
       var story360ArrowWithLabel = story360Edge.bidirectional ? " <-->" : " -->";
+      var story360From = story360Edge.kind === "scene-to-360"
+        ? getMermaidSafeNodeId("scene", story360Edge.from)
+        : story360Edge.from;
+      var story360To = story360Edge.kind === "360-to-scene"
+        ? getMermaidSafeNodeId("scene", story360Edge.to)
+        : story360Edge.to;
 
       if (story360Label.trim() !== "") {
-        var safeStory360Label = story360Label.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        mermaid += '    ' + story360Edge.from + story360ArrowWithLabel + '|"' + safeStory360Label + '"| ' + story360Edge.to + ';\n';
+        var safeStory360Label = escapeMermaidLabelText(story360Label);
+        mermaid += '    ' + story360From + story360ArrowWithLabel + '|"' + safeStory360Label + '"| ' + story360To + ';\n';
       } else {
-        mermaid += '    ' + story360Edge.from + story360Arrow + story360Edge.to + ';\n';
+        mermaid += '    ' + story360From + story360Arrow + story360To + ';\n';
       }
     }
   }
@@ -18462,7 +18213,7 @@ function buildMermaidGraph(story, unreachableList, options) {
     console.log('[GRAPH DEBUG] Mermaid nodes:', nodes.length);
     nodes.forEach(function(node) {
       if (node.allBgImages && node.allBgImages.length > 0) {
-        console.log('  Node', node.id, 'images:', node.allBgImages.map(function(bg) { return bg.id; }).join(', '));
+        console.log('  Node', node.sceneId, 'images:', node.allBgImages.map(function(bg) { return bg.id; }).join(', '));
       }
     });
   }
@@ -18581,7 +18332,7 @@ function buildCharactersGraph(story, options) {
         var characterSceneCount = characterSceneUseMap[listCharId] ? Object.keys(characterSceneUseMap[listCharId]).length : 0;
         var countClass = characterUseCount === 0 ? " game-list-count-zero" : "";
         charactersListHtml += "<span class='game-list-row game-list-row-with-count'>" +
-          "<span class='game-list-id'>" + escapeHtml(listCharId) + "</span>" +
+          "<span class='game-list-id'>" + escapeMermaidLabelText(listCharId) + "</span>" +
           "<b class='game-list-count" + countClass + "'>" + characterUseCount + "/" + characterSceneCount + "</b>" +
           "</span>";
       }
@@ -18617,7 +18368,7 @@ function buildCharactersGraph(story, options) {
       for (var e = 0; e < emotionIds.length; e++) {
         var emotion = emotionIds[e];
         var imgSrc = getGraphImageSrc(char.images[emotion]);
-        var safeEmotion = escapeHtml(emotion);
+        var safeEmotion = escapeMermaidLabelText(emotion);
         var emotionUseCount = (characterEmotionCounts[charId] && characterEmotionCounts[charId][emotion])
           ? characterEmotionCounts[charId][emotion]
           : 0;
@@ -18634,11 +18385,12 @@ function buildCharactersGraph(story, options) {
       emotionsHtml += '</div>';
     }
     
-    // Экранируем кавычки в displayName
-    var escapedDisplayName = displayName.replace(/"/g, '&quot;');
+    // Экранируем имя и id как текст HTML-метки, не позволяя им менять синтаксис Mermaid.
+    var escapedDisplayName = escapeMermaidLabelText(displayName);
+    var escapedCharacterId = escapeMermaidLabelText(charId);
 
     // Формируем метку персонажа с правильным экранированием - ИСПРАВЛЕНО
-    var label = '<b>' + charId + '</b><br/>';
+    var label = '<b>' + escapedCharacterId + '</b><br/>';
     if (displayName !== charId) {
       // Используем &quot; вместо кавычек
       label += '<i>&quot;' + escapedDisplayName + '&quot;</i>';
@@ -18646,7 +18398,7 @@ function buildCharactersGraph(story, options) {
     label += emotionsHtml;
     
     // Добавляем узел персонажа
-    var nodeId = 'char_' + charId;
+    var nodeId = getMermaidSafeNodeId('char', charId);
     mermaid += '    ' + nodeId + '["' + label + '"]\n';
     mermaid += '    ' + nodeId + ':::character-node\n';  // Применяем CSS-класс
     
@@ -18790,7 +18542,7 @@ function buildBackgroundsGraph(story, options) {
     for (var i = 0; i < imageBgIds.length; i++) {
       var imgBgId = imageBgIds[i];
       var imgSrc = getGraphImageSrc(allUniqueBgs[imgBgId]);
-      var safeImgBgId = escapeHtml(imgBgId);
+      var safeImgBgId = escapeMermaidLabelText(imgBgId);
       var bgUseCount = backgroundCounts[imgBgId] || 0;
 
       if (!imgSrc) continue;
@@ -18815,7 +18567,7 @@ function buildBackgroundsGraph(story, options) {
       var videoBgSceneCount = backgroundSceneUseMap[vidId] ? Object.keys(backgroundSceneUseMap[vidId]).length : 0;
       var countClass = videoBgUseCount === 0 ? " game-list-count-zero" : "";
       videoListHtml += "<span class='game-list-row game-list-row-with-count'>" +
-        "<span class='game-list-id'>" + escapeHtml(vidId) + "</span>" +
+        "<span class='game-list-id'>" + escapeMermaidLabelText(vidId) + "</span>" +
         "<b class='game-list-count" + countClass + "'>" + videoBgUseCount + "/" + videoBgSceneCount + "</b>" +
         "</span>";
     }
@@ -18832,8 +18584,8 @@ function buildBackgroundsGraph(story, options) {
     for (var b360 = 0; b360 < bg360Ids.length; b360++) {
       var bg360Id = bg360Ids[b360];
       var bg360Src = allUniqueBgs[bg360Id];
-      var safeBg360Id = escapeHtml(bg360Id);
-      var safeBg360Src = escapeHtml(bg360Src || "");
+      var safeBg360Id = escapeMermaidLabelText(bg360Id);
+      var safeBg360Src = escapeMermaidLabelText(bg360Src || "");
       var bg360UseCount = backgroundCounts[bg360Id] || 0;
       var bg360AssetQuality = getBackgroundAssetQuality(backgrounds[bg360Id]) || "auto";
 
@@ -18841,7 +18593,7 @@ function buildBackgroundsGraph(story, options) {
         "<img " +
         "class='bgi bg360-graph-thumbnail " + bg360CountClass + "' " +
         "data-bg360-src='" + safeBg360Src + "' " +
-        "data-bg360-quality='" + escapeHtml(bg360AssetQuality) + "' " +
+        "data-bg360-quality='" + escapeMermaidLabelText(bg360AssetQuality) + "' " +
         "title='" + safeBg360Id + "' alt='' />" +
         "<b class='bgc'>" + bg360UseCount + "</b>" +
         "</span> ";
@@ -18901,7 +18653,7 @@ function hydrateBg360GraphThumbnails(root) {
     if (!sourceUrl) return;
 
     var resource = resolveBg360PackResource(sourceUrl, quality, function() {
-      // После CSS/JS-загрузки повторно читаем атрибуты: граф мог быть перерисован или закрыт.
+      // После загрузки CSS повторно читаем атрибуты: граф мог быть перерисован или закрыт.
       if (img && img.isConnected) hydrateSingleBg360Thumb(img);
     });
     if (!resource || resource.status !== "ready" || !resource.src) {
@@ -19035,7 +18787,7 @@ function buildAudioGraph(story, options) {
       var audioSceneCount = audioSceneUseMap[audioId] ? Object.keys(audioSceneUseMap[audioId]).length : 0;
       var countClass = audioUseCount === 0 ? " game-list-count-zero" : "";
       listHtml += "<span class='game-list-row game-list-row-with-count'>" +
-        "<span class='game-list-id'>" + escapeHtml(audioId) + "</span>" +
+        "<span class='game-list-id'>" + escapeMermaidLabelText(audioId) + "</span>" +
         "<b class='game-list-count" + countClass + "'>" + audioUseCount + "/" + audioSceneCount + "</b>" +
         "</span>";
     }
@@ -19164,7 +18916,7 @@ function buildVideoGraph(story, options) {
       var videoSceneCount = videoSceneUseMap[videoId] ? Object.keys(videoSceneUseMap[videoId]).length : 0;
       var countClass = videoUseCount === 0 ? " game-list-count-zero" : "";
       listHtml += "<span class='game-list-row game-list-row-with-count'>" +
-        "<span class='game-list-id'>" + escapeHtml(videoId) + "</span>" +
+        "<span class='game-list-id'>" + escapeMermaidLabelText(videoId) + "</span>" +
         "<b class='game-list-count" + countClass + "'>" + videoUseCount + "/" + videoSceneCount + "</b>" +
         "</span>";
     }
@@ -19266,7 +19018,7 @@ function buildGamesGraph(story, options) {
       var gameUseCount = gameUseCounts[gameId] || 0;
       var gameSceneCount = gameSceneUseMap[gameId] ? Object.keys(gameSceneUseMap[gameId]).length : 0;
       var countClass = gameUseCount === 0 ? " game-list-count-zero" : "";
-      var safeGameId = escapeHtml(gameId);
+      var safeGameId = escapeMermaidLabelText(gameId);
       gamesListHtml += "<span class='game-list-row game-list-row-with-count'>" +
         "<span class='game-list-id'>" + safeGameId + "</span>" +
         "<b class='game-list-count" + countClass + "'>" + gameUseCount + "/" + gameSceneCount + "</b>" +
@@ -19295,17 +19047,17 @@ function buildGamesGraph(story, options) {
       console.log('[GRAPH GAME]', gameId, 'used=', isUsed);
     }
 
-    var safeGameId = escapeHtml(gameId);
-    var safeTitle = escapeHtml(game.title || gameId);
-    var safeDescription = escapeHtml(game.description || "");
+    var safeGameId = escapeMermaidLabelText(gameId);
+    var safeTitle = escapeMermaidLabelText(game.title || gameId);
+    var safeDescription = escapeMermaidLabelText(game.description || "");
     var safeCover = getGraphImageSrc(game.cover || "");
     
 
 
-    var tooltip = escapeHtml(game.description || game.title || gameId);
+    var tooltip = escapeMermaidLabelText(game.description || game.title || gameId);
     var titleAttr = compact ? "" : " title='" + tooltip + "'";
 
-    var gameNodeId = 'game_' + gameId.replace(/[^a-zA-Z0-9_]/g, '_');
+    var gameNodeId = getMermaidSafeNodeId('game', gameId);
 
     var label = "<div class='game-card'" + titleAttr + ">" +
       "<div class='game-card-var'>" + safeGameId + "</div>" +
@@ -19650,7 +19402,7 @@ function keysSorted(obj) {
   return arr;
 }
 
-// минимальный экранизатор для вставки в innerHTML (если будете добавлять “детали”)
+// Экранирует текст перед включением в создаваемые движком HTML-фрагменты.
 function escapeHtml(s) {
   s = String(s);
   return s
@@ -19659,6 +19411,20 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// Экранирует пользовательский текст для HTML-метки Mermaid и заменяет управляющие символы, способные разорвать строку DSL.
+function escapeMermaidLabelText(value) {
+  var singleLine = String(value === undefined || value === null ? "" : value)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
+  return escapeHtml(singleLine);
+}
+
+// Делает пользовательский заголовок безопасным комментарием Mermaid без перевода строки или новой директивы.
+function escapeMermaidComment(value) {
+  return String(value === undefined || value === null ? "" : value)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ")
+    .replace(/%%/g, "% %");
 }
 
 // Применяет интерфейсные параметры в CSS variables.
@@ -20704,6 +20470,114 @@ function shouldUseCompactMermaid(fullCode, stats) {
   return false;
 }
 
+// Разрешает в стилях SVG только локальные fragment-url маркеров и запрещает сетевые или исполняемые CSS-конструкции.
+function isSafeMermaidCssText(value) {
+  var css = String(value || "");
+  if (/@import|expression\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding/i.test(css)) return false;
+
+  var unsafeUrl = false;
+  var withoutSafeUrls = css.replace(/url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/gi, function(match, quote, target) {
+    if (!/^#[A-Za-z0-9_.:-]+$/.test(String(target || ""))) unsafeUrl = true;
+    return "";
+  });
+  if (unsafeUrl || /url\s*\(/i.test(withoutSafeUrls)) return false;
+  return true;
+}
+
+// Удаляет из результата Mermaid активные элементы, обработчики событий и URL до переноса SVG в документ новеллы.
+function sanitizeMermaidRenderedTree(root) {
+  if (!root || !root.querySelectorAll) return null;
+
+  var blockedTags = {
+    a: true,
+    animate: true,
+    animatemotion: true,
+    animatetransform: true,
+    audio: true,
+    base: true,
+    button: true,
+    canvas: true,
+    embed: true,
+    form: true,
+    iframe: true,
+    input: true,
+    link: true,
+    meta: true,
+    mpath: true,
+    object: true,
+    option: true,
+    script: true,
+    select: true,
+    set: true,
+    source: true,
+    template: true,
+    textarea: true,
+    track: true,
+    video: true
+  };
+  var urlAttributes = {
+    action: true,
+    background: true,
+    formaction: true,
+    href: true,
+    "xlink:href": true,
+    ping: true,
+    poster: true,
+    src: true,
+    srcset: true
+  };
+  var elements = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+
+  for (var removeIndex = elements.length - 1; removeIndex >= 0; removeIndex--) {
+    var candidate = elements[removeIndex];
+    var tagName = String(candidate.localName || candidate.nodeName || "").toLowerCase();
+    if (blockedTags[tagName] && candidate.parentNode) candidate.parentNode.removeChild(candidate);
+  }
+
+  elements = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+  for (var elementIndex = 0; elementIndex < elements.length; elementIndex++) {
+    var element = elements[elementIndex];
+    var currentTag = String(element.localName || element.nodeName || "").toLowerCase();
+    if (currentTag === "style" && !isSafeMermaidCssText(element.textContent || "")) {
+      if (element.parentNode) element.parentNode.removeChild(element);
+      continue;
+    }
+
+    var attributes = Array.prototype.slice.call(element.attributes || []);
+    for (var attributeIndex = 0; attributeIndex < attributes.length; attributeIndex++) {
+      var attribute = attributes[attributeIndex];
+      var attributeName = String(attribute.name || "").toLowerCase();
+      var attributeValue = String(attribute.value || "").trim();
+      if (/^on/i.test(attributeName) || attributeName === "srcdoc") {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      if (attributeName === "style" && !isSafeMermaidCssText(attributeValue)) {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      if (urlAttributes[attributeName]) {
+        var isLocalFragment = (attributeName === "href" || attributeName === "xlink:href") && /^#[A-Za-z0-9_.:-]+$/.test(attributeValue);
+        if (!isLocalFragment) element.removeAttribute(attribute.name);
+      }
+    }
+  }
+
+  return root;
+}
+
+// Разбирает SVG в инертном HTML-документе, проверяет корень и возвращает очищенный узел без innerHTML основной страницы.
+function createSafeMermaidSvgNode(svgSource) {
+  var parser = new DOMParser();
+  var parsed = parser.parseFromString(String(svgSource || ""), "text/html");
+  var root = parsed.body ? parsed.body.querySelector("svg") : null;
+  if (!root || String(root.localName || "").toLowerCase() !== "svg") {
+    throw new Error("Mermaid не вернул корневой SVG.");
+  }
+  sanitizeMermaidRenderedTree(root);
+  return document.importNode(root, true);
+}
+
 // Рендерит Mermaid в DOM как один атомарный async-проход: старые проходы отбрасываются по graphRenderSequence,
 // чтобы при частых входах/выходах из вкладки графа не смешивались размеры старого SVG и нового foreignObject.
 function renderMermaidGraph(renderSequence) {
@@ -20759,17 +20633,19 @@ function renderMermaidGraph(renderSequence) {
     if (isRenderOutdated()) return Promise.resolve(false);
 
     clearMermaidContainer();
+    // Mermaid измеряет getBoundingClientRect во время layout, поэтому временный host должен быть в DOM; strict и экранирование защищают этот промежуточный этап.
+    var temporaryRenderHost = document.createElement("div");
+    temporaryRenderHost.setAttribute("aria-hidden", "true");
+    temporaryRenderHost.style.visibility = "hidden";
+    mermaidGraph.appendChild(temporaryRenderHost);
 
-    return window.mermaid.render("vn-graph-" + renderSequence + "-" + index, code, mermaidGraph)
+    return window.mermaid.render("vn-graph-" + renderSequence + "-" + index, code, temporaryRenderHost)
       .then(function(result) {
         if (isRenderOutdated()) return false;
 
+        var safeSvg = createSafeMermaidSvgNode(result && result.svg ? result.svg : "");
         clearMermaidContainer();
-        mermaidGraph.innerHTML = result && result.svg ? result.svg : "";
-
-        if (result && typeof result.bindFunctions === "function") {
-          result.bindFunctions(mermaidGraph);
-        }
+        mermaidGraph.appendChild(safeSvg);
 
         if (!hasMermaidRenderError()) {
           hydrateBg360GraphThumbnails(mermaidGraph);

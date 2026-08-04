@@ -257,8 +257,8 @@
           loadsafe: true,
           // false — только исходные пути; true/auto — сначала --vnv-optimized webp, затем исходник.
           optimized: 'false',
-          // Отсутствующая настройка сохраняет прежние права iframe; новые шаблоны явно включают strict.
-          gameSandbox: 'legacy'
+          // Мини-игры всегда запускаются в строгом sandbox; поле сохраняется для явной диагностики старых сценариев.
+          gameSandbox: 'strict'
         }
       },
       assets: {
@@ -1146,12 +1146,12 @@ function hasPanorama360Flag(rawText, optionsObject) {
   return modeValue === "360" || projectionValue === "360";
 }
 
-// Проверяет, что 360-фон указывает на декларативный CSS, совместимый JS-пакет или настоящий видеофайл.
+// Проверяет, что 360-фон указывает только на декларативный CSS-пакет или настоящий видеофайл.
 function validateBg360SourcePath(rawPath, lineNumber, line) {
   var path = String(rawPath || "").trim();
-  if (/-360(?:-[a-z0-9_-]+)?\.(?:css|js)(\?.*)?$/i.test(path)) return true;
+  if (/-360(?:-[a-z0-9_-]+)?\.css(\?.*)?$/i.test(path)) return true;
   if (/\.(mp4|webm)(\?.*)?$/i.test(path)) return true;
-  addParseError(lineNumber, line, `360 background file must be a -360.css/-360.js package or video, got "${rawPath}".`, true);
+  addParseError(lineNumber, line, `360 background file must be a -360.css package or video; JavaScript panorama packages are not supported, got "${rawPath}".`, true);
   return false;
 }
 
@@ -1291,7 +1291,7 @@ function splitQuotedTokens(text) {
   return tokens;
 }
 
-// Разбирает запуск игры и переносит в действие режим sandbox из её объявления.
+// Разбирает запуск игры; режим sandbox не переносится в действие, потому что runtime всегда использует strict.
 function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
   var tokens = splitQuotedTokens(cleanLine);
   if (tokens.length < 2) {
@@ -1341,7 +1341,6 @@ function parseGameAction(lineNumber, line, cleanLine, story, currentScene) {
     type: 'game',
     gameId: gameId,
     src: gameSrc,
-    sandboxMode: gameAsset.sandbox || null,
     resultVar: resultVar,
     params: params
   });
@@ -1518,22 +1517,22 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     return hasDoubleQuotes || hasSingleQuotes ? value.slice(1, -1) : value;
   }
 
-  // Нормализует режим sandbox из meta или объявления игры и сообщает понятную ошибку для других значений.
+  // Принимает только strict и явно отклоняет legacy, чтобы старый сценарий не ослабил iframe незаметно.
   function parseGameSandboxMode(value, lineNumber, originalLine, parameterName, isCritical) {
     var normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'strict' || normalized === 'legacy') return normalized;
+    if (normalized === 'strict') return normalized;
 
     addParseError(
       lineNumber,
       originalLine,
-      'The "' + parameterName + '" value must be strict or legacy.',
+      'The "' + parameterName + '" value must be strict. Legacy game mode is no longer supported.',
       !!isCritical
     );
     return null;
   }
 
 
-  // Разбирает общие meta и системное пространство engine.*, включая совместимый режим sandbox игр.
+  // Разбирает общие meta и системное пространство engine.*, включая обязательный строгий sandbox игр.
   function parseMetaLine(lineNumber, line, story) {
     var originalLine = line;
 
@@ -1908,7 +1907,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       if (args.description !== undefined) game.description = args.description;
       if (args.cover !== undefined) game.cover = args.cover;
       if (args.sandbox !== undefined) {
-        // Локальная настройка нужна для отдельных legacy-игр внутри новеллы со строгим режимом по умолчанию.
+        // Явный strict остаётся допустимым для читаемости, а legacy отклоняется как небезопасный режим.
         var parsedGameSandbox = parseGameSandboxMode(
           args.sandbox,
           lineNumber,

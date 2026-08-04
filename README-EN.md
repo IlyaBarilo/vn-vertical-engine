@@ -160,9 +160,9 @@ scene nextScene
 "The story continues."
 ```
 
-Keep `engine.gameSandbox = strict` in new stories so HTML mini-games run in an
-isolated iframe. If a trusted older game needs the previous behavior, add
-`sandbox=legacy` to that game's entry in the `[game]` section.
+HTML mini-games always run in a strictly isolated iframe. You may keep
+`engine.gameSandbox = strict` explicit for readability; the `legacy` mode and
+per-game `sandbox` overrides are no longer supported.
 
 The format can be edited in any text editor and reviewed independently from
 the engine code. The complete command reference is currently maintained in
@@ -172,8 +172,8 @@ Author-owned `story.js` and optional `story360.js` run in separate short-lived
 Web Workers. The main page receives only the story text and a validated
 JSON-like 360 map, so the file format and manual editing stay unchanged while
 their code no longer runs in the novel DOM. This is privilege reduction rather
-than a passive data format; legacy panorama image packages `*-360.js` remain a
-separate trusted fallback.
+than a passive data format. Panorama images load only from declarative
+`*-360.css` packages; `*-360.js` paths are rejected.
 
 ## 360° scenes and mini-games
 
@@ -186,7 +186,7 @@ script or a separate `story360.js`.
 
 Browser-based authoring helpers in the repository include:
 
-- `tools/convert-360-img-to-css.html` for offline CSS/JS panorama packages;
+- `tools/convert-360-img-to-css.html` for offline CSS panorama packages and passive migration from old JS packages;
 - `tools/scene360-editor.html` for routes and navigation points;
 - `tools/media-focus-editor.html` for image and video focus points;
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
@@ -195,9 +195,9 @@ Browser-based authoring helpers in the repository include:
 `scene360-editor.html` imports `story360.js` as data and does not automatically
 execute JavaScript packages referenced by it. The editor previews relative
 `*-360.css` packages in an isolated sandbox. Direct JPEG, PNG, and WebP input,
-as well as the legacy JS package controls, are currently hidden. An imported JS
-path is preserved as data but is not executed by the editor. External URLs,
-absolute paths, and `..` traversal are rejected.
+as well as the old JS package controls, are hidden. An imported JS path is
+preserved as data but is not executed by the editor, and the engine rejects JS
+image packages entirely. External URLs, absolute paths, and `..` traversal are rejected.
 
 Each panorama may contain an optional author-only `comment`, shown after its ID
 in the panorama list. Editing happens in a working copy. “Save version in
@@ -205,9 +205,8 @@ browser” creates an explicit reload checkpoint, while a newer emergency copy i
 kept separately and is restored only after user confirmation. Downloading
 `story360.js` does not overwrite that browser checkpoint.
 
-The game tester uses strict isolation and validates `gameId` and `sessionId` by
-default. Its explicit `Legacy` mode is intended only for a trusted older game and
-shows how to migrate that game to protocol v2.
+The game tester uses strict isolation and always validates the protocol v2
+`gameId` and `sessionId` values.
 
 ### Cleaning a panorama with a second shot
 
@@ -240,7 +239,8 @@ The complete integration contract is maintained in Russian:
 ## Statistics and story graph
 
 Development mode shows visited scenes, variables, and a local Mermaid graph of
-story transitions.
+story transitions. Mermaid runs in strict mode; user labels are escaped and the
+rendered SVG is sanitized before insertion into the page.
 
 <p align="center">
   <img src="docs/stat/stat-graph-1.webp" width="820" alt="A branching interactive-story graph in the statistics view">

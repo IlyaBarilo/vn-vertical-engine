@@ -23,7 +23,7 @@ test('парсер нормализует алиасы и параметры м�
   const result = await runStoryLoader(createMediaStory([
     '[bg]',
     'wide image=synthetic/bg/wide.jpg fallbackimage=synthetic/bg/fallback.jpg volume=0.3 scroll=left focusx=right focusy=25 scale=zoom',
-    'sphere file=synthetic/360/sphere-360.js projection=360 quality=auto focusz=25 fov=60 userfocus',
+    'sphere file=synthetic/360/sphere-360.css projection=360 quality=auto focusz=25 fov=60 userfocus',
     '',
     '[char]',
     'anna emo=smile src=synthetic/char/anna.png name="Анна" focusx=left focusy=bottom scale=1.1',
@@ -124,8 +124,8 @@ test('объявления медиа отклоняют некорректны�
     ['scroll', ['[bg]', 'bad file=synthetic/bg/bad.jpg scroll=sideways'], 'Invalid scroll value'],
     ['focusX', ['[char]', 'anna file=synthetic/char/anna.png focusx=200'], 'Invalid focusX value'],
     ['scale', ['[char]', 'anna file=synthetic/char/anna.png scale=0'], 'Invalid character scale'],
-    ['fov', ['[bg]', 'bad file=synthetic/360/bad-360.js 360 fov=100'], 'fov "100" is out of range'],
-    ['quality', ['[bg]', 'bad file=synthetic/360/bad-360.js 360 quality=ultra'], 'Invalid 360 quality']
+    ['fov', ['[bg]', 'bad file=synthetic/360/bad-360.css 360 fov=100'], 'fov "100" is out of range'],
+    ['quality', ['[bg]', 'bad file=synthetic/360/bad-360.css 360 quality=ultra'], 'Invalid 360 quality']
   ];
 
   for (const testCase of cases) {

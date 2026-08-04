@@ -20,7 +20,7 @@ test('парсер регистрирует синтетические ассе�
   const storyText = createSyntheticStory([
     '[bg]',
     'hall file=synthetic/backgrounds/hall.jpg',
-    'sphere file=synthetic/360/sphere-360.js 360 quality=mobile',
+    'sphere file=synthetic/360/sphere-360.css 360 quality=mobile',
     '',
     '[char]',
     'anna emotion=calm file=synthetic/characters/anna.png name="Анна" color=#0F0',
@@ -43,7 +43,7 @@ test('парсер регистрирует синтетические ассе�
   assert.equal(result.errors.length, 0);
   assert.ok(result.story);
   assert.equal(result.story.assets.backgrounds.hall, 'synthetic/backgrounds/hall.jpg');
-  assert.equal(result.story.assets.backgrounds.sphere.file, 'synthetic/360/sphere-360.js');
+  assert.equal(result.story.assets.backgrounds.sphere.file, 'synthetic/360/sphere-360.css');
   assert.equal(result.story.assets.backgrounds.sphere.is360, true);
   assert.equal(result.story.assets.characters.anna.name, 'Анна');
   assert.equal(result.story.assets.characters.anna.images.calm, 'synthetic/characters/anna.png');
@@ -73,7 +73,7 @@ test('парсер принимает CSS-пакет 360-фона', async functi
   assert.equal(result.story.assets.backgrounds.sphere.quality, 'normal');
 });
 
-// Отклоняет опечатку в локальном режиме sandbox, чтобы игра не получила legacy-права молча.
+// Отклоняет любой режим кроме strict, чтобы игра не получила расширенные права молча.
 test('парсер отклоняет неизвестный режим sandbox игры', async function() {
   const storyText = createSyntheticStory([
     '[game]',
@@ -87,8 +87,35 @@ test('парсер отклоняет неизвестный режим sandbox 
 
   assert.equal(result.story, null);
   assert.ok(result.errors.some(function(error) {
-    return error.message.includes('The "sandbox" value must be strict or legacy.');
+    return error.message.includes('The "sandbox" value must be strict. Legacy game mode is no longer supported.');
   }));
+});
+
+// Отклоняет normal, mobile и произвольные JS-варианты панорам до запуска движка.
+test('парсер отклоняет исполняемые JS-пакеты 360', async function(t) {
+  const paths = [
+    'synthetic/360/sphere-360.js',
+    'synthetic/360/sphere-360-mobile.js',
+    'synthetic/360/sphere-360-tablet.js'
+  ];
+
+  for (const sourcePath of paths) {
+    await t.test(sourcePath, async function() {
+      const result = await runStoryLoader(createSyntheticStory([
+        '[bg]',
+        'sphere file=' + sourcePath + ' 360',
+        '',
+        '[scene]',
+        'scene intro',
+        '"Текст"'
+      ]));
+
+      assert.equal(result.story, null);
+      assert.ok(result.errors.some(function(error) {
+        return error.message.includes('JavaScript panorama packages are not supported');
+      }));
+    });
+  }
 });
 
 // Фиксирует обязательность file= для записей нового формата.
@@ -123,7 +150,7 @@ test('парсер отклоняет картинку вместо пакета
 
   assert.equal(result.story, null);
   assert.ok(result.errors.some(function(error) {
-    return error.message.includes('360 background file must be a -360.css/-360.js package or video');
+    return error.message.includes('360 background file must be a -360.css package or video');
   }));
 });
 
