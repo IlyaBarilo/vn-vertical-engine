@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -6,6 +8,21 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
+
+// Проверяет только файлы проекта, чтобы локальные неотслеживаемые материалы не ломали тесты разработчика.
+test('assets/360 не содержит отслеживаемых устаревших JS-панорам', function() {
+  const panoramaPaths = execFileSync('git', ['ls-files', '--', 'assets/360'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8'
+  }).split(/\r?\n/);
+  const legacyPackages = panoramaPaths
+    .filter(function(relativePath) {
+      return /-360[^/\\]*\.js$/i.test(relativePath)
+        && existsSync(path.join(repositoryRoot, relativePath));
+    })
+    .sort();
+  assert.deepEqual(legacyPackages, []);
+});
 
 // Записывает беззнаковое 32-битное число в PNG-заголовок с прямым порядком байтов.
 function writeUint32Be(bytes, offset, value) {
