@@ -107,6 +107,7 @@ jobs:
           [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
           [ -f COMMERCIAL-USE.md ] && cp COMMERCIAL-USE.md "build/$APP_NAME/"
           [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
+          [ -f tools/student-game-auditor.html ] && cp tools/student-game-auditor.html "build/$APP_NAME/tools/"
           [ -f tools/game-tester.html ] && cp tools/game-tester.html "build/$APP_NAME/tools/"
           [ -f tools/media-focus-editor.html ] && cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
           [ -f tools/convert-360-img-to-css.html ] && cp tools/convert-360-img-to-css.html "build/$APP_NAME/tools/"
@@ -125,6 +126,7 @@ jobs:
           [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/docs/examples/"
           [ -f docs/specs/spec-story.md ] && cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
           [ -f docs/specs/spec-game.md ] && cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
+          [ -f docs/student-project-review.md ] && cp docs/student-project-review.md "build/$APP_NAME/docs/"
           [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
           [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
           [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
@@ -142,12 +144,6 @@ jobs:
           node dev/scripts/copy-release-assets.mjs \
             --source assets \
             --destination "build/$APP_NAME/assets"
-
-
-          # Панорамы 360: копируем дерево каталогов целиком (сценарий ссылается на пути вида assets/360/B101/...).
-          if [ -d assets/360 ]; then
-            cp -a assets/360 "build/$APP_NAME/assets/"
-          fi
       - name: Prepare site build
         shell: bash
         run: |
@@ -216,6 +212,8 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/tools/student-game-auditor.html" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/docs/student-project-review.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
 
           # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
@@ -223,11 +221,17 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/tools/student-game-auditor.html" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/docs/student-project-review.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
 
           # Developer-файлы не должны попадать ни в один пользовательский ZIP.
           if grep -Eq "^${APP_NAME}/(dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/full-zip-contents.txt; then
             echo "Полный архив содержит developer-файлы."
+            exit 1
+          fi
+          if grep -Eiq "^${APP_NAME}/assets/360/.+-360(-[^/]+)?\\.js$" build/full-zip-contents.txt; then
+            echo "Полный архив содержит запрещённый панорамный JS-пакет."
             exit 1
           fi
           if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/update-zip-contents.txt; then

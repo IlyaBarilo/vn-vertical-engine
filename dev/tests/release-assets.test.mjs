@@ -53,20 +53,30 @@ test('релизные ассеты сохраняют вложенную стр
   await writeFixtureFile(sourceRoot, 'backgrounds/night/hall.JPG', 'night');
   await writeFixtureFile(sourceRoot, 'audio/music/theme.ogg', 'audio');
   await writeFixtureFile(sourceRoot, 'backgrounds/day/readme.txt', 'skip');
+  await writeFixtureFile(sourceRoot, '360/hall/hall-360.css', 'panorama');
+  await writeFixtureFile(sourceRoot, '360/hall/hall.jpg', 'preview');
+  await writeFixtureFile(sourceRoot, '360/hall/hall-360.js', 'legacy');
+  await writeFixtureFile(sourceRoot, '360/hall/unrelated.css', 'skip');
 
   const result = await copyReleaseAssets({ sourceRoot, destinationRoot });
 
   assert.deepEqual(result.copiedFiles, [
+    '360/hall/hall-360.css',
+    '360/hall/hall.jpg',
     'backgrounds/day/hall.jpg',
     'backgrounds/night/hall.JPG',
     'audio/music/theme.ogg'
   ]);
-  assert.equal(result.skippedFiles, 1);
+  assert.equal(result.skippedFiles, 3);
   assert.equal(await readFile(path.join(destinationRoot, 'backgrounds/day/hall.jpg'), 'utf8'), 'day');
   assert.equal(await readFile(path.join(destinationRoot, 'backgrounds/night/hall.JPG'), 'utf8'), 'night');
   assert.equal(await readFile(path.join(destinationRoot, 'audio/music/theme.ogg'), 'utf8'), 'audio');
+  assert.equal(await readFile(path.join(destinationRoot, '360/hall/hall-360.css'), 'utf8'), 'panorama');
+  assert.equal(await readFile(path.join(destinationRoot, '360/hall/hall.jpg'), 'utf8'), 'preview');
   assert.equal(await pathExists(path.join(destinationRoot, 'backgrounds/hall.jpg')), false);
   assert.equal(await pathExists(path.join(destinationRoot, 'backgrounds/day/readme.txt')), false);
+  assert.equal(await pathExists(path.join(destinationRoot, '360/hall/hall-360.js')), false);
+  assert.equal(await pathExists(path.join(destinationRoot, '360/hall/unrelated.css')), false);
 });
 
 // Имитирует case-sensitive репозиторий и не позволяет получить неоднозначный ZIP для Windows.

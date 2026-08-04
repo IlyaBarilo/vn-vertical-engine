@@ -2,8 +2,9 @@ import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Сохраняет прежний набор допустимых форматов для каждой части assets, меняя только способ копирования путей.
+// Разрешает только пользовательские форматы релиза; исторические панорамные JS-пакеты намеренно исключены.
 export const RELEASE_ASSET_RULES = Object.freeze({
+  360: Object.freeze(['.css', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif', '.mp4', '.webm', '.mov']),
   backgrounds: Object.freeze(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif', '.mp4', '.mov']),
   characters: Object.freeze(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif', '.mp4', '.mov']),
   audio: Object.freeze(['.mp3', '.wav', '.ogg', '.m4a', '.aac']),
@@ -83,6 +84,11 @@ async function collectCategoryFiles(categoryRoot, currentDirectory, categoryName
 
     const extension = path.extname(directoryEntry.name).toLowerCase();
     if (!allowedExtensions.has(extension)) {
+      result.skippedFiles += 1;
+      continue;
+    }
+    // В категории 360 CSS является runtime-пакетом только при обязательном суффиксе -360.
+    if (categoryName === '360' && extension === '.css' && !/-360(?:-[a-z0-9_-]+)?\.css$/i.test(directoryEntry.name)) {
       result.skippedFiles += 1;
       continue;
     }

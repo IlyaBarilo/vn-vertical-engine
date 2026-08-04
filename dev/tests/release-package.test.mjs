@@ -8,11 +8,17 @@ const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', im
 
 // Перечисляет пользовательские инструменты, которые должны быть доступны в полном и update-архивах.
 const requiredAuthoringTools = [
+  'tools/student-game-auditor.html',
   'tools/game-tester.html',
   'tools/media-focus-editor.html',
   'tools/convert-360-img-to-css.html',
   'tools/panorama-cleaner.html',
   'tools/scene360-editor.html'
+];
+
+// Перечисляет преподавательские документы, которые должны сохраняться в полном и update-архивах.
+const requiredReviewDocuments = [
+  'docs/student-project-review.md'
 ];
 
 // Читает отслеживаемый файл относительно корня репозитория для проверки состава runtime и релиза.
@@ -99,6 +105,18 @@ test('релизная сборка включает пользовательс�
   });
 });
 
+// Проверяет доставку инструкции преподавателя вместе с автономным аудитором.
+test('релизная сборка включает документы проверки студенческих проектов', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+
+  requiredReviewDocuments.forEach(function(relativePath) {
+    assert.ok(
+      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
+      'В release.yml отсутствует копирование ' + relativePath
+    );
+  });
+});
+
 // Закрепляет единый helper, который сохраняет вложенные пути вместо плоского копирования файлов через shell.
 test('релизная сборка сохраняет структуру каталогов ассетов', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
@@ -111,7 +129,8 @@ test('релизная сборка сохраняет структуру кат
     'find assets/characters',
     'find assets/audio',
     'find assets/games',
-    'find assets/video'
+    'find assets/video',
+    'cp -a assets/360'
   ].forEach(function(flatCopyCommand) {
     assert.equal(
       releaseSource.includes(flatCopyCommand),
@@ -184,6 +203,11 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
   assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}/tools/student-game-auditor.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/student-game-auditor.html'));
+  assert.ok(releaseSource.includes('${APP_NAME}/docs/student-project-review.md'));
+  assert.ok(releaseSource.includes('${APP_NAME}-update/docs/student-project-review.md'));
+  assert.ok(releaseSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
   assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));
   assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
   assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
