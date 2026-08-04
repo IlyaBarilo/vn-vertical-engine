@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const helperDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(helperDirectory, '..', '..', '..');
+const resourcePathPolicyPath = path.join(repositoryRoot, 'engine', 'resource-path-policy.js');
 const expressionPath = path.join(repositoryRoot, 'engine', 'expression.js');
 const loaderPath = path.join(repositoryRoot, 'engine', 'story-loader.js');
 let runtimeSourcesPromise = null;
@@ -66,6 +67,7 @@ function normalizeLoaderStats(stats) {
 async function getLoaderRuntimeSources() {
   if (!runtimeSourcesPromise) {
     runtimeSourcesPromise = Promise.all([
+      readFile(resourcePathPolicyPath, 'utf8'),
       readFile(expressionPath, 'utf8'),
       readFile(loaderPath, 'utf8')
     ]);
@@ -90,9 +92,11 @@ export async function runStoryLoader(storyText, options = {}) {
     document: createDocumentStub(),
     console: createSilentConsole()
   });
-  const expressionScript = new vm.Script(sources[0], { filename: expressionPath });
-  const loaderScript = new vm.Script(sources[1], { filename: loaderPath });
+  const resourcePathPolicyScript = new vm.Script(sources[0], { filename: resourcePathPolicyPath });
+  const expressionScript = new vm.Script(sources[1], { filename: expressionPath });
+  const loaderScript = new vm.Script(sources[2], { filename: loaderPath });
 
+  resourcePathPolicyScript.runInContext(context, { timeout: 5000 });
   expressionScript.runInContext(context, { timeout: 5000 });
   loaderScript.runInContext(context, { timeout: 5000 });
 

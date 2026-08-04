@@ -19,20 +19,20 @@ function createSyntheticStory(lines) {
 test('парсер регистрирует синтетические ассеты всех типов', async function() {
   const storyText = createSyntheticStory([
     '[bg]',
-    'hall file=synthetic/backgrounds/hall.jpg',
-    'sphere file=synthetic/360/sphere-360.css 360 quality=mobile',
+    'hall file=assets/synthetic/backgrounds/hall.jpg',
+    'sphere file=assets/synthetic/360/sphere-360.css 360 quality=mobile',
     '',
     '[char]',
-    'anna emotion=calm file=synthetic/characters/anna.png name="Анна" color=#0F0',
+    'anna emotion=calm file=assets/synthetic/characters/anna.png name="Анна" color=#0F0',
     '',
     '[audio]',
-    'theme file=synthetic/audio/theme.ogg volume=0.4',
+    'theme file=assets/synthetic/audio/theme.ogg volume=0.4',
     '',
     '[video]',
-    'introVideo file=synthetic/video/intro.mp4 poster=synthetic/video/intro.jpg volume=0.2',
+    'introVideo file=assets/synthetic/video/intro.mp4 poster=assets/synthetic/video/intro.jpg volume=0.2',
     '',
     '[game]',
-    'puzzle file=synthetic/games/puzzle.html title="Головоломка" cover=synthetic/games/puzzle.jpg sandbox=strict',
+    'puzzle file=assets/synthetic/games/puzzle.html title="Головоломка" cover=assets/synthetic/games/puzzle.jpg sandbox=strict',
     '',
     '[scene]',
     'scene intro',
@@ -42,15 +42,15 @@ test('парсер регистрирует синтетические ассе�
 
   assert.equal(result.errors.length, 0);
   assert.ok(result.story);
-  assert.equal(result.story.assets.backgrounds.hall, 'synthetic/backgrounds/hall.jpg');
-  assert.equal(result.story.assets.backgrounds.sphere.file, 'synthetic/360/sphere-360.css');
+  assert.equal(result.story.assets.backgrounds.hall, 'assets/synthetic/backgrounds/hall.jpg');
+  assert.equal(result.story.assets.backgrounds.sphere.file, 'assets/synthetic/360/sphere-360.css');
   assert.equal(result.story.assets.backgrounds.sphere.is360, true);
   assert.equal(result.story.assets.characters.anna.name, 'Анна');
-  assert.equal(result.story.assets.characters.anna.images.calm, 'synthetic/characters/anna.png');
-  assert.equal(result.story.assets.audio.theme.file, 'synthetic/audio/theme.ogg');
+  assert.equal(result.story.assets.characters.anna.images.calm, 'assets/synthetic/characters/anna.png');
+  assert.equal(result.story.assets.audio.theme.file, 'assets/synthetic/audio/theme.ogg');
   assert.equal(result.story.assets.audio.theme.volume, 0.4);
-  assert.equal(result.story.assets.videos.introVideo.file, 'synthetic/video/intro.mp4');
-  assert.equal(result.story.assets.games.puzzle.file, 'synthetic/games/puzzle.html');
+  assert.equal(result.story.assets.videos.introVideo.file, 'assets/synthetic/video/intro.mp4');
+  assert.equal(result.story.assets.games.puzzle.file, 'assets/synthetic/games/puzzle.html');
   assert.equal(result.story.assets.games.puzzle.sandbox, 'strict');
 });
 
@@ -58,7 +58,7 @@ test('парсер регистрирует синтетические ассе�
 test('парсер принимает CSS-пакет 360-фона', async function() {
   const storyText = createSyntheticStory([
     '[bg]',
-    'sphere file=synthetic/360/sphere-360.css 360 quality=normal',
+    'sphere file=assets/synthetic/360/sphere-360.css 360 quality=normal',
     '',
     '[scene]',
     'scene intro',
@@ -68,7 +68,7 @@ test('парсер принимает CSS-пакет 360-фона', async functi
   const result = await runStoryLoader(storyText);
 
   assert.equal(result.errors.length, 0);
-  assert.equal(result.story.assets.backgrounds.sphere.file, 'synthetic/360/sphere-360.css');
+  assert.equal(result.story.assets.backgrounds.sphere.file, 'assets/synthetic/360/sphere-360.css');
   assert.equal(result.story.assets.backgrounds.sphere.is360, true);
   assert.equal(result.story.assets.backgrounds.sphere.quality, 'normal');
 });
@@ -77,7 +77,7 @@ test('парсер принимает CSS-пакет 360-фона', async functi
 test('парсер отклоняет неизвестный режим sandbox игры', async function() {
   const storyText = createSyntheticStory([
     '[game]',
-    'broken file=synthetic/games/broken.html sandbox=unknown',
+    'broken file=assets/synthetic/games/broken.html sandbox=unknown',
     '',
     '[scene]',
     'scene intro',
@@ -94,9 +94,9 @@ test('парсер отклоняет неизвестный режим sandbox 
 // Отклоняет normal, mobile и произвольные JS-варианты панорам до запуска движка.
 test('парсер отклоняет исполняемые JS-пакеты 360', async function(t) {
   const paths = [
-    'synthetic/360/sphere-360.js',
-    'synthetic/360/sphere-360-mobile.js',
-    'synthetic/360/sphere-360-tablet.js'
+    'assets/synthetic/360/sphere-360.js',
+    'assets/synthetic/360/sphere-360-mobile.js',
+    'assets/synthetic/360/sphere-360-tablet.js'
   ];
 
   for (const sourcePath of paths) {
@@ -140,7 +140,7 @@ test('парсер отклоняет синтетический ассет бе
 test('парсер отклоняет картинку вместо пакета 360', async function() {
   const storyText = createSyntheticStory([
     '[bg]',
-    'sphere file=synthetic/360/sphere.jpg 360',
+    'sphere file=assets/synthetic/360/sphere.jpg 360',
     '',
     '[scene]',
     'scene intro',
@@ -152,6 +152,37 @@ test('парсер отклоняет картинку вместо пакета
   assert.ok(result.errors.some(function(error) {
     return error.message.includes('360 background file must be a -360.css package or video');
   }));
+});
+
+// Проверяет все основные формы обхода каталога assets до передачи путей в runtime.
+test('парсер отклоняет небезопасные пути ресурсов', async function(t) {
+  const invalidPaths = [
+    'https://example.test/hall.jpg',
+    '/assets/hall.jpg',
+    '../hall.jpg',
+    'assets\\backgrounds\\hall.jpg',
+    'assets/backgrounds/hall.jpg?cache=1',
+    'assets/%2e%2e/hall.jpg',
+    'other/hall.jpg'
+  ];
+
+  for (const sourcePath of invalidPaths) {
+    await t.test(sourcePath, async function() {
+      const result = await runStoryLoader(createSyntheticStory([
+        '[bg]',
+        'hall file=' + sourcePath,
+        '',
+        '[scene]',
+        'scene intro',
+        '"Текст"'
+      ]));
+
+      assert.equal(result.story, null);
+      assert.ok(result.errors.some(function(error) {
+        return error.message.includes('Недопустимый путь');
+      }));
+    });
+  }
 });
 
 // Проверяет ссылочную ошибку на вымышленного персонажа, не обращаясь к реальным изображениям.

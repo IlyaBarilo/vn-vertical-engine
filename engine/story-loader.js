@@ -111,6 +111,25 @@
     }
   }
 
+  // Проверяет авторский путь общей runtime-политикой и превращает отказ в критическую ошибку строки сценария.
+  function validateStoryResourcePath(pathValue, kind, lineNumber, line, label) {
+    var policy = window.VNResourcePathPolicy;
+    if (!policy || typeof policy.validate !== 'function') {
+      addParseError(lineNumber, line, 'Не загружена обязательная политика путей ресурсов.', true);
+      return false;
+    }
+
+    var result = policy.validate(String(pathValue || ''), kind);
+    if (result.ok) return true;
+    addParseError(
+      lineNumber,
+      line,
+      'Недопустимый путь ' + String(label || 'ресурса') + ' "' + String(pathValue || '') + '": ' + result.message + '.',
+      true
+    );
+    return false;
+  }
+
 
 
 
@@ -838,15 +857,20 @@ function parseBg360MarksCommand(cleanLine, lineNumber, originalLine) {
       }
       markObj.targetScene = null;
       // Несколько файлов в legacy-формате разделяются символом |; подписи caption задаются только в story360 JSON.
-      markObj.images = String(photoFileRaw || "")
+      var photoFiles = String(photoFileRaw || "")
         .split("|")
         .map(function (part) { return String(part || "").trim(); })
-        .filter(function (part) { return !!part; })
-        .map(function (file) { return { file: file, caption: "" }; });
-      if (!markObj.images.length) {
+        .filter(function (part) { return !!part; });
+      if (!photoFiles.length) {
         addParseError(lineNumber, originalLine, 'bg360marks: для photo укажите хотя бы один путь к файлу в 5-м поле', true);
         return null;
       }
+      for (var photoFileIndex = 0; photoFileIndex < photoFiles.length; photoFileIndex++) {
+        if (!validateStoryResourcePath(photoFiles[photoFileIndex], 'image', lineNumber, originalLine, 'фотографии 360-метки')) {
+          return null;
+        }
+      }
+      markObj.images = photoFiles.map(function (file) { return { file: file, caption: "" }; });
     }
     marks.push(markObj);
   }
@@ -1768,6 +1792,16 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
       }
 
       if (category === 'backgrounds') {
+        var backgroundIsPanorama = hasPanorama360Flag(rest, args);
+        // Сначала сохраняем понятную ошибку формата 360, затем применяем общую политику каталога и расширения.
+        if (backgroundIsPanorama && !validateBg360SourcePath(args.file, lineNumber, line)) return true;
+        if (!validateStoryResourcePath(args.file, backgroundIsPanorama ? 'panorama' : 'background', lineNumber, line, 'фона')) {
+          return true;
+        }
+        if ((args.fallback || args.poster) && !validateStoryResourcePath(args.fallback || args.poster, 'image', lineNumber, line, 'резервного изображения фона')) {
+          return true;
+        }
+
         // Для фонов поддерживаем расширенный объект:
         // file=..., fallback=..., volume=..., scroll=..., focusx=..., focusy=..., scale=... (ключи в нижнем регистре)
         // volume — доля от master (0..1), по умолчанию в движке для видео = 0.
@@ -1824,8 +1858,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           }
         }
 
-        if (hasPanorama360Flag(rest, args)) {
-          if (!validateBg360SourcePath(args.file, lineNumber, line)) return true;
+        if (backgroundIsPanorama) {
           bgEntry.is360 = true;
         }
 
@@ -1871,6 +1904,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
           story.assets.backgrounds[assetId] = bgEntry;
         }
       } else {
+        if (!validateStoryResourcePath(args.file, 'audio', lineNumber, line, 'аудио')) return true;
+
         // Для аудио сохраняем старый строковый формат, пока у трека не задана базовая громкость.
         var audioEntry = { file: args.file };
         if (args.volume !== undefined) {
@@ -1895,6 +1930,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
         return true;
       }
+      if (!validateStoryResourcePath(args.file, 'game', lineNumber, line, 'мини-игры')) return true;
+      if (args.cover !== undefined && !validateStoryResourcePath(args.cover, 'image', lineNumber, line, 'обложки мини-игры')) return true;
 
       var game = story.assets.games[assetId];
       if (!game || typeof game !== 'object') {
@@ -1928,6 +1965,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         addParseError(lineNumber, line, `The "${assetId}" entry must contain file=...`, true);
         return true;
       }
+      if (!validateStoryResourcePath(args.file, 'video', lineNumber, line, 'видео')) return true;
+      if ((args.poster !== undefined || args.fallback !== undefined) && !validateStoryResourcePath(args.poster !== undefined ? args.poster : args.fallback, 'image', lineNumber, line, 'постера видео')) return true;
 
       var video = story.assets.videos[assetId];
       if (!video || typeof video !== 'object') {
@@ -2005,6 +2044,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
 
       var charFocusTarget = char;
       if (args.file !== undefined) {
+        if (!validateStoryResourcePath(args.file, 'image', lineNumber, line, 'изображения персонажа')) return true;
         var emotion = args.emotion || 'neutral';
         char.images[emotion] = args.file;
         if (hasCharacterFocusArgs(args)) {
@@ -2139,6 +2179,7 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
             }
             
             if (propType === 'image') {
+                if (!validateStoryResourcePath(value, 'image', lineNumber, line, 'изображения персонажа')) return;
                 // Для image нужна эмоция (третий параметр)
                 const emotion = keyParts[2] || 'neutral';
                 if (!story.assets.characters[charId].images) {
@@ -2173,6 +2214,8 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
         }
       } else {
         // Для bg и audio оставляем как есть
+        var legacyResourceKind = category === 'audio' ? 'audio' : 'background';
+        if (!validateStoryResourcePath(value, legacyResourceKind, lineNumber, line, 'ресурса')) return;
         story.assets[category][key] = value;
       }
     }

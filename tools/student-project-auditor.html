@@ -250,11 +250,18 @@
 
     /* STUDENT_PROJECT_AUDITOR_CORE_START */
 
-    const AUDITOR_VERSION = '1.0';
+    const AUDITOR_VERSION = '1.1';
     const MAX_FILE_COUNT = 10000;
     const MAX_REVIEW_FILE_BYTES = 2 * 1024 * 1024;
     const MAX_REVIEW_TOTAL_BYTES = 8 * 1024 * 1024;
     const MAX_PANORAMA_CSS_FILE_BYTES = 130 * 1024 * 1024;
+    const MAX_SVG_ELEMENTS = 50000;
+    const MAX_SVG_PATH_DATA_LENGTH = 1024 * 1024;
+    const RESOURCE_PATH_MAX_LENGTH = 1024;
+    const RESOURCE_PATH_MAX_SEGMENTS = 64;
+    const RESOURCE_PATH_MAX_SEGMENT_LENGTH = 128;
+    const RESOURCE_PATH_FOLDER_RE = /^[A-Za-z0-9_-]+$/;
+    const RESOURCE_PATH_FILE_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
 
     const TRUSTED_JAVASCRIPT_PATHS = new Set([
       'story.js',
@@ -264,6 +271,7 @@
       'engine/engine.js',
       'engine/expression.js',
       'engine/game-protocol.js',
+      'engine/resource-path-policy.js',
       'engine/story-loader.js',
       'engine/story-sandbox-loader.js',
       'lib/mermaid.min.js',
@@ -277,6 +285,7 @@
       'engine/engine.js',
       'engine/expression.js',
       'engine/game-protocol.js',
+      'engine/resource-path-policy.js',
       'engine/story-loader.js',
       'engine/story-sandbox-loader.js',
       'lib/mermaid.min.js',
@@ -317,11 +326,13 @@
       '2. story360.js должен только задавать JSON-подобную карту window.STORY360 без функций, вычисляемого кода и побочных эффектов.',
       '3. Любые *-360.js запрещены; допускаются только *-360.css.',
       '4. Каждая игра из [game] должна иметь приложенный локальный HTML. Незарегистрированные пользовательские HTML-файлы являются нарушением.',
-      '5. CSS и JavaScript мини-игры должны быть встроены в один HTML. Запрещены script src, внешние стили, import, CDN, API, fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon и обязательные сетевые ресурсы.',
+      '5. CSS и JavaScript мини-игры должны быть встроены в один HTML. В head обязателен строгий meta Content-Security-Policy из спецификации. Запрещены script src, внешние стили, import, CDN, API, fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon и обязательные сетевые ресурсы.',
       '6. Запрещены eval, Function, iframe, object, embed, открытие окон, загрузки, изменение location и навигация верхнего окна.',
       '7. Мини-игра должна принимать gameInit и отправлять ровно один числовой gameResult с полученными gameId и sessionId.',
-      '8. Проверь сценарий и каждую игру по спецификациям VN Engine: ресурсы, пути, переходы, переменные, управление, delta time и блокировку ввода после результата.',
-      '9. Не выдавай положительное заключение, если отсутствует story.js, не прочитана хотя бы одна зарегистрированная игра, файл обрезан или пакет помечен как неполный.',
+      '8. Все авторские ресурсы сценария и story360 должны иметь канонический относительный путь assets/... с прямыми слешами, без URL, абсолютных путей, .., query/hash и percent-encoding.',
+      '9. SVG допустим только как локальное изображение. Запрещены script, foreignObject, iframe/object/embed, обработчики on*, внешние href и активные CSS URL; локальный аудитор отдельно проверяет его структуру и сложность.',
+      '10. Проверь сценарий и каждую игру по спецификациям VN Engine: ресурсы, пути, переходы, переменные, управление, delta time и блокировку ввода после результата.',
+      '11. Не выдавай положительное заключение, если отсутствует story.js, не прочитана хотя бы одна зарегистрированная игра, файл обрезан или пакет помечен как неполный.',
       '',
       'Формат ответа:',
       '- итог: ДОПУЩЕНА, ТРЕБУЕТ ИСПРАВЛЕНИЙ или ПРОВЕРКА НЕПОЛНАЯ;',
@@ -439,15 +450,47 @@
       };
     }
 
-    // Проверяет, что путь ресурса локален и не выходит из каталога проекта.
+    // Проверяет канонический сценарный путь: только assets/... с прямыми слешами и безопасными ASCII-компонентами.
     function getUnsafePathReason(value) {
-      const pathValue = String(value || '').trim();
+      const rawValue = String(value || '');
+      const pathValue = rawValue.trim();
       if (!pathValue) return 'путь пуст';
+      if (rawValue !== pathValue) return 'есть пробелы по краям';
+      if (pathValue.length > RESOURCE_PATH_MAX_LENGTH) return 'путь слишком длинный';
+      if (/[\u0000-\u001f\u007f]/.test(pathValue)) return 'есть управляющие символы';
+      if (pathValue.includes('\\')) return 'обратные слеши запрещены, используйте /';
+      if (/[?#%]/.test(pathValue)) return 'query, hash и percent-encoding запрещены';
       if (/^[a-z][a-z0-9+.-]*:/i.test(pathValue) || /^[/\\]{1,2}/.test(pathValue) || /^[a-z]:[/\\]/i.test(pathValue)) {
         return 'использован абсолютный или сетевой адрес';
       }
-      const segments = pathValue.replaceAll('\\', '/').split('/');
-      if (segments.includes('..')) return 'путь выходит через ..';
+      if (!pathValue.startsWith('assets/')) return 'ресурс должен находиться в каталоге assets';
+      const segments = pathValue.split('/');
+      if (segments.length < 2 || segments.length > RESOURCE_PATH_MAX_SEGMENTS) return 'недопустимое число компонентов пути';
+      if (segments.some(function(segment) { return !segment || segment === '.' || segment === '..'; })) return 'есть пустой компонент, . или ..';
+      if (segments.some(function(segment) { return segment.length > RESOURCE_PATH_MAX_SEGMENT_LENGTH; })) return 'компонент пути слишком длинный';
+      for (let index = 1; index < segments.length - 1; index += 1) {
+        if (!RESOURCE_PATH_FOLDER_RE.test(segments[index])) return 'имя каталога содержит недопустимые символы';
+      }
+      if (!RESOURCE_PATH_FILE_RE.test(segments[segments.length - 1])) return 'имя файла или расширение содержит недопустимые символы';
+      return '';
+    }
+
+    // Проверяет расширение по назначению секции, чтобы SVG не мог подменить HTML-игру или исполняемый файл.
+    function getResourceExtensionReason(filePath, kind) {
+      const extension = getExtension(filePath);
+      const allowed = {
+        image: new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']),
+        audio: new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac']),
+        video: new Set(['.mp4', '.webm']),
+        game: new Set(['.html'])
+      };
+      if (kind === 'panorama') {
+        return /-360(?:-[a-z0-9_-]+)?\.css$/i.test(filePath) || allowed.video.has(extension) ? '' : 'для 360 допустимы только *-360.css, .mp4 и .webm';
+      }
+      if (kind === 'background') {
+        return allowed.image.has(extension) || allowed.video.has(extension) ? '' : 'расширение не является изображением или видео';
+      }
+      if (allowed[kind] && !allowed[kind].has(extension)) return 'расширение не разрешено для типа ' + kind;
       return '';
     }
 
@@ -487,25 +530,74 @@
       return { games: games, issues: issues };
     }
 
-    // Проверяет все file= пути сценария на абсолютные адреса и выход за каталог.
+    // Проверяет основные и резервные пути всех секций сценария по единой политике assets.
     function inspectStoryResourcePaths(storyText) {
       const issues = [];
-      const pattern = /\bfile\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
+      const sourceLines = String(storyText || '').split(/\r?\n/);
+      const sectionByLine = [];
+      let currentSection = '';
+      for (let index = 0; index < sourceLines.length; index += 1) {
+        const sectionMatch = sourceLines[index].trim().match(/^\[([^\]]+)]$/);
+        if (sectionMatch) currentSection = sectionMatch[1].trim().toLowerCase();
+        sectionByLine[index + 1] = currentSection;
+      }
+      const pattern = /\b(file|fallback|fallbackimage|poster|cover|coverimage|thumbnail|logo)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi;
       let match;
       while ((match = pattern.exec(storyText)) !== null) {
-        const rawPath = match[1] || match[2] || match[3] || '';
+        const key = match[1].toLowerCase();
+        const rawPath = match[2] || match[3] || match[4] || '';
+        const lineNumber = getLineNumber(storyText, match.index);
         const unsafeReason = getUnsafePathReason(rawPath);
         if (unsafeReason) {
-          issues.push(createIssue('error', 'RESOURCE_PATH_UNSAFE', 'Недопустимый путь ресурса: ' + rawPath + ' — ' + unsafeReason + '.', 'story.js', getLineNumber(storyText, match.index)));
+          issues.push(createIssue('error', 'RESOURCE_PATH_UNSAFE', 'Недопустимый путь ресурса: ' + rawPath + ' — ' + unsafeReason + '.', 'story.js', lineNumber));
         }
         if (isPanoramaJavaScript(rawPath)) {
-          issues.push(createIssue('error', 'PANORAMA_JS_REFERENCE', 'Сценарий ссылается на запрещённый панорамный JS-пакет.', 'story.js', getLineNumber(storyText, match.index)));
+          issues.push(createIssue('error', 'PANORAMA_JS_REFERENCE', 'Сценарий ссылается на запрещённый панорамный JS-пакет.', 'story.js', lineNumber));
+        }
+        const section = sectionByLine[lineNumber] || '';
+        let kind = '';
+        if (key !== 'file') kind = 'image';
+        else if (section === 'char') kind = 'image';
+        else if (section === 'audio') kind = 'audio';
+        else if (section === 'video') kind = 'video';
+        else if (section === 'game') kind = 'game';
+        else if (section === 'bg') kind = /(?:\b360\b|projection\s*=\s*360)/i.test(sourceLines[lineNumber - 1]) ? 'panorama' : 'background';
+        const extensionReason = kind && !unsafeReason ? getResourceExtensionReason(rawPath, kind) : '';
+        if (extensionReason) {
+          issues.push(createIssue('error', 'RESOURCE_EXTENSION', 'Недопустимый тип ресурса ' + rawPath + ': ' + extensionReason + '.', 'story.js', lineNumber));
+        }
+      }
+
+      // Старые формы [bg]/[audio]/[char] не содержат ключ file=, поэтому проверяются по контексту секции отдельно.
+      const lines = sourceLines;
+      let section = '';
+      for (let index = 0; index < lines.length; index += 1) {
+        const trimmed = lines[index].trim();
+        const sectionMatch = trimmed.match(/^\[([^\]]+)]$/);
+        if (sectionMatch) {
+          section = sectionMatch[1].trim().toLowerCase();
+          continue;
+        }
+        let legacyMatch = null;
+        if (section === 'bg' || section === 'audio') {
+          legacyMatch = trimmed.match(/^[A-Za-z0-9_]+\s*=\s*("[^"]+"|'[^']+'|\S+)/);
+        } else if (section === 'char') {
+          legacyMatch = trimmed.match(/^[A-Za-z0-9_]+\s+image\s+[A-Za-z0-9_]+\s*=\s*("[^"]+"|'[^']+'|\S+)/i);
+        }
+        if (!legacyMatch) continue;
+        const rawPath = legacyMatch[1].replace(/^(?:"|')|(?:"|')$/g, '');
+        const unsafeReason = getUnsafePathReason(rawPath);
+        if (unsafeReason) {
+          issues.push(createIssue('error', 'RESOURCE_PATH_UNSAFE', 'Недопустимый путь ресурса: ' + rawPath + ' — ' + unsafeReason + '.', 'story.js', index + 1));
+        }
+        if (isPanoramaJavaScript(rawPath)) {
+          issues.push(createIssue('error', 'PANORAMA_JS_REFERENCE', 'Сценарий ссылается на запрещённый панорамный JS-пакет.', 'story.js', index + 1));
         }
       }
       return issues;
     }
 
-    // Проверяет корневой story360.js на декларативное присваивание и известные побочные эффекты.
+    // Проверяет корневой story360.js на декларативное присваивание, побочные эффекты и безопасные пути ресурсов.
     function inspectStory360Source(source) {
       const issues = [];
       const assignments = Array.from(source.matchAll(/window\s*\.\s*STORY360\s*=/g));
@@ -525,6 +617,18 @@
         const match = codeWithoutComments.match(rule.pattern);
         if (match) {
           issues.push(createIssue('error', 'STORY360_CODE', 'В story360.js найдено: ' + rule.message + '.', 'story360.js'));
+        }
+      }
+      const resourcePattern = /\b(?:file|src|path|fallback|poster)\s*:\s*(?:"([^"]+)"|'([^']+)')/gi;
+      let resourceMatch;
+      while ((resourceMatch = resourcePattern.exec(codeWithoutComments)) !== null) {
+        const rawPath = resourceMatch[1] || resourceMatch[2] || '';
+        const unsafeReason = getUnsafePathReason(rawPath);
+        if (unsafeReason) {
+          issues.push(createIssue('error', 'STORY360_PATH_UNSAFE', 'Недопустимый путь ресурса story360: ' + rawPath + ' — ' + unsafeReason + '.', 'story360.js', getLineNumber(source, resourceMatch.index)));
+        }
+        if (isPanoramaJavaScript(rawPath)) {
+          issues.push(createIssue('error', 'PANORAMA_JS_REFERENCE', 'story360 ссылается на запрещённый панорамный JS-пакет.', 'story360.js', getLineNumber(source, resourceMatch.index)));
         }
       }
       return issues;
@@ -551,6 +655,148 @@
         });
     }
 
+    // Извлекает значение HTML-атрибута из уже найденного тега без создания DOM и выполнения содержимого.
+    function getHtmlAttribute(tagSource, attributeName) {
+      const pattern = new RegExp('\\b' + attributeName + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i');
+      const match = String(tagSource || '').match(pattern);
+      return match ? (match[1] !== undefined ? match[1] : (match[2] !== undefined ? match[2] : match[3] || '')) : '';
+    }
+
+    // Разбирает CSP на директивы и нормализует токены для строгого сравнения с автономным профилем мини-игры.
+    function parseContentSecurityPolicy(value) {
+      const directives = new Map();
+      for (const part of String(value || '').split(';')) {
+        const tokens = part.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (!tokens.length) continue;
+        directives.set(tokens[0], tokens.slice(1));
+      }
+      return directives;
+    }
+
+    // Проверяет обязательный meta CSP: игра может выполнять только встроенный код и читать data/blob-медиа без сети и навигации.
+    function inspectMiniGameCsp(filePath, source) {
+      const issues = [];
+      const metaTags = Array.from(String(source || '').matchAll(/<meta\b[^>]*>/gi));
+      const cspTags = metaTags.filter(function(match) {
+        return getHtmlAttribute(match[0], 'http-equiv').trim().toLowerCase() === 'content-security-policy';
+      });
+      if (!cspTags.length) {
+        issues.push(createIssue('error', 'GAME_CSP_MISSING', 'В head мини-игры отсутствует обязательный meta Content-Security-Policy.', filePath));
+        return issues;
+      }
+      if (cspTags.length > 1) {
+        issues.push(createIssue('error', 'GAME_CSP_DUPLICATE', 'Content-Security-Policy должен быть задан одним meta-тегом.', filePath, getLineNumber(source, cspTags[1].index)));
+      }
+
+      const firstTag = cspTags[0];
+      const firstActiveTag = String(source || '').search(/<(?:script|style|link|img|audio|video|source|iframe|object|embed)\b/i);
+      if (firstActiveTag >= 0 && firstTag.index > firstActiveTag) {
+        issues.push(createIssue('error', 'GAME_CSP_ORDER', 'Meta Content-Security-Policy должен находиться в head до первого скрипта, стиля или ресурса.', filePath, getLineNumber(source, firstTag.index)));
+      }
+
+      const directives = parseContentSecurityPolicy(getHtmlAttribute(firstTag[0], 'content'));
+      const exactRequirements = new Map([
+        ['default-src', ["'none'"]],
+        ['script-src', ["'unsafe-inline'"]],
+        ['style-src', ["'unsafe-inline'"]],
+        ['font-src', ['data:']],
+        ['connect-src', ["'none'"]],
+        ['frame-src', ["'none'"]],
+        ['object-src', ["'none'"]],
+        ['worker-src', ["'none'"]],
+        ['manifest-src', ["'none'"]],
+        ['base-uri', ["'none'"]],
+        ['form-action', ["'none'"]]
+      ]);
+      for (const requirement of exactRequirements) {
+        const actual = directives.get(requirement[0]) || [];
+        if (actual.length !== requirement[1].length || requirement[1].some(function(token) { return !actual.includes(token); })) {
+          issues.push(createIssue('error', 'GAME_CSP_WEAK', 'Директива CSP ' + requirement[0] + ' должна быть: ' + requirement[1].join(' ') + '.', filePath, getLineNumber(source, firstTag.index)));
+        }
+      }
+      const subsetRequirements = new Map([
+        ['img-src', ['data:', 'blob:']],
+        ['media-src', ['data:', 'blob:']]
+      ]);
+      for (const requirement of subsetRequirements) {
+        const actual = directives.get(requirement[0]) || [];
+        if (!actual.length || actual.some(function(token) { return !requirement[1].includes(token); })) {
+          issues.push(createIssue('error', 'GAME_CSP_WEAK', 'Директива CSP ' + requirement[0] + ' может содержать только ' + requirement[1].join(' ') + '.', filePath, getLineNumber(source, firstTag.index)));
+        }
+      }
+      const allowedDirectives = new Set([...exactRequirements.keys(), ...subsetRequirements.keys()]);
+      for (const directiveName of directives.keys()) {
+        if (!allowedDirectives.has(directiveName)) {
+          issues.push(createIssue('error', 'GAME_CSP_WEAK', 'В CSP найдена лишняя директива ' + directiveName + '; используйте точный автономный профиль из спецификации.', filePath, getLineNumber(source, firstTag.index)));
+        }
+      }
+      return issues;
+    }
+
+    // Проверяет SVG как пассивное изображение: блокирует активное содержимое, внешние ссылки и заведомо тяжёлую структуру.
+    function inspectSvgSource(filePath, source) {
+      const issues = [];
+      const text = String(source || '');
+      if (!text.trim()) {
+        issues.push(createIssue('incomplete', 'SVG_EMPTY', 'SVG-файл пуст.', filePath));
+        return issues;
+      }
+      if (!/<svg\b/i.test(text)) {
+        issues.push(createIssue('error', 'SVG_ROOT', 'В файле не найден корневой элемент svg.', filePath));
+      }
+      if (typeof DOMParser === 'function') {
+        const parsed = new DOMParser().parseFromString(text, 'image/svg+xml');
+        const parseError = parsed.querySelector('parsererror');
+        const root = parsed.documentElement;
+        if (parseError || !root || String(root.localName || '').toLowerCase() !== 'svg') {
+          issues.push(createIssue('error', 'SVG_MALFORMED', 'SVG не является корректным XML-документом с корнем svg.', filePath));
+        }
+      }
+      const doctypeMatch = text.match(/<!DOCTYPE|<!ENTITY|<\?xml-stylesheet/i);
+      if (doctypeMatch) {
+        issues.push(createIssue('error', 'SVG_ENTITY', 'DOCTYPE, ENTITY и xml-stylesheet запрещены в SVG-ресурсах.', filePath, getLineNumber(text, doctypeMatch.index)));
+      }
+      const forbiddenElement = text.match(/<(?:script|foreignObject|iframe|object|embed|audio|video|link|base|animate|animateMotion|animateTransform|set)\b/i);
+      if (forbiddenElement) {
+        issues.push(createIssue('error', 'SVG_ACTIVE_ELEMENT', 'В SVG найден активный или встраивающий элемент: ' + forbiddenElement[0].slice(1) + '.', filePath, getLineNumber(text, forbiddenElement.index)));
+      }
+      const eventAttribute = text.match(/\son[a-z0-9_-]+\s*=/i);
+      if (eventAttribute) {
+        issues.push(createIssue('error', 'SVG_EVENT_HANDLER', 'Атрибуты обработчиков событий on* запрещены в SVG.', filePath, getLineNumber(text, eventAttribute.index)));
+      }
+      const hrefPattern = /\s(?:href|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+      let hrefMatch;
+      while ((hrefMatch = hrefPattern.exec(text)) !== null) {
+        const href = (hrefMatch[1] !== undefined ? hrefMatch[1] : hrefMatch[2] || '').trim();
+        if (!/^#[A-Za-z_][A-Za-z0-9_.:-]*$/.test(href)) {
+          issues.push(createIssue('error', 'SVG_EXTERNAL_REFERENCE', 'SVG может ссылаться только на локальный фрагмент #id.', filePath, getLineNumber(text, hrefMatch.index)));
+        }
+      }
+      const cssDanger = text.match(/@import|javascript\s*:|expression\s*\(/i);
+      if (cssDanger) {
+        issues.push(createIssue('error', 'SVG_ACTIVE_CSS', 'В SVG найден активный или внешний CSS.', filePath, getLineNumber(text, cssDanger.index)));
+      }
+      const urlPattern = /url\(\s*["']?([^\s"')]+)["']?\s*\)/gi;
+      let urlMatch;
+      while ((urlMatch = urlPattern.exec(text)) !== null) {
+        if (!/^#[A-Za-z_][A-Za-z0-9_.:-]*$/.test(urlMatch[1])) {
+          issues.push(createIssue('error', 'SVG_EXTERNAL_REFERENCE', 'CSS url() внутри SVG может ссылаться только на локальный фрагмент #id.', filePath, getLineNumber(text, urlMatch.index)));
+        }
+      }
+      const elementCount = (text.match(/<[A-Za-z][^!?/\s>]*/g) || []).length;
+      if (elementCount > MAX_SVG_ELEMENTS) {
+        issues.push(createIssue('error', 'SVG_TOO_COMPLEX', 'SVG содержит более ' + MAX_SVG_ELEMENTS + ' элементов.', filePath));
+      }
+      let pathDataLength = 0;
+      const pathDataPattern = /\sd\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+      let pathDataMatch;
+      while ((pathDataMatch = pathDataPattern.exec(text)) !== null) pathDataLength += (pathDataMatch[1] || pathDataMatch[2] || '').length;
+      if (pathDataLength > MAX_SVG_PATH_DATA_LENGTH) {
+        issues.push(createIssue('error', 'SVG_TOO_COMPLEX', 'Суммарные данные SVG-путей превышают безопасный локальный лимит.', filePath));
+      }
+      return issues;
+    }
+
     // Проверяет HTML мини-игры как текст, не создавая DOM и не загружая указанные ресурсы.
     function inspectMiniGameSource(filePath, source) {
       const issues = [];
@@ -559,28 +805,36 @@
         return issues;
       }
       const codeSource = maskNonExecutableComments(source);
+      issues.push(...inspectMiniGameCsp(filePath, codeSource));
       const securityRules = [
         { code: 'GAME_SCRIPT_SRC', pattern: /<script\b[^>]*\bsrc\s*=/i, message: 'Внешний или отдельный script src запрещён: JavaScript должен быть встроен в HTML.' },
-        { code: 'GAME_EXTERNAL_STYLE', pattern: /<link\b[^>]*\brel\s*=\s*["']?stylesheet/i, message: 'Внешняя таблица стилей запрещена: CSS должен быть встроен в HTML.' },
+        { code: 'GAME_EXTERNAL_STYLE', pattern: /<link\b/i, message: 'Элемент link запрещён: CSS и ресурсы должны быть встроены в HTML.' },
         { code: 'GAME_MODULE', pattern: /<script\b[^>]*\btype\s*=\s*["']module["']/i, message: 'Модульный script запрещён в автономной мини-игре.' },
         { code: 'GAME_IMPORT', pattern: /\bimport\s*(?:\(|[\s{*])/m, message: 'Статический или динамический import запрещён.' },
-        { code: 'GAME_NETWORK', pattern: /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, message: 'Сетевые API запрещены в студенческой мини-игре.' },
+        { code: 'GAME_NETWORK', pattern: /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|WebTransport|RTCPeerConnection)\s*\(/i, message: 'Сетевые API запрещены в студенческой мини-игре.' },
+        { code: 'GAME_WORKER', pattern: /\b(?:Worker|SharedWorker)\s*\(|\bserviceWorker\s*\./i, message: 'Worker и serviceWorker запрещены в студенческой мини-игре.' },
         { code: 'GAME_BEACON', pattern: /\bnavigator\s*\.\s*sendBeacon\s*\(/i, message: 'sendBeacon запрещён в студенческой мини-игре.' },
         { code: 'GAME_DYNAMIC_CODE', pattern: /\b(?:eval|Function)\s*\(/, message: 'Динамическое выполнение кода запрещено.' },
         { code: 'GAME_EMBED', pattern: /<(?:iframe|object|embed)\b/i, message: 'Вложенные iframe, object и embed запрещены.' },
         { code: 'GAME_OPEN', pattern: /\bwindow\s*\.\s*open\s*\(/i, message: 'Открытие новых окон запрещено.' },
-        { code: 'GAME_LOCATION', pattern: /\b(?:window\s*\.\s*)?location\s*(?:=|\.\s*(?:href\s*=|assign\s*\(|replace\s*\(|reload\s*\())/i, message: 'Изменение location или навигация запрещены.' },
+        { code: 'GAME_LOCATION', pattern: /\b(?:window|document)\s*\.\s*location\s*(?:=|\.\s*(?:href\s*=|assign\s*\(|replace\s*\(|reload\s*\())|(?<![.\w(])\blocation\s*(?:=|\.\s*(?:href\s*=|assign\s*\(|replace\s*\(|reload\s*\())/i, message: 'Изменение location или навигация запрещены.' },
         { code: 'GAME_TOP_NAVIGATION', pattern: /\b(?:window\s*\.\s*)?top\s*\.\s*location|\bparent\s*\.\s*location/i, message: 'Навигация родительского или верхнего окна запрещена.' },
         { code: 'GAME_DOWNLOAD', pattern: /<a\b[^>]*\bdownload(?:\s|=|>)/i, message: 'Инициирование загрузок из мини-игры запрещено.' },
+        { code: 'GAME_LINK_NAVIGATION', pattern: /<a\b[^>]*\bhref\s*=|\bcreateElement\s*\(\s*["']a["']\s*\)|\.\s*href\s*=/i, message: 'Ссылки и программное изменение href запрещены в автономной мини-игре.' },
         { code: 'GAME_BASE', pattern: /<base\b/i, message: 'Элемент base может подменить разрешение путей и запрещён.' },
-        { code: 'GAME_FORM', pattern: /<form\b[^>]*\baction\s*=\s*["']?(?:https?:|\/\/)/i, message: 'Отправка формы на внешний адрес запрещена.' }
+        { code: 'GAME_FORM', pattern: /<form\b|\.\s*(?:submit|requestSubmit)\s*\(/i, message: 'HTML-формы и их программная отправка запрещены в автономной мини-игре.' },
+        { code: 'GAME_META_REFRESH', pattern: /<meta\b[^>]*\bhttp-equiv\s*=\s*["']?refresh/i, message: 'Meta refresh и автоматическая навигация запрещены.' },
+        { code: 'GAME_EXTERNAL_RESOURCE', pattern: /<(?:img|audio|video|source)\b[^>]*\b(?:src|srcset)\s*=\s*["']?(?!data:|blob:|["']|\s*>)/i, message: 'Файловые и сетевые src/srcset запрещены: медиа должно быть встроено как data: или blob:.' },
+        { code: 'GAME_CSS_IMPORT', pattern: /@import\b/i, message: 'CSS @import запрещён в автономной мини-игре.' },
+        { code: 'GAME_CSS_EXTERNAL_URL', pattern: /url\(\s*["']?(?!data:|blob:|#)[^"')]+/, message: 'CSS url() может использовать только data:, blob: или локальный #fragment.' }
       ];
       for (const rule of securityRules) addPatternIssue(issues, codeSource, filePath, rule);
 
       const externalPattern = /https?:\/\/[^\s"'<>`]+/gi;
       let externalMatch;
       while ((externalMatch = externalPattern.exec(codeSource)) !== null) {
-        if (/^https?:\/\/www\.w3\.org\/(?:2000\/svg|1999\/xlink)\/?$/i.test(externalMatch[0])) continue;
+        // URI пространств имён W3C являются идентификаторами DOM/SVG, а не сетевыми ресурсами.
+        if (/^https?:\/\/www\.w3\.org\/(?:2000\/svg|1999\/(?:xlink|xhtml))\/?$/i.test(externalMatch[0])) continue;
         issues.push(createIssue('error', 'GAME_EXTERNAL_URL', 'В HTML найден внешний URL: ' + externalMatch[0], filePath, getLineNumber(source, externalMatch.index)));
       }
 
@@ -660,6 +914,8 @@
       collectRegisteredGames: collectRegisteredGames,
       inspectStoryResourcePaths: inspectStoryResourcePaths,
       inspectStory360Source: inspectStory360Source,
+      inspectSvgSource: inspectSvgSource,
+      inspectMiniGameCsp: inspectMiniGameCsp,
       inspectMiniGameSource: inspectMiniGameSource,
       inspectInventory: inspectInventory
     });
@@ -894,13 +1150,19 @@
 
       const gamePathsToRead = new Set(registeredPaths.map(function(filePath) { return filePath.toLowerCase(); }));
       for (const record of records) {
-        if (getExtension(record.path) === '.html' && record.path.toLowerCase().startsWith('assets/games/')) {
+        if (getExtension(record.path) === '.html' && record.path.toLowerCase().startsWith('assets/')) {
           gamePathsToRead.add(record.path.toLowerCase());
         }
       }
 
       const games = [];
       let totalReviewBytes = (storyRecord ? storyRecord.size : 0) + (story360Record ? story360Record.size : 0);
+      for (const record of records) {
+        if (getExtension(record.path) !== '.svg' || !record.path.toLowerCase().startsWith('assets/')) continue;
+        totalReviewBytes += record.size;
+        const svgSource = await readReviewText(record, issues, 'SVG-изображение');
+        if (svgSource) issues.push(...inspectSvgSource(record.path, svgSource));
+      }
       for (const lowerGamePath of Array.from(gamePathsToRead).sort()) {
         const gameRecord = recordMap.get(lowerGamePath);
         if (!gameRecord) {
@@ -913,7 +1175,7 @@
         games.push({ path: gameRecord.path, source: source });
       }
       if (totalReviewBytes > MAX_REVIEW_TOTAL_BYTES) {
-        issues.push(createIssue('incomplete', 'REVIEW_PACKAGE_TOO_LARGE', 'Суммарный текст сценариев и мини-игр превышает лимит ' + formatBytes(MAX_REVIEW_TOTAL_BYTES) + '.'));
+        issues.push(createIssue('incomplete', 'REVIEW_PACKAGE_TOO_LARGE', 'Суммарный текст сценариев, SVG и мини-игр превышает лимит ' + formatBytes(MAX_REVIEW_TOTAL_BYTES) + '.'));
       }
 
       const sortedIssues = sortIssues(issues);

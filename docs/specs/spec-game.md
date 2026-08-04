@@ -152,6 +152,8 @@ update-архивом и проверить итоговый каталог че
 Для студенческой мини-игры обязательны дополнительные ограничения:
 
 - игра должна быть зарегистрирована в секции `[game]` файла `story.js`;
+- путь HTML должен быть каноническим относительным `assets/...` с прямыми
+  слешами, без URL, абсолютного пути, `..`, query/hash и percent-encoding;
 - весь CSS и JavaScript должны находиться внутри одного HTML-файла игры;
 - запрещены `<script src>`, внешние таблицы стилей, модули и динамический import;
 - запрещены CDN, API и обязательные сетевые ресурсы;
@@ -161,6 +163,18 @@ update-архивом и проверить итоговый каталог че
   попытки изменить `location` или навигацию верхнего окна;
 - содержимое файла не должно требовать расширения штатного
   `sandbox="allow-scripts"`.
+
+В `<head>` до первого `<script>`, `<style>` или ресурса обязателен один meta CSP:
+
+```html
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+```
+
+Политика оставляет встроенному коду ровно необходимые возможности: inline CSS
+и JavaScript, а также встроенные `data:`/созданные самой игрой `blob:` медиа.
+Сеть, внешние скрипты, Worker, вложенные документы, плагины, manifest, `<base>`
+и отправка форм блокируются браузером даже при пропуске конструкции текстовой
+проверкой. CSP дополняет `sandbox="allow-scripts"`, а не заменяет его.
 
 Передача HTML-файла в ИИ-чат не заменяет проверку состава каталога: отсутствующая
 или не приложенная зарегистрированная игра означает статус
@@ -566,6 +580,7 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   :root { --scale: 1; }

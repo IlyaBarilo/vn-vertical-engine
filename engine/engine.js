@@ -2410,6 +2410,44 @@ function normalizeAssetUrl(url) {
   }
 }
 
+// Проверяет сценарный путь на общей политике и возвращает только URL внутри assets текущего проекта.
+// Уже нормализованный URL разрешён лишь для внутренних повторных вызовов движка и проходит ту же проверку каталога и типа.
+function resolveRuntimeStoryAssetUrl(path, kind) {
+  var value = typeof path === "string" ? path.trim() : "";
+  var policy = window.VNResourcePathPolicy;
+  if (!value || !policy || typeof policy.validate !== "function" || typeof policy.resolve !== "function") {
+    return "";
+  }
+
+  var check = policy.validate(value, kind);
+  if (check.ok) {
+    var resolved = policy.resolve(value, window.location.href, kind);
+    if (resolved.ok) return resolved.url;
+  }
+
+  try {
+    var assetBase = new URL("assets/", window.location.href);
+    var absolute = new URL(value);
+    var assetBaseHref = assetBase.href;
+    if (
+      absolute.protocol === assetBase.protocol &&
+      absolute.host === assetBase.host &&
+      !absolute.username &&
+      !absolute.password &&
+      !absolute.search &&
+      !absolute.hash &&
+      absolute.href.indexOf(assetBaseHref) === 0
+    ) {
+      var relative = "assets/" + absolute.href.slice(assetBaseHref.length);
+      var internalCheck = policy.validate(relative, kind);
+      if (internalCheck.ok) return absolute.href;
+    }
+  } catch (e) {}
+
+  console.warn("[SECURITY] Заблокирован недопустимый путь ресурса:", sanitizeDiagnosticResource(value), kind || "asset");
+  return "";
+}
+
 // Кэш уже найденного рабочего URL для пути из сценария: повторные показы не перебирают 404 webp.
 var imageOptimizeResolvedCache = Object.create(null);
 // Если оба webp-варианта уже дали 404, дальше для этого пути пробуем только исходник из сценария.
@@ -2514,27 +2552,29 @@ function noteImageOptimizeCandidateFailure(storyPath, failedNormalizedUrl) {
 function getImageLoadCandidatePaths(storyPath) {
   var original = String(storyPath || "").trim();
   if (!original) return [];
+  var resolvedOriginal = resolveRuntimeStoryAssetUrl(original, "image");
+  if (!resolvedOriginal) return [];
   if (!isEngineImageOptimizationEnabled() || !isRasterImagePathForOptimization(original)) {
-    return [original];
+    return [resolvedOriginal];
   }
 
-  var cacheKey = normalizeAssetUrl(original);
+  var cacheKey = resolvedOriginal;
   var cachedWinner = imageOptimizeResolvedCache[cacheKey];
   if (cachedWinner) {
     return [cachedWinner];
   }
 
   if (areImageOptimizeWebpVariantsExhausted(original)) {
-    return [original];
+    return [resolvedOriginal];
   }
 
   var parts = splitStoryImagePathForOptimize(original);
   var desktopPath = buildVnvOptimizedImagePath(parts.basePath, "desktop", parts.suffix);
   var mobilePath = buildVnvOptimizedImagePath(parts.basePath, "mobile", parts.suffix);
   if (isConfidentPhoneForUiBoost()) {
-    return [mobilePath, desktopPath, original];
+    return [mobilePath, desktopPath, resolvedOriginal];
   }
-  return [desktopPath, mobilePath, original];
+  return [desktopPath, mobilePath, resolvedOriginal];
 }
 
 // Нормализует кандидатов для загрузки в DOM/прелоад.
@@ -4259,6 +4299,22 @@ function captureBgmSnapshotForAutosave() {
   };
 }
 
+// Разрешает восстановление BGM только для трека, который объявлен в текущем сценарии и прошёл политику assets.
+// Это не позволяет подменённому localStorage превратить автосохранение в произвольный сетевой запрос.
+function resolveDeclaredAutosaveAudioUrl(snapshotSrc) {
+  var requested = normalizeAssetUrl(snapshotSrc || "");
+  var entries = STORY && STORY.assets && STORY.assets.audio ? STORY.assets.audio : {};
+  if (!requested) return "";
+
+  var ids = Object.keys(entries);
+  for (var i = 0; i < ids.length; i++) {
+    var declared = getAudioAssetPrimaryPath(entries[ids[i]]);
+    var safeDeclared = resolveRuntimeStoryAssetUrl(declared, "audio");
+    if (safeDeclared && urlsMatchForAutosaveRestore(safeDeclared, requested)) return safeDeclared;
+  }
+  return "";
+}
+
 // Восстанавливает BGM без принудительного включения звука: если UI в mute, трек только подготавливается.
 function applyAutosaveBgmSnapshot(bgmSnap) {
   if (!audio || !audio.bgm) return false;
@@ -4267,7 +4323,7 @@ function applyAutosaveBgmSnapshot(bgmSnap) {
     return false;
   }
 
-  var src = normalizeAssetUrl(bgmSnap.src);
+  var src = resolveDeclaredAutosaveAudioUrl(bgmSnap.src);
   if (!src || failedAssets.audio[src]) return false;
 
   audio.bgm.loop = bgmSnap.loop !== false;
@@ -6102,7 +6158,7 @@ function loadVisualCrossfadeImage(imageEl, src) {
 
 // Загружает временный video-слой до проявления, чтобы зритель не видел пустой кадр.
 function loadVisualCrossfadeVideo(videoEl, src, shouldPlay) {
-  var normalizedSrc = normalizeAssetUrl(src || "");
+  var normalizedSrc = resolveRuntimeStoryAssetUrl(src || "", "video");
   if (!videoEl || !normalizedSrc) return Promise.resolve(false);
 
   return new Promise(function(resolve) {
@@ -11425,7 +11481,7 @@ function isBg360PackPath(path) {
 
 // Выбирает декларативный CSS-вариант нужного качества только для уже допустимого CSS-пути.
 function getBg360PackCssUrl(sourceUrl, quality) {
-  var normalized = normalizeAssetUrl(sourceUrl);
+  var normalized = resolveRuntimeStoryAssetUrl(sourceUrl, "panorama");
   var normalizedQuality = resolveBg360EffectiveQuality(quality);
   if (!isBg360PackCssPath(normalized)) return "";
 
@@ -11880,8 +11936,12 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
   }
 
   var normalized = normalizeBackgroundScrollOptions(scrollOptions);
-  var normalizedSrc = normalizeAssetUrl(src);
-  var normalizedFallback = normalizeAssetUrl(fallbackSrc || "");
+  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, "panorama");
+  var normalizedFallback = fallbackSrc ? resolveRuntimeStoryAssetUrl(fallbackSrc, "image") : "";
+  if (!normalizedSrc) {
+    disableBg360Renderer();
+    return;
+  }
   var isVideo = isVideoAssetPath(normalizedSrc);
   // Сохраняем текущий 360-источник для автосейва, чтобы после F5 не подставлялся
   // «последний обычный» фон из 2D-слоёв.
@@ -12315,8 +12375,14 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     return;
   }
   
-  var normalizedSrc = normalizeAssetUrl(src);
-  var normalizedFallbackSrc = normalizeAssetUrl(fallbackSrc || "");
+  var sourceKind = use360 ? "panorama" : "background";
+  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, sourceKind);
+  var normalizedFallbackSrc = fallbackSrc ? resolveRuntimeStoryAssetUrl(fallbackSrc, "image") : "";
+  if (!normalizedSrc) {
+    disableBg360Renderer();
+    disableBackgroundScroll();
+    return;
+  }
   var isVideo = isVideoAssetPath(normalizedSrc);
 
   if (use360) {
@@ -12335,7 +12401,8 @@ function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
     videoVolume: videoVolume
   });
 
-  if (areAllImageCandidatesFailed(src)) {
+  // Кэш кандидатов относится только к изображениям; видео проверяется и обрабатывается своей веткой ниже.
+  if (!isVideo && areAllImageCandidatesFailed(src)) {
     if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
       console.warn('[IMG] skip failed background src:', sanitizeDiagnosticResource(src));
       failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
@@ -13298,6 +13365,7 @@ function finishStoryVideo(reason) {
   lastNextTime = 0;
 }
 
+// Показывает только проверенный локальный постер, если сюжетное видео недоступно или заблокировано политикой.
 function showStoryVideoFallback(action, reason) {
   // Аварийный показ всегда ограничен по времени и пропускается, даже если исходное видео нельзя пропустить.
   if (storyVideoRuntime.done) return;
@@ -13308,7 +13376,7 @@ function showStoryVideoFallback(action, reason) {
     0.1,
     Number(action && action.fallbackDuration !== undefined ? action.fallbackDuration : STORY_VIDEO_DEFAULT_FALLBACK_DURATION)
   );
-  var posterSrc = normalizeAssetUrl((action && action.poster) || "");
+  var posterSrc = action && action.poster ? resolveRuntimeStoryAssetUrl(action.poster, "image") : "";
   var skipText = (action && action.skipText) || t("videoSkipHint") || "Click to skip";
   visualTrace("storyVideo:fallback", {
     reason: reason || "fallback",
@@ -13443,6 +13511,7 @@ function prepareStoryVideoSeek(action) {
   }
 }
 
+// Запускает сюжетное видео после повторной runtime-проверки видео и постера внутри assets.
 function startStoryVideo(action) {
   // Команда video показывает полноэкранную вставку; при scroll разрешает двигать ролик/постер по горизонтали.
   if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
@@ -13483,8 +13552,12 @@ function startStoryVideo(action) {
   storyVideoRuntime.skipAllowed = action.skippable !== false;
   storyVideoRuntime.skipEnabledAt = Date.now() + STORY_VIDEO_SKIP_GUARD_MS;
 
-  var src = normalizeAssetUrl(action.src);
-  var posterSrc = normalizeAssetUrl(action.poster || "");
+  var src = resolveRuntimeStoryAssetUrl(action.src, "video");
+  var posterSrc = action.poster ? resolveRuntimeStoryAssetUrl(action.poster, "image") : "";
+  if (!src) {
+    showStoryVideoFallback({ poster: action.poster || "", fallbackDuration: action.fallbackDuration, skipText: action.skipText }, "unsafe_source");
+    return;
+  }
   var fit = normalizeStoryVideoFit(action.fit);
   var skipText = action.skipText || t("videoSkipHint") || "Click to skip";
   visualTrace("storyVideo:start", {
@@ -13850,10 +13923,16 @@ function createActiveGameSession(gameId, frameKind) {
   };
 }
 
-// Открывает сюжетную игру, применяет её sandbox до навигации и после загрузки отправляет единый gameInit.
+// Открывает только локальную игру из assets, применяет sandbox до навигации и после загрузки отправляет gameInit.
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', state.sceneId, state.actionIndex - 1);
+    return;
+  }
+
+  var safeGameSrc = resolveRuntimeStoryAssetUrl(action.src, "game");
+  if (!safeGameSrc) {
+    console.warn("[GAME] Запуск заблокирован политикой локальных ресурсов", sanitizeDiagnosticResource(action.src));
     return;
   }
 
@@ -13891,7 +13970,7 @@ function openGame(action) {
     gameId: currentGameId,
     title: action.title || currentGameId,
     difficulty: normalizedParams.difficulty,
-    src: action.src,
+    src: safeGameSrc,
     sandboxMode: "strict",
     resultVar: action.resultVar || null,
     params: normalizedParams,
@@ -13927,8 +14006,8 @@ function openGame(action) {
 
   // Обработчик устанавливается до навигации, чтобы не пропустить быструю загрузку локального HTML-файла.
   elGameFrame.src = action.mode === "url"
-    ? appendGameParamsToUrl(action.src, normalizedParams)
-    : action.src;
+    ? appendGameParamsToUrl(safeGameSrc, normalizedParams)
+    : safeGameSrc;
 }
 
 // Нормализует результат, закрывает текущую игру и продолжает соответствующий режим движка.
@@ -14248,6 +14327,7 @@ function resumeBgmIfNeeded(reason) {
 
 const DEFAULT_BGM_VOLUME = 0.2;
 
+// Воспроизводит BGM только после проверки аудиофайла общей политикой локальных ресурсов.
 function playBgm(src, loop, vol, fadeMs) {
   if (isExplicitDebugCategoryEnabled("audio")) {
     console.log('[AUDIO] playBgm called', {
@@ -14261,7 +14341,8 @@ function playBgm(src, loop, vol, fadeMs) {
 
   if (!src) return;
 
-  var normalizedSrc = normalizeAssetUrl(src);
+  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, "audio");
+  if (!normalizedSrc) return;
 
   var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
 
@@ -14390,14 +14471,18 @@ function fadeInBgm(targetVol, fadeMs) {
   }, stepTime);
 }
 
+// Воспроизводит звуковой эффект только из разрешённого аудиофайла внутри assets.
 function playSfx(src, vol) {
   if (!src) return;
+
+  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, "audio");
+  if (!normalizedSrc) return;
 
   audio.currentSfxVolume = clamp(vol, 0, 1);
 
   try {
     audio.sfx.pause();
-    audio.sfx.src = src;
+    audio.sfx.src = normalizedSrc;
     audio.sfx.currentTime = 0;
     applyAudioSettings();
     audio.sfx.play().catch(function () {});
@@ -15175,6 +15260,16 @@ function openStatsGame(item, difficulty) {
     return;
   }
 
+  var safeGameSrc = resolveRuntimeStoryAssetUrl(item.file, "game");
+  if (!safeGameSrc) {
+    if (gamesStatus) {
+      gamesStatus.textContent = t("gamesLaunchFailed");
+      gamesStatus.classList.remove("ok");
+      gamesStatus.classList.add("warn");
+    }
+    return;
+  }
+
   state.inGame = true;
   state.currentGame = {
     mode: "stats",
@@ -15216,7 +15311,7 @@ function openStatsGame(item, difficulty) {
     }
   };
 
-  elStatsGameFrame.src = item.file;
+  elStatsGameFrame.src = safeGameSrc;
 }
 
 

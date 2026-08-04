@@ -20,7 +20,7 @@ function createStory360CommandsStory(actions, additionalScenes = []) {
 // Проверяет метки переходов, legacy-алиас walk2 и список изображений photo-метки.
 test('парсер собирает bg360marks и нормализует типы меток', async function() {
   const result = await runStoryLoader(createStory360CommandsStory([
-    'bg360marks sphere (door, 0.2, 0.3, walk2, next) (gallery, 0.5, 0.6, photo, synthetic/photo/a.jpg|synthetic/photo/b.jpg) lines'
+    'bg360marks sphere (door, 0.2, 0.3, walk2, next) (gallery, 0.5, 0.6, photo, assets/synthetic/photo/a.jpg|assets/synthetic/photo/b.jpg) lines'
   ], [
     '',
     'scene next',
@@ -39,8 +39,8 @@ test('парсер собирает bg360marks и нормализует тип�
   assert.equal(action.marks[1].kind, 'photo');
   assert.equal(action.marks[1].targetScene, null);
   assert.equal(action.marks[1].images.length, 2);
-  assert.equal(action.marks[1].images[0].file, 'synthetic/photo/a.jpg');
-  assert.equal(action.marks[1].images[1].file, 'synthetic/photo/b.jpg');
+  assert.equal(action.marks[1].images[0].file, 'assets/synthetic/photo/a.jpg');
+  assert.equal(action.marks[1].images[1].file, 'assets/synthetic/photo/b.jpg');
 });
 
 // Проверяет диапазоны координат, допустимые типы и обязательные данные bg360marks.

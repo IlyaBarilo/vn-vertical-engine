@@ -87,6 +87,52 @@ test('аудитор извлекает только допустимые пут
   assert.ok(issueCodes.includes('GAME_EXTENSION'));
 });
 
+// Проверяет единые ограничения assets для основных и резервных ресурсов сценария.
+test('аудитор отклоняет неоднозначные и выходящие из assets пути сценария', async function() {
+  const { core } = await loadAuditorCore();
+  const safeIssues = Array.from(core.inspectStoryResourcePaths([
+    '[bg]',
+    'hall file=assets/custom/hall.jpg fallbackimage=assets/preview/hall.svg'
+  ].join('\n')));
+  const unsafeIssues = Array.from(core.inspectStoryResourcePaths([
+    '[bg]',
+    'remote file=https://example.invalid/hall.jpg',
+    'traversal file=assets/../hall.jpg',
+    'slashes file=assets\\backgrounds\\hall.jpg',
+    '[video]',
+    'clip file=assets/video/clip.mp4 poster=../poster.jpg'
+  ].join('\n')));
+
+  assert.equal(safeIssues.length, 0);
+  assert.equal(unsafeIssues.filter(function(issue) { return issue.code === 'RESOURCE_PATH_UNSAFE'; }).length, 4);
+});
+
+// Проверяет активное содержимое SVG и сохраняет поддержку безопасной векторной картинки.
+test('аудитор разрешает пассивный SVG и блокирует активные конструкции', async function() {
+  const { core } = await loadAuditorCore();
+  const safeSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path id="p" d="M0 0L10 10"/><use href="#p"/></svg>';
+  const unsafeSvg = '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(\'https://example.invalid\')"><script>alert(1)</script><image href="https://example.invalid/a.png"/></svg>';
+
+  assert.deepEqual(Array.from(core.inspectSvgSource('assets/img/safe.svg', safeSvg)), []);
+  const issueCodes = Array.from(core.inspectSvgSource('assets/img/unsafe.svg', unsafeSvg), function(issue) { return issue.code; });
+  assert.ok(issueCodes.includes('SVG_ACTIVE_ELEMENT'));
+  assert.ok(issueCodes.includes('SVG_EVENT_HANDLER'));
+  assert.ok(issueCodes.includes('SVG_EXTERNAL_REFERENCE'));
+});
+
+// Проверяет обязательность и строгость CSP до первого исполняемого содержимого мини-игры.
+test('аудитор требует строгий CSP внутри мини-игры', async function() {
+  const { core } = await loadAuditorCore();
+  const strictCsp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'";
+  const safeGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="' + strictCsp + '"><style>body{margin:0}</style></head><script>const gameInit="gameInit", gameResult="gameResult", gameId="gameId", sessionId="sessionId"; parent.postMessage({gameResult,gameId,sessionId},"*");</script>';
+  const missingGame = '<!doctype html><script>const gameInit="gameInit";</script>';
+  const weakGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head><script>const gameInit="gameInit";</script>';
+
+  assert.equal(Array.from(core.inspectMiniGameSource('assets/games/safe.html', safeGame)).some(function(issue) { return issue.level === 'error'; }), false);
+  assert.ok(Array.from(core.inspectMiniGameSource('assets/games/missing.html', missingGame)).some(function(issue) { return issue.code === 'GAME_CSP_MISSING'; }));
+  assert.ok(Array.from(core.inspectMiniGameSource('assets/games/weak.html', weakGame)).some(function(issue) { return issue.code === 'GAME_CSP_WEAK'; }));
+});
+
 // Фиксирует основные сетевые и исполняемые конструкции, запрещённые для HTML-мини-игры.
 test('аудитор обнаруживает внешние зависимости и сетевые API мини-игры', async function() {
   const { core } = await loadAuditorCore();
@@ -122,6 +168,7 @@ test('аудитор обнаруживает опасные файлы в по�
     'engine/engine.js',
     'engine/expression.js',
     'engine/game-protocol.js',
+    'engine/resource-path-policy.js',
     'engine/story-loader.js',
     'engine/story-sandbox-loader.js',
     'lib/mermaid.min.js',
@@ -173,16 +220,14 @@ test('аудитор читает демонстрационный story.js и �
   assert.equal(Array.from(registration.issues).length, 0);
   assert.ok(Array.from(registration.games).length >= 1);
 
-  let safeGameChecked = false;
+  let checkedGameCount = 0;
   for (const game of Array.from(registration.games)) {
     const source = await readRepositoryFile(game.path);
     const criticalIssues = Array.from(core.inspectMiniGameSource(game.path, source)).filter(function(issue) {
       return issue.level === 'error' || issue.level === 'incomplete';
     });
-    if (game.path === 'assets/games/coffee-rush.html') {
-      assert.deepEqual(criticalIssues, [], game.path + ' не должен давать ложное критическое срабатывание.');
-      safeGameChecked = true;
-    }
+    assert.deepEqual(criticalIssues, [], game.path + ' не должен давать ложное критическое срабатывание.');
+    checkedGameCount += 1;
   }
-  assert.equal(safeGameChecked, true);
+  assert.equal(checkedGameCount, Array.from(registration.games).length);
 });
