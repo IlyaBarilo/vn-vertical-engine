@@ -28,8 +28,8 @@ test('движок не содержит загрузчика JS-пакетов 
   assert.match(converterSource, /<option\s+value="css"\s+selected>/);
 });
 
-// Проверяет обязательный sandbox iframe и отсутствие переключателей legacy в runtime и пользовательском тестере.
-test('мини-игры поддерживают только strict sandbox и протокол v2', async function() {
+// Проверяет обязательные sandbox и Permissions Policy iframe, а также отсутствие переключателей legacy.
+test('мини-игры поддерживают только strict sandbox, ограниченную Permissions Policy и протокол v2', async function() {
   const [indexSource, engineSource, protocolSource, testerSource] = await Promise.all([
     readProjectFile('index.html'),
     readProjectFile('engine/engine.js'),
@@ -39,6 +39,12 @@ test('мини-игры поддерживают только strict sandbox и 
 
   assert.match(indexSource, /id="gameFrame"[^>]+sandbox="allow-scripts"[^>]+referrerpolicy="no-referrer"/);
   assert.match(indexSource, /id="statsGameFrame"[^>]+sandbox="allow-scripts"[^>]+referrerpolicy="no-referrer"/);
+  assert.match(indexSource, /id="gameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
+  assert.match(indexSource, /id="statsGameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
+  assert.match(engineSource, /frame\.setAttribute\("allow", GAME_FRAME_PERMISSIONS_POLICY\)/);
+  assert.match(engineSource, /if \(!prepareSingleGameFrameLaunch\("story"\)\) return/);
+  assert.match(engineSource, /if \(!prepareSingleGameFrameLaunch\("stats"\)\) return/);
+  assert.match(testerSource, /id="gameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
   assert.doesNotMatch(engineSource, /resolveGameSandboxMode|allowLegacyResult/);
   assert.doesNotMatch(protocolSource, /allowLegacyResult/);
   assert.doesNotMatch(testerSource, /<option\s+value="legacy"|id="sandboxMode"|allowLegacyResult/);

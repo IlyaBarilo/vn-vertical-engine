@@ -13904,12 +13904,51 @@ function isCurrentStoryGameUrlMode() {
   return !!(state && state.currentGame && state.currentGame.mode === "url");
 }
 
-// Настраивает iframe до каждой навигации и не позволяет данным сценария снять строгую изоляцию.
+// Разрешает игре только autoplay, а чувствительные браузерные API явно закрывает через Permissions Policy.
+var GAME_FRAME_PERMISSIONS_POLICY = [
+  "autoplay",
+  "accelerometer 'none'",
+  "camera 'none'",
+  "clipboard-read 'none'",
+  "clipboard-write 'none'",
+  "display-capture 'none'",
+  "fullscreen 'none'",
+  "gamepad 'none'",
+  "geolocation 'none'",
+  "gyroscope 'none'",
+  "hid 'none'",
+  "magnetometer 'none'",
+  "microphone 'none'",
+  "payment 'none'",
+  "serial 'none'",
+  "usb 'none'",
+  "xr-spatial-tracking 'none'"
+].join("; ");
+
+// Настраивает iframe до каждой навигации и не позволяет данным сценария снять sandbox или Permissions Policy.
 function applyGameFrameSandbox(frame) {
   if (!frame) return;
   frame.setAttribute("sandbox", "allow-scripts");
-  frame.setAttribute("allow", "autoplay");
+  frame.setAttribute("allow", GAME_FRAME_PERMISSIONS_POLICY);
   frame.setAttribute("referrerpolicy", "no-referrer");
+}
+
+// Не допускает параллельный запуск двух игр и очищает второй iframe перед созданием единственной активной сессии.
+function prepareSingleGameFrameLaunch(frameKind) {
+  var storyFrameVisible = elGameModal && !elGameModal.classList.contains("hidden");
+  var statsFrameVisible = elStatsGameModal && !elStatsGameModal.classList.contains("hidden");
+
+  if (state.currentGame || storyFrameVisible || statsFrameVisible) {
+    console.warn("[GAME] Новый запуск отклонён: другая мини-игра уже активна", frameKind);
+    return false;
+  }
+
+  if (frameKind === "stats") {
+    closeGameFrameVisualOnly();
+  } else {
+    closeStatsGameFrameVisualOnly();
+  }
+  return true;
 }
 
 // Создаёт одноразовую сессию протокола v2; результат без gameId/sessionId всегда отклоняется.
@@ -13923,7 +13962,7 @@ function createActiveGameSession(gameId, frameKind) {
   };
 }
 
-// Открывает только локальную игру из assets, применяет sandbox до навигации и после загрузки отправляет gameInit.
+// Открывает единственную локальную игру из assets, применяет sandbox до навигации и после загрузки отправляет gameInit.
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', state.sceneId, state.actionIndex - 1);
@@ -13935,6 +13974,7 @@ function openGame(action) {
     console.warn("[GAME] Запуск заблокирован политикой локальных ресурсов", sanitizeDiagnosticResource(action.src));
     return;
   }
+  if (!prepareSingleGameFrameLaunch("story")) return;
 
   // Пока inGame=true, buildAutosavePayload не пишет слот — фиксируем индекс шага «game» до открытия модалки.
   var gameStepIdx = state.actionIndex - 1;
@@ -15249,7 +15289,7 @@ function renderGamesCatalog() {
   });
 }
 
-// Открывает игру из статистики с обязательным строгим sandbox и контрактом gameInit v2.
+// Открывает единственную игру из статистики с обязательным строгим sandbox и контрактом gameInit v2.
 function openStatsGame(item, difficulty) {
   if (!item || !item.file) {
     if (gamesStatus) {
@@ -15269,6 +15309,7 @@ function openStatsGame(item, difficulty) {
     }
     return;
   }
+  if (!prepareSingleGameFrameLaunch("stats")) return;
 
   state.inGame = true;
   state.currentGame = {
