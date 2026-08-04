@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -11,10 +12,14 @@ const fixtureRoutes = new Map([
   ['/assets/__e2e__/game.html', path.join(fixtureRoot, 'game.html')],
   ['/assets/__e2e__/legacy-game.html', path.join(fixtureRoot, 'legacy-game.html')]
 ]);
-// localhost нужен отдельному WebCrypto-тесту как доверенный origin; e2e.local сохраняет обычный режим.
-const allowedEngineOrigins = new Set(['http://e2e.local', 'http://localhost']);
+const e2eServerPort = 41739;
+const e2eServerOrigin = `http://127.0.0.1:${e2eServerPort}`;
+const e2eLocalhostOrigin = `http://localhost:${e2eServerPort}`;
+const allowedEngineOrigins = new Set([e2eServerOrigin, e2eLocalhostOrigin]);
 const blockedLocalRoutes = new Set(['/story360.js', '/license-key.js']);
 const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+N4fVAAAAAElFTkSuQmCC';
+let activeRouteOptions = {};
+let e2eHttpServer = null;
 
 // Создаёт короткую историю для проверки projectId, миграции и независимости localStorage-слотов.
 function createAutosaveProjectStorySource(projectId, label) {
@@ -194,7 +199,7 @@ function createScene360PackSource(datasetKey) {
   ].join('\n');
 }
 
-// Собирает декларативный CSS-пакет с агрессивным стилем и необязательным @import для проверки CSP-изоляции.
+// Собирает корректный декларативный CSS-пакет, а для вредного сценария добавляет @import и постороннее правило.
 function createScene360CssPackSource(mode = 'normal', importPath = '') {
   const payload = tinyPanoramaDataUrl.split(',')[1];
   const imageBytes = Buffer.from(payload, 'base64').length;
@@ -204,7 +209,7 @@ function createScene360CssPackSource(mode = 'normal', importPath = '') {
   }
   return [
     ...(importPath ? [`@import url(${JSON.stringify(importPath)});`] : []),
-    'html, body { display: none !important; --scene360-css-injection: "1"; }',
+    ...(importPath ? ['html, body { display: none !important; --scene360-css-injection: "1"; }'] : []),
     '#vn360-pack {',
     '  --vn360-schema: "vn360-css-pack-v1";',
     `  --vn360-mode: "${mode}";`,
@@ -266,20 +271,30 @@ function isInsideRepository(filePath) {
   return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
-// Отдаёт Chromium runtime-файлы, имитирует разные проекты и при запросе добавляет только тестовый hook.
-async function handleEngineRoute(route, routeOptions = {}) {
+// Завершает HTTP-ответ с едиными заголовками, чтобы браузеры не использовали данные предыдущего E2E-сценария.
+function sendEngineHttpResponse(response, status, contentType, body) {
+  response.writeHead(status, {
+    'Cache-Control': 'no-store',
+    'Content-Type': contentType
+  });
+  response.end(body);
+}
+
+// Отдаёт браузерам runtime-файлы через настоящий HTTP, включая importScripts отдельного Worker в Firefox.
+async function handleEngineHttpRequest(request, response) {
+  const routeOptions = activeRouteOptions;
   let requestUrl;
   let pathname;
   try {
-    requestUrl = new URL(route.request().url());
+    requestUrl = new URL(request.url || '/', `http://${request.headers.host || `127.0.0.1:${e2eServerPort}`}`);
     pathname = decodeURIComponent(requestUrl.pathname);
   } catch (error) {
-    await route.fulfill({ status: 400, contentType: 'text/plain; charset=utf-8', body: 'Bad Request' });
+    sendEngineHttpResponse(response, 400, 'text/plain; charset=utf-8', 'Bad Request');
     return;
   }
 
   if (!allowedEngineOrigins.has(requestUrl.origin)) {
-    await route.abort('blockedbyclient');
+    sendEngineHttpResponse(response, 403, 'text/plain; charset=utf-8', 'Forbidden');
     return;
   }
 
@@ -289,27 +304,17 @@ async function handleEngineRoute(route, routeOptions = {}) {
   }
 
   if (pathname === '/story360.js' && typeof routeOptions.story360Source === 'string') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/javascript; charset=utf-8',
-      headers: { 'Cache-Control': 'no-store' },
-      body: routeOptions.story360Source
-    });
+    sendEngineHttpResponse(response, 200, 'text/javascript; charset=utf-8', routeOptions.story360Source);
     return;
   }
 
   if (blockedLocalRoutes.has(pathname)) {
-    await route.fulfill({ status: 404, contentType: 'text/plain; charset=utf-8', body: 'Not Found' });
+    sendEngineHttpResponse(response, 404, 'text/plain; charset=utf-8', 'Not Found');
     return;
   }
 
   if (pathname === '/story.js' && typeof routeOptions.storySource === 'string') {
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/javascript; charset=utf-8',
-      headers: { 'Cache-Control': 'no-store' },
-      body: routeOptions.storySource
-    });
+    sendEngineHttpResponse(response, 200, 'text/javascript; charset=utf-8', routeOptions.storySource);
     return;
   }
 
@@ -318,7 +323,7 @@ async function handleEngineRoute(route, routeOptions = {}) {
   const repositoryPath = path.resolve(repositoryRoot, `.${normalizedPath}`);
   const filePath = fixturePath || repositoryPath;
   if (!fixturePath && !isInsideRepository(filePath)) {
-    await route.fulfill({ status: 403, contentType: 'text/plain; charset=utf-8', body: 'Forbidden' });
+    sendEngineHttpResponse(response, 403, 'text/plain; charset=utf-8', 'Forbidden');
     return;
   }
 
@@ -327,29 +332,41 @@ async function handleEngineRoute(route, routeOptions = {}) {
     if (routeOptions.exposeLicenseVerifier && normalizedPath === '/engine/engine.js') {
       body = Buffer.from(exposeLicenseVerifierToE2e(body.toString('utf8')), 'utf8');
     }
-    await route.fulfill({
-      status: 200,
-      contentType: getContentType(filePath),
-      headers: { 'Cache-Control': 'no-store' },
-      body
-    });
+    sendEngineHttpResponse(response, 200, getContentType(filePath), body);
   } catch (error) {
     const status = error && error.code === 'ENOENT' ? 404 : 500;
-    await route.fulfill({
-      status,
-      contentType: 'text/plain; charset=utf-8',
-      body: status === 404 ? 'Not Found' : 'Route Error'
-    });
+    sendEngineHttpResponse(response, status, 'text/plain; charset=utf-8', status === 404 ? 'Not Found' : 'Route Error');
   }
 }
 
-// Устанавливает один актуальный перехват запросов, чтобы последовательные открытия могли менять тестовый проект.
+// Переключает содержимое тестового проекта; сервер обрабатывает тесты последовательно в одном Playwright worker.
 async function installRepositoryRoutes(page, routeOptions = {}) {
+  activeRouteOptions = { ...routeOptions };
   await page.unroute('**/*');
-  await page.route('**/*', function serveEngineRoute(route) {
-    return handleEngineRoute(route, routeOptions);
-  });
 }
+
+// Поднимает реальный HTTP-сервер до создания страниц, чтобы Worker Firefox загружал сценарий обычным сетевым путём.
+test.beforeAll(async function startE2eHttpServer() {
+  e2eHttpServer = createServer(function serveE2eRequest(request, response) {
+    handleEngineHttpRequest(request, response).catch(function handleE2eServerError() {
+      if (!response.headersSent) sendEngineHttpResponse(response, 500, 'text/plain; charset=utf-8', 'Route Error');
+      else response.destroy();
+    });
+  });
+  await new Promise(function waitForE2eServer(resolve, reject) {
+    e2eHttpServer.once('error', reject);
+    e2eHttpServer.listen(e2eServerPort, '127.0.0.1', resolve);
+  });
+});
+
+// Закрывает тестовый HTTP-сервер после завершения проекта, чтобы локальный порт не оставался занятым.
+test.afterAll(async function stopE2eHttpServer() {
+  if (!e2eHttpServer) return;
+  await new Promise(function waitForE2eServerClose(resolve) {
+    e2eHttpServer.close(resolve);
+  });
+  e2eHttpServer = null;
+});
 
 // Собирает необработанные ошибки страницы, не считая ожидаемые сообщения об отсутствующих optional-файлах.
 function collectPageErrors(page) {
@@ -442,6 +459,7 @@ test('движок запускает историю в браузере без 
   const pageErrors = collectPageErrors(page);
 
   await openStory(page);
+  await expect(page.locator('#unsupportedBrowser')).toBeHidden();
 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
@@ -609,7 +627,7 @@ test('движок загружает только mobile CSS-пакет 360', a
   await installRepositoryRoutes(page, {
     storySource: createBg360RuntimeStorySource(sourcePath, 'mobile')
   });
-  await page.route(`http://e2e.local/${cssPath}`, async function serveRuntimeCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveRuntimeCssPanorama(route) {
     cssRequestCount++;
     await route.fulfill({
       status: 200,
@@ -617,7 +635,7 @@ test('движок загружает только mobile CSS-пакет 360', a
       body: createScene360CssPackSource('mobile')
     });
   });
-  await page.route(`http://e2e.local/${jsPath}`, async function rejectUnexpectedRuntimeJs(route) {
+  await page.route(`${e2eServerOrigin}/${jsPath}`, async function rejectUnexpectedRuntimeJs(route) {
     jsRequestCount++;
     await route.fulfill({ status: 500, contentType: 'text/plain', body: 'JS must not be requested' });
   });
@@ -650,7 +668,7 @@ test('движок блокирует CSS @import панорамы без JS-ф�
   await installRepositoryRoutes(page, {
     storySource: createBg360RuntimeStorySource(sourcePath, 'normal')
   });
-  await page.route(`http://e2e.local/${cssPath}`, async function serveRuntimeCssWithImport(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveRuntimeCssWithImport(route) {
     cssRequestCount++;
     await route.fulfill({
       status: 200,
@@ -658,11 +676,11 @@ test('движок блокирует CSS @import панорамы без JS-ф�
       body: createScene360CssPackSource('normal', blockedImportPath)
     });
   });
-  await page.route(`http://e2e.local${blockedImportPath}`, async function rejectRuntimeCssImport(route) {
+  await page.route(`${e2eServerOrigin}${blockedImportPath}`, async function rejectRuntimeCssImport(route) {
     importRequestCount++;
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '#vn360-pack { --vn360-import-ran: "1"; }' });
   });
-  await page.route(`http://e2e.local/${jsPath}`, async function serveRuntimeImportFallback(route) {
+  await page.route(`${e2eServerOrigin}/${jsPath}`, async function serveRuntimeImportFallback(route) {
     jsRequestCount++;
     await route.fulfill({
       status: 200,
@@ -692,11 +710,11 @@ test('движок не использует JS-пакет 360 после оши
   await installRepositoryRoutes(page, {
     storySource: createBg360RuntimeStorySource(sourcePath, 'normal')
   });
-  await page.route(`http://e2e.local/${cssPath}`, async function rejectMissingRuntimeCss(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function rejectMissingRuntimeCss(route) {
     cssRequestCount++;
     await route.fulfill({ status: 404, contentType: 'text/css; charset=utf-8', body: '' });
   });
-  await page.route(`http://e2e.local/${jsPath}`, async function serveRuntimeLegacyJs(route) {
+  await page.route(`${e2eServerOrigin}/${jsPath}`, async function serveRuntimeLegacyJs(route) {
     jsRequestCount++;
     await route.fulfill({
       status: 200,
@@ -714,10 +732,10 @@ test('движок не использует JS-пакет 360 после оши
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет нативный RSA-PSS путь в настоящем Chromium и запрещает незаметный переход на jsrsasign.
+// Проверяет нативный RSA-PSS путь в настоящем браузере и запрещает незаметный переход на jsrsasign.
 test('браузер проверяет подпись лицензии через WebCrypto', async function({ page }) {
   const pageErrors = collectPageErrors(page);
-  await openStory(page, 'http://localhost/', { exposeLicenseVerifier: true });
+  await openStory(page, `${e2eLocalhostOrigin}/`, { exposeLicenseVerifier: true });
 
   // Генерирует только временную браузерную пару и вызывает настоящий проверяющий код движка.
   const isValid = await page.evaluate(async function verifyBrowserLicenseSignature() {
@@ -749,7 +767,7 @@ test('браузер проверяет подпись лицензии чере
 
     // Делает резервный путь заведомо нерабочим: true возможен только после успешного WebCrypto.
     window.KJUR.crypto.Signature = function rejectUnexpectedFallback() {
-      throw new Error('jsrsasign fallback must not run in Chromium.');
+      throw new Error('jsrsasign fallback must not run when browser WebCrypto succeeds.');
     };
     return window.__VN_E2E_VERIFY_LICENSE(dataToVerify, signatureBytes, window.VN_LICENSE_PUBLIC_KEY_PEM);
   });
@@ -1095,7 +1113,7 @@ test('мини-игра обменивается сообщениями с дв�
   await expect(game.locator('#parentStorage')).toHaveText('заблокировано');
   await expect(game.locator('#topNavigation')).toHaveText('заблокирована');
   await expect(game.locator('#popup')).toHaveText('заблокирован');
-  await expect(page).toHaveURL('http://e2e.local/');
+  await expect(page).toHaveURL(`${e2eServerOrigin}/`);
 
   const sessionId = await game.locator('#sessionId').textContent();
   // Отправляет сообщение с правильными id из родительского окна: движок обязан проверить event.source.
@@ -1605,7 +1623,7 @@ test('Конвертер создаёт совместимый CSS-пакет 36
 
   const cssPath = 'assets/360/converter-source-360.css';
   await openScene360Editor(page);
-  await page.route(`http://e2e.local/${cssPath}`, async function serveConvertedCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveConvertedCssPanorama(route) {
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: cssSource });
   });
   await page.locator('#story360Input').setInputFiles({
@@ -1620,7 +1638,7 @@ test('Конвертер создаёт совместимый CSS-пакет 36
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет, что одиночный и пакетный экспорт создают только декларативные CSS-пакеты.
+// Проверяет, что одиночный экспорт создаёт только декларативный CSS-пакет.
 test('Конвертер сохраняет только CSS-пакеты', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   await installRepositoryRoutes(page);
@@ -1650,7 +1668,15 @@ test('Конвертер сохраняет только CSS-пакеты', asyn
   await page.locator('#resultGrid').getByRole('button', { name: 'Скачать CSS', exact: true }).first().click();
   const cssDownload = await cssDownloadPromise;
   expect(cssDownload.suggestedFilename()).toBe('format-source-360.css');
+  expect(pageErrors).toEqual([]);
+});
 
+// Проверяет пакетный путь отдельно, чтобы Firefox получал полный лимит времени на растровую конвертацию и скачивание.
+test('Конвертер пакетно сохраняет только CSS-пакеты', async function({ page }) {
+  test.setTimeout(30_000);
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/convert-360-img-to-css.html');
   await page.locator('#tabBatch').click();
   await page.locator('#batchMobileChk').uncheck();
   await page.locator('#batchFileInput').setInputFiles({
@@ -1672,7 +1698,7 @@ test('Scene360 Editor изолированно загружает CSS-пакет
   const cssPath = 'assets/360/safe-test-360.css';
   let cssRequestCount = 0;
   await openScene360Editor(page);
-  await page.route(`http://e2e.local/${cssPath}`, async function serveCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveCssPanorama(route) {
     cssRequestCount++;
     await route.fulfill({
       status: 200,
@@ -1713,14 +1739,14 @@ test('Scene360 Editor блокирует CSS @import панорамы', async fu
   const blockedImportPath = '/__e2e__/scene360-editor-import.css';
   let importRequestCount = 0;
   await openScene360Editor(page);
-  await page.route(`http://e2e.local/${cssPath}`, async function serveEditorCssWithImport(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveEditorCssWithImport(route) {
     await route.fulfill({
       status: 200,
       contentType: 'text/css; charset=utf-8',
       body: createScene360CssPackSource('normal', blockedImportPath)
     });
   });
-  await page.route(`http://e2e.local${blockedImportPath}`, async function rejectEditorCssImport(route) {
+  await page.route(`${e2eServerOrigin}${blockedImportPath}`, async function rejectEditorCssImport(route) {
     importRequestCount++;
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '#vn360-pack { --vn360-import-ran: "1"; }' });
   });
@@ -1730,7 +1756,7 @@ test('Scene360 Editor блокирует CSS @import панорамы', async fu
     buffer: Buffer.from(createScene360StorySource(cssPath))
   });
 
-  await expect(page.locator('#statusBox')).toContainText(`Не удалось загрузить CSS-пакет: ${cssPath}`);
+  await expect(page.locator('#statusBox')).toContainText('CSS-пакет должен содержать только правило #vn360-pack');
   await expect(page.locator('iframe[data-scene360-css-pack-loader]')).toHaveCount(0);
   expect(importRequestCount).toBe(0);
   expect(pageErrors).toEqual([]);
@@ -1747,10 +1773,10 @@ test('Scene360 Editor отклоняет подменённые данные CSS
     releaseInvalidCssResponse = resolve;
   });
   await openScene360Editor(page);
-  await page.route(`http://e2e.local/${validCssPath}`, async function serveValidCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${validCssPath}`, async function serveValidCssPanorama(route) {
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: createScene360CssPackSource() });
   });
-  await page.route(`http://e2e.local/${cssPath}`, async function serveInvalidCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${cssPath}`, async function serveInvalidCssPanorama(route) {
     await invalidCssResponseGate;
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: invalidCssSource });
   });
@@ -1790,7 +1816,7 @@ test('Scene360 Editor показывает чёрный фон при отсут
   const pageErrors = collectPageErrors(page);
   const validCssPath = 'assets/360/valid-before-empty-360.css';
   await openScene360Editor(page);
-  await page.route(`http://e2e.local/${validCssPath}`, async function serveValidCssPanorama(route) {
+  await page.route(`${e2eServerOrigin}/${validCssPath}`, async function serveValidCssPanorama(route) {
     await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: createScene360CssPackSource() });
   });
   await page.locator('#story360Input').setInputFiles({
@@ -1917,7 +1943,7 @@ test('Scene360 Editor сохраняет подтверждение во вну�
   const pageErrors = collectPageErrors(page);
   const trustedPackSource = createScene360PackSource('sceneLegacyPackExecuted');
   await openScene360Editor(page);
-  await page.route('http://e2e.local/assets/360/trusted-test-360.js', async function serveTrustedPack(route) {
+  await page.route(`${e2eServerOrigin}/assets/360/trusted-test-360.js`, async function serveTrustedPack(route) {
     await route.fulfill({
       status: 200,
       contentType: 'text/javascript; charset=utf-8',

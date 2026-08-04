@@ -102,12 +102,21 @@ Optional URL spacing supports floor-standing displays and custom installations:
 index.html?topSpacing=500&bottomSpacing=800
 ```
 
-## Tested environments
+## Browser compatibility
 
-| Platform | Tested browsers |
+Automated checks are split into the following levels:
+
+| Test environment | Browsers |
 | --- | --- |
-| Desktop | Chrome, Edge, Firefox |
-| Android | Chrome, Firefox |
+| Regular CI E2E | Chromium and Firefox |
+| Release ZIP on Windows | Microsoft Edge and Firefox over HTTP and real `file://` |
+| Android | Chrome and Firefox, checked manually on physical devices |
+
+An up-to-date Microsoft Edge is recommended on Windows 10 and 11. Windows 7,
+8, and 8.1 no longer have a supported Microsoft browser and are outside the
+supported environments. Edge Legacy, Internet Explorer, and Microsoft Edge IE
+mode are not supported. Internet Explorer displays a clear message asking the
+user to open the project in a modern browser.
 
 The **4K-ready** description refers to interface behavior and scaling. The
 visible quality of backgrounds, characters, and video still depends on the

@@ -50,8 +50,8 @@ jobs:
         run: npm ci
         working-directory: dev
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium and Firefox
+        run: npx playwright install --with-deps chromium firefox
         working-directory: dev
 
       - name: Run browser E2E tests

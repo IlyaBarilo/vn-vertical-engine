@@ -11500,6 +11500,7 @@ var BG360_CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
 var BG360_CSS_PACK_MAX_DECODED_SIZE = 96 * 1024 * 1024;
 var BG360_CSS_PACK_MAX_CHUNKS = 4096;
 var BG360_CSS_PACK_MAX_CHUNK_LENGTH = 32 * 1024;
+var BG360_CSS_PACK_MAX_SOURCE_LENGTH = BG360_CSS_PACK_MAX_ENCODED_LENGTH + 2 * 1024 * 1024;
 var BG360_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
 var BG360_CSS_IMAGE_MAX_WIDTH = 20000;
 var BG360_CSS_IMAGE_MAX_HEIGHT = 15000;
@@ -11514,6 +11515,74 @@ function readBg360CssQuotedValue(computedStyle, propertyName) {
   var match = raw.match(/^"([^"\\]*)"$/);
   if (!match) throw new Error("CSS-пакет не содержит корректное свойство " + propertyName + ".");
   return match[1];
+}
+
+// Разбирает только единственный декларативный #vn360-pack и отклоняет @import, сторонние правила, дубли и CSS-escape до декодирования.
+function createBg360CssPropertyReader(cssSource) {
+  var source = String(cssSource || "").replace(/^\uFEFF/, "");
+  if (!source || source.length > BG360_CSS_PACK_MAX_SOURCE_LENGTH) {
+    throw new Error("CSS-пакет отсутствует или превышает допустимый размер исходного текста.");
+  }
+  var sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (/\/\*|\*\//.test(sourceWithoutComments)) {
+    throw new Error("CSS-пакет содержит незавершённый комментарий.");
+  }
+  var ruleMatch = sourceWithoutComments.trim().match(/^#vn360-pack\s*\{([\s\S]*)\}$/);
+  if (!ruleMatch) {
+    throw new Error("CSS-пакет должен содержать только правило #vn360-pack без @import и сторонних стилей.");
+  }
+
+  var declarationBody = ruleMatch[1];
+  var declarationPattern = /(--vn360-(?:schema|mode|mime|width|height|size|quality|chunk-count|data-(?:0|[1-9][0-9]*)))\s*:\s*"([^"\\]*)"\s*;/g;
+  var properties = Object.create(null);
+  var cursor = 0;
+  var propertyCount = 0;
+  var declarationMatch;
+  while ((declarationMatch = declarationPattern.exec(declarationBody))) {
+    if (!/^\s*$/.test(declarationBody.slice(cursor, declarationMatch.index))) {
+      throw new Error("CSS-пакет содержит недопустимую декларацию.");
+    }
+    var propertyName = declarationMatch[1];
+    if (Object.prototype.hasOwnProperty.call(properties, propertyName)) {
+      throw new Error("CSS-пакет содержит повторное свойство " + propertyName + ".");
+    }
+    propertyCount++;
+    if (propertyCount > BG360_CSS_PACK_MAX_CHUNKS + 8) {
+      throw new Error("CSS-пакет содержит слишком много свойств.");
+    }
+    properties[propertyName] = declarationMatch[2];
+    cursor = declarationPattern.lastIndex;
+  }
+  if (!/^\s*$/.test(declarationBody.slice(cursor))) {
+    throw new Error("CSS-пакет содержит недопустимую декларацию.");
+  }
+
+  var requiredProperties = ["schema", "mode", "mime", "width", "height", "size", "quality", "chunk-count"];
+  for (var requiredIndex = 0; requiredIndex < requiredProperties.length; requiredIndex++) {
+    if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-" + requiredProperties[requiredIndex])) {
+      throw new Error("CSS-пакет не содержит обязательные метаданные.");
+    }
+  }
+  var declaredChunkCount = Number(properties["--vn360-chunk-count"]);
+  if (!Number.isInteger(declaredChunkCount) || declaredChunkCount < 1 || declaredChunkCount > BG360_CSS_PACK_MAX_CHUNKS) {
+    throw new Error("Некорректное количество частей CSS-пакета 360.");
+  }
+  for (var dataIndex = 0; dataIndex < declaredChunkCount; dataIndex++) {
+    if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-data-" + dataIndex)) {
+      throw new Error("CSS-пакет содержит неполный набор частей.");
+    }
+  }
+  if (propertyCount !== requiredProperties.length + declaredChunkCount) {
+    throw new Error("CSS-пакет содержит части вне объявленного диапазона.");
+  }
+
+  return {
+    getPropertyValue: function(propertyName) {
+      return Object.prototype.hasOwnProperty.call(properties, propertyName)
+        ? '"' + properties[propertyName] + '"'
+        : "";
+    }
+  };
 }
 
 // Декодирует выровненную часть base64 в отдельный Uint8Array и сохраняет начало файла для проверки сигнатуры.
@@ -11718,7 +11787,74 @@ function extractBg360CssPackBlob(computedStyle) {
   };
 }
 
-// Создаёт случайный nonce для единственной разрешённой таблицы стилей; без Web Crypto загрузка завершается безопасной ошибкой.
+// Загружает CSS как текстовый sandbox-документ: браузер не применяет его правила и не выполняет @import, а строгий парсер принимает только данные пакета.
+function readBg360CssPackFromTextDocument(cssUrl) {
+  return new Promise(function(resolve, reject) {
+    var settled = false;
+    var timeoutId = null;
+    var frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.setAttribute("aria-hidden", "true");
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.setAttribute("data-bg360-css-pack-loader", cssUrl);
+
+    function finish(error, result) {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      frame.onload = null;
+      if (frame.parentNode) frame.parentNode.removeChild(frame);
+      if (error) reject(error);
+      else resolve(result);
+    }
+
+    frame.onload = function() {
+      if (settled) return;
+      try {
+        var frameDocument;
+        try {
+          frameDocument = frame.contentDocument;
+        } catch (accessCause) {
+          var deniedAccessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
+          deniedAccessError.code = "VN360_CSS_TEXT_ACCESS";
+          throw deniedAccessError;
+        }
+        if (!frameDocument || !frameDocument.body) {
+          var accessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
+          accessError.code = "VN360_CSS_TEXT_ACCESS";
+          throw accessError;
+        }
+        if (frameDocument.contentType !== "text/css") {
+          throw new Error("Локальный ресурс не является CSS-пакетом: " + cssUrl);
+        }
+        var cssSource;
+        try {
+          cssSource = frameDocument.body.textContent || "";
+        } catch (bodyAccessCause) {
+          var deniedBodyError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
+          deniedBodyError.code = "VN360_CSS_TEXT_ACCESS";
+          throw deniedBodyError;
+        }
+        var propertyReader = createBg360CssPropertyReader(cssSource);
+        finish(null, extractBg360CssPackBlob(propertyReader));
+      } catch (err) {
+        finish(err);
+      }
+    };
+    frame.onerror = function() {
+      finish(new Error("Не удалось загрузить CSS-пакет: " + cssUrl));
+    };
+
+    timeoutId = setTimeout(function() {
+      finish(new Error("Истекло время загрузки CSS-пакета: " + cssUrl));
+    }, 30000);
+    frame.src = cssUrl;
+    document.body.appendChild(frame);
+  });
+}
+
+// Создаёт непредсказуемый nonce для единственного разрешённого локального link в совместимом file:// загрузчике Chromium.
 function createBg360CssStyleNonce() {
   if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
     throw new Error("Браузер не поддерживает безопасный генератор для загрузки CSS-пакета.");
@@ -11726,12 +11862,14 @@ function createBg360CssStyleNonce() {
   var bytes = new Uint8Array(16);
   window.crypto.getRandomValues(bytes);
   var nonce = "";
-  for (var i = 0; i < bytes.length; i++) nonce += bytes[i].toString(16).padStart(2, "0");
+  for (var index = 0; index < bytes.length; index++) {
+    nonce += (bytes[index] < 16 ? "0" : "") + bytes[index].toString(16);
+  }
   return nonce;
 }
 
-// Загружает пользовательский CSS во временный sandbox-iframe: nonce разрешает только корневой <link>, а @import и прочие ресурсы блокирует CSP.
-function readBg360CssPack(cssUrl) {
+// Читает file:// CSS через изолированный link только когда Chromium запрещает доступ к тексту; CSP блокирует импорты и любые побочные ресурсы.
+function readBg360CssPackFromIsolatedStyle(cssUrl) {
   return new Promise(function(resolve, reject) {
     var settled = false;
     var initialized = false;
@@ -11741,6 +11879,7 @@ function readBg360CssPack(cssUrl) {
     frame.hidden = true;
     frame.setAttribute("aria-hidden", "true");
     frame.setAttribute("sandbox", "allow-same-origin");
+    frame.setAttribute("referrerpolicy", "no-referrer");
     frame.setAttribute("data-bg360-css-pack-loader", cssUrl);
     frame.srcdoc = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + styleNonce + "'; style-src-attr 'none'; script-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\"><div id=\"vn360-pack\"></div>";
 
@@ -11786,6 +11925,14 @@ function readBg360CssPack(cssUrl) {
       finish(new Error("Истекло время загрузки CSS-пакета: " + cssUrl));
     }, 30000);
     document.body.appendChild(frame);
+  });
+}
+
+// Выбирает строгий текстовый путь, а совместимый CSP-link разрешает только локальный file:// случай с закрытым origin Chromium.
+function readBg360CssPack(cssUrl) {
+  return readBg360CssPackFromTextDocument(cssUrl).catch(function(error) {
+    if (!error || error.code !== "VN360_CSS_TEXT_ACCESS" || window.location.protocol !== "file:") throw error;
+    return readBg360CssPackFromIsolatedStyle(cssUrl);
   });
 }
 

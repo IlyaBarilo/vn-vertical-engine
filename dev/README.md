@@ -29,7 +29,7 @@
 - Node.js 22 или новее;
 - локальная копия Git-репозитория;
 - для основных Node-тестов установка npm-пакетов и подключение к сети не требуются;
-- для браузерных E2E-тестов один раз нужны `npm.cmd --prefix dev ci` и установка Chromium.
+- для браузерных E2E-тестов один раз нужны `npm.cmd --prefix dev ci` и установка Chromium с Firefox.
 
 Тесты и Node.js не входят в пользовательский runtime движка и не нужны для
 запуска готовой новеллы.
@@ -122,14 +122,14 @@ npm.cmd --prefix dev run test:community
 
 ## Браузерные E2E-тесты
 
-Первичная установка developer-зависимостей и Chromium:
+Первичная установка developer-зависимостей, Chromium и Firefox:
 
 ```powershell
 npm.cmd --prefix dev ci
 npm.cmd --prefix dev run browser:install
 ```
 
-Запуск в фоновом Chromium:
+Запуск полного набора в фоновых Chromium и Firefox:
 
 ```powershell
 npm.cmd --prefix dev run test:e2e
@@ -210,8 +210,8 @@ Workflow `.github/workflows/tests.yml` запускает полный набо�
 - вручную через `workflow_dispatch`.
 
 Job `test` выполняет автономные Node-тесты. Параллельный job `Browser E2E`
-работает из каталога `dev/`: устанавливает developer-зависимости и Chromium,
-затем запускает синтетические браузерные сценарии. При сбое его HTML-отчёт,
+работает из каталога `dev/`: устанавливает developer-зависимости, Chromium и Firefox,
+затем запускает в обоих браузерах синтетические сценарии. При сбое его HTML-отчёт,
 screenshot и trace сохраняются в GitHub Actions Artifacts на семь дней.
 
 Release workflow повторяет тесты перед сборкой ZIP. Провал проверки не позволяет
@@ -231,8 +231,9 @@ Workflow `Build ZIP for Release` можно запустить во вкладк
 `.sha256`. Workflow повторно вычисляет контрольные суммы, проверяет целостность
 обоих архивов, наличие runtime и пользовательских инструментов, отсутствие
 developer-файлов, а также отсутствие ассетов и корневого сценария в
-update-архиве. После этого полный ZIP распаковывается во временный каталог и
-запускается в Chromium. Artifact хранится семь дней.
+update-архиве. После этого внутренний release candidate передаётся в Windows-job,
+где полный ZIP распаковывается и запускается в Microsoft Edge и Firefox. Только
+после обеих успешных проверок создаётся пользовательский artifact сроком на семь дней.
 
 Локальная проверка скачанного архива по соседнему файлу SHA-256:
 
@@ -256,7 +257,14 @@ node dev/scripts/release-checksums.mjs verify ".\vn-vertical-engine-test-build.z
 npm.cmd --prefix dev run test:release:smoke -- "..\vn-vertical-engine-test-build.zip"
 ```
 
-Перед первым запуском установите developer-зависимости и Chromium командами из
+По умолчанию команда использует Chromium. Другой браузер задаётся явно:
+
+```powershell
+npm.cmd --prefix dev run test:release:smoke -- "..\vn-vertical-engine-test-build.zip" --browser=firefox
+npm.cmd --prefix dev run test:release:smoke -- "..\vn-vertical-engine-test-build.zip" --browser=msedge
+```
+
+Перед первым запуском установите developer-зависимости, Chromium и Firefox командами из
 раздела «Браузерные E2E-тесты». Smoke-тест сам распаковывает архив во временный
 каталог и удаляет его после проверки. Сначала он запускает движок через временный
 HTTP-сервер для точной диагностики отсутствующих и внешних запросов. Затем сервер

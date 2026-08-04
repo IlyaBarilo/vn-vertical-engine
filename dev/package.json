@@ -20,7 +20,7 @@
     "test:release:smoke": "node tests/release-smoke.mjs",
     "test:links": "node --test tests/markdown-links.test.mjs",
     "test:community": "node --test tests/discussion-forms.test.mjs",
-    "browser:install": "playwright install chromium",
+    "browser:install": "playwright install chromium firefox",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },

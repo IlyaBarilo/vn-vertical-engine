@@ -13,6 +13,45 @@ const reportRoot = path.join(developerRoot, '.playwright', 'release-smoke');
 const optionalScriptPaths = new Set(['/license-key.js', '/story360.js']);
 const fileSmokePanoramaRelativePath = 'assets/360/__release-smoke__/file-smoke-360.css';
 const fileSmokePanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const supportedSmokeBrowsers = new Set(['chromium', 'firefox', 'msedge']);
+
+/**
+ * Разбирает путь к ZIP и браузер, отклоняя неизвестные параметры до распаковки большого архива.
+ */
+function parseSmokeOptions(argumentsList) {
+  var archiveArgument = '';
+  var browserName = 'chromium';
+
+  argumentsList.forEach(function(argument) {
+    if (argument.startsWith('--browser=')) {
+      browserName = argument.slice('--browser='.length).trim().toLowerCase();
+      return;
+    }
+    if (argument.startsWith('-')) {
+      throw new Error(`Неизвестный параметр release smoke: ${argument}`);
+    }
+    if (archiveArgument) {
+      throw new Error('Release smoke принимает путь только к одному ZIP-архиву.');
+    }
+    archiveArgument = argument;
+  });
+
+  if (!supportedSmokeBrowsers.has(browserName)) {
+    throw new Error(`Браузер ${browserName || '(не задан)'} не поддерживается release smoke.`);
+  }
+  return { archiveArgument, browserName };
+}
+
+/**
+ * Запускает выбранный движок Playwright; msedge использует установленный фирменный канал Microsoft Edge.
+ */
+async function launchSmokeBrowser(browserName) {
+  const playwright = await import('playwright');
+  if (browserName === 'msedge') {
+    return playwright.chromium.launch({ headless: true, channel: 'msedge' });
+  }
+  return playwright[browserName].launch({ headless: true });
+}
 
 /**
  * Создаёт минимальный CSS-пакет с корректным PNG 1x1 для проверки реального локального канала CSS → Blob → WebGL.
@@ -369,11 +408,10 @@ async function attachFileSmokeDiagnostics(page, diagnostics) {
 }
 
 /**
- * Открывает распакованный runtime в Chromium и проверяет первую реплику синтетической истории.
+ * Открывает распакованный runtime в выбранном браузере и проверяет первую реплику синтетической истории.
  */
-async function runBrowserSmoke(releaseRoot, baseUrl, archivePath) {
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
+async function runBrowserSmoke(releaseRoot, baseUrl, archivePath, browserName) {
+  const browser = await launchSmokeBrowser(browserName);
   const page = await browser.newPage({ viewport: { width: 412, height: 915 } });
   const pageErrors = [];
   const consoleErrors = [];
@@ -415,6 +453,7 @@ async function runBrowserSmoke(releaseRoot, baseUrl, archivePath) {
   } catch (error) {
     await saveFailureReport(page, {
       archivePath,
+      browserName,
       releaseRoot,
       pageErrors,
       consoleErrors,
@@ -431,9 +470,8 @@ async function runBrowserSmoke(releaseRoot, baseUrl, archivePath) {
 /**
  * Открывает распакованный runtime и редактор напрямую через file://, проверяя CSS-панораму и её восстановление после F5.
  */
-async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath) {
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
+async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath, browserName) {
+  const browser = await launchSmokeBrowser(browserName);
   const context = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const diagnostics = {
     pageErrors: [],
@@ -535,6 +573,7 @@ async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath) {
     }).catch(function() { return null; }) : null;
     await saveFailureReport(page, {
       archivePath,
+      browserName,
       releaseRoot,
       mode: 'file',
       phase,
@@ -548,13 +587,14 @@ async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath) {
   }
 }
 
-const archiveArgument = process.argv[2];
+const smokeOptions = parseSmokeOptions(process.argv.slice(2));
+const archiveArgument = smokeOptions.archiveArgument;
 
 // Проверяет полный ZIP после распаковки отдельно через диагностический HTTP-контур и настоящий автономный file://.
-test('распакованный полный ZIP запускает движок и CSS-панорамы через HTTP и file://', { timeout: 90_000 }, async function() {
+test(`распакованный полный ZIP запускает движок и CSS-панорамы через HTTP и file:// в ${smokeOptions.browserName}`, { timeout: 90_000 }, async function() {
   assert.ok(
     archiveArgument,
-    'Укажите путь к полному ZIP: npm run test:release:smoke -- ../имя-архива.zip'
+    'Укажите путь к полному ZIP: npm run test:release:smoke -- ../имя-архива.zip --browser=chromium'
   );
   const archivePath = path.resolve(process.cwd(), archiveArgument);
   const archiveInfo = await lstat(archivePath);
@@ -580,12 +620,12 @@ test('распакованный полный ZIP запускает движо�
 
     const storySource = await readFile(fixtureStoryPath, 'utf8');
     releaseServer = await startReleaseServer(releaseRoot, storySource);
-    await runBrowserSmoke(releaseRoot, releaseServer.baseUrl, archivePath);
+    await runBrowserSmoke(releaseRoot, releaseServer.baseUrl, archivePath, smokeOptions.browserName);
     await releaseServer.close();
     releaseServer = null;
 
     const fileFixtures = await prepareFileSmokeFixtures(releaseRoot, temporaryRoot);
-    await runFileBrowserSmoke(releaseRoot, fileFixtures, archivePath);
+    await runFileBrowserSmoke(releaseRoot, fileFixtures, archivePath, smokeOptions.browserName);
   } finally {
     if (releaseServer) await releaseServer.close();
     await rm(temporaryRoot, { recursive: true, force: true });

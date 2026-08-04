@@ -154,11 +154,14 @@ test('ручная релизная сборка безопасна по умо�
   );
 });
 
-// Проверяет, что собранные ZIP и их контрольные суммы доступны без создания GitHub Release.
-test('релизная сборка сохраняет временный artifact с ZIP и SHA-256', async function() {
+// Проверяет, что пользовательский artifact появляется только после Windows smoke, а внутренняя копия живёт один день.
+test('релизная сборка выдаёт проверенный artifact с ZIP и SHA-256', async function() {
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
   assert.ok(releaseSource.includes('uses: actions/upload-artifact@v7'));
+  assert.ok(releaseSource.includes('name: release-candidate-${{ github.run_id }}'));
+  assert.ok(releaseSource.includes('retention-days: 1'));
+  assert.ok(releaseSource.includes('name: release-zips-${{ github.run_id }}'));
   assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip'));
   assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256'));
   assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip'));
@@ -213,8 +216,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
 });
 
-// Закрепляет browser smoke через HTTP и file:// именно после упаковки полного ZIP и до выдачи artifact пользователю.
-test('релизный workflow запускает распакованный ZIP в Chromium через HTTP и file://', async function() {
+// Закрепляет Windows smoke настоящего Edge и Firefox после упаковки полного ZIP и до выдачи artifact пользователю.
+test('релизный workflow запускает распакованный ZIP в Edge и Firefox через HTTP и file://', async function() {
   const [releaseSource, packageSource, smokeSource] = await Promise.all([
     readRepositoryFile('.github/workflows/release.yml'),
     readRepositoryFile('dev/package.json'),
@@ -222,22 +225,31 @@ test('релизный workflow запускает распакованный ZI
   ]);
   const packageData = JSON.parse(packageSource);
   const createArchivePosition = releaseSource.indexOf('- name: Create ZIP archives');
-  const smokePosition = releaseSource.indexOf('- name: Run unpacked release smoke test');
+  const edgeSmokePosition = releaseSource.indexOf('- name: Run unpacked release smoke in Microsoft Edge');
+  const firefoxSmokePosition = releaseSource.indexOf('- name: Run unpacked release smoke in Firefox');
   const uploadPosition = releaseSource.indexOf('- name: Upload ZIP artifacts');
+  const publishPosition = releaseSource.indexOf('- name: Upload to release');
 
   assert.equal(packageData.scripts['test:release:smoke'], 'node tests/release-smoke.mjs');
   await access(path.join(repositoryRoot, 'dev/tests/release-smoke.mjs'));
   assert.ok(releaseSource.includes('run: npm ci'));
-  assert.ok(releaseSource.includes('run: npx playwright install --with-deps chromium'));
-  assert.ok(releaseSource.includes('run: npm run test:release:smoke -- "../${APP_NAME}-${VERSION}.zip"'));
+  assert.ok(releaseSource.includes('runs-on: windows-latest'));
+  assert.ok(releaseSource.includes('run: npx playwright install firefox'));
+  assert.ok(releaseSource.includes('--browser=msedge'));
+  assert.ok(releaseSource.includes('--browser=firefox'));
+  assert.ok(releaseSource.includes('needs: [build, smoke-windows]'));
   assert.ok(releaseSource.includes('dev/.playwright/release-smoke/'));
   assert.ok(smokeSource.includes('pathToFileURL'));
+  assert.ok(smokeSource.includes("new Set(['chromium', 'firefox', 'msedge'])"));
+  assert.ok(smokeSource.includes("channel: 'msedge'"));
   assert.ok(smokeSource.includes('runFileBrowserSmoke'));
   assert.ok(smokeSource.includes('fileSmokePanoramaRelativePath'));
   assert.ok(smokeSource.includes("path.join(releaseRoot, 'tools', 'scene360-editor.html')"));
   assert.ok(smokeSource.includes("await page.reload({ waitUntil: 'domcontentloaded' })"));
-  assert.ok(createArchivePosition >= 0 && smokePosition > createArchivePosition);
-  assert.ok(uploadPosition > smokePosition);
+  assert.ok(createArchivePosition >= 0 && edgeSmokePosition > createArchivePosition);
+  assert.ok(firefoxSmokePosition > edgeSmokePosition);
+  assert.ok(uploadPosition > firefoxSmokePosition);
+  assert.ok(publishPosition > uploadPosition);
 });
 
 // Защищает пользовательский ZIP от каталога разработки, браузеров, отчётов и конфигурации.

@@ -18,7 +18,11 @@ function accessRepositoryFile(relativePath) {
 
 // Проверяет наличие конфигурации, синтетических fixtures и отдельных npm-команд Playwright.
 test('браузерный E2E-набор полностью описан в репозитории', async function() {
-  const packageSource = await readRepositoryFile('dev/package.json');
+  const [packageSource, configSource, engineSpecSource] = await Promise.all([
+    readRepositoryFile('dev/package.json'),
+    readRepositoryFile('dev/playwright.config.mjs'),
+    readRepositoryFile('dev/tests/e2e/engine.spec.mjs')
+  ]);
   const packageData = JSON.parse(packageSource);
   const requiredFiles = [
     'dev/playwright.config.mjs',
@@ -30,18 +34,23 @@ test('браузерный E2E-набор полностью описан в р�
 
   assert.equal(packageData.scripts['test:e2e'], 'playwright test');
   assert.equal(packageData.scripts['test:e2e:headed'], 'playwright test --headed');
-  assert.equal(packageData.scripts['browser:install'], 'playwright install chromium');
+  assert.equal(packageData.scripts['browser:install'], 'playwright install chromium firefox');
   assert.equal(packageData.devDependencies['@playwright/test'], '1.62.1');
+  assert.match(configSource, /name:\s*'chromium'[\s\S]+browserName:\s*'chromium'/);
+  assert.match(configSource, /name:\s*'firefox'[\s\S]+browserName:\s*'firefox'/);
+  assert.match(configSource, /baseURL:\s*'http:\/\/127\.0\.0\.1:41739'/);
+  assert.match(engineSpecSource, /createServer\(function serveE2eRequest/);
+  assert.match(engineSpecSource, /handleEngineHttpRequest\(request, response\)/);
   await Promise.all(requiredFiles.map(accessRepositoryFile));
 });
 
-// Защищает обязательные шаги Chromium-проверки и выдачу диагностического отчёта при сбое.
+// Защищает обязательные шаги кроссбраузерной проверки и выдачу диагностического отчёта при сбое.
 test('GitHub Actions запускает браузерные E2E-тесты', async function() {
   const workflowSource = await readRepositoryFile('.github/workflows/tests.yml');
 
   assert.ok(workflowSource.includes('name: Browser E2E'));
   assert.ok(workflowSource.includes('run: npm ci'));
-  assert.ok(workflowSource.includes('run: npx playwright install --with-deps chromium'));
+  assert.ok(workflowSource.includes('run: npx playwright install --with-deps chromium firefox'));
   assert.ok(workflowSource.includes('run: npm run test:e2e'));
   assert.ok(workflowSource.includes('cache-dependency-path: dev/package-lock.json'));
   assert.ok(workflowSource.includes('working-directory: dev'));

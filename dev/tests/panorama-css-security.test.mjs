@@ -73,6 +73,26 @@ function createComputedStyle(mimeType, declaredWidth, declaredHeight, bytes) {
   };
 }
 
+// Формирует минимальный текст CSS-пакета для проверки строгого парсера до браузерной загрузки.
+function createCssPackSource(mimeType, declaredWidth, declaredHeight, bytes) {
+  const payload = Buffer.from(bytes).toString('base64');
+  return [
+    '/* пакет конвертера */',
+    '#vn360-pack {',
+    '  --vn360-schema: "vn360-css-pack-v1";',
+    '  --vn360-mode: "normal";',
+    `  --vn360-mime: "${mimeType}";`,
+    `  --vn360-width: "${declaredWidth}";`,
+    `  --vn360-height: "${declaredHeight}";`,
+    `  --vn360-size: "${bytes.length}";`,
+    '  --vn360-quality: "1";',
+    '  --vn360-chunk-count: "1";',
+    `  --vn360-data-0: "data:${mimeType};base64,${payload}";`,
+    '}',
+    ''
+  ].join('\n');
+}
+
 // Извлекает реальную защитную часть движка или редактора и запускает её отдельно от браузерного интерфейса.
 async function loadPanoramaRuntime(kind) {
   const isEngine = kind === 'engine';
@@ -82,8 +102,8 @@ async function loadPanoramaRuntime(kind) {
     ? 'var BG360_CSS_PACK_MAX_ENCODED_LENGTH'
     : 'var PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH';
   const endMarker = isEngine
-    ? '// Создаёт случайный nonce'
-    : 'function createPanoramaCssStyleNonce';
+    ? 'function readBg360CssPack'
+    : 'function readPanoramaCssPack';
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker, start);
   assert.ok(start >= 0 && end > start, `Не найден защитный блок ${relativePath}.`);
@@ -107,20 +127,23 @@ async function loadPanoramaRuntime(kind) {
     ? [
         'this.readDimensions = readBg360CssImageDimensions;',
         'this.validateDimensions = validateBg360CssImageDimensions;',
+        'this.parseSource = createBg360CssPropertyReader;',
         'this.extractPack = extractBg360CssPackBlob;',
-        'this.limits = { encoded: BG360_CSS_PACK_MAX_ENCODED_LENGTH, decoded: BG360_CSS_PACK_MAX_DECODED_SIZE, chunks: BG360_CSS_PACK_MAX_CHUNKS, chunk: BG360_CSS_PACK_MAX_CHUNK_LENGTH, width: BG360_CSS_IMAGE_MAX_WIDTH, height: BG360_CSS_IMAGE_MAX_HEIGHT, pixels: BG360_CSS_IMAGE_MAX_PIXELS };'
+        'this.limits = { encoded: BG360_CSS_PACK_MAX_ENCODED_LENGTH, decoded: BG360_CSS_PACK_MAX_DECODED_SIZE, chunks: BG360_CSS_PACK_MAX_CHUNKS, chunk: BG360_CSS_PACK_MAX_CHUNK_LENGTH, source: BG360_CSS_PACK_MAX_SOURCE_LENGTH, width: BG360_CSS_IMAGE_MAX_WIDTH, height: BG360_CSS_IMAGE_MAX_HEIGHT, pixels: BG360_CSS_IMAGE_MAX_PIXELS };'
       ]
     : [
         'this.readDimensions = readPanoramaCssImageDimensions;',
         'this.validateDimensions = validatePanoramaCssImageDimensions;',
+        'this.parseSource = createPanoramaCssPropertyReader;',
         'this.extractPack = extractPanoramaCssPackBlob;',
-        'this.limits = { encoded: PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH, decoded: PANORAMA_CSS_PACK_MAX_DECODED_SIZE, chunks: PANORAMA_CSS_PACK_MAX_CHUNKS, chunk: PANORAMA_CSS_PACK_MAX_CHUNK_LENGTH, width: PANORAMA_CSS_IMAGE_MAX_WIDTH, height: PANORAMA_CSS_IMAGE_MAX_HEIGHT, pixels: PANORAMA_CSS_IMAGE_MAX_PIXELS };'
+        'this.limits = { encoded: PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH, decoded: PANORAMA_CSS_PACK_MAX_DECODED_SIZE, chunks: PANORAMA_CSS_PACK_MAX_CHUNKS, chunk: PANORAMA_CSS_PACK_MAX_CHUNK_LENGTH, source: PANORAMA_CSS_PACK_MAX_SOURCE_LENGTH, width: PANORAMA_CSS_IMAGE_MAX_WIDTH, height: PANORAMA_CSS_IMAGE_MAX_HEIGHT, pixels: PANORAMA_CSS_IMAGE_MAX_PIXELS };'
       ];
   new vm.Script(source.slice(start, end) + '\n' + exportsSource.join('\n'), { filename: relativePath }).runInContext(context);
   return {
     source,
     readDimensions: context.readDimensions,
     validateDimensions: context.validateDimensions,
+    parseSource: context.parseSource,
     extractPack: context.extractPack,
     limits: JSON.parse(JSON.stringify(context.limits)),
     getBlobCreations: function() { return blobCreations; }
@@ -136,6 +159,7 @@ test('движок и редактор используют единые пре�
       decoded: 96 * 1024 * 1024,
       chunks: 4096,
       chunk: 32 * 1024,
+      source: 130 * 1024 * 1024,
       width: 20000,
       height: 15000,
       pixels: 300000000
@@ -144,6 +168,44 @@ test('движок и редактор используют единые пре�
     assert.throws(function() { runtime.validateDimensions(20001, 15000); }, /превышает предел/);
     assert.throws(function() { runtime.validateDimensions(20000, 15001); }, /превышает предел/);
   }
+});
+
+// Проверяет, что CSS остаётся чистым контейнером данных без импортов, сторонних правил, дублей и скрытых частей.
+test('строгий парсер CSS-панорам принимает только один канонический #vn360-pack', async function() {
+  const validSource = createCssPackSource('image/png', 1, 1, createPngHeader(1, 1));
+  const maliciousSources = [
+    `@import url("https://example.invalid/a.css");\n${validSource}`,
+    `html { display: none; }\n${validSource}`,
+    validSource.replace('  --vn360-mode: "normal";', '  --vn360-mode: "normal";\n  --vn360-mode: "mobile";'),
+    validSource.replace('  --vn360-mode: "normal";', '  --vn360-mode: "nor\\6dal";'),
+    validSource.replace('  --vn360-data-0:', '  --vn360-data-1:')
+  ];
+
+  for (const kind of ['engine', 'editor']) {
+    const runtime = await loadPanoramaRuntime(kind);
+    const propertyReader = runtime.parseSource(validSource);
+    assert.equal(propertyReader.getPropertyValue('--vn360-schema'), '"vn360-css-pack-v1"');
+    assert.doesNotThrow(function() { runtime.extractPack(propertyReader); });
+    for (const maliciousSource of maliciousSources) {
+      assert.throws(function() { runtime.parseSource(maliciousSource); }, /CSS-пакет|количество частей/);
+    }
+  }
+});
+
+// Фиксирует строгий текстовый путь и узкий CSP-link только для несовместимого file:// origin в Chromium.
+test('движок и редактор изолируют оба кроссбраузерных пути чтения CSS-пакета', async function() {
+  const engineSource = (await loadPanoramaRuntime('engine')).source;
+  const editorSource = (await loadPanoramaRuntime('editor')).source;
+  assert.match(engineSource, /frameDocument\.contentType !== "text\/css"/);
+  assert.match(engineSource, /createBg360CssPropertyReader\(cssSource\)/);
+  assert.match(editorSource, /frameDocument\.contentType !== "text\/css"/);
+  assert.match(editorSource, /createPanoramaCssPropertyReader\(cssSource\)/);
+  const engineTextLoader = engineSource.slice(engineSource.indexOf('function readBg360CssPackFromTextDocument'), engineSource.indexOf('function createBg360CssStyleNonce'));
+  const editorTextLoader = editorSource.slice(editorSource.indexOf('function readPanoramaCssPackFromTextDocument'), editorSource.indexOf('function createPanoramaCssStyleNonce'));
+  assert.doesNotMatch(engineTextLoader, /srcdoc/);
+  assert.doesNotMatch(editorTextLoader, /srcdoc/);
+  assert.match(engineSource, /style-src 'nonce-[\s\S]+window\.location\.protocol !== "file:"/);
+  assert.match(editorSource, /style-src 'nonce-[\s\S]+window\.location\.protocol !== "file:"/);
 });
 
 // Проверяет все поддерживаемые заголовки без обращения к браузерному Image-декодеру.

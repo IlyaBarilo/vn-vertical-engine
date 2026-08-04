@@ -40,9 +40,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     env:
       APP_NAME: ${{ github.event.repository.name }}
@@ -60,14 +59,6 @@ jobs:
 
       - name: Run engine tests
         run: node --test
-
-      - name: Install release smoke dependencies
-        run: npm ci
-        working-directory: dev
-
-      - name: Install Chromium for release smoke
-        run: npx playwright install --with-deps chromium
-        working-directory: dev
 
       - name: Detect version
         id: version
@@ -242,15 +233,84 @@ jobs:
             exit 1
           fi
 
-      - name: Run unpacked release smoke test
-        run: npm run test:release:smoke -- "../${APP_NAME}-${VERSION}.zip"
+      - name: Upload internal release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: |
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256
+            ${{ github.event.repository.name }}-latest.zip
+            ${{ github.event.repository.name }}-latest.zip.sha256
+            ${{ github.event.repository.name }}-latest-update.zip
+            ${{ github.event.repository.name }}-latest-update.zip.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Setup Pages
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/site
+
+      - name: Debug build
+        run: ls -R build
+
+  smoke-windows:
+    name: Release smoke on Windows
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      APP_NAME: ${{ github.event.repository.name }}
+      VERSION: ${{ needs.build.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js for release smoke
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dev/package-lock.json
+
+      - name: Download internal release candidate
+        uses: actions/download-artifact@v7
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: .
+
+      - name: Install release smoke dependencies
+        run: npm ci
+        working-directory: dev
+
+      - name: Install Firefox for release smoke
+        run: npx playwright install firefox
+        working-directory: dev
+
+      - name: Run unpacked release smoke in Microsoft Edge
+        run: npm run test:release:smoke -- "../${{ env.APP_NAME }}-${{ env.VERSION }}.zip" --browser=msedge
+        working-directory: dev
+
+      - name: Run unpacked release smoke in Firefox
+        run: npm run test:release:smoke -- "../${{ env.APP_NAME }}-${{ env.VERSION }}.zip" --browser=firefox
         working-directory: dev
 
       - name: Upload release smoke failure report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: release-smoke-report-${{ github.run_id }}
+          name: release-smoke-windows-report-${{ github.run_id }}
           path: dev/.playwright/release-smoke/
           if-no-files-found: ignore
           retention-days: 7
@@ -260,13 +320,35 @@ jobs:
         with:
           name: release-zips-${{ github.run_id }}
           path: |
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256
+            ${{ env.APP_NAME }}-${{ env.VERSION }}.zip
+            ${{ env.APP_NAME }}-${{ env.VERSION }}.zip.sha256
+            ${{ env.APP_NAME }}-${{ env.VERSION }}-update.zip
+            ${{ env.APP_NAME }}-${{ env.VERSION }}-update.zip.sha256
+            ${{ env.APP_NAME }}-latest.zip
+            ${{ env.APP_NAME }}-latest.zip.sha256
+            ${{ env.APP_NAME }}-latest-update.zip
+            ${{ env.APP_NAME }}-latest-update.zip.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+  publish:
+    name: Publish verified release
+    needs: [build, smoke-windows]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+
+    steps:
+      - name: Download verified ZIP artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: release-zips-${{ github.run_id }}
+          path: .
 
       - name: Upload to release
         if: github.event_name == 'release' || inputs.upload_to_release == true
@@ -282,19 +364,6 @@ jobs:
             ${{ github.event.repository.name }}-${{ env.VERSION }}-update.zip.sha256
             ${{ github.event.repository.name }}-latest-update.zip
             ${{ github.event.repository.name }}-latest-update.zip.sha256
-
-      - name: Setup Pages
-        if: github.event_name == 'release' || inputs.deploy_pages == true
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        if: github.event_name == 'release' || inputs.deploy_pages == true
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: build/site
-
-      - name: Debug build
-        run: ls -R build
 
       - name: Deploy to GitHub Pages
         if: github.event_name == 'release' || inputs.deploy_pages == true

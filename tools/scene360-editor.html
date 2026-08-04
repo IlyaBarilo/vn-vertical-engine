@@ -1573,6 +1573,8 @@
     /** Число частей ограничено отдельно, чтобы вредный пакет не заставил выполнять неограниченный цикл чтения свойств. */
     var PANORAMA_CSS_PACK_MAX_CHUNKS = 4096;
     var PANORAMA_CSS_PACK_MAX_CHUNK_LENGTH = 32 * 1024;
+    /** Исходный CSS ограничен с небольшим запасом сверх Base64, чтобы метаданные и комментарии не раздували память без границ. */
+    var PANORAMA_CSS_PACK_MAX_SOURCE_LENGTH = PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH + 2 * 1024 * 1024;
     /** Base64 декодируется ограниченными порциями, чтобы мобильный браузер не создавал огромную промежуточную binary-string. */
     var PANORAMA_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
     var PANORAMA_CSS_IMAGE_MAX_WIDTH = 20000;
@@ -3112,6 +3114,76 @@
     }
 
     /**
+     * Разбирает только единственный декларативный #vn360-pack и отклоняет @import, сторонние правила, дубли и CSS-escape до декодирования.
+     */
+    function createPanoramaCssPropertyReader(cssSource) {
+      var source = String(cssSource || "").replace(/^\uFEFF/, "");
+      if (!source || source.length > PANORAMA_CSS_PACK_MAX_SOURCE_LENGTH) {
+        throw new Error("CSS-пакет отсутствует или превышает допустимый размер исходного текста.");
+      }
+      var sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      if (/\/\*|\*\//.test(sourceWithoutComments)) {
+        throw new Error("CSS-пакет содержит незавершённый комментарий.");
+      }
+      var ruleMatch = sourceWithoutComments.trim().match(/^#vn360-pack\s*\{([\s\S]*)\}$/);
+      if (!ruleMatch) {
+        throw new Error("CSS-пакет должен содержать только правило #vn360-pack без @import и сторонних стилей.");
+      }
+
+      var declarationBody = ruleMatch[1];
+      var declarationPattern = /(--vn360-(?:schema|mode|mime|width|height|size|quality|chunk-count|data-(?:0|[1-9][0-9]*)))\s*:\s*"([^"\\]*)"\s*;/g;
+      var properties = Object.create(null);
+      var cursor = 0;
+      var propertyCount = 0;
+      var declarationMatch;
+      while ((declarationMatch = declarationPattern.exec(declarationBody))) {
+        if (!/^\s*$/.test(declarationBody.slice(cursor, declarationMatch.index))) {
+          throw new Error("CSS-пакет содержит недопустимую декларацию.");
+        }
+        var propertyName = declarationMatch[1];
+        if (Object.prototype.hasOwnProperty.call(properties, propertyName)) {
+          throw new Error("CSS-пакет содержит повторное свойство " + propertyName + ".");
+        }
+        propertyCount++;
+        if (propertyCount > PANORAMA_CSS_PACK_MAX_CHUNKS + 8) {
+          throw new Error("CSS-пакет содержит слишком много свойств.");
+        }
+        properties[propertyName] = declarationMatch[2];
+        cursor = declarationPattern.lastIndex;
+      }
+      if (!/^\s*$/.test(declarationBody.slice(cursor))) {
+        throw new Error("CSS-пакет содержит недопустимую декларацию.");
+      }
+
+      var requiredProperties = ["schema", "mode", "mime", "width", "height", "size", "quality", "chunk-count"];
+      for (var requiredIndex = 0; requiredIndex < requiredProperties.length; requiredIndex++) {
+        if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-" + requiredProperties[requiredIndex])) {
+          throw new Error("CSS-пакет не содержит обязательные метаданные.");
+        }
+      }
+      var declaredChunkCount = Number(properties["--vn360-chunk-count"]);
+      if (!Number.isInteger(declaredChunkCount) || declaredChunkCount < 1 || declaredChunkCount > PANORAMA_CSS_PACK_MAX_CHUNKS) {
+        throw new Error("Некорректное количество частей CSS-пакета 360.");
+      }
+      for (var dataIndex = 0; dataIndex < declaredChunkCount; dataIndex++) {
+        if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-data-" + dataIndex)) {
+          throw new Error("CSS-пакет содержит неполный набор частей.");
+        }
+      }
+      if (propertyCount !== requiredProperties.length + declaredChunkCount) {
+        throw new Error("CSS-пакет содержит части вне объявленного диапазона.");
+      }
+
+      return {
+        getPropertyValue: function (propertyName) {
+          return Object.prototype.hasOwnProperty.call(properties, propertyName)
+            ? '"' + properties[propertyName] + '"'
+            : "";
+        }
+      };
+    }
+
+    /**
      * Декодирует одну выровненную часть base64 в Uint8Array и сохраняет первые байты для проверки сигнатуры изображения.
      */
     function appendPanoramaCssDecodedPart(encodedPart, binaryParts, signatureBytes) {
@@ -3332,7 +3404,78 @@
     }
 
     /**
-     * Создаёт случайный nonce для единственной разрешённой таблицы стилей; без Web Crypto загрузка завершается безопасной ошибкой.
+     * Загружает CSS как текстовый sandbox-документ: браузер не применяет его правила и не выполняет @import,
+     * а строгий парсер возвращает редактору только проверенные данные пакета.
+     */
+    function readPanoramaCssPackFromTextDocument(projectPath) {
+      return new Promise(function (resolve, reject) {
+        var settled = false;
+        var timeoutId = null;
+        var cssUrl = new URL(toToolRelativeUrl(projectPath), window.location.href).href;
+        var frame = document.createElement("iframe");
+        frame.hidden = true;
+        frame.setAttribute("aria-hidden", "true");
+        frame.setAttribute("sandbox", "allow-same-origin");
+        frame.setAttribute("referrerpolicy", "no-referrer");
+        frame.setAttribute("data-scene360-css-pack-loader", projectPath);
+
+        function finish(error, result) {
+          if (settled) return;
+          settled = true;
+          if (timeoutId !== null) clearTimeout(timeoutId);
+          frame.onload = null;
+          if (frame.parentNode) frame.parentNode.removeChild(frame);
+          if (error) reject(error);
+          else resolve(result);
+        }
+
+        frame.onload = function () {
+          if (settled) return;
+          try {
+            var frameDocument;
+            try {
+              frameDocument = frame.contentDocument;
+            } catch (accessCause) {
+              var deniedAccessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + projectPath);
+              deniedAccessError.code = "VN360_CSS_TEXT_ACCESS";
+              throw deniedAccessError;
+            }
+            if (!frameDocument || !frameDocument.body) {
+              var accessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + projectPath);
+              accessError.code = "VN360_CSS_TEXT_ACCESS";
+              throw accessError;
+            }
+            if (frameDocument.contentType !== "text/css") {
+              throw new Error("Локальный ресурс не является CSS-пакетом: " + projectPath);
+            }
+            var cssSource;
+            try {
+              cssSource = frameDocument.body.textContent || "";
+            } catch (bodyAccessCause) {
+              var deniedBodyError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + projectPath);
+              deniedBodyError.code = "VN360_CSS_TEXT_ACCESS";
+              throw deniedBodyError;
+            }
+            var propertyReader = createPanoramaCssPropertyReader(cssSource);
+            finish(null, extractPanoramaCssPackBlob(propertyReader));
+          } catch (err) {
+            finish(err);
+          }
+        };
+        frame.onerror = function () {
+          finish(new Error("Не удалось загрузить CSS-пакет: " + projectPath));
+        };
+
+        timeoutId = setTimeout(function () {
+          finish(new Error("Истекло время загрузки CSS-пакета: " + projectPath));
+        }, 30000);
+        frame.src = cssUrl;
+        document.body.appendChild(frame);
+      });
+    }
+
+    /**
+     * Создаёт непредсказуемый nonce для единственного разрешённого локального link в совместимом file:// загрузчике Chromium.
      */
     function createPanoramaCssStyleNonce() {
       if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
@@ -3341,24 +3484,28 @@
       var bytes = new Uint8Array(16);
       window.crypto.getRandomValues(bytes);
       var nonce = "";
-      for (var i = 0; i < bytes.length; i++) nonce += bytes[i].toString(16).padStart(2, "0");
+      for (var index = 0; index < bytes.length; index++) {
+        nonce += (bytes[index] < 16 ? "0" : "") + bytes[index].toString(16);
+      }
       return nonce;
     }
 
     /**
-     * Подключает пользовательский CSS во временный sandbox-iframe: nonce разрешает только корневой link,
-     * затем проверенный Blob возвращается редактору, а iframe полностью удаляется.
+     * Читает file:// CSS через изолированный link только когда Chromium запрещает доступ к тексту;
+     * CSP блокирует импорты и любые побочные ресурсы.
      */
-    function readPanoramaCssPack(projectPath) {
+    function readPanoramaCssPackFromIsolatedStyle(projectPath) {
       return new Promise(function (resolve, reject) {
         var settled = false;
         var initialized = false;
         var timeoutId = null;
+        var cssUrl = new URL(toToolRelativeUrl(projectPath), window.location.href).href;
         var styleNonce = createPanoramaCssStyleNonce();
         var frame = document.createElement("iframe");
         frame.hidden = true;
         frame.setAttribute("aria-hidden", "true");
         frame.setAttribute("sandbox", "allow-same-origin");
+        frame.setAttribute("referrerpolicy", "no-referrer");
         frame.setAttribute("data-scene360-css-pack-loader", projectPath);
         frame.srcdoc = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + styleNonce + "'; style-src-attr 'none'; script-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\"><div id=\"vn360-pack\"></div>";
 
@@ -3385,8 +3532,7 @@
             link.referrerPolicy = "no-referrer";
             link.onload = function () {
               try {
-                var computedStyle = frame.contentWindow.getComputedStyle(marker);
-                finish(null, extractPanoramaCssPackBlob(computedStyle));
+                finish(null, extractPanoramaCssPackBlob(frame.contentWindow.getComputedStyle(marker)));
               } catch (err) {
                 finish(err);
               }
@@ -3394,7 +3540,7 @@
             link.onerror = function () {
               finish(new Error("Не удалось загрузить CSS-пакет: " + projectPath));
             };
-            link.href = new URL(toToolRelativeUrl(projectPath), window.location.href).href;
+            link.href = cssUrl;
             frameDocument.head.appendChild(link);
           } catch (err) {
             finish(err);
@@ -3405,6 +3551,16 @@
           finish(new Error("Истекло время загрузки CSS-пакета: " + projectPath));
         }, 30000);
         document.body.appendChild(frame);
+      });
+    }
+
+    /**
+     * Выбирает строгий текстовый путь, а совместимый CSP-link разрешает только локальный file:// случай с закрытым origin Chromium.
+     */
+    function readPanoramaCssPack(projectPath) {
+      return readPanoramaCssPackFromTextDocument(projectPath).catch(function (error) {
+        if (!error || error.code !== "VN360_CSS_TEXT_ACCESS" || window.location.protocol !== "file:") throw error;
+        return readPanoramaCssPackFromIsolatedStyle(projectPath);
       });
     }
 

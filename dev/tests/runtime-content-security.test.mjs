@@ -11,6 +11,17 @@ function readProjectFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
 }
 
+// Закрепляет понятный отказ для IE до запуска современного runtime, не добавляя небезопасную legacy-ветку движка.
+test('Internet Explorer получает сообщение о неподдерживаемом браузере', async function() {
+  const indexSource = await readProjectFile('index.html');
+
+  assert.match(indexSource, /id="unsupportedBrowser"[^>]+style="display:none;/);
+  assert.match(indexSource, /Internet Explorer не поддерживается/);
+  assert.match(indexSource, /if \(!document\.documentMode\) return;/);
+  assert.match(indexSource, /application\.style\.display = "none"/);
+  assert.match(indexSource, /warning\.style\.display = "flex"/);
+});
+
 // Фиксирует полный отказ runtime от глобальных карт и динамического подключения JS-панорам.
 test('движок не содержит загрузчика JS-пакетов 360', async function() {
   const [engineSource, loaderSource, converterSource] = await Promise.all([

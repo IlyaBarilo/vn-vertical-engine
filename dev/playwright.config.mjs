@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-// Настраивает изолированный Chromium-контур с перехватом HTTP и диагностикой только при сбоях.
+// Настраивает одинаковый изолированный E2E-контур для Chromium и Firefox с диагностикой только при сбоях.
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.spec.mjs',
@@ -15,8 +15,18 @@ export default defineConfig({
   reporter: process.env.CI
     ? [['line'], ['html', { open: 'never', outputFolder: '.playwright/report' }]]
     : [['line']],
+  projects: [
+    {
+      name: 'chromium',
+      use: { browserName: 'chromium' }
+    },
+    {
+      name: 'firefox',
+      use: { browserName: 'firefox' }
+    }
+  ],
   use: {
-    baseURL: 'http://e2e.local',
+    baseURL: 'http://127.0.0.1:41739',
     headless: true,
     viewport: { width: 412, height: 915 },
     trace: 'retain-on-failure',

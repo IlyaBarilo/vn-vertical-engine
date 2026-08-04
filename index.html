@@ -9,6 +9,10 @@
 </head>
 <body>
 
+  <div id="unsupportedBrowser" role="alert" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483647;align-items:center;justify-content:center;padding:32px;background:#111;color:#fff;font:20px/1.5 Arial,sans-serif;text-align:center;">
+    Internet Explorer не поддерживается. Откройте проект в актуальном Microsoft Edge, Chrome или Firefox.
+  </div>
+
   <!--
     Сцена:
     - bgLayer: фон на весь экран с object-fit: cover
@@ -199,6 +203,16 @@
 
   </div>
 
+  <script>
+    // Показывает понятный отказ в Internet Explorer до разбора современных скриптов, которые этот браузер выполнить не сможет.
+    (function showInternetExplorerWarning() {
+      if (!document.documentMode) return;
+      var warning = document.getElementById("unsupportedBrowser");
+      var application = document.getElementById("app");
+      if (application) application.style.display = "none";
+      if (warning) warning.style.display = "flex";
+    })();
+  </script>
   <script src="engine/story-sandbox-loader.js"></script>
   <script>
     (function() {
