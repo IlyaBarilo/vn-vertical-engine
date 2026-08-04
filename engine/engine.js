@@ -14569,6 +14569,7 @@ function resolveCharacterAssetInfo(charId, emotion) {
   return result;
 }
 
+// Разрешает алиасы ресурсов и применяет image-кэш только к растру, не отправляя видео и CSS-панорамы в image-политику.
 function resolveAsset(ref, charId, emotion) {
   // СНАЧАЛА проверяем персонажей, если есть charId и emotion
   if (charId && emotion && STORY.assets && STORY.assets.characters) {
@@ -14626,7 +14627,7 @@ function resolveAsset(ref, charId, emotion) {
     const result = STORY.assets.backgrounds[key];
     var bgPath = getBackgroundAssetPrimaryPath(result);
 
-    if (bgPath && areAllImageCandidatesFailed(bgPath)) {
+    if (bgPath && !isVideoAssetPath(bgPath) && !isBg360PackCssPath(bgPath) && areAllImageCandidatesFailed(bgPath)) {
       return "";
     }
     return bgPath || "";

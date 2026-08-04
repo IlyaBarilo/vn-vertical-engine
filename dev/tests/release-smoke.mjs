@@ -5,12 +5,93 @@ import { access, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const developerRoot = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const fixtureStoryPath = fileURLToPath(new URL('./e2e/fixtures/story-fixture.js', import.meta.url));
 const reportRoot = path.join(developerRoot, '.playwright', 'release-smoke');
 const optionalScriptPaths = new Set(['/license-key.js', '/story360.js']);
+const fileSmokePanoramaRelativePath = 'assets/360/__release-smoke__/file-smoke-360.css';
+const fileSmokePanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+/**
+ * Создаёт минимальный CSS-пакет с корректным PNG 1x1 для проверки реального локального канала CSS → Blob → WebGL.
+ */
+function createFileSmokePanoramaCssSource() {
+  const payload = fileSmokePanoramaDataUrl.split(',')[1];
+  const imageSize = Buffer.from(payload, 'base64').length;
+  const chunks = [];
+  for (let offset = 0; offset < fileSmokePanoramaDataUrl.length; offset += 32) {
+    chunks.push(fileSmokePanoramaDataUrl.slice(offset, offset + 32));
+  }
+
+  return [
+    '#vn360-pack {',
+    '  --vn360-schema: "vn360-css-pack-v1";',
+    '  --vn360-mode: "normal";',
+    '  --vn360-mime: "image/png";',
+    '  --vn360-width: "1";',
+    '  --vn360-height: "1";',
+    `  --vn360-size: "${imageSize}";`,
+    '  --vn360-quality: "1";',
+    `  --vn360-chunk-count: "${chunks.length}";`,
+    ...chunks.map(function(chunk, index) {
+      return `  --vn360-data-${index}: "${chunk}";`;
+    }),
+    '}',
+    ''
+  ].join('\n');
+}
+
+/**
+ * Создаёт сценарий, который считается успешно запущенным только после загрузки CSS-панорамы из распакованного каталога.
+ */
+function createFileSmokeStorySource() {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = "Release file smoke"',
+    'projectId = release-file-smoke',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'bg360Quality = normal',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    `fileSmoke file=${fileSmokePanoramaRelativePath} 360 quality=normal`,
+    '',
+    '[scene]',
+    'scene intro',
+    'bg fileSmoke scroll',
+    '"Панорама file smoke загружена"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
+/**
+ * Создаёт импортируемую карту редактора с тем же CSS-пакетом, чтобы после F5 проверить восстановление локального пути.
+ */
+function createFileSmokeStory360Source() {
+  return `window.STORY360 = ${JSON.stringify({
+    version: 1,
+    spaces: {
+      releaseSmoke: {
+        panoramas: {
+          start: {
+            file: fileSmokePanoramaRelativePath,
+            marks: []
+          }
+        }
+      }
+    }
+  }, null, 2)};\n`;
+}
 
 /**
  * Запускает системную команду без shell и добавляет её вывод в ошибку при ненулевом коде.
@@ -89,6 +170,35 @@ async function findReleaseRoot(extractionRoot) {
   assert.equal(releaseEntries.length, 1, 'Полный ZIP должен содержать один корневой каталог приложения.');
   assert.equal(releaseEntries[0].isDirectory(), true, 'Корень полного ZIP должен быть каталогом.');
   return path.join(extractionRoot, releaseEntries[0].name);
+}
+
+/**
+ * Добавляет пользовательские fixtures только во временную копию релиза и не изменяет проверяемый ZIP или рабочий проект.
+ */
+async function prepareFileSmokeFixtures(releaseRoot, temporaryRoot) {
+  const storyPath = path.join(releaseRoot, 'story.js');
+  const panoramaPath = path.join(releaseRoot, ...fileSmokePanoramaRelativePath.split('/'));
+  const editorStoryPath = path.join(temporaryRoot, 'story360-file-smoke.js');
+
+  await assert.rejects(
+    access(storyPath),
+    function isMissingStory(error) {
+      return Boolean(error && error.code === 'ENOENT');
+    },
+    'Полный релиз не должен содержать пользовательский story.js до smoke-проверки.'
+  );
+  await mkdir(path.dirname(panoramaPath), { recursive: true });
+  await Promise.all([
+    writeFile(storyPath, createFileSmokeStorySource(), 'utf8'),
+    writeFile(panoramaPath, createFileSmokePanoramaCssSource(), 'utf8'),
+    writeFile(editorStoryPath, createFileSmokeStory360Source(), 'utf8')
+  ]);
+
+  return {
+    editorStoryPath,
+    indexUrl: pathToFileURL(path.join(releaseRoot, 'index.html')).href,
+    editorUrl: pathToFileURL(path.join(releaseRoot, 'tools', 'scene360-editor.html')).href
+  };
 }
 
 /**
@@ -235,6 +345,30 @@ async function saveFailureReport(page, details) {
 }
 
 /**
+ * Собирает ошибки file://-страницы и блокирует любую попытку выйти во внешнюю HTTP(S)-сеть во время smoke-проверки.
+ */
+async function attachFileSmokeDiagnostics(page, diagnostics) {
+  page.on('pageerror', function(error) {
+    diagnostics.pageErrors.push(error && error.message ? error.message : String(error));
+  });
+  page.on('console', function(message) {
+    if (message.type() === 'error') diagnostics.consoleErrors.push(message.text());
+    if (message.type() === 'warning') diagnostics.consoleWarnings.push(message.text());
+  });
+  page.on('requestfailed', function(request) {
+    var failure = request.failure();
+    diagnostics.failedRequests.push({
+      url: request.url(),
+      error: failure && failure.errorText ? failure.errorText : 'unknown'
+    });
+  });
+  await page.route(/^https?:\/\//i, async function blockFileSmokeNetwork(route) {
+    diagnostics.externalRequests.push(route.request().url());
+    await route.abort('blockedbyclient');
+  });
+}
+
+/**
  * Открывает распакованный runtime в Chromium и проверяет первую реплику синтетической истории.
  */
 async function runBrowserSmoke(releaseRoot, baseUrl, archivePath) {
@@ -294,10 +428,130 @@ async function runBrowserSmoke(releaseRoot, baseUrl, archivePath) {
   }
 }
 
+/**
+ * Открывает распакованный runtime и редактор напрямую через file://, проверяя CSS-панораму и её восстановление после F5.
+ */
+async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath) {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  const diagnostics = {
+    pageErrors: [],
+    consoleErrors: [],
+    consoleWarnings: [],
+    failedRequests: [],
+    externalRequests: []
+  };
+  let page = null;
+  let phase = 'runtime';
+
+  try {
+    page = await context.newPage();
+    await attachFileSmokeDiagnostics(page, diagnostics);
+    await page.goto(fixtures.indexUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(function hasFilePanorama() {
+      var textBox = document.querySelector('#textBox');
+      var layer = document.querySelector('#bg360Layer');
+      return Boolean(
+        textBox &&
+        textBox.textContent.trim() === 'Панорама file smoke загружена' &&
+        layer &&
+        !layer.classList.contains('hidden') &&
+        layer.tagName === 'CANVAS' &&
+        !document.querySelector('iframe[data-bg360-css-pack-loader]')
+      );
+    }, undefined, { timeout: 15_000 });
+    assert.equal(await page.title(), 'Release file smoke');
+    assert.equal(await page.locator('#bg360Layer').isVisible(), true, 'CSS-панорама движка не отображается через file://.');
+
+    phase = 'editor';
+    await page.close();
+    page = await context.newPage();
+    await attachFileSmokeDiagnostics(page, diagnostics);
+    await page.goto(fixtures.editorUrl, { waitUntil: 'domcontentloaded' });
+    await page.locator('#story360Input').setInputFiles(fixtures.editorStoryPath);
+    await page.waitForFunction(function hasEditorPanorama(expectedPath) {
+      var input = document.querySelector('#assetPathInput');
+      var status = document.querySelector('#statusBox');
+      return Boolean(
+        input &&
+        input.value === expectedPath &&
+        status &&
+        status.textContent.includes('Панорама загружена: ' + expectedPath) &&
+        window.sphereMesh &&
+        window.sphereMesh.material &&
+        window.sphereMesh.material.map &&
+        !document.querySelector('iframe[data-scene360-css-pack-loader]')
+      );
+    }, fileSmokePanoramaRelativePath, { timeout: 15_000 });
+
+    phase = 'editor-reload';
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(function hasRestoredEditorPanorama(expectedPath) {
+      var input = document.querySelector('#assetPathInput');
+      var status = document.querySelector('#statusBox');
+      return Boolean(
+        input &&
+        input.value === expectedPath &&
+        status &&
+        status.textContent.includes('Панорама загружена: ' + expectedPath) &&
+        window.sphereMesh &&
+        window.sphereMesh.material &&
+        window.sphereMesh.material.map &&
+        !document.querySelector('iframe[data-scene360-css-pack-loader]')
+      );
+    }, fileSmokePanoramaRelativePath, { timeout: 15_000 });
+
+    // Отсутствующие story360.js и license-key.js являются штатными; остальные локальные ошибки скрывать нельзя.
+    var optionalFailures = diagnostics.failedRequests.filter(function(request) {
+      return /\/(?:story360|license-key)\.js$/i.test(new URL(request.url).pathname);
+    });
+    var unexpectedFailedRequests = diagnostics.failedRequests.filter(function(request) {
+      return !/\/(?:story360|license-key)\.js$/i.test(new URL(request.url).pathname);
+    });
+    var unexpectedConsoleErrors = diagnostics.consoleErrors.filter(function(message) {
+      return !(optionalFailures.length > 0 && message === 'Failed to load resource: net::ERR_FILE_NOT_FOUND');
+    });
+    assert.deepEqual(diagnostics.pageErrors, [], 'В file:// runtime или редакторе возникли необработанные ошибки.');
+    assert.deepEqual(unexpectedConsoleErrors, [], 'В file:// runtime или редакторе возникли неожиданные ошибки console.error.');
+    assert.deepEqual(unexpectedFailedRequests, [], 'File:// runtime или редактор не загрузил обязательный локальный файл.');
+    assert.deepEqual(diagnostics.externalRequests, [], 'File:// smoke попытался обратиться к внешней сети.');
+  } catch (error) {
+    var pageState = page ? await page.evaluate(function readFileSmokePageState() {
+      var layer = document.querySelector('#bg360Layer');
+      var runtimeLoader = document.querySelector('iframe[data-bg360-css-pack-loader]');
+      var editorLoader = document.querySelector('iframe[data-scene360-css-pack-loader]');
+      var status = document.querySelector('#statusBox');
+      return {
+        url: window.location.href,
+        text: document.querySelector('#textBox') ? document.querySelector('#textBox').textContent : '',
+        layerClass: layer ? layer.className : '',
+        canvasCount: layer ? (layer.tagName === 'CANVAS' ? 1 : layer.querySelectorAll('canvas').length) : 0,
+        runtimeLoader: runtimeLoader ? runtimeLoader.getAttribute('data-bg360-css-pack-loader') : '',
+        editorLoader: editorLoader ? editorLoader.getAttribute('data-scene360-css-pack-loader') : '',
+        assetPath: document.querySelector('#assetPathInput') ? document.querySelector('#assetPathInput').value : '',
+        status: status ? status.textContent : ''
+      };
+    }).catch(function() { return null; }) : null;
+    await saveFailureReport(page, {
+      archivePath,
+      releaseRoot,
+      mode: 'file',
+      phase,
+      pageState,
+      ...diagnostics,
+      error: error && error.stack ? error.stack : String(error)
+    });
+    throw error;
+  } finally {
+    await browser.close();
+  }
+}
+
 const archiveArgument = process.argv[2];
 
-// Проверяет именно полный ZIP после распаковки; fixture заменяет пользовательский сценарий, но не runtime-файлы.
-test('распакованный полный ZIP запускает движок в Chromium', { timeout: 45_000 }, async function() {
+// Проверяет полный ZIP после распаковки отдельно через диагностический HTTP-контур и настоящий автономный file://.
+test('распакованный полный ZIP запускает движок и CSS-панорамы через HTTP и file://', { timeout: 90_000 }, async function() {
   assert.ok(
     archiveArgument,
     'Укажите путь к полному ZIP: npm run test:release:smoke -- ../имя-архива.zip'
@@ -327,6 +581,11 @@ test('распакованный полный ZIP запускает движо�
     const storySource = await readFile(fixtureStoryPath, 'utf8');
     releaseServer = await startReleaseServer(releaseRoot, storySource);
     await runBrowserSmoke(releaseRoot, releaseServer.baseUrl, archivePath);
+    await releaseServer.close();
+    releaseServer = null;
+
+    const fileFixtures = await prepareFileSmokeFixtures(releaseRoot, temporaryRoot);
+    await runFileBrowserSmoke(releaseRoot, fileFixtures, archivePath);
   } finally {
     if (releaseServer) await releaseServer.close();
     await rm(temporaryRoot, { recursive: true, force: true });

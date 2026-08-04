@@ -13,7 +13,7 @@ transitionMs = 0
 engine.gameSandbox = strict
 
 [game]
-testGame file=/__e2e__/game.html title="Синтетическая мини-игра"
+testGame file=assets/__e2e__/game.html title="Синтетическая мини-игра"
 
 [var]
 route = ""

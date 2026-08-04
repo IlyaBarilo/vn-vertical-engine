@@ -8,8 +8,8 @@ const repositoryRoot = path.dirname(fileURLToPath(new URL('../../../index.html',
 const fixtureRoot = path.dirname(fileURLToPath(new URL('./fixtures/story-fixture.js', import.meta.url)));
 const fixtureRoutes = new Map([
   ['/story.js', path.join(fixtureRoot, 'story-fixture.js')],
-  ['/__e2e__/game.html', path.join(fixtureRoot, 'game.html')],
-  ['/__e2e__/legacy-game.html', path.join(fixtureRoot, 'legacy-game.html')]
+  ['/assets/__e2e__/game.html', path.join(fixtureRoot, 'game.html')],
+  ['/assets/__e2e__/legacy-game.html', path.join(fixtureRoot, 'legacy-game.html')]
 ]);
 // localhost нужен отдельному WebCrypto-тесту как доверенный origin; e2e.local сохраняет обычный режим.
 const allowedEngineOrigins = new Set(['http://e2e.local', 'http://localhost']);
@@ -86,7 +86,7 @@ function createGraphSecurityStorySource() {
     'engine.gameSandbox = strict',
     '',
     '[game]',
-    'unsafeCard file=/__e2e__/game.html title="<img src=x onerror=\'document.body.dataset.graphCardXss=1\'>" description="<svg onload=\'document.body.dataset.graphDescriptionXss=1\'>"',
+    'unsafeCard file=assets/__e2e__/game.html title="<img src=x onerror=\'document.body.dataset.graphCardXss=1\'>" description="<svg onload=\'document.body.dataset.graphDescriptionXss=1\'>"',
     '',
     '[scene]',
     'scene intro',
@@ -1079,7 +1079,10 @@ test('мини-игра обменивается сообщениями с дв�
 
   await expect(page.locator('#gameModal')).toBeVisible();
   await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
-  await expect(page.locator('#gameFrame')).toHaveAttribute('allow', 'autoplay');
+  await expect(page.locator('#gameFrame')).toHaveAttribute(
+    'allow',
+    /autoplay;.*camera 'none';.*microphone 'none';.*usb 'none'/
+  );
   await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');
   const game = page.frameLocator('#gameFrame');
   await expect(game.locator('#status')).toHaveText('gameInit получен');
@@ -1190,7 +1193,7 @@ test('игра из статистики изолирована от сюжет�
 
   // Загружает служебный fixture в неактивный сюжетный iframe и имитирует legacy-результат от неверного окна.
   await page.locator('#gameFrame').evaluate(function loadInactiveStoryFrame(frame) {
-    frame.src = '/__e2e__/legacy-game.html';
+    frame.src = '/assets/__e2e__/legacy-game.html';
   });
   const inactiveStoryGame = page.frameLocator('#gameFrame');
   await expect(inactiveStoryGame.locator('#status')).toHaveText('Ожидание gameInit');
@@ -1220,7 +1223,7 @@ test('игра из статистики изолирована от сюжет�
 // Проверяет sandbox тестера, безопасный лог и одноразовую привязку результата к gameInit v2.
 test('тестер мини-игр безопасно проверяет strict-протокол', async function({ page }) {
   const pageErrors = collectPageErrors(page);
-  const game = await openGameTester(page, '/__e2e__/game.html');
+  const game = await openGameTester(page, '/assets/__e2e__/game.html');
 
   await expect(page.locator('#sandboxMode')).toHaveCount(0);
   await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
@@ -1284,7 +1287,7 @@ test('старые настройки тестера не возвращают l
   await page.goto('/tools/game-tester.html');
   await page.evaluate(function saveOldTesterSettings() {
     localStorage.setItem('vn-game-tester-settings-v4', JSON.stringify({
-      gameUrl: '/__e2e__/legacy-game.html',
+      gameUrl: '/assets/__e2e__/legacy-game.html',
       gameId: 'oldGame',
       difficulty: '2',
       sandboxMode: 'legacy'
@@ -1300,7 +1303,7 @@ test('старые настройки тестера не возвращают l
 // Старая игра может загрузиться для диагностики, но её result без идентификаторов больше не принимается.
 test('тестер отклоняет результат legacy-игры', async function({ page }) {
   const pageErrors = collectPageErrors(page);
-  const game = await openGameTester(page, '/__e2e__/legacy-game.html');
+  const game = await openGameTester(page, '/assets/__e2e__/legacy-game.html');
 
   await expect(page.locator('#gameFrame')).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(page.locator('#gameFrame')).toHaveAttribute('referrerpolicy', 'no-referrer');

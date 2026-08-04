@@ -80,4 +80,5 @@ test('парсер и runtime используют общую политику �
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(action\.src, "game"\)/);
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(src, "audio"\)/);
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(src, sourceKind\)/);
+  assert.match(engineSource, /!isVideoAssetPath\(bgPath\) && !isBg360PackCssPath\(bgPath\) && areAllImageCandidatesFailed\(bgPath\)/);
 });

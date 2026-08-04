@@ -213,11 +213,12 @@ test('релизный workflow проверяет фактический сос
   assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
 });
 
-// Закрепляет browser smoke именно после упаковки полного ZIP и до выдачи artifact пользователю.
-test('релизный workflow запускает распакованный ZIP в Chromium', async function() {
-  const [releaseSource, packageSource] = await Promise.all([
+// Закрепляет browser smoke через HTTP и file:// именно после упаковки полного ZIP и до выдачи artifact пользователю.
+test('релизный workflow запускает распакованный ZIP в Chromium через HTTP и file://', async function() {
+  const [releaseSource, packageSource, smokeSource] = await Promise.all([
     readRepositoryFile('.github/workflows/release.yml'),
-    readRepositoryFile('dev/package.json')
+    readRepositoryFile('dev/package.json'),
+    readRepositoryFile('dev/tests/release-smoke.mjs')
   ]);
   const packageData = JSON.parse(packageSource);
   const createArchivePosition = releaseSource.indexOf('- name: Create ZIP archives');
@@ -230,6 +231,11 @@ test('релизный workflow запускает распакованный ZI
   assert.ok(releaseSource.includes('run: npx playwright install --with-deps chromium'));
   assert.ok(releaseSource.includes('run: npm run test:release:smoke -- "../${APP_NAME}-${VERSION}.zip"'));
   assert.ok(releaseSource.includes('dev/.playwright/release-smoke/'));
+  assert.ok(smokeSource.includes('pathToFileURL'));
+  assert.ok(smokeSource.includes('runFileBrowserSmoke'));
+  assert.ok(smokeSource.includes('fileSmokePanoramaRelativePath'));
+  assert.ok(smokeSource.includes("path.join(releaseRoot, 'tools', 'scene360-editor.html')"));
+  assert.ok(smokeSource.includes("await page.reload({ waitUntil: 'domcontentloaded' })"));
   assert.ok(createArchivePosition >= 0 && smokePosition > createArchivePosition);
   assert.ok(uploadPosition > smokePosition);
 });
