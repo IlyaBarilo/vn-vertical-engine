@@ -5,26 +5,148 @@
   "use strict";
 
   var SANDBOX_LOAD_TIMEOUT_MS = 10000;
-  var STORY_TEXT_MAX_LENGTH = 8 * 1024 * 1024;
-  var STORY360_MAX_DEPTH = 64;
-  var STORY360_MAX_ENTRIES = 250000;
-  var STORY360_MAX_STRING_LENGTH = 4 * 1024 * 1024;
-  var STORY360_MAX_TOTAL_STRING_LENGTH = 16 * 1024 * 1024;
-  var UNSAFE_OBJECT_KEYS = Object.create(null);
-  UNSAFE_OBJECT_KEYS.__proto__ = true;
-  UNSAFE_OBJECT_KEYS.prototype = true;
-  UNSAFE_OBJECT_KEYS.constructor = true;
 
   // Этот bootstrap работает только внутри отдельного Worker и держит MessagePort в недоступном скрипту замыкании.
   function workerBootstrap() {
     "use strict";
 
+    var STORY_TEXT_MAX_LENGTH = 8 * 1024 * 1024;
+    var STORY360_MAX_DEPTH = 64;
+    var STORY360_MAX_ENTRIES = 250000;
+    var STORY360_MAX_STRING_LENGTH = 4 * 1024 * 1024;
+    var STORY360_MAX_TOTAL_STRING_LENGTH = 16 * 1024 * 1024;
     var initialized = false;
+    var SafeArray = Array;
+    var SafeError = Error;
+    var SafeString = String;
+    var SafeWeakSet = WeakSet;
+    var safeArrayIsArray = Array.isArray;
+    var safeNumberIsFinite = Number.isFinite;
+    var safeObjectCreate = Object.create;
+    var safeObjectDefineProperty = Object.defineProperty;
+    var safeObjectGetPrototypeOf = Object.getPrototypeOf;
+    var safeObjectKeys = Object.keys;
+    var safeObjectPrototype = Object.prototype;
+    var safeWeakSetAdd = Function.prototype.call.bind(WeakSet.prototype.add);
+    var safeWeakSetDelete = Function.prototype.call.bind(WeakSet.prototype.delete);
+    var safeWeakSetHas = Function.prototype.call.bind(WeakSet.prototype.has);
+    var unsafeObjectKeys = safeObjectCreate(null);
+    unsafeObjectKeys.__proto__ = true;
+    unsafeObjectKeys.prototype = true;
+    unsafeObjectKeys.constructor = true;
+
+    // Проверяет STORY_TEXT внутри Worker, чтобы слишком длинная строка не попала в structured clone.
+    function validateStoryText(value) {
+      if (typeof value !== "string") {
+        throw new SafeError("Файл загружен, но не создал строку window.STORY_TEXT.");
+      }
+      if (value.length > STORY_TEXT_MAX_LENGTH) {
+        throw new SafeError("STORY_TEXT превышает допустимый размер.");
+      }
+      return value;
+    }
+
+    // Резервирует узлы до создания копии и тем самым быстро отклоняет заведомо слишком большие ветви.
+    function reserveStory360Nodes(state, count, message) {
+      if (count > STORY360_MAX_ENTRIES - state.nodes) {
+        throw new SafeError(message);
+      }
+    }
+
+    // Рекурсивно строит ограниченную JSON-подобную копию, учитывая контейнеры и все примитивные значения.
+    function copyStory360Value(value, state, depth) {
+      if (depth > STORY360_MAX_DEPTH) {
+        throw new SafeError("STORY360 превышает допустимую глубину вложенности.");
+      }
+
+      reserveStory360Nodes(state, 1, "STORY360 содержит слишком много элементов.");
+      state.nodes += 1;
+
+      if (value === null || typeof value === "boolean") return value;
+      if (typeof value === "number") {
+        if (!safeNumberIsFinite(value)) throw new SafeError("STORY360 содержит некорректное число.");
+        return value;
+      }
+      if (typeof value === "string") {
+        if (value.length > STORY360_MAX_STRING_LENGTH) {
+          throw new SafeError("STORY360 содержит слишком длинную строку.");
+        }
+        state.totalStringLength += value.length;
+        if (state.totalStringLength > STORY360_MAX_TOTAL_STRING_LENGTH) {
+          throw new SafeError("Суммарный размер строк STORY360 превышает допустимый предел.");
+        }
+        return value;
+      }
+      if (!value || typeof value !== "object") {
+        throw new SafeError("STORY360 содержит значение неподдерживаемого типа.");
+      }
+      if (safeWeakSetHas(state.seen, value)) {
+        throw new SafeError("STORY360 содержит циклическую ссылку.");
+      }
+
+      safeWeakSetAdd(state.seen, value);
+
+      var result;
+      if (safeArrayIsArray(value)) {
+        // Каждый слот массива потребует минимум один узел, поэтому квота проверяется до выделения второй структуры.
+        reserveStory360Nodes(state, value.length, "STORY360 содержит слишком много элементов массива.");
+        result = new SafeArray(value.length);
+        for (var i = 0; i < value.length; i++) {
+          safeObjectDefineProperty(result, i, {
+            value: copyStory360Value(value[i], state, depth + 1),
+            configurable: true,
+            enumerable: true,
+            writable: true
+          });
+        }
+      } else {
+        var prototype = safeObjectGetPrototypeOf(value);
+        if (prototype !== safeObjectPrototype && prototype !== null) {
+          throw new SafeError("STORY360 содержит объект с неподдерживаемым прототипом.");
+        }
+        result = safeObjectCreate(null);
+        var keys = safeObjectKeys(value);
+        // Каждое поле содержит значение, которое будет отдельным учитываемым узлом.
+        reserveStory360Nodes(state, keys.length, "STORY360 содержит слишком много полей.");
+        for (var keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+          var key = keys[keyIndex];
+          if (unsafeObjectKeys[key]) {
+            throw new SafeError("STORY360 содержит небезопасный ключ " + key + ".");
+          }
+          result[key] = copyStory360Value(value[key], state, depth + 1);
+        }
+      }
+
+      safeWeakSetDelete(state.seen, value);
+      return result;
+    }
+
+    // Проверяет обязательную форму корня до обхода и возвращает только безопасную ограниченную копию STORY360.
+    function validateStory360(value) {
+      if (!value || typeof value !== "object" || safeArrayIsArray(value)) {
+        throw new SafeError("STORY360 должен быть объектом.");
+      }
+      if (!value.spaces || typeof value.spaces !== "object" || safeArrayIsArray(value.spaces)) {
+        throw new SafeError("STORY360 должен содержать объект spaces.");
+      }
+
+      var copied = copyStory360Value(value, {
+        seen: new SafeWeakSet(),
+        nodes: 0,
+        totalStringLength: 0
+      }, 0);
+
+      // Повторная проверка относится уже к копии и защищает от изменяемых getter/proxy исходного объекта.
+      if (!copied.spaces || typeof copied.spaces !== "object" || safeArrayIsArray(copied.spaces)) {
+        throw new SafeError("STORY360 должен содержать объект spaces.");
+      }
+      return copied;
+    }
 
     // Подменяет доступный Worker API до запуска пользовательского файла, не затрагивая сохранённый importScripts.
     function blockWorkerGlobal(name, replacement) {
       try {
-        Object.defineProperty(self, name, {
+        safeObjectDefineProperty(self, name, {
           value: replacement,
           configurable: false,
           enumerable: false,
@@ -49,7 +171,7 @@
       var source = typeof event.data.source === "string" ? event.data.source : "";
       var kind = event.data.kind === "story360" ? "story360" : "story";
       var loadScript = self.importScripts.bind(self);
-      var dataWindow = Object.create(null);
+      var dataWindow = safeObjectCreate(null);
       var runtimeError = "";
       var sent = false;
 
@@ -94,7 +216,7 @@
       blockWorkerGlobal("indexedDB", undefined);
       blockWorkerGlobal("caches", undefined);
       blockWorkerGlobal("importScripts", function rejectNestedScriptLoad() {
-        throw new Error("Пользовательскому сценарию запрещено подключать дополнительные скрипты.");
+        throw new SafeError("Пользовательскому сценарию запрещено подключать дополнительные скрипты.");
       });
 
       if (!source) {
@@ -124,27 +246,33 @@
       }
 
       if (kind === "story") {
-        if (typeof dataWindow.STORY_TEXT !== "string") {
+        try {
+          var safeStoryText = validateStoryText(dataWindow.STORY_TEXT);
+          finish({ status: "loaded", kind: kind, value: safeStoryText });
+        } catch (validationError) {
           finish({
             status: "invalid",
             kind: kind,
-            message: "Файл загружен, но не создал строку window.STORY_TEXT."
+            message: validationError && validationError.message
+              ? SafeString(validationError.message)
+              : "Некорректный STORY_TEXT."
           });
-          return;
         }
-        finish({ status: "loaded", kind: kind, value: dataWindow.STORY_TEXT });
         return;
       }
 
-      if (!dataWindow.STORY360 || typeof dataWindow.STORY360 !== "object") {
+      try {
+        var safeStory360 = validateStory360(dataWindow.STORY360);
+        finish({ status: "loaded", kind: kind, value: safeStory360 });
+      } catch (story360ValidationError) {
         finish({
           status: "invalid",
           kind: kind,
-          message: "Файл загружен, но не создал объект window.STORY360."
+          message: story360ValidationError && story360ValidationError.message
+            ? SafeString(story360ValidationError.message)
+            : "Некорректный STORY360."
         });
-        return;
       }
-      finish({ status: "loaded", kind: kind, value: dataWindow.STORY360 });
     }
 
     self.addEventListener("message", initializeWorker, false);
@@ -229,109 +357,32 @@
     });
   }
 
-  // Проверяет размер текста до передачи парсеру, чтобы один сценарий не занял всю память страницы.
-  function validateStoryText(value) {
-    if (typeof value !== "string") {
-      throw new Error("Sandbox не вернул строку STORY_TEXT.");
-    }
-    if (value.length > STORY_TEXT_MAX_LENGTH) {
-      throw new Error("STORY_TEXT превышает допустимый размер.");
-    }
-    return value;
-  }
-
-  // Рекурсивно копирует STORY360 в JSON-подобные структуры без прототипов, функций и опасных ключей.
-  function copyStory360Value(value, state, depth) {
-    if (depth > STORY360_MAX_DEPTH) {
-      throw new Error("STORY360 превышает допустимую глубину вложенности.");
-    }
-    if (value === null || typeof value === "boolean") return value;
-    if (typeof value === "number") {
-      if (!Number.isFinite(value)) throw new Error("STORY360 содержит некорректное число.");
-      return value;
-    }
-    if (typeof value === "string") {
-      if (value.length > STORY360_MAX_STRING_LENGTH) {
-        throw new Error("STORY360 содержит слишком длинную строку.");
-      }
-      state.totalStringLength += value.length;
-      if (state.totalStringLength > STORY360_MAX_TOTAL_STRING_LENGTH) {
-        throw new Error("Суммарный размер строк STORY360 превышает допустимый предел.");
-      }
-      return value;
-    }
-    if (!value || typeof value !== "object") {
-      throw new Error("STORY360 содержит значение неподдерживаемого типа.");
-    }
-    if (state.seen.has(value)) {
-      throw new Error("STORY360 содержит циклическую ссылку.");
-    }
-
-    state.seen.add(value);
-    state.entries += 1;
-    if (state.entries > STORY360_MAX_ENTRIES) {
-      throw new Error("STORY360 содержит слишком много элементов.");
-    }
-
-    var result;
-    if (Array.isArray(value)) {
-      result = [];
-      for (var i = 0; i < value.length; i++) {
-        result.push(copyStory360Value(value[i], state, depth + 1));
-      }
-    } else {
-      var prototype = Object.getPrototypeOf(value);
-      if (prototype !== Object.prototype && prototype !== null) {
-        throw new Error("STORY360 содержит объект с неподдерживаемым прототипом.");
-      }
-      result = Object.create(null);
-      var keys = Object.keys(value);
-      for (var keyIndex = 0; keyIndex < keys.length; keyIndex++) {
-        var key = keys[keyIndex];
-        if (UNSAFE_OBJECT_KEYS[key]) {
-          throw new Error("STORY360 содержит небезопасный ключ " + key + ".");
-        }
-        state.entries += 1;
-        if (state.entries > STORY360_MAX_ENTRIES) {
-          throw new Error("STORY360 содержит слишком много полей.");
-        }
-        result[key] = copyStory360Value(value[key], state, depth + 1);
-      }
-    }
-
-    state.seen.delete(value);
-    return result;
-  }
-
-  // Проверяет корень STORY360 и возвращает независимую копию, пригодную только как данные движка.
-  function validateStory360(value) {
-    var copied = copyStory360Value(value, {
-      seen: new WeakSet(),
-      entries: 0,
-      totalStringLength: 0
-    }, 0);
-
-    if (!copied || typeof copied !== "object" || Array.isArray(copied)) {
-      throw new Error("STORY360 должен быть объектом.");
-    }
-    if (!copied.spaces || typeof copied.spaces !== "object" || Array.isArray(copied.spaces)) {
-      throw new Error("STORY360 должен содержать объект spaces.");
-    }
-    return copied;
-  }
-
-  // Загружает story.js и принимает от Worker только ограниченную строку сценария.
+  // Загружает story.js; ограничение размера применяется внутри Worker до передачи строки странице.
   function loadStoryText(source) {
-    return loadSandboxedScript(source, "story").then(function(result) {
-      if (result.status === "loaded") result.value = validateStoryText(result.value);
-      return result;
-    });
+    return loadSandboxedScript(source, "story");
   }
 
-  // Загружает story360.js и принимает от Worker только проверенную JSON-подобную карту пространств.
+  // Восстанавливает нулевые прототипы объектов после structured clone без создания ещё одной глубокой копии.
+  function hardenValidatedStory360Value(value) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (var arrayIndex = 0; arrayIndex < value.length; arrayIndex++) {
+        hardenValidatedStory360Value(value[arrayIndex]);
+      }
+      return;
+    }
+
+    Object.setPrototypeOf(value, null);
+    var keys = Object.keys(value);
+    for (var keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+      hardenValidatedStory360Value(value[keys[keyIndex]]);
+    }
+  }
+
+  // Загружает story360.js; Worker передаёт странице только уже проверенную ограниченную копию.
   function loadStory360(source) {
     return loadSandboxedScript(source, "story360").then(function(result) {
-      if (result.status === "loaded") result.value = validateStory360(result.value);
+      if (result.status === "loaded") hardenValidatedStory360Value(result.value);
       return result;
     });
   }

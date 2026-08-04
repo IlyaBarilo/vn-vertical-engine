@@ -3,12 +3,58 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 
 // Читает runtime-файл относительно корня репозитория для статической проверки границы sandbox.
 function readRuntimeFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
+}
+
+// Извлекает bootstrap из runtime-файла, чтобы тестировать ту же функцию, которая сериализуется в настоящий Worker.
+function extractWorkerBootstrap(source) {
+  const start = source.indexOf('  function workerBootstrap() {');
+  const end = source.indexOf('  // Выполняет один пользовательский файл', start);
+
+  assert.ok(start >= 0 && end > start, 'Не удалось извлечь workerBootstrap из загрузчика.');
+  return source.slice(start, end);
+}
+
+// Выполняет bootstrap в отдельном VM-контексте и перехватывает данные до имитации structured clone.
+async function runWorkerFixture(userSource, kind = 'story360') {
+  const loaderSource = await readRuntimeFile('engine/story-sandbox-loader.js');
+  const listeners = new Map();
+  const messages = [];
+  const sandbox = {};
+  const context = vm.createContext(sandbox);
+
+  sandbox.self = sandbox;
+  sandbox.addEventListener = function addEventListener(type, listener) {
+    listeners.set(type, listener);
+  };
+  sandbox.removeEventListener = function removeEventListener(type, listener) {
+    if (listeners.get(type) === listener) listeners.delete(type);
+  };
+  sandbox.importScripts = function importScripts() {
+    vm.runInContext(userSource, context, { filename: 'fixture-story.js' });
+  };
+
+  vm.runInContext(`${extractWorkerBootstrap(loaderSource)}\nworkerBootstrap();`, context, {
+    filename: 'story-sandbox-worker-bootstrap.js'
+  });
+
+  const messageListener = listeners.get('message');
+  assert.equal(typeof messageListener, 'function', 'Bootstrap не зарегистрировал обработчик message.');
+  messageListener({
+    data: { type: 'vnv-story-worker-init', source: 'fixture-story.js', kind },
+    ports: [{
+      close() {},
+      postMessage(payload) { messages.push(payload); }
+    }]
+  });
+
+  return messages;
 }
 
 // Закрепляет новый порядок bootstrap: пользовательские файлы не должны снова попасть в основной document как script.
@@ -35,6 +81,52 @@ test('story sandbox работает в Worker и общается через п
   assert.ok(source.includes('blockWorkerGlobal("fetch", undefined)'));
   assert.ok(source.includes('blockWorkerGlobal("indexedDB", undefined)'));
   assert.ok(source.includes('worker.terminate()'));
+});
+
+// Проверяет, что исходный объект валидируется в Worker и в канал попадает уже безопасная копия.
+test('story360 проходит проверку до отправки через MessagePort', async function() {
+  const messages = await runWorkerFixture(`
+    window.STORY360 = {
+      version: 1,
+      spaces: { room: { panoramas: {} } }
+    };
+  `);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'loaded');
+  assert.equal(messages[0].kind, 'story360');
+  assert.equal(messages[0].value.version, 1);
+  assert.notEqual(Object.getPrototypeOf(messages[0].value), Object.prototype);
+});
+
+// Закрепляет общий лимит узлов: большой массив чисел отклоняется до создания и отправки второй копии.
+test('story360 отклоняет большой массив примитивов до structured clone', async function() {
+  const messages = await runWorkerFixture(`
+    window.STORY360 = {
+      spaces: { room: { values: new Array(250001).fill(0) } }
+    };
+  `);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'invalid');
+  assert.equal(Object.hasOwn(messages[0], 'value'), false);
+  assert.match(messages[0].message, /слишком много элементов массива/);
+});
+
+// Проверяет, что пользовательский файл не может ослабить проверку подменой глобальных встроенных функций.
+test('story360 использует сохранённые встроенные функции валидатора', async function() {
+  const messages = await runWorkerFixture(`
+    window.STORY360 = { spaces: { room: { value: NaN } } };
+    Array.isArray = function() { return false; };
+    Number.isFinite = function() { return true; };
+    Object.keys = function() { return []; };
+    WeakSet.prototype.has = function() { return false; };
+    WeakSet.prototype.add = function() { return this; };
+  `);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'invalid');
+  assert.match(messages[0].message, /некорректное число/);
 });
 
 // Проверяет сохранение совместимости: fallback разрешён только для действительно отсутствующего story.js.
