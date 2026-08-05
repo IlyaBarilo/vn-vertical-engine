@@ -14098,11 +14098,13 @@ function prepareSingleGameFrameLaunch(frameKind) {
   return true;
 }
 
-// Создаёт одноразовую сессию протокола v2; результат без gameId/sessionId всегда отклоняется.
+// Создаёт одноразовую сессию текущего протокола; v2 временно принимает старый результат без явного номера версии.
 function createActiveGameSession(gameId, frameKind) {
   return {
     gameId: String(gameId),
     sessionId: window.VN_GAME_PROTOCOL.createGameSessionId(),
+    protocolVersion: window.VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION,
+    requireProtocolVersion: false,
     expectedSource: null,
     frameKind: frameKind,
     resultAccepted: false

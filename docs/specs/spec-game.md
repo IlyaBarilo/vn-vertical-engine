@@ -73,6 +73,27 @@ engine.gameSandbox = strict
 
 ---
 
+## 🧩 Версия протокола
+
+Версия относится к HTML мини-игры и не указывается в `story.js`. В `<head>`
+игры обязателен один машиночитаемый маркер:
+
+```html
+<meta name="vn-game-protocol" content="2">
+```
+
+Текущая спецификация описывает протокол версии 2. Маркер позволяет аудитору и
+тестеру определить контракт без выполнения JavaScript игры. Номер меняется
+только при несовместимом изменении обмена или его требований безопасности, а не
+при каждом выпуске движка. Обновление движка поэтому не требует правки сценария.
+
+Игра должна принимать `gameInit` только с совпадающим `protocolVersion` и
+возвращать этот номер в `gameResult`. Движок временно распознаёт существующие
+игры v2 без возвращаемого номера, но новые и проверяемые по этой спецификации
+файлы обязаны передавать его явно.
+
+---
+
 ## 📥 Входные данные от движка (`gameInit`)
 
 После запуска игра получает от движка сообщение формата:
@@ -90,6 +111,7 @@ engine.gameSandbox = strict
 Дополнительно:
 - могут передаваться любые другие параметры (например: speed, time, targetScore)
 - `protocolVersion` задаёт версию служебного обмена между движком и игрой
+- `protocolVersion` должен совпадать со значением `vn-game-protocol` в HTML
 - `sessionId` уникален для каждого запуска игры и должен быть возвращён без изменений
 
 ---
@@ -115,6 +137,7 @@ engine.gameSandbox = strict
 ```js
 parent.postMessage({
   type: "gameResult",
+  protocolVersion: 2,
   gameId: gameInit.gameId,
   sessionId: gameInit.sessionId,
   result: resultValue
@@ -123,8 +146,9 @@ parent.postMessage({
 
 Здесь `gameInit` — сохранённый объект последнего сообщения `gameInit` от движка.
 Движок принимает результат только от iframe активной игры, только для текущей
-сессии и только один раз. Оба служебных идентификатора обязательны; сообщение
-без них отвергается.
+сессии и только один раз. Версия и оба служебных идентификатора обязательны для
+новых игр; неизвестная явная версия или сообщение без идентификаторов
+отвергаются.
 
 Движок использует iframe с `sandbox="allow-scripts"`, минимальным разрешением
 autoplay, запретом чувствительных браузерных API через Permissions Policy и
@@ -169,6 +193,7 @@ update-архивом и проверить итоговый каталог че
 В `<head>` до первого `<script>`, `<style>` или ресурса обязателен один meta CSP:
 
 ```html
+<meta name="vn-game-protocol" content="2">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
 ```
 
@@ -253,6 +278,7 @@ update-архивом и проверить итоговый каталог че
 ```js
 parent.postMessage({
   type: "gameResult",
+  protocolVersion: 2,
   gameId: gameInit.gameId,
   sessionId: gameInit.sessionId,
   result: 0
@@ -582,6 +608,7 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="vn-game-protocol" content="2">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
@@ -712,6 +739,7 @@ function finishGame(result) {
 
   const resultMessage = {
     type: "gameResult",
+    protocolVersion: 2,
     result: Number.isFinite(result) ? result : 0
   };
 
@@ -870,6 +898,7 @@ function bindInput() {
 
 window.addEventListener('message', (event) => {
   if (!event.data || event.data.type !== 'gameInit') return;
+  if (Number(event.data.protocolVersion) !== 2) return;
 
   initReceived = true;
   activeGameInit = event.data;
@@ -910,8 +939,9 @@ bindInput();
 
 ## ✅ Минимальный чек-лист совместимости
 
+- содержит в `head` один маркер `vn-game-protocol` со значением `2`
 - получает `gameInit`
-- возвращает полученные `gameId` и `sessionId` в `gameResult`
+- проверяет версию и возвращает `protocolVersion`, `gameId` и `sessionId` в `gameResult`
 - не ломается без него в локальном запуске
 - поддерживает mouse/touch
 - не зависит от FPS
@@ -927,8 +957,9 @@ bindInput();
 # 🏁 ИТОГ
 
 Совместимая мини-игра должна:
+- объявить версию протокола в собственном HTML, а не в сценарии
 - получить `gameInit` от движка
-- вернуть `gameId` и `sessionId` текущего запуска в `gameResult`
+- вернуть `protocolVersion`, `gameId` и `sessionId` текущего запуска в `gameResult`
 - корректно отработать на mouse, touch и интерактивных экранах
 - использовать единое масштабирование интерфейса
 - не зависеть от FPS и производительности устройства там, где важна временная логика

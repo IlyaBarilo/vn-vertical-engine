@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="vn-game-protocol" content="2">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Lab Protocol: Memory Test</title>
@@ -586,9 +587,10 @@ function blockAllInteraction() {
     gameContainer.style.pointerEvents = 'none';
 }
 
-// Добавляет идентификаторы запуска, когда их передал движок протокола v2.
+// Добавляет версию и идентификаторы запуска, когда их передал движок протокола v2.
 function attachGameSession(message) {
     if (activeGameInit && activeGameInit.gameId != null && activeGameInit.sessionId != null) {
+        message.protocolVersion = 2;
         message.gameId = activeGameInit.gameId;
         message.sessionId = activeGameInit.sessionId;
     }
@@ -712,7 +714,8 @@ bindUIButton(confirmButton, finishGame);
 // ========== ВЗАИМОДЕЙСТВИЕ С ДВИЖКОМ ==========
 window.addEventListener('message', (event) => {
     if (!event.data || event.data.type !== 'gameInit') return;
-    // Сохраняем служебные поля отдельно от игровых настроек сложности.
+    if (Number(event.data.protocolVersion) !== 2) return;
+    // Сохраняем совместимые служебные поля отдельно от игровых настроек сложности.
     activeGameInit = event.data;
     initReceived = true;
     difficulty = Number(event.data.difficulty ?? 3);

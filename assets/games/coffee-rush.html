@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="vn-game-protocol" content="2">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Бариста: Кофейный поток</title>
@@ -899,10 +900,11 @@
         return 1;
       }
 
-      // Добавляет идентификаторы активного запуска, не ломая старые движки без sessionId.
+      // Добавляет версию и идентификаторы активного запуска, не ломая старые движки без sessionId.
       function attachGameSession(message) {
         const gameInit = state.gameInit;
         if (gameInit && gameInit.gameId != null && gameInit.sessionId != null) {
+          message.protocolVersion = 2;
           message.gameId = gameInit.gameId;
           message.sessionId = gameInit.sessionId;
         }
@@ -1005,8 +1007,9 @@
         }), '*');
       }
 
-      // Применяет параметры движка и запоминает служебные поля только для настоящего gameInit.
+      // Применяет параметры движка и запоминает служебные поля только для совместимого gameInit v2.
       function handleGameInit(data) {
+        if (data && data.type === 'gameInit' && Number(data.protocolVersion) !== 2) return;
         if (data && data.type === 'gameInit') {
           state.gameInit = data;
         }

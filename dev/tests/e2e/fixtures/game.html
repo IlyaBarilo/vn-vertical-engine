@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
+  <meta name="vn-game-protocol" content="2">
   <title>Синтетическая мини-игра</title>
 </head>
 <body>
@@ -62,6 +63,7 @@
     // Показывает поля gameInit, чтобы браузерный тест проверял фактическое содержимое сообщения.
     function handleGameMessage(event) {
       if (!event || !event.data || event.data.type !== "gameInit") return;
+      if (Number(event.data.protocolVersion) !== 2) return;
       receivedInit = event.data;
       document.getElementById("status").textContent = "gameInit получен";
       document.getElementById("gameId").textContent = String(event.data.gameId || "");
@@ -90,6 +92,7 @@
       if (!receivedInit) return;
       window.parent.postMessage({
         type: "gameResult",
+        protocolVersion: 2,
         gameId: receivedInit.gameId,
         sessionId: "outdated-session",
         result: 99
@@ -110,12 +113,14 @@
       if (!receivedInit) return;
       window.parent.postMessage({
         type: "gameResult",
+        protocolVersion: 2,
         gameId: receivedInit.gameId,
         sessionId: receivedInit.sessionId,
         result: 7
       }, "*");
       window.parent.postMessage({
         type: "gameResult",
+        protocolVersion: 2,
         gameId: receivedInit.gameId,
         sessionId: receivedInit.sessionId,
         result: 99

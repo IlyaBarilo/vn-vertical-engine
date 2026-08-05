@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="vn-game-protocol" content="2">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Поиск слов</title>
@@ -2273,7 +2274,7 @@
     startGame();
   }
 
-  // Возвращает результат вместе с id текущего запуска, чтобы игра работала в строгом sandbox-режиме движка.
+  // Возвращает версию и id текущего запуска, чтобы движок мог проверить контракт строгого sandbox-режима.
   function finishGame(result) {
     if (state.resultSent) return;
     state.resultSent = true;
@@ -2283,6 +2284,7 @@
     gameRoot.style.pointerEvents = "none";
     window.parent.postMessage({
       type: "gameResult",
+      protocolVersion: 2,
       gameId: lastInitParams.gameId,
       sessionId: lastInitParams.sessionId,
       result: Number.isFinite(Number(result)) ? Number(result) : 0,
@@ -2403,6 +2405,7 @@
 
   window.addEventListener("message", (event) => {
     if (!event.data || event.data.type !== "gameInit") return;
+    if (Number(event.data.protocolVersion) !== 2) return;
     initReceived = true;
     launchedFromEngine = true;
     initializeGame(normalizeInitMessage(event.data));

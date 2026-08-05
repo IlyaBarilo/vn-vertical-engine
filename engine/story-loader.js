@@ -4,6 +4,9 @@
 (function() {
   "use strict";
 
+  // Версия описывает поддерживаемую грамматику сценария и не требует служебного поля внутри story.js.
+  window.VN_STORY_DSL_VERSION = 1;
+
   // Проверяет подробную категорию loader из единого ?Debug= и безопасно отключает её вне обычного index.html.
   function isLoaderVerboseEnabled() {
     try {

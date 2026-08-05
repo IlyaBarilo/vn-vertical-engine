@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="vn-game-protocol" content="2">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Interactive Screen Benchmark</title>
@@ -979,9 +980,10 @@ function resetRun(){
 
 function abortEarly(){ state.summary=summarize(true); state.phase='summary'; showSummary(); }
 function commitResult(){ if(!state.finishSent) finishGame(state.summary ? state.summary.result : 0); }
-// Добавляет к результату идентификаторы активного запуска протокола v2.
+// Добавляет к результату версию и идентификаторы активного запуска протокола v2.
 function attachGameSession(message){
   if(state.gameInit && state.gameInit.gameId != null && state.gameInit.sessionId != null){
+    message.protocolVersion = 2;
     message.gameId = state.gameInit.gameId;
     message.sessionId = state.gameInit.sessionId;
   }
@@ -2810,6 +2812,7 @@ if(HAS_POINTER_EVENTS){
 }
 window.addEventListener('message', e => {
   if(!e.data || e.data.type !== 'gameInit') return;
+  if(Number(e.data.protocolVersion) !== 2) return;
   // Локальный fallback не считается сессией движка и не получает служебные идентификаторы.
   state.gameInit = e.data;
   initFromParams(e.data);

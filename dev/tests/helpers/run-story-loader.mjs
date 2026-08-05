@@ -80,7 +80,7 @@ export function getRepositoryRoot() {
   return repositoryRoot;
 }
 
-// Запускает настоящий story-loader.js в изолированном окружении и возвращает STORY вместе с ошибками.
+// Запускает настоящий story-loader.js и возвращает STORY, версию DSL, ошибки и стабильные счётчики.
 export async function runStoryLoader(storyText, options = {}) {
   const sources = await getLoaderRuntimeSources();
   const windowObject = {
@@ -102,6 +102,7 @@ export async function runStoryLoader(storyText, options = {}) {
 
   return {
     story: windowObject.STORY || null,
+    dslVersion: windowObject.VN_STORY_DSL_VERSION,
     errors: normalizeErrors(windowObject.PARSE_ERRORS),
     stats: normalizeLoaderStats(windowObject.LOADER_STATS)
   };

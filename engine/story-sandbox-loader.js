@@ -5,6 +5,7 @@
   "use strict";
 
   var SANDBOX_LOAD_TIMEOUT_MS = 10000;
+  var STORY360_FORMAT_VERSION = 1;
 
   // Этот bootstrap работает только внутри отдельного Worker и держит MessagePort в недоступном скрипту замыкании.
   function workerBootstrap() {
@@ -121,10 +122,13 @@
       return result;
     }
 
-    // Проверяет обязательную форму корня до обхода и возвращает только безопасную ограниченную копию STORY360.
-    function validateStory360(value) {
+    // Проверяет версию и обязательную форму корня до обхода, затем возвращает ограниченную копию STORY360.
+    function validateStory360(value, expectedFormatVersion) {
       if (!value || typeof value !== "object" || safeArrayIsArray(value)) {
         throw new SafeError("STORY360 должен быть объектом.");
+      }
+      if (!safeNumberIsFinite(value.version) || value.version !== expectedFormatVersion) {
+        throw new SafeError("STORY360 имеет отсутствующую или неподдерживаемую версию формата.");
       }
       if (!value.spaces || typeof value.spaces !== "object" || safeArrayIsArray(value.spaces)) {
         throw new SafeError("STORY360 должен содержать объект spaces.");
@@ -137,6 +141,9 @@
       }, 0);
 
       // Повторная проверка относится уже к копии и защищает от изменяемых getter/proxy исходного объекта.
+      if (copied.version !== expectedFormatVersion) {
+        throw new SafeError("STORY360 имеет отсутствующую или неподдерживаемую версию формата.");
+      }
       if (!copied.spaces || typeof copied.spaces !== "object" || safeArrayIsArray(copied.spaces)) {
         throw new SafeError("STORY360 должен содержать объект spaces.");
       }
@@ -170,6 +177,7 @@
       var closePort = port.close.bind(port);
       var source = typeof event.data.source === "string" ? event.data.source : "";
       var kind = event.data.kind === "story360" ? "story360" : "story";
+      var story360FormatVersion = event.data.story360FormatVersion;
       var loadScript = self.importScripts.bind(self);
       var dataWindow = safeObjectCreate(null);
       var runtimeError = "";
@@ -262,7 +270,7 @@
       }
 
       try {
-        var safeStory360 = validateStory360(dataWindow.STORY360);
+        var safeStory360 = validateStory360(dataWindow.STORY360, story360FormatVersion);
         finish({ status: "loaded", kind: kind, value: safeStory360 });
       } catch (story360ValidationError) {
         finish({
@@ -352,7 +360,8 @@
       worker.postMessage({
         type: "vnv-story-worker-init",
         source: absoluteSource,
-        kind: kind
+        kind: kind,
+        story360FormatVersion: STORY360_FORMAT_VERSION
       }, [channel.port2]);
     });
   }
@@ -388,6 +397,7 @@
   }
 
   window.VNStorySandboxLoader = Object.freeze({
+    STORY360_FORMAT_VERSION: STORY360_FORMAT_VERSION,
     loadStoryText: loadStoryText,
     loadStory360: loadStory360
   });

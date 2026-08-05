@@ -1309,6 +1309,7 @@
   <script>
     "use strict";
 
+    var STORY360_FORMAT_VERSION = 1;
     var viewerCanvas = document.getElementById("viewer");
     var marksOverlay = document.getElementById("marksOverlay");
     /** Родитель canvas — нужен для смещения координат оверлея относительно рамки. */
@@ -1727,7 +1728,7 @@
      */
     function createEmptyStory360Data() {
       return {
-        version: 1,
+        version: STORY360_FORMAT_VERSION,
         spaces: {}
       };
     }
@@ -6847,7 +6848,7 @@
     }
 
     /**
-     * Нормализует импортированный файл: комментарий панорамы хранится строкой, а у меток всегда есть text для компаса.
+     * Нормализует данные редактора: старые локальные черновики получают v1, а импортируемый файл проверяется заранее.
      */
     function normalizeStory360Data(data) {
       var normalized = data && typeof data === "object" ? data : createEmptyStory360Data();
@@ -6889,8 +6890,21 @@
           });
         });
       });
-      if (!normalized.version) normalized.version = 1;
+      if (!normalized.version) normalized.version = STORY360_FORMAT_VERSION;
       return normalized;
+    }
+
+    /**
+     * Отклоняет файл без версии или с неизвестным форматом до переноса данных в рабочую копию редактора.
+     */
+    function validateImportedStory360Version(data) {
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("Корень STORY360 должен быть объектом.");
+      }
+      if (data.version !== STORY360_FORMAT_VERSION) {
+        throw new Error("Поддерживается только формат STORY360 версии " + STORY360_FORMAT_VERSION + ".");
+      }
+      return data;
     }
 
     /**
@@ -6902,7 +6916,7 @@
       reader.onload = function () {
         try {
           var objectText = extractStory360ObjectText(String(reader.result || ""));
-          var importedData = normalizeStory360Data(JSON.parse(objectText));
+          var importedData = normalizeStory360Data(validateImportedStory360Version(JSON.parse(objectText)));
           if (countStory360Panoramas(importedData) === 0) {
             setStatus("Файл story360.js прочитан, но панорам в нём нет. Сохранённая версия не изменена.", true);
             return;

@@ -16,6 +16,12 @@
 
   var GAME_PROTOCOL_VERSION = 2;
 
+  // Проверяет номер протокола без неявного принятия дробных, отрицательных и неизвестных версий.
+  function isSupportedGameProtocolVersion(value) {
+    var numericVersion = Number(value);
+    return Number.isInteger(numericVersion) && numericVersion === GAME_PROTOCOL_VERSION;
+  }
+
   // Создаёт непредсказуемый идентификатор запуска; fallback сохраняет работу в старых браузерах без Web Crypto.
   function createGameSessionId(cryptoProvider) {
     var provider = cryptoProvider;
@@ -67,7 +73,7 @@
     return !!(data && typeof data === "object" && data.type === "gameResult");
   }
 
-  // Принимает результат только от активного iframe и всегда требует идентификаторы протокола v2.
+  // Принимает результат только от активного iframe; явный номер обязан совпадать, а его отсутствие временно означает прежний v2.
   function isGameResultEventAllowed(event, session) {
     if (!event || !isGameResultMessage(event.data)) return false;
     if (!session || session.resultAccepted || !session.expectedSource) return false;
@@ -76,9 +82,16 @@
     var data = event.data;
     var hasGameId = Object.prototype.hasOwnProperty.call(data, "gameId");
     var hasSessionId = Object.prototype.hasOwnProperty.call(data, "sessionId");
+    var hasProtocolVersion = Object.prototype.hasOwnProperty.call(data, "protocolVersion");
     if (!hasGameId || !hasSessionId) return false;
     if (String(data.gameId) !== String(session.gameId)) return false;
     if (String(data.sessionId) !== String(session.sessionId)) return false;
+    if (hasProtocolVersion) {
+      if (!isSupportedGameProtocolVersion(data.protocolVersion)) return false;
+      if (Number(data.protocolVersion) !== Number(session.protocolVersion || GAME_PROTOCOL_VERSION)) return false;
+    } else if (session.requireProtocolVersion === true) {
+      return false;
+    }
 
     return true;
   }
@@ -97,6 +110,7 @@
 
   return {
     GAME_PROTOCOL_VERSION: GAME_PROTOCOL_VERSION,
+    isSupportedGameProtocolVersion: isSupportedGameProtocolVersion,
     createGameSessionId: createGameSessionId,
     createGameInitMessage: createGameInitMessage,
     isGameResultMessage: isGameResultMessage,

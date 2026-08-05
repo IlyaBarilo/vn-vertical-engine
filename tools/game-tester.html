@@ -779,7 +779,8 @@
             </div>
             <div class="trust-warning">
               <strong>Игра всегда запускается в строгом sandbox.</strong>
-              Она должна вернуть полученные <code>gameId</code> и <code>sessionId</code> без изменений
+              В её <code>head</code> должен быть маркер <code>vn-game-protocol=2</code>; игра должна вернуть
+              <code>protocolVersion</code>, полученные <code>gameId</code> и <code>sessionId</code> без изменений
               в единственном <code>gameResult</code>. Сверьтесь с
               <a href="../docs/specs/spec-game.md" target="_blank" rel="noopener">спецификацией мини-игр</a>.
             </div>
@@ -872,7 +873,7 @@
             <h2>Статус</h2>
             <div id="status" class="status">Готово к работе.</div>
             <div class="small muted">
-              Проверяется строгий контракт: один <code>gameResult</code>, числовой <code>result</code>.
+              Проверяется строгий контракт v2: один <code>gameResult</code>, версия, идентификаторы и числовой <code>result</code>.
             </div>
           </div>
 
@@ -1002,6 +1003,7 @@
   <script>
     const STORAGE_KEY = 'vn-game-tester-settings-v4';
     const AUTO_VISUAL_CAPTURE_INTERVAL_MS = 5000;
+    const GAME_PROTOCOL_VERSION = 2;
 
     const els = {
       workspaceTabs: Array.from(document.querySelectorAll('[data-workspace-tab]')),
@@ -3203,6 +3205,20 @@
       return 'game-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
     }
 
+    // Читает обязательный meta-маркер из локального HTML без выполнения скриптов и загрузки его ресурсов.
+    function readGameProtocolVersionFromHtml(html){
+      const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
+      const markers = parsed.querySelectorAll('head meta[name="vn-game-protocol"]');
+      if (markers.length !== 1){
+        throw new Error('В head должен находиться ровно один meta name="vn-game-protocol".');
+      }
+      const version = Number(markers[0].getAttribute('content'));
+      if (!Number.isInteger(version) || version !== GAME_PROTOCOL_VERSION){
+        throw new Error('Поддерживается только протокол мини-игр версии ' + GAME_PROTOCOL_VERSION + '.');
+      }
+      return version;
+    }
+
     // Перед каждой загрузкой восстанавливает обязательные строгие права iframe, даже если атрибуты изменили через DOM.
     function applySandboxMode(){
       activeGameSession = null;
@@ -3369,7 +3385,7 @@
       }
     }
 
-    // Формирует gameInit v2 и не позволяет JSON-редактору подменить служебные поля сессии.
+    // Формирует gameInit текущей версии и не позволяет JSON-редактору подменить служебные поля сессии.
     function buildPayload(sessionId){
       syncPayloadWithControls();
 
@@ -3386,7 +3402,7 @@
 
       payload.type = 'gameInit';
       payload.gameId = els.gameId.value.trim() || payload.gameId || 'game';
-      payload.protocolVersion = 2;
+      payload.protocolVersion = GAME_PROTOCOL_VERSION;
       payload.sessionId = sessionId;
       payload.difficulty = num(els.difficulty.value, 3);
       return payload;
@@ -3398,7 +3414,7 @@
       activeGameSession = null;
     }
 
-    // Проверяет идентификаторы, числовой result и одноразовость ответа активной игры.
+    // Проверяет версию, идентификаторы, числовой result и одноразовость ответа активной игры.
     function validateGameResult(event, data){
       const session = activeGameSession;
       if (!session) return { accepted: false, reason: 'нет активной сессии gameInit' };
@@ -3415,6 +3431,12 @@
       }
       if (String(data.sessionId) !== String(session.sessionId)){
         return { accepted: false, reason: 'sessionId не совпадает с активным запуском' };
+      }
+      if (!Object.prototype.hasOwnProperty.call(data, 'protocolVersion')){
+        return { accepted: false, reason: 'gameResult не содержит protocolVersion' };
+      }
+      if (Number(data.protocolVersion) !== session.protocolVersion){
+        return { accepted: false, reason: 'версия протокола игры не совпадает с тестером' };
       }
 
       const resultValue = Number(Object.prototype.hasOwnProperty.call(data, 'result') ? data.result : 0);
@@ -3465,6 +3487,7 @@
       reader.onload = () => {
         try{
           const html = String(reader.result || '');
+          const protocolVersion = readGameProtocolVersionFromHtml(html);
 
           applySandboxMode();
           resetGameProtocolState();
@@ -3480,6 +3503,7 @@
           logMessage('system', {
             type: 'loadGameDiag',
             fileName: file.name,
+            protocolVersion,
             diagnostic: true
           });
 
@@ -3502,7 +3526,7 @@
 
 
 
-    // Начинает новую тестовую сессию и отправляет игре защищённый gameInit версии 2.
+    // Начинает новую тестовую сессию и отправляет игре защищённый gameInit текущей версии.
     function sendInit(){
       if (!els.gameFrame.contentWindow){
         setStatus('iframe ещё не готов.', 'warn');
@@ -3521,12 +3545,13 @@
       activeGameSession = {
         gameId: payload.gameId,
         sessionId: payload.sessionId,
+        protocolVersion: payload.protocolVersion,
         expectedSource: els.gameFrame.contentWindow,
         resultAccepted: false
       };
       els.gameFrame.contentWindow.postMessage(payload, '*');
       logMessage('→ frame', payload);
-      setStatus('Сообщение gameInit v2 отправлено в строгом режиме.', 'ok');
+      setStatus('Сообщение gameInit v' + GAME_PROTOCOL_VERSION + ' отправлено в строгом режиме.', 'ok');
       setTimeout(() => {
         requestVisualSnapshot('после gameInit', true);
       }, 260);

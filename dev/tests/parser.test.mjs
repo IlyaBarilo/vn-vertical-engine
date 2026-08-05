@@ -21,6 +21,15 @@ function createMinimalStory(titleLine) {
   ].join('\n');
 }
 
+// Подтверждает, что версия грамматики принадлежит парсеру и не требует поля внутри пользовательского сценария.
+test('парсер сообщает версию DSL без метаданных story.js', async function() {
+  const result = await runStoryLoader(createMinimalStory('title = "Моя история"'));
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.dslVersion, 1);
+  assert.equal(Object.hasOwn(result.story.meta, 'dslVersion'), false);
+});
+
 // Фиксирует рекомендуемый формат title и защищает удаление внешних двойных кавычек от регрессии.
 test('парсер убирает двойные кавычки вокруг title', async function() {
   const result = await runStoryLoader(createMinimalStory('title = "Моя история"'));

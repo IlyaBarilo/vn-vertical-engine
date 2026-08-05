@@ -47,7 +47,7 @@ async function runWorkerFixture(userSource, kind = 'story360') {
   const messageListener = listeners.get('message');
   assert.equal(typeof messageListener, 'function', 'Bootstrap не зарегистрировал обработчик message.');
   messageListener({
-    data: { type: 'vnv-story-worker-init', source: 'fixture-story.js', kind },
+    data: { type: 'vnv-story-worker-init', source: 'fixture-story.js', kind, story360FormatVersion: 1 },
     ports: [{
       close() {},
       postMessage(payload) { messages.push(payload); }
@@ -81,6 +81,8 @@ test('story sandbox работает в Worker и общается через п
   assert.ok(source.includes('blockWorkerGlobal("fetch", undefined)'));
   assert.ok(source.includes('blockWorkerGlobal("indexedDB", undefined)'));
   assert.ok(source.includes('worker.terminate()'));
+  assert.ok(source.includes('var STORY360_FORMAT_VERSION = 1'));
+  assert.ok(source.includes('STORY360_FORMAT_VERSION: STORY360_FORMAT_VERSION'));
 });
 
 // Проверяет, что исходный объект валидируется в Worker и в канал попадает уже безопасная копия.
@@ -99,10 +101,31 @@ test('story360 проходит проверку до отправки чере�
   assert.notEqual(Object.getPrototypeOf(messages[0].value), Object.prototype);
 });
 
+// Не позволяет отсутствующей или будущей версии конфигурации молча интерпретироваться как текущий формат.
+test('story360 отклоняет отсутствующую и неподдерживаемую версию', async function() {
+  const missingVersion = await runWorkerFixture('window.STORY360 = { spaces: {} };');
+  const futureVersion = await runWorkerFixture('window.STORY360 = { version: 2, spaces: {} };');
+
+  assert.equal(missingVersion[0].status, 'invalid');
+  assert.match(missingVersion[0].message, /верс[ию]/i);
+  assert.equal(futureVersion[0].status, 'invalid');
+  assert.match(futureVersion[0].message, /верс[ию]/i);
+});
+
+// Закрепляет такую же проверку версии при ручном импорте файла в редактор 360°.
+test('редактор 360 проверяет версию импортируемой конфигурации', async function() {
+  const source = await readRuntimeFile('tools/scene360-editor.html');
+
+  assert.ok(source.includes('var STORY360_FORMAT_VERSION = 1'));
+  assert.ok(source.includes('function validateImportedStory360Version(data)'));
+  assert.ok(source.includes('validateImportedStory360Version(JSON.parse(objectText))'));
+});
+
 // Закрепляет общий лимит узлов: большой массив чисел отклоняется до создания и отправки второй копии.
 test('story360 отклоняет большой массив примитивов до structured clone', async function() {
   const messages = await runWorkerFixture(`
     window.STORY360 = {
+      version: 1,
       spaces: { room: { values: new Array(250001).fill(0) } }
     };
   `);
@@ -116,7 +139,7 @@ test('story360 отклоняет большой массив примитиво
 // Проверяет, что пользовательский файл не может ослабить проверку подменой глобальных встроенных функций.
 test('story360 использует сохранённые встроенные функции валидатора', async function() {
   const messages = await runWorkerFixture(`
-    window.STORY360 = { spaces: { room: { value: NaN } } };
+    window.STORY360 = { version: 1, spaces: { room: { value: NaN } } };
     Array.isArray = function() { return false; };
     Number.isFinite = function() { return true; };
     Object.keys = function() { return []; };
