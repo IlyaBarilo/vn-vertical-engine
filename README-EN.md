@@ -184,6 +184,12 @@ their code no longer runs in the novel DOM. This is privilege reduction rather
 than a passive data format. Panorama images load only from declarative
 `*-360.css` packages; `*-360.js` paths are rejected.
 
+Compatibility versions are independent and are not collected in `story.js`:
+the release number belongs to the engine, the parser identifies the current DSL,
+`story360.js` carries its own `version: 1`, panorama CSS uses
+`vn360-css-pack-v1`, and each mini-game HTML declares `vn-game-protocol` in a
+meta tag. A routine engine update therefore does not require editing the story.
+
 ## 360° scenes and mini-games
 
 Panoramas can form connected spaces, with their routes stored in the main
@@ -221,8 +227,8 @@ browser” creates an explicit reload checkpoint, while a newer emergency copy i
 kept separately and is restored only after user confirmation. Downloading
 `story360.js` does not overwrite that browser checkpoint.
 
-The game tester uses strict isolation and always validates the protocol v2
-`gameId` and `sessionId` values.
+The game tester uses strict isolation and validates the `vn-game-protocol=2`
+meta marker, returned protocol version, `gameId`, and `sessionId` values.
 
 ### Cleaning a panorama with a second shot
 

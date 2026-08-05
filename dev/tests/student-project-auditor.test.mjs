@@ -49,6 +49,18 @@ test('аудитор отличает story360.js от запрещённых п
   assert.equal(core.isPanoramaJavaScript('assets/360/hall-360.css'), false);
 });
 
+// Требует литеральную версию корневого формата STORY360 и отклоняет неизвестную схему до публикации.
+test('аудитор проверяет версию STORY360', async function() {
+  const { core } = await loadAuditorCore();
+  const validIssues = Array.from(core.inspectStory360Source('window.STORY360 = { spaces: {}, version: 1 };'));
+  const missingIssues = Array.from(core.inspectStory360Source('window.STORY360 = { spaces: {} };'));
+  const futureIssues = Array.from(core.inspectStory360Source('window.STORY360 = { version: 2, spaces: {} };'));
+
+  assert.equal(validIssues.some(function(issue) { return issue.code.startsWith('STORY360_VERSION_'); }), false);
+  assert.ok(missingIssues.some(function(issue) { return issue.code === 'STORY360_VERSION_MISSING'; }));
+  assert.ok(futureIssues.some(function(issue) { return issue.code === 'STORY360_VERSION_UNSUPPORTED'; }));
+});
+
 // Проверяет пассивное извлечение DSL и отказ от интерполяции или дополнительного JavaScript.
 test('аудитор принимает только декларативную обёртку story.js', async function() {
   const { core } = await loadAuditorCore();
@@ -124,13 +136,25 @@ test('аудитор разрешает пассивный SVG и блокиру
 test('аудитор требует строгий CSP внутри мини-игры', async function() {
   const { core } = await loadAuditorCore();
   const strictCsp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'";
-  const safeGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="' + strictCsp + '"><style>body{margin:0}</style></head><script>const gameInit="gameInit", gameResult="gameResult", gameId="gameId", sessionId="sessionId"; parent.postMessage({gameResult,gameId,sessionId},"*");</script>';
+  const safeGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="' + strictCsp + '"><meta name="vn-game-protocol" content="2"><style>body{margin:0}</style></head><script>const gameInit="gameInit", gameResult="gameResult", protocolVersion=2, gameId="gameId", sessionId="sessionId"; parent.postMessage({gameResult,protocolVersion,gameId,sessionId},"*");</script>';
   const missingGame = '<!doctype html><script>const gameInit="gameInit";</script>';
   const weakGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head><script>const gameInit="gameInit";</script>';
 
   assert.equal(Array.from(core.inspectMiniGameSource('assets/games/safe.html', safeGame)).some(function(issue) { return issue.level === 'error'; }), false);
   assert.ok(Array.from(core.inspectMiniGameSource('assets/games/missing.html', missingGame)).some(function(issue) { return issue.code === 'GAME_CSP_MISSING'; }));
   assert.ok(Array.from(core.inspectMiniGameSource('assets/games/weak.html', weakGame)).some(function(issue) { return issue.code === 'GAME_CSP_WEAK'; }));
+});
+
+// Проверяет обязательный HTML-маркер: версия берётся из самой игры, а не из story.js.
+test('аудитор проверяет версию протокола внутри мини-игры', async function() {
+  const { core } = await loadAuditorCore();
+  const missing = Array.from(core.inspectMiniGameProtocolVersion('assets/games/missing.html', '<html><head></head></html>'));
+  const supported = Array.from(core.inspectMiniGameProtocolVersion('assets/games/supported.html', '<html><head><meta name="vn-game-protocol" content="2"></head></html>'));
+  const unsupported = Array.from(core.inspectMiniGameProtocolVersion('assets/games/future.html', '<html><head><meta name="vn-game-protocol" content="3"></head></html>'));
+
+  assert.ok(missing.some(function(issue) { return issue.code === 'GAME_PROTOCOL_VERSION_MISSING'; }));
+  assert.deepEqual(supported, []);
+  assert.ok(unsupported.some(function(issue) { return issue.code === 'GAME_PROTOCOL_VERSION_UNSUPPORTED'; }));
 });
 
 // Фиксирует основные сетевые и исполняемые конструкции, запрещённые для HTML-мини-игры.

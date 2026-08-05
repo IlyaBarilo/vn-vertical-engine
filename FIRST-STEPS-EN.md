@@ -229,7 +229,8 @@ What to check:
 - it works with mouse and touch;
 - it looks fine in vertical format;
 - it does not require a server or external dependencies;
-- it returns the received `gameId` and `sessionId` in the final `gameResult`;
+- it contains the `vn-game-protocol=2` marker in `head`;
+- it returns `protocolVersion` and the received `gameId` and `sessionId` in the final `gameResult`;
 - after finishing, it does not continue accepting input.
 
 The tester always runs the game in a strict sandbox and provides no `Legacy`

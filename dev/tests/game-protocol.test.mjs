@@ -17,6 +17,16 @@ const BUNDLED_GAME_FILES = [
   'word-search-game.html'
 ];
 
+// Фиксирует отдельную версию протокола игр без привязки к версии релиза движка или сценарию.
+test('протокол явно сообщает единственную поддерживаемую версию', function() {
+  assert.equal(protocol.GAME_PROTOCOL_VERSION, 2);
+  assert.equal(protocol.isSupportedGameProtocolVersion(2), true);
+  assert.equal(protocol.isSupportedGameProtocolVersion('2'), true);
+  assert.equal(protocol.isSupportedGameProtocolVersion(1), false);
+  assert.equal(protocol.isSupportedGameProtocolVersion(3), false);
+  assert.equal(protocol.isSupportedGameProtocolVersion(2.5), false);
+});
+
 // Проверяет обязательные поля и передачу дополнительных параметров в искусственном gameInit.
 test('протокол создаёт сообщение gameInit с параметрами', function() {
   const message = protocol.createGameInitMessage('puzzle', {
@@ -118,6 +128,7 @@ test('активная сессия принимает корректный game
     source: gameWindow,
     data: {
       type: 'gameResult',
+      protocolVersion: 2,
       gameId: 'puzzle',
       sessionId: 'session-123',
       result: 7
@@ -125,6 +136,33 @@ test('активная сессия принимает корректный game
   };
 
   assert.equal(protocol.isGameResultEventAllowed(event, session), true);
+});
+
+// Отклоняет явную неизвестную версию, но сохраняет миграционную совместимость с прежними результатами v2 без поля.
+test('активная сессия проверяет явную версию gameResult', function() {
+  const gameWindow = {};
+  const session = {
+    gameId: 'puzzle',
+    sessionId: 'session-123',
+    protocolVersion: 2,
+    expectedSource: gameWindow,
+    resultAccepted: false
+  };
+
+  assert.equal(protocol.isGameResultEventAllowed({
+    source: gameWindow,
+    data: { type: 'gameResult', protocolVersion: 3, gameId: 'puzzle', sessionId: 'session-123', result: 1 }
+  }, session), false);
+  assert.equal(protocol.isGameResultEventAllowed({
+    source: gameWindow,
+    data: { type: 'gameResult', gameId: 'puzzle', sessionId: 'session-123', result: 1 }
+  }, session), true);
+
+  session.requireProtocolVersion = true;
+  assert.equal(protocol.isGameResultEventAllowed({
+    source: gameWindow,
+    data: { type: 'gameResult', gameId: 'puzzle', sessionId: 'session-123', result: 1 }
+  }, session), false);
 });
 
 // Старый флаг совместимости больше не разрешает принять результат без идентификаторов протокола v2.
@@ -222,9 +260,10 @@ test('протокол заменяет некорректный результ�
 
 // Защищает обязательное подключение общего модуля до основного кода движка.
 test('модуль протокола подключён к runtime до engine.js', async function() {
-  const [indexSource, engineSource] = await Promise.all([
+  const [indexSource, engineSource, testerSource] = await Promise.all([
     readFile(new URL('../../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../../engine/engine.js', import.meta.url), 'utf8')
+    readFile(new URL('../../engine/engine.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../tools/game-tester.html', import.meta.url), 'utf8')
   ]);
   const protocolPosition = indexSource.indexOf('engine/game-protocol.js');
   const enginePosition = indexSource.indexOf('engine/engine.js');
@@ -235,10 +274,13 @@ test('модуль протокола подключён к runtime до engine.
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.createGameInitMessage'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.isGameResultEventAllowed'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.normalizeGameResult'));
+  assert.ok(engineSource.includes('protocolVersion: window.VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION'));
+  assert.ok(testerSource.includes('readGameProtocolVersionFromHtml'));
+  assert.ok(testerSource.includes("GAME_PROTOCOL_VERSION = 2"));
 });
 
-// Не позволяет поставляемым примерам потерять поля сессии, обязательные для strict-режима.
-test('встроенные мини-игры возвращают идентификаторы протокола v2', async function() {
+// Не позволяет поставляемым примерам потерять маркер версии и поля сессии, обязательные для strict-режима.
+test('встроенные мини-игры объявляют и возвращают протокол v2', async function() {
   const sources = await Promise.all(BUNDLED_GAME_FILES.map(async function(fileName) {
     return {
       fileName,
@@ -247,8 +289,10 @@ test('встроенные мини-игры возвращают идентиф
   }));
 
   for (const { fileName, source } of sources) {
+    assert.match(source, /<meta\s+name=["']vn-game-protocol["']\s+content=["']2["']\s*\/?>/i, `${fileName}: отсутствует meta-маркер протокола v2`);
     assert.match(source, /gameInit/, `${fileName}: отсутствует обработка gameInit`);
     assert.match(source, /gameResult/, `${fileName}: отсутствует отправка gameResult`);
+    assert.match(source, /\bprotocolVersion\b/, `${fileName}: gameResult не содержит protocolVersion`);
     assert.match(source, /\bgameId\b/, `${fileName}: gameResult не связан с gameId`);
     assert.match(source, /\bsessionId\b/, `${fileName}: gameResult не связан с sessionId`);
     if (fileName !== 'word-search-game.html') {
