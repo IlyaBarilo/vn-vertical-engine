@@ -159,6 +159,72 @@ test('аудитор обнаруживает внешние зависимос�
   }));
 });
 
+// Проверяет, что серверно-опасные и неизвестные файлы блокируются единым allowlist независимо от denylist расширений.
+test('аудитор разрешает только известный состав проекта и безопасные авторские ресурсы', async function() {
+  const { core } = await loadAuditorCore();
+  const registeredGames = ['assets/games/registered.html'];
+  const allowedPaths = [
+    'index.html',
+    'story.js',
+    'story360.js',
+    'engine/engine.js',
+    'engine/engine.css',
+    'tools/convert-360-img-to-js.html',
+    'docs/examples/story-example.js',
+    'docs/custom/teacher-guide.md',
+    'docs/custom/preview.webp',
+    'assets/custom/image.jpg',
+    'assets/custom/vector.svg',
+    'assets/custom/audio.ogg',
+    'assets/custom/video.webm',
+    'assets/custom/hall-360.css',
+    'assets/games/registered.html'
+  ];
+  const blockedPaths = [
+    '.htaccess',
+    '.user.ini',
+    '.env',
+    'web.config',
+    'package.json',
+    'composer.json',
+    'Dockerfile',
+    'README.MD',
+    'Engine/engine.js',
+    'Tools/game-tester.html',
+    'server.php',
+    'handler.cgi',
+    'script.pl',
+    'assets/upload.php',
+    'assets/images/shell.php.jpg',
+    'assets/data/package.json',
+    'assets/games/unregistered.html',
+    'docs/server.php',
+    'tools/student-helper.html'
+  ];
+
+  for (const filePath of allowedPaths) {
+    assert.equal(core.getProjectFileAllowReason(filePath, registeredGames), '', filePath + ' должен входить в allowlist.');
+  }
+  for (const filePath of blockedPaths) {
+    assert.notEqual(core.getProjectFileAllowReason(filePath, registeredGames), '', filePath + ' должен быть отклонён allowlist.');
+  }
+
+  const records = allowedPaths.concat(blockedPaths).map(function(filePath) {
+    return { path: filePath, size: 1 };
+  });
+  const inventoryIssues = Array.from(core.inspectInventory(records, registeredGames));
+  for (const filePath of allowedPaths) {
+    assert.equal(inventoryIssues.some(function(issue) {
+      return issue.code === 'FILE_NOT_ALLOWED' && issue.path === filePath;
+    }), false, filePath + ' не должен получать ошибку allowlist.');
+  }
+  for (const filePath of blockedPaths) {
+    assert.ok(inventoryIssues.some(function(issue) {
+      return issue.code === 'FILE_NOT_ALLOWED' && issue.path === filePath;
+    }), filePath + ' должен получать ошибку allowlist в полном аудите.');
+  }
+});
+
 // Проверяет дополнительные JS, старые панорамные пакеты и незарегистрированный HTML по дереву проекта.
 test('аудитор обнаруживает опасные файлы в полном перечне проекта', async function() {
   const { core } = await loadAuditorCore();
@@ -195,6 +261,7 @@ test('аудитор обнаруживает опасные файлы в по�
   assert.ok(issueCodes.includes('PANORAMA_JS_FILE'));
   assert.ok(issueCodes.includes('UNEXPECTED_JAVASCRIPT'));
   assert.ok(issueCodes.includes('UNREGISTERED_HTML'));
+  assert.ok(issueCodes.includes('FILE_NOT_ALLOWED'));
   assert.ok(issueCodes.includes('PANORAMA_CSS_TOO_LARGE'));
   assert.equal(issueCodes.includes('RUNTIME_MISSING'), false);
   assert.equal(issues.some(function(issue) {

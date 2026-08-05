@@ -107,9 +107,10 @@ scene stay_scene
 `;
 ```
 
-Keep `engine.gameSandbox = strict` in a new novel: it isolates HTML mini-games.
-If one trusted older game is incompatible with strict mode, add
-`sandbox=legacy` only to that game's entry in `[game]`.
+Keep `engine.gameSandbox = strict` in a new novel as an explicit statement of
+HTML mini-game isolation. The runtime always uses strict mode; `legacy` and
+per-game `sandbox` overrides are no longer supported. An older incompatible game
+must be migrated to protocol v2.
 
 Replace `projectId = my-story` with a permanent id for your project. It may use
 Latin letters, digits, `.`, `_`, and `-`, must start with a letter or digit, and
@@ -231,9 +232,9 @@ What to check:
 - it returns the received `gameId` and `sessionId` in the final `gameResult`;
 - after finishing, it does not continue accepting input.
 
-Keep the tester in its recommended strict mode. If a trusted older game works only
-in `Legacy` mode, the tester explains how to migrate it to protocol v2; compatibility
-mode should not be treated as a fix for the game.
+The tester always runs the game in a strict sandbox and provides no `Legacy`
+mode. If an older game fails the check, migrate it to protocol v2 and remove its
+dependency on additional iframe permissions.
 
 If the game fails this standalone check, do not connect it to the story until it is fixed.
 

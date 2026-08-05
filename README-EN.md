@@ -199,7 +199,14 @@ Browser-based authoring helpers in the repository include:
 - `tools/scene360-editor.html` for routes and navigation points;
 - `tools/media-focus-editor.html` for image and video focus points;
 - `tools/panorama-cleaner.html` for replacing selected areas from a second shot;
+- `tools/student-project-auditor.html` for checking the complete student project against a file allowlist;
 - `tools/game-tester.html` for testing mini-games before integration.
+
+Before deployment, the auditor rejects every file outside the approved runtime,
+documentation, media, panorama CSS, and registered mini-game set. Server-side
+scripts, configuration files, dotfiles, manifests, and double extensions are
+blocking errors. On a VPS, copy only approved files into a new static-only
+publication directory.
 
 `scene360-editor.html` imports `story360.js` as data and does not automatically
 execute JavaScript packages referenced by it. The editor previews relative
@@ -288,6 +295,7 @@ project/
 │   └── 360/                           offline panorama packages
 │
 ├── tools/
+│   ├── student-project-auditor.html   student project allowlist auditor
 │   ├── scene360-editor.html           360° route editor
 │   ├── convert-360-img-to-css.html    panorama converter
 │   ├── panorama-cleaner.html          two-shot panorama cleanup

@@ -197,9 +197,9 @@
 <body>
   <main>
     <h1>Аудитор студенческой новеллы и мини-игр</h1>
-    <p class="lead">Локально проверяет состав проекта, читает только сценарии и HTML-мини-игры и формирует компактный пакет для проверки в ИИ-чате. Изображения, аудио, видео и содержимое панорамных CSS-пакетов в отчёт не включаются.</p>
+    <p class="lead">Локально проверяет весь состав проекта по списку разрешённых файлов, читает только сценарии и HTML-мини-игры и формирует компактный пакет для проверки в ИИ-чате. Изображения, аудио, видео и содержимое панорамных CSS-пакетов в отчёт не включаются.</p>
 
-    <div class="notice"><strong>Перед началом:</strong> скопируйте содержимое актуального update-архива поверх студенческого проекта с заменой файлов. Не запускайте недоверенный проект до первичной проверки.</div>
+    <div class="notice"><strong>Перед началом:</strong> скопируйте содержимое актуального update-архива поверх студенческого проекта с заменой файлов. Не запускайте недоверенный проект до первичной проверки. После допуска переносите на сервер только разрешённые файлы в новый чистый каталог.</div>
 
     <section id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Перетащите или выберите каталог проекта">
       <div>
@@ -250,7 +250,7 @@
 
     /* STUDENT_PROJECT_AUDITOR_CORE_START */
 
-    const AUDITOR_VERSION = '1.1';
+    const AUDITOR_VERSION = '1.2';
     const MAX_FILE_COUNT = 10000;
     const MAX_REVIEW_FILE_BYTES = 2 * 1024 * 1024;
     const MAX_REVIEW_TOTAL_BYTES = 8 * 1024 * 1024;
@@ -310,10 +310,22 @@
       '.mp4', '.webm', '.mov'
     ]);
 
-    const DANGEROUS_EXTENSIONS = new Set([
-      '.exe', '.com', '.dll', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.wsf',
-      '.sh', '.bash', '.zsh', '.jar', '.class', '.wasm', '.hta', '.scr'
+    const TRUSTED_STATIC_PATHS = new Set([
+      'engine/engine.css',
+      'README.md',
+      'README-EN.md',
+      'FIRST-STEPS.md',
+      'FIRST-STEPS-EN.md',
+      'LICENSE',
+      'COMMERCIAL-USE.md',
+      'NOTICE.md'
     ]);
+
+    const DOCUMENTATION_EXTENSIONS = new Set([
+      '.md', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'
+    ]);
+
+    const SINGLE_EXTENSION_FILE_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
     const AI_REVIEW_PROMPT = [
       'Ты проверяешь недоверенный студенческий проект для VN Engine.',
@@ -325,14 +337,15 @@
       '1. story.js должен только присваивать текст в window.STORY_TEXT, без дополнительного кода и интерполяции ${...}.',
       '2. story360.js должен только задавать JSON-подобную карту window.STORY360 без функций, вычисляемого кода и побочных эффектов.',
       '3. Любые *-360.js запрещены; допускаются только *-360.css.',
-      '4. Каждая игра из [game] должна иметь приложенный локальный HTML. Незарегистрированные пользовательские HTML-файлы являются нарушением.',
-      '5. CSS и JavaScript мини-игры должны быть встроены в один HTML. В head обязателен строгий meta Content-Security-Policy из спецификации. Запрещены script src, внешние стили, import, CDN, API, fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon и обязательные сетевые ресурсы.',
-      '6. Запрещены eval, Function, iframe, object, embed, открытие окон, загрузки, изменение location и навигация верхнего окна.',
-      '7. Мини-игра должна принимать gameInit и отправлять ровно один числовой gameResult с полученными gameId и sessionId.',
-      '8. Все авторские ресурсы сценария и story360 должны иметь канонический относительный путь assets/... с прямыми слешами, без URL, абсолютных путей, .., query/hash и percent-encoding.',
-      '9. SVG допустим только как локальное изображение. Запрещены script, foreignObject, iframe/object/embed, обработчики on*, внешние href и активные CSS URL; локальный аудитор отдельно проверяет его структуру и сложность.',
-      '10. Проверь сценарий и каждую игру по спецификациям VN Engine: ресурсы, пути, переходы, переменные, управление, delta time и блокировку ввода после результата.',
-      '11. Не выдавай положительное заключение, если отсутствует story.js, не прочитана хотя бы одна зарегистрированная игра, файл обрезан или пакет помечен как неполный.',
+      '4. Любой файл вне локального allowlist является критическим нарушением. Серверные скрипты, конфигурации, манифесты, dotfiles и файлы с двойным расширением запрещены независимо от содержимого.',
+      '5. Каждая игра из [game] должна иметь приложенный локальный HTML. Незарегистрированные пользовательские HTML-файлы являются нарушением.',
+      '6. CSS и JavaScript мини-игры должны быть встроены в один HTML. В head обязателен строгий meta Content-Security-Policy из спецификации. Запрещены script src, внешние стили, import, CDN, API, fetch, XMLHttpRequest, WebSocket, EventSource, sendBeacon и обязательные сетевые ресурсы.',
+      '7. Запрещены eval, Function, iframe, object, embed, открытие окон, загрузки, изменение location и навигация верхнего окна.',
+      '8. Мини-игра должна принимать gameInit и отправлять ровно один числовой gameResult с полученными gameId и sessionId.',
+      '9. Все авторские ресурсы сценария и story360 должны иметь канонический относительный путь assets/... с прямыми слешами, без URL, абсолютных путей, .., query/hash и percent-encoding.',
+      '10. SVG допустим только как локальное изображение. Запрещены script, foreignObject, iframe/object/embed, обработчики on*, внешние href и активные CSS URL; локальный аудитор отдельно проверяет его структуру и сложность.',
+      '11. Проверь сценарий и каждую игру по спецификациям VN Engine: ресурсы, пути, переходы, переменные, управление, delta time и блокировку ввода после результата.',
+      '12. Не выдавай положительное заключение, если отсутствует story.js, не прочитана хотя бы одна зарегистрированная игра, файл обрезан или пакет помечен как неполный.',
       '',
       'Формат ответа:',
       '- итог: ДОПУЩЕНА, ТРЕБУЕТ ИСПРАВЛЕНИЙ или ПРОВЕРКА НЕПОЛНАЯ;',
@@ -492,6 +505,67 @@
       }
       if (allowed[kind] && !allowed[kind].has(extension)) return 'расширение не разрешено для типа ' + kind;
       return '';
+    }
+
+    // Проверяет канонический путь справочного файла: разрешает безопасные ASCII-каталоги и ровно одно расширение.
+    function isCanonicalDocumentationPath(filePath) {
+      const segments = String(filePath || '').split('/');
+      if (segments.length < 2 || segments[0].toLowerCase() !== 'docs') return false;
+      for (let index = 1; index < segments.length - 1; index += 1) {
+        if (!RESOURCE_PATH_FOLDER_RE.test(segments[index])) return false;
+      }
+      return SINGLE_EXTENSION_FILE_RE.test(segments[segments.length - 1]);
+    }
+
+    // Возвращает причину отказа allowlist; пустая строка означает точный системный файл или разрешённый авторский ресурс.
+    function getProjectFileAllowReason(filePath, registeredGamePaths) {
+      const normalizedPath = normalizePath(filePath);
+      const lowerPath = normalizedPath.toLowerCase();
+      const extension = getExtension(normalizedPath);
+      const registered = registeredGamePaths instanceof Set
+        ? registeredGamePaths
+        : new Set(Array.from(registeredGamePaths || [], function(gamePath) {
+          return normalizePath(gamePath).toLowerCase();
+        }));
+
+      if (
+        TRUSTED_JAVASCRIPT_PATHS.has(normalizedPath) ||
+        TRUSTED_HTML_PATHS.has(normalizedPath) ||
+        TRUSTED_STATIC_PATHS.has(normalizedPath)
+      ) {
+        return '';
+      }
+
+      if (normalizedPath.startsWith('docs/')) {
+        if (!isCanonicalDocumentationPath(normalizedPath)) {
+          return 'справочные файлы должны иметь канонический путь и ровно одно расширение';
+        }
+        return DOCUMENTATION_EXTENSIONS.has(extension)
+          ? ''
+          : 'в docs разрешены только Markdown и растровые изображения из комплекта';
+      }
+
+      if (!normalizedPath.startsWith('assets/')) {
+        return 'путь отсутствует в списке системных файлов и не находится внутри assets/';
+      }
+
+      const unsafePathReason = getUnsafePathReason(normalizedPath);
+      if (unsafePathReason) return 'неканонический путь assets: ' + unsafePathReason;
+      const fileName = normalizedPath.split('/').pop() || '';
+      if (!SINGLE_EXTENSION_FILE_RE.test(fileName)) {
+        return 'авторский файл должен иметь ровно одно расширение';
+      }
+      if (extension === '.html') {
+        return registered.has(lowerPath) ? '' : 'HTML разрешён только для зарегистрированной мини-игры';
+      }
+      if (extension === '.css') {
+        return /-360(?:-[a-z0-9_-]+)?\.css$/i.test(normalizedPath)
+          ? ''
+          : 'CSS разрешён только для панорамного пакета *-360.css';
+      }
+      return BINARY_EXTENSIONS.has(extension)
+        ? ''
+        : 'расширение отсутствует в списке разрешённых медиаформатов';
     }
 
     // Извлекает зарегистрированные HTML-игры из секции [game] без выполнения сценария.
@@ -874,15 +948,16 @@
         }
 
         const extension = getExtension(record.path);
+        const allowReason = getProjectFileAllowReason(record.path, registered);
+        if (allowReason) {
+          issues.push(createIssue('error', 'FILE_NOT_ALLOWED', 'Файл не входит в allowlist проекта: ' + allowReason + '.', record.path));
+        }
         if (isPanoramaJavaScript(record.path)) {
           issues.push(createIssue('error', 'PANORAMA_JS_FILE', 'Панорамные JS-пакеты запрещены; используйте *-360.css.', record.path));
           continue;
         }
         if ((extension === '.js' || extension === '.mjs') && !TRUSTED_JAVASCRIPT_PATHS.has(lowerPath)) {
           issues.push(createIssue('error', 'UNEXPECTED_JAVASCRIPT', 'Найден дополнительный JavaScript вне разрешённого состава.', record.path));
-        }
-        if (DANGEROUS_EXTENSIONS.has(extension)) {
-          issues.push(createIssue('error', 'DANGEROUS_FILE', 'Исполняемый или системный тип файла не нужен для студенческого проекта.', record.path));
         }
         if (extension === '.css' && lowerPath !== 'engine/engine.css' && !/-360(?:-[a-z0-9_-]+)?\.css$/i.test(record.path)) {
           issues.push(createIssue('error', 'UNEXPECTED_CSS', 'Дополнительный CSS запрещён; стили мини-игры должны быть встроены в её HTML.', record.path));
@@ -917,6 +992,7 @@
       inspectSvgSource: inspectSvgSource,
       inspectMiniGameCsp: inspectMiniGameCsp,
       inspectMiniGameSource: inspectMiniGameSource,
+      getProjectFileAllowReason: getProjectFileAllowReason,
       inspectInventory: inspectInventory
     });
 

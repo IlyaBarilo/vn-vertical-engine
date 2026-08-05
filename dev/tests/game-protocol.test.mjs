@@ -280,3 +280,18 @@ test('пример новеллы запускает все встроенные
   assert.match(storySource, /^engine\.gameSandbox=strict\b/m);
   assert.doesNotMatch(storySource, /\bsandbox=legacy\b/);
 });
+
+// Не позволяет кратким руководствам снова рекомендовать удалённые legacy-права или несуществующий режим тестера.
+test('руководства описывают только строгий sandbox мини-игр', async function() {
+  const [russianGuide, englishGuide] = await Promise.all([
+    readFile(new URL('../../FIRST-STEPS.md', import.meta.url), 'utf8'),
+    readFile(new URL('../../FIRST-STEPS-EN.md', import.meta.url), 'utf8')
+  ]);
+
+  assert.doesNotMatch(russianGuide, /\bsandbox\s*=\s*legacy\b/i);
+  assert.doesNotMatch(englishGuide, /\bsandbox\s*=\s*legacy\b/i);
+  assert.match(russianGuide, /`legacy`[\s\S]{0,160}больше не поддерживаются/i);
+  assert.match(russianGuide, /Тестер всегда запускает игру в строгом sandbox[\s\S]{0,120}не предоставляет режима/i);
+  assert.match(englishGuide, /`legacy`[\s\S]{0,160}no longer supported/i);
+  assert.match(englishGuide, /tester always runs the game in a strict sandbox[\s\S]{0,120}provides no/i);
+});
