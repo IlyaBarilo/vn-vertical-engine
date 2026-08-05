@@ -38,6 +38,8 @@ test('браузерный E2E-набор полностью описан в р�
   assert.equal(packageData.devDependencies['@playwright/test'], '1.62.1');
   assert.match(configSource, /name:\s*'chromium'[\s\S]+browserName:\s*'chromium'/);
   assert.match(configSource, /name:\s*'firefox'[\s\S]+browserName:\s*'firefox'/);
+  assert.match(configSource, /VN_E2E_FIREFOX_SOFTWARE_WEBGL/);
+  assert.match(configSource, /'webgl\.forbid-software':\s*false/);
   assert.match(configSource, /baseURL:\s*'http:\/\/127\.0\.0\.1:41739'/);
   assert.match(engineSpecSource, /createServer\(function serveE2eRequest/);
   assert.match(engineSpecSource, /handleEngineHttpRequest\(request, response\)/);
@@ -49,11 +51,18 @@ test('GitHub Actions запускает браузерные E2E-тесты', as
   const workflowSource = await readRepositoryFile('.github/workflows/tests.yml');
 
   assert.ok(workflowSource.includes('name: Browser E2E'));
+  assert.ok(workflowSource.includes('fail-fast: false'));
+  assert.ok(workflowSource.includes('- chromium'));
+  assert.ok(workflowSource.includes('- firefox'));
   assert.ok(workflowSource.includes('run: npm ci'));
-  assert.ok(workflowSource.includes('run: npx playwright install --with-deps chromium firefox'));
-  assert.ok(workflowSource.includes('run: npm run test:e2e'));
+  assert.ok(workflowSource.includes('run: npx playwright install --with-deps ${{ matrix.browser }}'));
+  assert.ok(workflowSource.includes('run: npm run test:e2e -- --project=chromium'));
+  assert.ok(workflowSource.includes('run: xvfb-run --auto-servernum npm run test:e2e -- --project=firefox --headed'));
+  assert.ok(workflowSource.includes('LIBGL_ALWAYS_SOFTWARE: "1"'));
+  assert.ok(workflowSource.includes('VN_E2E_FIREFOX_SOFTWARE_WEBGL: "1"'));
   assert.ok(workflowSource.includes('cache-dependency-path: dev/package-lock.json'));
   assert.ok(workflowSource.includes('working-directory: dev'));
+  assert.ok(workflowSource.includes('browser-e2e-report-${{ matrix.browser }}-${{ github.run_id }}'));
   assert.ok(workflowSource.includes('dev/.playwright/report/'));
   assert.ok(workflowSource.includes('dev/.playwright/test-results/'));
   assert.ok(workflowSource.includes('uses: actions/upload-artifact@v7'));

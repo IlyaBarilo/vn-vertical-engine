@@ -209,10 +209,12 @@ Workflow `.github/workflows/tests.yml` запускает полный набо�
 - для pull request;
 - вручную через `workflow_dispatch`.
 
-Job `test` выполняет автономные Node-тесты. Параллельный job `Browser E2E`
-работает из каталога `dev/`: устанавливает developer-зависимости, Chromium и Firefox,
-затем запускает в обоих браузерах синтетические сценарии. При сбое его HTML-отчёт,
-screenshot и trace сохраняются в GitHub Actions Artifacts на семь дней.
+Job `test` выполняет автономные Node-тесты. Матрица `Browser E2E` создаёт независимые
+job для Chromium и Firefox из каталога `dev/`, чтобы сбой одного браузера не скрывал
+результат другого. Chromium запускается в headless-режиме. Firefox на Linux работает
+через Xvfb с программным Mesa/WebGL, поскольку runner не предоставляет браузеру
+подходящий аппаратный WebGL-контекст. При сбое отдельные HTML-отчёты, screenshot и trace сохраняются в GitHub Actions
+Artifacts на семь дней.
 
 Release workflow повторяет тесты перед сборкой ZIP. Провал проверки не позволяет
 собрать и загрузить релизные архивы.

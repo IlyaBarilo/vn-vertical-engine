@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
+// Включает программный WebGL только для Firefox job на Linux, где аппаратный WebGL недоступен.
+const useFirefoxSoftwareWebGl = process.env.VN_E2E_FIREFOX_SOFTWARE_WEBGL === '1';
+
 // Настраивает одинаковый изолированный E2E-контур для Chromium и Firefox с диагностикой только при сбоях.
 export default defineConfig({
   testDir: './tests/e2e',
@@ -22,7 +25,12 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      use: { browserName: 'firefox' }
+      use: {
+        browserName: 'firefox',
+        firefoxUserPrefs: useFirefoxSoftwareWebGl ? {
+          'webgl.forbid-software': false
+        } : undefined
+      }
     }
   ],
   use: {

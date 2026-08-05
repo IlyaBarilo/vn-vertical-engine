@@ -31,9 +31,15 @@ jobs:
         run: node --test
 
   browser:
-    name: Browser E2E
+    name: Browser E2E (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
 
     steps:
       - name: Checkout code
@@ -50,19 +56,28 @@ jobs:
         run: npm ci
         working-directory: dev
 
-      - name: Install Chromium and Firefox
-        run: npx playwright install --with-deps chromium firefox
+      - name: Install selected browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
         working-directory: dev
 
-      - name: Run browser E2E tests
-        run: npm run test:e2e
+      - name: Run Chromium E2E tests
+        if: matrix.browser == 'chromium'
+        run: npm run test:e2e -- --project=chromium
+        working-directory: dev
+
+      - name: Run Firefox E2E tests with software WebGL
+        if: matrix.browser == 'firefox'
+        run: xvfb-run --auto-servernum npm run test:e2e -- --project=firefox --headed
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          VN_E2E_FIREFOX_SOFTWARE_WEBGL: "1"
         working-directory: dev
 
       - name: Upload browser failure report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-e2e-report-${{ github.run_id }}
+          name: browser-e2e-report-${{ matrix.browser }}-${{ github.run_id }}
           path: |
             dev/.playwright/report/
             dev/.playwright/test-results/
