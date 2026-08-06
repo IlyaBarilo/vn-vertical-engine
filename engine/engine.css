@@ -1516,6 +1516,29 @@ body {
   font-size: var(--stats-title-size);
 }
 
+/* Полоса остаётся компактной и показывает ход фоновой полной проверки CSS-панорам. */
+.statsLoadProgress {
+  padding: 0.55rem var(--modal-padding) 0.65rem;
+  background: rgba(0,0,0,0.58);
+  border-bottom: var(--ui-border-width) solid rgba(255,255,255,0.12);
+}
+
+.statsLoadProgressText {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  color: rgba(255,255,255,0.88);
+  font-size: max(0.75rem, calc(var(--stats-key-size) * 0.9));
+}
+
+.statsLoadProgressBar {
+  display: block;
+  width: 100%;
+  height: 0.55rem;
+  accent-color: #64c8ff;
+}
+
 .statsBody {
 
   flex: 1;
