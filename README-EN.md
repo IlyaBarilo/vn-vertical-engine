@@ -264,6 +264,11 @@ Development mode shows visited scenes, variables, and a local Mermaid graph of
 story transitions. Mermaid runs in strict mode; user labels are escaped and the
 rendered SVG is sanitized before insertion into the page.
 
+When either graph view is opened, a separate progress bar tracks Mermaid
+preparation and every displayed raster image, cover, character image, and CSS
+panorama. The completed bar remains visible with elapsed time and an error
+count; it observes the existing parallel loading behavior without limiting it.
+
 <p align="center">
   <img src="docs/stat/stat-graph-1.webp" width="820" alt="A branching interactive-story graph in the statistics view">
 </p>

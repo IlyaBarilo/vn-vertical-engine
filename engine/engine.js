@@ -1115,6 +1115,10 @@ var elStatsBody = document.getElementById("statsBody");
 var elStatsLoadProgress = document.getElementById("statsLoadProgress");
 var elStatsLoadProgressBar = document.getElementById("statsLoadProgressBar");
 var elStatsLoadProgressLabel = document.getElementById("statsLoadProgressLabel");
+var elGraphLoadProgress = document.getElementById("graphLoadProgress");
+var elGraphLoadProgressBar = document.getElementById("graphLoadProgressBar");
+var elGraphLoadProgressText = document.getElementById("graphLoadProgressText");
+var elGraphLoadProgressLabel = document.getElementById("graphLoadProgressLabel");
 
 // Новые DOM-элементы
 var elBlurBgLayer = document.getElementById("blurBgLayer");
@@ -1273,6 +1277,151 @@ var currentMermaidCode = "";
 // Номер активного рендера графа: устаревшие async-ответы Mermaid не должны менять DOM и panzoom.
 var graphRenderSequence = 0;
 
+// Состояние относится к одному Mermaid-render и считает каждый реально гидратируемый элемент img один раз.
+var graphImageLoadProgressState = {
+  generation: 0,
+  renderSequence: 0,
+  phase: "idle",
+  registrationComplete: false,
+  total: 0,
+  completed: 0,
+  failed: 0,
+  startedAt: 0
+};
+
+// Возвращает прошедшее время текущей загрузки, не полагаясь на доступность performance.now в старых браузерах.
+function getGraphImageLoadElapsedSeconds() {
+  if (!graphImageLoadProgressState.startedAt) return 0;
+  return Math.max(0, (Date.now() - graphImageLoadProgressState.startedAt) / 1000);
+}
+
+// Синхронизирует отдельную полосу графа с фазой Mermaid-render и результатами декодирования изображений.
+function updateGraphImageLoadProgress() {
+  if (!elGraphLoadProgress || !elGraphLoadProgressBar || !elGraphLoadProgressText || !elGraphLoadProgressLabel) return;
+
+  var progress = graphImageLoadProgressState;
+  var isGraphView = isGraphStatsView(currentStatsView);
+  var shouldShow = isGraphView && progress.phase !== "idle";
+  elGraphLoadProgress.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) return;
+
+  elGraphLoadProgress.classList.toggle("is-complete", progress.phase === "complete" && progress.failed === 0);
+  elGraphLoadProgress.classList.toggle("has-errors", progress.phase === "render-error" || progress.failed > 0);
+
+  if (progress.phase === "preparing") {
+    elGraphLoadProgressText.textContent = "Preparing graph images";
+    elGraphLoadProgressLabel.textContent = "...";
+    elGraphLoadProgressBar.max = 1;
+    elGraphLoadProgressBar.removeAttribute("value");
+    return;
+  }
+
+  if (progress.phase === "render-error") {
+    elGraphLoadProgressText.textContent = "Graph could not be rendered";
+    elGraphLoadProgressLabel.textContent = "error";
+    elGraphLoadProgressBar.max = 1;
+    elGraphLoadProgressBar.value = 1;
+    return;
+  }
+
+  if (progress.registrationComplete && progress.completed >= progress.total) {
+    progress.phase = "complete";
+  }
+
+  var elapsedLabel = getGraphImageLoadElapsedSeconds().toFixed(1) + " s";
+  elGraphLoadProgressBar.max = Math.max(1, progress.total);
+  elGraphLoadProgressBar.value = progress.total === 0 && progress.phase === "complete" ? 1 : progress.completed;
+
+  if (progress.phase === "complete") {
+    if (progress.total === 0) {
+      elGraphLoadProgressText.textContent = "Graph contains no images";
+    } else if (progress.failed > 0) {
+      elGraphLoadProgressText.textContent = "Graph images loaded with errors";
+    } else {
+      elGraphLoadProgressText.textContent = "Graph images loaded";
+    }
+  } else {
+    elGraphLoadProgressText.textContent = "Loading graph images";
+  }
+
+  elGraphLoadProgressLabel.textContent = progress.completed + " / " + progress.total +
+    (progress.failed > 0 ? " · errors: " + progress.failed : "") + " · " + elapsedLabel;
+  elGraphLoadProgress.classList.toggle("is-complete", progress.phase === "complete" && progress.failed === 0);
+}
+
+// Показывает неопределённый этап подготовки SVG до того, как известен набор безопасных изображений графа.
+function prepareGraphImageLoadProgress(renderSequence) {
+  graphImageLoadProgressState.generation++;
+  graphImageLoadProgressState.renderSequence = renderSequence;
+  graphImageLoadProgressState.phase = "preparing";
+  graphImageLoadProgressState.registrationComplete = false;
+  graphImageLoadProgressState.total = 0;
+  graphImageLoadProgressState.completed = 0;
+  graphImageLoadProgressState.failed = 0;
+  graphImageLoadProgressState.startedAt = Date.now();
+  updateGraphImageLoadProgress();
+}
+
+// Начинает регистрацию изображений уже очищенного SVG; повторный fallback Mermaid сбрасывает предыдущий частичный подсчёт.
+function beginGraphImageLoadRegistration(renderSequence) {
+  if (graphImageLoadProgressState.renderSequence !== renderSequence) {
+    prepareGraphImageLoadProgress(renderSequence);
+  }
+  // Каждый Mermaid fallback получает новое поколение: события удалённого частичного SVG должны стать неактуальными.
+  graphImageLoadProgressState.generation++;
+  graphImageLoadProgressState.phase = "loading";
+  graphImageLoadProgressState.registrationComplete = false;
+  graphImageLoadProgressState.total = 0;
+  graphImageLoadProgressState.completed = 0;
+  graphImageLoadProgressState.failed = 0;
+  graphImageLoadProgressState.startedAt = Date.now();
+  updateGraphImageLoadProgress();
+}
+
+// Регистрирует один штатный img графа и возвращает токен, защищённый от повторной гидрации и старого рендера.
+function registerGraphImageLoad(img) {
+  if (!img || graphImageLoadProgressState.phase !== "loading") return null;
+  var existingToken = img.__vnvGraphImageLoadToken;
+  if (existingToken && existingToken.generation === graphImageLoadProgressState.generation) {
+    return existingToken;
+  }
+
+  var token = {
+    generation: graphImageLoadProgressState.generation,
+    settled: false
+  };
+  img.__vnvGraphImageLoadToken = token;
+  graphImageLoadProgressState.total++;
+  updateGraphImageLoadProgress();
+  return token;
+}
+
+// Завершает один токен только один раз; события старого SVG не меняют полосу нового графа.
+function settleGraphImageLoad(token, success) {
+  if (!token || token.settled) return;
+  token.settled = true;
+  if (token.generation !== graphImageLoadProgressState.generation) return;
+
+  graphImageLoadProgressState.completed++;
+  if (!success) graphImageLoadProgressState.failed++;
+  updateGraphImageLoadProgress();
+}
+
+// Закрывает синхронный этап регистрации, чтобы нулевой граф или уже кешированные картинки получили финальный статус.
+function completeGraphImageLoadRegistration() {
+  if (graphImageLoadProgressState.phase !== "loading") return;
+  graphImageLoadProgressState.registrationComplete = true;
+  updateGraphImageLoadProgress();
+}
+
+// Оставляет видимый итог ошибки Mermaid, но не смешивает её со счётчиком отдельных изображений.
+function markGraphImageRenderFailed(renderSequence) {
+  if (graphImageLoadProgressState.renderSequence !== renderSequence) return;
+  graphImageLoadProgressState.phase = "render-error";
+  graphImageLoadProgressState.registrationComplete = true;
+  updateGraphImageLoadProgress();
+}
+
 var currentMermaidVariants = {
   full: {
     fullCode: "",
@@ -1411,6 +1560,10 @@ function setStatsView(view) {
   if (gamesContainer) {
     gamesContainer.classList.toggle("hidden", currentStatsView !== "games");
   }
+
+  // На графе показываем его собственную загрузку, а полосу фоновой проверки CSS-панорам возвращаем только в текстовую статистику.
+  updateBg360PackageInspectionProgress();
+  updateGraphImageLoadProgress();
 
   if (isGraphView) {
     renderGraphViewWithPanzoomLifecycle(currentStateKey);
@@ -2759,7 +2912,15 @@ function hydrateRasterGraphThumbnails(root) {
     (function(img) {
       var story = img.getAttribute("data-vnv-story-img") || "";
       if (!story) return;
-      assignRasterImageToElement(img, story, {});
+      var progressToken = registerGraphImageLoad(img);
+      assignRasterImageToElement(img, story, {
+        onLoad: function() {
+          settleGraphImageLoad(progressToken, true);
+        },
+        onAllFailed: function() {
+          settleGraphImageLoad(progressToken, false);
+        }
+      });
     })(thumbs[i]);
   }
 }
@@ -17436,7 +17597,10 @@ function updateBg360PackageInspectionProgress() {
   elStatsLoadProgressBar.max = Math.max(1, progress.total);
   elStatsLoadProgressBar.value = progress.completed;
   elStatsLoadProgressLabel.textContent = progress.completed + " / " + progress.total;
-  elStatsLoadProgress.classList.toggle("hidden", progress.total === 0 || progress.completed >= progress.total);
+  elStatsLoadProgress.classList.toggle(
+    "hidden",
+    currentStatsView !== "text" || progress.total === 0 || progress.completed >= progress.total
+  );
 }
 
 // Проверяет, занят ли интерфейс полноразмерным графом; фоновая очередь в этот момент не конкурирует с его изображениями.
@@ -19579,9 +19743,13 @@ function hydrateBg360GraphThumbnails(root) {
 
   function hydrateSingleBg360Thumb(img) {
     if (!img) return;
+    var progressToken = registerGraphImageLoad(img);
     var sourceUrl = img.getAttribute("data-bg360-src") || "";
     var quality = img.getAttribute("data-bg360-quality") || "auto";
-    if (!sourceUrl) return;
+    if (!sourceUrl) {
+      settleGraphImageLoad(progressToken, false);
+      return;
+    }
 
     var resource = resolveBg360PackResource(sourceUrl, quality, function() {
       // После загрузки CSS повторно читаем атрибуты: граф мог быть перерисован или закрыт.
@@ -19601,6 +19769,7 @@ function hydrateBg360GraphThumbnails(root) {
           failedReason,
           null
         );
+        settleGraphImageLoad(progressToken, false);
       }
       return;
     }
@@ -19616,12 +19785,17 @@ function hydrateBg360GraphThumbnails(root) {
           validationError ? "invalid" : "verified",
           validationError || "CSS package and image were fully validated and decoded by the resource graph."
         );
+        settleGraphImageLoad(progressToken, !validationError);
         releaseBg360PackResource(resource, Boolean(validationError));
       };
       img.addEventListener("load", releaseThumbResource);
       img.addEventListener("error", releaseThumbResource);
     }
     img.src = resource.src;
+    // Firefox может кратковременно оставить complete=true сразу после смены src, поэтому нулевые размеры ждут штатного load/error.
+    if (img.complete && img.naturalWidth && img.naturalHeight && typeof releaseThumbResource === "function") {
+      releaseThumbResource({ type: "load" });
+    }
   }
 
   for (var i = 0; i < thumbs.length; i++) {
@@ -21601,9 +21775,11 @@ function renderMermaidGraph(renderSequence) {
         mermaidGraph.appendChild(safeSvg);
 
         if (!hasMermaidRenderError()) {
+          beginGraphImageLoadRegistration(renderSequence);
           hydrateBg360GraphThumbnails(mermaidGraph);
           hydrateRasterGraphThumbnails(mermaidGraph);
           hydrateGraphCharacterFrames(mermaidGraph);
+          completeGraphImageLoadRegistration();
         }
 
         if (hasMermaidRenderError() && index + 1 < renderQueue.length) {
@@ -21657,8 +21833,15 @@ function renderGraphViewWithPanzoomLifecycle(stateKey) {
   if (!stateKey) return Promise.resolve(false);
   var renderSequence = ++graphRenderSequence;
   neutralizePanzoomForRender();
+  prepareGraphImageLoadProgress(renderSequence);
   return renderMermaidGraph(renderSequence).then(function(rendered) {
-    if (!rendered || renderSequence !== graphRenderSequence) return false;
+    if (!rendered || renderSequence !== graphRenderSequence) {
+      // Пока асинхронная статистика ещё не собрала Mermaid-код, оставляем состояние подготовки: её финальный рендер перезапустит полосу.
+      if (renderSequence === graphRenderSequence && window.STORY && currentMermaidCode && mermaidGraph) {
+        markGraphImageRenderFailed(renderSequence);
+      }
+      return false;
+    }
     restorePanzoomWhenGraphReady(stateKey, 0, renderSequence);
     return true;
   });

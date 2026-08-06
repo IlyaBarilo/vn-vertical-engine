@@ -159,6 +159,48 @@ function createGraphSecurityStorySource() {
   ].join('\n');
 }
 
+// Создаёт граф с обычным фоном, персонажем, обложкой игры и CSS-панорамой для проверки единого прогресса изображений.
+function createGraphImageProgressStorySource(paths) {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Graph image progress E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = debug',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'bg360Quality = normal',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    `graphImage file=${paths.background}`,
+    `graphPano file=${paths.panorama} 360 quality=normal`,
+    '',
+    '[char]',
+    `graphCharacter emotion=neutral file=${paths.character} name="Graph character"`,
+    '',
+    '[game]',
+    `graphGame file=assets/__e2e__/game.html cover=${paths.cover} title="Graph game"`,
+    '',
+    '[scene]',
+    'scene intro',
+    '"Прогресс изображений графа E2E"',
+    '',
+    'scene imageResource',
+    'bg graphImage',
+    '"Обычный фон для графа"',
+    '',
+    'scene panoramaResource',
+    'bg graphPano',
+    '"CSS-панорама для графа"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт минимальный story360.js с одним путём, чтобы проверять загрузку редактора без пользовательских файлов.
 function createScene360StorySource(assetPath) {
   return `window.STORY360 = ${JSON.stringify({
@@ -672,6 +714,85 @@ test('Mermaid-граф очищает пользовательский HTML пе
     externalGraphUrls: 0
   });
   expect(pageErrors).toEqual([]);
+});
+
+// Итоговая полоса считает только штатно гидратируемые img и остаётся видимой после завершения всех загрузок.
+test('граф показывает общий прогресс обычных изображений и CSS-панорам', async function({ page }) {
+  const paths = {
+    background: 'assets/__e2e__/graph-progress-bg.png',
+    character: 'assets/__e2e__/graph-progress-char.png',
+    cover: 'assets/__e2e__/graph-progress-cover.png',
+    panorama: 'assets/360/graph-progress-360.css'
+  };
+  const rasterPaths = [paths.background, paths.character, paths.cover];
+
+  await installRepositoryRoutes(page, {
+    storySource: createGraphImageProgressStorySource(paths),
+    expectedText: 'Прогресс изображений графа E2E'
+  });
+  for (const rasterPath of rasterPaths) {
+    await page.route(`${e2eServerOrigin}/${rasterPath}`, async function serveGraphImage(route) {
+      await new Promise(function(resolve) { setTimeout(resolve, 180); });
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: Buffer.from(tinyPanoramaDataUrl.split(',')[1], 'base64')
+      });
+    });
+  }
+  await page.route(`${e2eServerOrigin}/${paths.panorama}`, async function serveGraphPanorama(route) {
+    if (route.request().method() === 'HEAD') {
+      await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '' });
+      return;
+    }
+    // Задержка CSS дольше Mermaid-render гарантирует наблюдаемую фазу загрузки после регистрации безопасного img.
+    await new Promise(function(resolve) { setTimeout(resolve, 3000); });
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource('normal')
+    });
+  });
+
+  await page.goto('/');
+  await expect(page.locator('#textBox')).toHaveText('Прогресс изображений графа E2E');
+  await page.locator('#btnStats').click();
+  await page.locator('#btnShowResourcesGraph').click();
+
+  await expect(page.locator('#graphLoadProgress')).toBeVisible();
+  await expect(page.locator('#graphLoadProgressText')).toHaveText(/Graph images loaded(?: with errors)?/);
+
+  const progressState = await page.evaluate(function readGraphImageProgress() {
+    var host = document.getElementById('mermaidGraph');
+    var bar = document.getElementById('graphLoadProgressBar');
+    var progress = document.getElementById('graphLoadProgress');
+    return {
+      expectedImages: host.querySelectorAll('img[data-vnv-story-img], img.bg360-graph-thumbnail[data-bg360-src]').length,
+      max: Number(bar.max),
+      value: Number(bar.value),
+      label: document.getElementById('graphLoadProgressLabel').textContent || '',
+      text: document.getElementById('graphLoadProgressText').textContent || '',
+      className: progress.className || ''
+    };
+  });
+
+  const errorMatch = progressState.label.match(/errors:\s*(\d+)/);
+  const errorCount = errorMatch ? Number(errorMatch[1]) : 0;
+  expect(progressState.expectedImages).toBeGreaterThanOrEqual(4);
+  expect(progressState.max).toBe(progressState.expectedImages);
+  expect(progressState.value).toBe(progressState.expectedImages);
+  expect(progressState.label).toContain(`${progressState.expectedImages} / ${progressState.expectedImages}`);
+  if (errorCount > 0) {
+    expect(progressState.text).toBe('Graph images loaded with errors');
+    expect(progressState.className).toContain('has-errors');
+  } else {
+    expect(progressState.text).toBe('Graph images loaded');
+    expect(progressState.className).toContain('is-complete');
+    expect(progressState.className).not.toContain('has-errors');
+  }
+
+  await page.locator('#btnShowText').click();
+  await expect(page.locator('#graphLoadProgress')).toBeHidden();
 });
 
 // CSS-панорамы полностью загружаются и декодируются отдельно от отсутствующих обычных файлов.

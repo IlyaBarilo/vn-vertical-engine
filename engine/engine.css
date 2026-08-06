@@ -1539,6 +1539,15 @@ body {
   accent-color: #64c8ff;
 }
 
+/* Финальный цвет отличает полностью загруженный граф от графа с ошибками отдельных изображений. */
+.graphLoadProgress.is-complete .statsLoadProgressBar {
+  accent-color: #6fd59a;
+}
+
+.graphLoadProgress.has-errors .statsLoadProgressBar {
+  accent-color: #ff8b73;
+}
+
 .statsBody {
 
   flex: 1;
