@@ -17,7 +17,7 @@ const e2eServerOrigin = `http://127.0.0.1:${e2eServerPort}`;
 const e2eLocalhostOrigin = `http://localhost:${e2eServerPort}`;
 const allowedEngineOrigins = new Set([e2eServerOrigin, e2eLocalhostOrigin]);
 const blockedLocalRoutes = new Set(['/story360.js', '/license-key.js']);
-const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+N4fVAAAAAElFTkSuQmCC';
+const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 let activeRouteOptions = {};
 let e2eHttpServer = null;
 
@@ -760,7 +760,7 @@ test('граф показывает общий прогресс обычных �
   await page.locator('#btnShowResourcesGraph').click();
 
   await expect(page.locator('#graphLoadProgress')).toBeVisible();
-  await expect(page.locator('#graphLoadProgressText')).toHaveText(/Graph images loaded(?: with errors)?/);
+  await expect(page.locator('#graphLoadProgressText')).toHaveText('Graph images loaded');
 
   const progressState = await page.evaluate(function readGraphImageProgress() {
     var host = document.getElementById('mermaidGraph');
@@ -776,20 +776,14 @@ test('граф показывает общий прогресс обычных �
     };
   });
 
-  const errorMatch = progressState.label.match(/errors:\s*(\d+)/);
-  const errorCount = errorMatch ? Number(errorMatch[1]) : 0;
   expect(progressState.expectedImages).toBeGreaterThanOrEqual(4);
   expect(progressState.max).toBe(progressState.expectedImages);
   expect(progressState.value).toBe(progressState.expectedImages);
   expect(progressState.label).toContain(`${progressState.expectedImages} / ${progressState.expectedImages}`);
-  if (errorCount > 0) {
-    expect(progressState.text).toBe('Graph images loaded with errors');
-    expect(progressState.className).toContain('has-errors');
-  } else {
-    expect(progressState.text).toBe('Graph images loaded');
-    expect(progressState.className).toContain('is-complete');
-    expect(progressState.className).not.toContain('has-errors');
-  }
+  expect(progressState.label).not.toContain('errors:');
+  expect(progressState.text).toBe('Graph images loaded');
+  expect(progressState.className).toContain('is-complete');
+  expect(progressState.className).not.toContain('has-errors');
 
   await page.locator('#btnShowText').click();
   await expect(page.locator('#graphLoadProgress')).toBeHidden();

@@ -19792,7 +19792,7 @@ function hydrateBg360GraphThumbnails(root) {
       img.addEventListener("error", releaseThumbResource);
     }
     img.src = resource.src;
-    // Firefox может кратковременно оставить complete=true сразу после смены src, поэтому нулевые размеры ждут штатного load/error.
+    // Синхронно завершаем только уже декодированное изображение: complete без размеров ещё не подтверждает готовность нового src.
     if (img.complete && img.naturalWidth && img.naturalHeight && typeof releaseThumbResource === "function") {
       releaseThumbResource({ type: "load" });
     }
