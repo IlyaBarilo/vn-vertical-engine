@@ -266,6 +266,11 @@ test('релизный workflow запускает распакованный ZI
   assert.ok(smokeSource.includes('pathToFileURL'));
   assert.ok(smokeSource.includes("new Set(['chromium', 'firefox', 'msedge'])"));
   assert.ok(smokeSource.includes("channel: 'msedge'"));
+  assert.ok(smokeSource.includes("'webgl.disabled': false"));
+  assert.ok(smokeSource.includes("'webgl.force-enabled': true"));
+  assert.ok(smokeSource.includes("'webgl.forbid-software': false"));
+  assert.ok(smokeSource.includes('readWebGlDiagnostics'));
+  assert.ok(smokeSource.includes('webGlDiagnostics.available'));
   assert.ok(smokeSource.includes('runFileBrowserSmoke'));
   assert.ok(smokeSource.includes('fileSmokePanoramaRelativePath'));
   assert.ok(smokeSource.includes("path.join(releaseRoot, 'tools', 'scene360-editor.html')"));

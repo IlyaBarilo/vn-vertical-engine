@@ -43,12 +43,22 @@ function parseSmokeOptions(argumentsList) {
 }
 
 /**
- * Запускает выбранный движок Playwright; msedge использует установленный фирменный канал Microsoft Edge.
+ * Запускает выбранный движок Playwright; Firefox принудительно разрешает программный WebGL на CI-runner без GPU.
  */
 async function launchSmokeBrowser(browserName) {
   const playwright = await import('playwright');
   if (browserName === 'msedge') {
     return playwright.chromium.launch({ headless: true, channel: 'msedge' });
+  }
+  if (browserName === 'firefox') {
+    return playwright.firefox.launch({
+      headless: true,
+      firefoxUserPrefs: {
+        'webgl.disabled': false,
+        'webgl.force-enabled': true,
+        'webgl.forbid-software': false
+      }
+    });
   }
   return playwright[browserName].launch({ headless: true });
 }
@@ -468,6 +478,52 @@ async function runBrowserSmoke(releaseRoot, baseUrl, archivePath, browserName) {
 }
 
 /**
+ * Читает доступность WebGL и сведения о выбранном рендерере, чтобы отличить сбой CI-окружения от ошибки CSS-панорамы.
+ */
+async function readWebGlDiagnostics(page) {
+  return page.evaluate(function inspectWebGl() {
+    var contextNames = ['webgl2', 'webgl', 'experimental-webgl'];
+    var errors = [];
+
+    for (var index = 0; index < contextNames.length; index++) {
+      var contextName = contextNames[index];
+      var canvas = document.createElement('canvas');
+      var context = null;
+
+      try {
+        context = canvas.getContext(contextName);
+      } catch (error) {
+        errors.push(contextName + ': ' + (error && error.message ? error.message : String(error)));
+      }
+      if (!context) continue;
+
+      var debugInfo = null;
+      try {
+        debugInfo = context.getExtension('WEBGL_debug_renderer_info');
+      } catch (error) {
+        errors.push('WEBGL_debug_renderer_info: ' + (error && error.message ? error.message : String(error)));
+      }
+
+      return {
+        available: true,
+        contextName: contextName,
+        vendor: debugInfo ? String(context.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || '') : '',
+        renderer: debugInfo ? String(context.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '') : '',
+        errors: errors
+      };
+    }
+
+    return {
+      available: false,
+      contextName: '',
+      vendor: '',
+      renderer: '',
+      errors: errors
+    };
+  });
+}
+
+/**
  * Открывает распакованный runtime и редактор напрямую через file://, проверяя CSS-панораму и её восстановление после F5.
  */
 async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath, browserName) {
@@ -482,11 +538,18 @@ async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath, browserNa
   };
   let page = null;
   let phase = 'runtime';
+  let webGlDiagnostics = null;
 
   try {
     page = await context.newPage();
     await attachFileSmokeDiagnostics(page, diagnostics);
     await page.goto(fixtures.indexUrl, { waitUntil: 'domcontentloaded' });
+    webGlDiagnostics = await readWebGlDiagnostics(page);
+    assert.equal(
+      webGlDiagnostics.available,
+      true,
+      `WebGL недоступен в ${browserName} при запуске release smoke через file://: ${JSON.stringify(webGlDiagnostics)}`
+    );
     await page.waitForFunction(function hasFilePanorama() {
       var textBox = document.querySelector('#textBox');
       var layer = document.querySelector('#bg360Layer');
@@ -577,6 +640,7 @@ async function runFileBrowserSmoke(releaseRoot, fixtures, archivePath, browserNa
       releaseRoot,
       mode: 'file',
       phase,
+      webGlDiagnostics,
       pageState,
       ...diagnostics,
       error: error && error.stack ? error.stack : String(error)
