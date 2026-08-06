@@ -16164,14 +16164,52 @@ function formatStory360VisibilityConditionsStats(analysis) {
   return text;
 }
 
-// Формирует короткую строку итоговых статусов без подробностей: расшифровка остаётся в разделах ниже.
+// Формирует короткую строку итоговых статусов: предупреждение означает, что проверка безопасно отложена до загрузки ресурса.
 function formatStatsSummaryCheck(checks) {
   var items = Array.isArray(checks) ? checks : [];
   var text = "=== SUMMARY CHECK ===\n\n";
   text += items.map(function(item) {
-    return (item && item.ok ? "✅ " : "❌ ") + String(item && item.label ? item.label : "CHECK");
+    var icon = item && item.warning ? "⚠️ " : (item && item.ok ? "✅ " : "❌ ");
+    return icon + String(item && item.label ? item.label : "CHECK");
   }).join("  ");
   return text + "\n\n";
+}
+
+// Формирует отдельный раздел по декларативным CSS-пакетам панорам, не смешивая их с обычными изображениями.
+function formatPanoramaPackageStats(packages) {
+  var items = Array.isArray(packages) ? packages : [];
+  var counts = { loaded: 0, found: 0, missing: 0, unverified: 0, invalid: 0 };
+  var text = "=== 360° PANORAMA PACKAGES ===\n\n";
+
+  if (!items.length) {
+    return text + "No CSS panorama packages declared.\n\n";
+  }
+
+  items.forEach(function(item) {
+    var status = item && counts[item.status] !== undefined ? item.status : "unverified";
+    counts[status]++;
+  });
+
+  text += "Packages: " + items.length +
+    "; loaded: " + counts.loaded +
+    "; found: " + counts.found +
+    "; missing: " + counts.missing +
+    "; unverified: " + counts.unverified +
+    "; invalid: " + counts.invalid + ".\n\n";
+
+  items.forEach(function(item) {
+    var status = item && item.status ? item.status : "unverified";
+    var icon = status === "loaded" || status === "found" ? "✅ " : (status === "unverified" ? "⚠️ " : "❌ ");
+    text += icon + String(item && item.path ? item.path : "(empty path)") + "\n";
+    text += "   Status: " + String(item && item.details ? item.details : "Not verified.") + "\n";
+    text += "   Used in:\n";
+    (item && Array.isArray(item.refs) ? item.refs : []).forEach(function(ref) {
+      text += "   - " + ref + "\n";
+    });
+    text += "\n";
+  });
+
+  return text;
 }
 
 // Генерация статистики по STORY.
@@ -16195,7 +16233,8 @@ function renderStats() {
       files: fileStats.files.length,
       missing: fileStats.missing.length,
       sizeErrors: fileStats.sizeErrors.length,
-      invalidNames: fileStats.invalidNames.length
+      invalidNames: fileStats.invalidNames.length,
+      panoramaPackages: (fileStats.panoramaPackages || []).length
     });
     try {
       var stats = computeStoryStats(STORY);
@@ -16206,6 +16245,13 @@ function renderStats() {
       var story360Visibility = analyzeStory360VisibilityConditions(STORY);
       var variableCaseAnalysis = analyzeScenarioVariableCaseConflicts(STORY);
       var identifierNameAnalysis = analyzeStoryIdentifierNames(STORY);
+      var panoramaPackages = fileStats.panoramaPackages || [];
+      var panoramaErrors = panoramaPackages.filter(function(item) {
+        return item && (item.status === "missing" || item.status === "invalid");
+      });
+      var panoramaUnverified = panoramaPackages.filter(function(item) {
+        return item && item.status === "unverified";
+      });
 
       // Получаем ошибки парсинга
       var parseErrors = window.PARSE_ERRORS || [];
@@ -16231,6 +16277,11 @@ function renderStats() {
         {
           label: "IMAGES",
           ok: (fileStats.sizeErrors || []).length === 0
+        },
+        {
+          label: "PANORAMAS",
+          ok: panoramaErrors.length === 0,
+          warning: panoramaErrors.length === 0 && panoramaUnverified.length > 0
         },
         {
           label: "SCRIPT",
@@ -16414,7 +16465,8 @@ function renderStats() {
       } else {
         text += "✅ All images meet the size requirements\n\n";
       }
-      
+
+      text += formatPanoramaPackageStats(panoramaPackages);
 
 
       // text += "DEBUG files:\n";
@@ -17160,36 +17212,198 @@ function collectInvalidResourcePathNames(story) {
   });
 }
 
+// Добавляет ссылку на CSS-панораму в группу по пути и сохраняет все места использования без дублей.
+function addPanoramaPackageReference(groups, pathValue, ref) {
+  var path = typeof pathValue === "string" ? pathValue.trim() : "";
+  if (!path || !groups) return;
+  if (!groups[path]) groups[path] = { path: path, refs: [] };
+  if (groups[path].refs.indexOf(ref) === -1) groups[path].refs.push(ref);
+}
+
+// Собирает только семантические 360-изображения из [bg] и story360; панорамные видео остаются обычными видео.
+function collectPanoramaPackageReferences(story) {
+  var groups = Object.create(null);
+  var backgrounds = story && story.assets && story.assets.backgrounds;
+  if (backgrounds && typeof backgrounds === "object") {
+    Object.keys(backgrounds).sort().forEach(function(id) {
+      var entry = backgrounds[id];
+      var path = getBackgroundAssetPrimaryPath(entry);
+      if (getBackgroundAssetIs360(entry) && !isVideoAssetPath(path)) {
+        addPanoramaPackageReference(groups, path, "background: " + id);
+      }
+    });
+  }
+
+  var root = getStory360Root();
+  var spaces = root && root.spaces && typeof root.spaces === "object" ? root.spaces : null;
+  if (spaces) {
+    Object.keys(spaces).sort().forEach(function(spaceId) {
+      var panoramas = getStory360Panoramas(spaces[spaceId]);
+      if (!panoramas) return;
+      Object.keys(panoramas).sort().forEach(function(panoramaId) {
+        var panorama = panoramas[panoramaId];
+        if (!panorama || typeof panorama !== "object") return;
+        var media = getStory360PanoramaMedia(spaceId, panoramaId, panorama);
+        if (media && media.file && !isVideoAssetPath(media.file)) {
+          addPanoramaPackageReference(groups, media.file, "story360: " + spaceId + "." + panoramaId);
+        }
+      });
+    });
+  }
+
+  return Object.keys(groups).sort().map(function(path) {
+    return groups[path];
+  });
+}
+
+// Проверяет, что объявленный пакет уже прошёл полную загрузку и проверку изображения в текущем 360-рендере.
+function isPanoramaPackageLoadedForStats(resolvedUrl) {
+  return Boolean(
+    resolvedUrl &&
+    bg360Runtime.active &&
+    !bg360Runtime.isVideoSource &&
+    bg360Runtime.textureReadyLoadSeq === bg360Runtime.loadSeq &&
+    normalizeAssetUrl(bg360Runtime.sourceSrc) === normalizeAssetUrl(resolvedUrl)
+  );
+}
+
+// Проверяет один CSS-пакет без чтения его большого содержимого: полный формат валидируется только при реальной загрузке панорамы.
+function checkPanoramaPackageReference(item) {
+  var resolvedUrl = resolveRuntimeStoryAssetUrl(item && item.path ? item.path : "", "panorama");
+  var baseResult = {
+    path: item && item.path ? item.path : "",
+    refs: item && Array.isArray(item.refs) ? item.refs.slice() : []
+  };
+
+  if (!resolvedUrl || !isBg360PackCssPath(resolvedUrl)) {
+    baseResult.status = "invalid";
+    baseResult.details = "The path is not an allowed *-360.css panorama package.";
+    return Promise.resolve(baseResult);
+  }
+
+  if (isPanoramaPackageLoadedForStats(resolvedUrl)) {
+    baseResult.status = "loaded";
+    baseResult.details = "Loaded and validated by the 360° runtime.";
+    return Promise.resolve(baseResult);
+  }
+
+  if (!window.location || (window.location.protocol !== "http:" && window.location.protocol !== "https:")) {
+    baseResult.status = "unverified";
+    baseResult.details = "file:// has no lightweight existence check; the package will be validated when opened.";
+    return Promise.resolve(baseResult);
+  }
+
+  if (typeof window.fetch !== "function") {
+    baseResult.status = "unverified";
+    baseResult.details = "This browser cannot perform the lightweight HTTP HEAD check.";
+    return Promise.resolve(baseResult);
+  }
+
+  var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
+  var requestOptions = {
+    method: "HEAD",
+    cache: "no-store",
+    credentials: "same-origin",
+    redirect: "error"
+  };
+  if (controller) requestOptions.signal = controller.signal;
+
+  return new Promise(function(resolve) {
+    var settled = false;
+    var timeoutId = setTimeout(function() {
+      if (settled) return;
+      settled = true;
+      if (controller) controller.abort();
+      baseResult.status = "unverified";
+      baseResult.details = "HTTP HEAD timed out; the package was not marked missing.";
+      resolve(baseResult);
+    }, 5000);
+
+    window.fetch(resolvedUrl, requestOptions).then(function(response) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        baseResult.status = "found";
+        baseResult.details = "Found by HTTP HEAD; content will be validated when opened.";
+      } else if (response.status === 404 || response.status === 410) {
+        baseResult.status = "missing";
+        baseResult.details = "The server returned HTTP " + response.status + ".";
+      } else {
+        baseResult.status = "unverified";
+        baseResult.details = "HTTP HEAD returned status " + response.status + "; existence was not inferred.";
+      }
+      resolve(baseResult);
+    }).catch(function() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      baseResult.status = "unverified";
+      baseResult.details = "HTTP HEAD was blocked or failed; the package was not marked missing.";
+      resolve(baseResult);
+    });
+  });
+}
+
+// Запускает независимые лёгкие проверки панорам параллельно, чтобы число пакетов не увеличивало время ожидания последовательно.
+function checkPanoramaPackageReferences(items) {
+  var references = Array.isArray(items) ? items : [];
+  return Promise.all(references.map(function(item) {
+    return checkPanoramaPackageReference(item);
+  }));
+}
+
+// Проверяет обычные ресурсы и отдельно присоединяет безопасную статистику CSS-панорам без загрузки их Base64-данных.
 function checkAssetsFiles() {
   return new Promise((resolve) => {
     const result = {
       missing: [],
       sizeErrors: [], // файлы с неправильными размерами
       invalidNames: [],
+      panoramaPackages: [],
       files: []
     };
 
-    if (!STORY.assets) {
-      resolve(result);
-      return;
+    const storyAssets = STORY && STORY.assets ? STORY.assets : {};
+    const panoramaReferences = collectPanoramaPackageReferences(STORY);
+    const panoramaPromise = checkPanoramaPackageReferences(panoramaReferences).catch(function() {
+      return panoramaReferences.map(function(item) {
+        return {
+          path: item.path,
+          refs: item.refs.slice(),
+          status: "unverified",
+          details: "The panorama check could not be completed."
+        };
+      });
+    });
+    let didFinish = false;
+
+    // Завершает общую проверку только после лёгкой проверки панорам и не допускает повторного resolve из async-callback.
+    function finishCheck() {
+      if (didFinish) return;
+      didFinish = true;
+      panoramaPromise.then(function(packages) {
+        result.panoramaPackages = packages;
+        resolve(result);
+      });
     }
 
     // Собираем все файлы из ассетов
     const allFiles = [];
 
     // Фоны
-    if (STORY.assets.backgrounds) {
-      Object.entries(STORY.assets.backgrounds).forEach(([id, path]) => {
+    if (storyAssets.backgrounds) {
+      Object.entries(storyAssets.backgrounds).forEach(([id, path]) => {
         var primaryPath = getBackgroundAssetPrimaryPath(path);
-        if (primaryPath) {
+        if (primaryPath && (!getBackgroundAssetIs360(path) || isVideoAssetPath(primaryPath))) {
           allFiles.push({ id, path: primaryPath, type: 'bg', category: 'background', ref: id });
         }
       });
     }
 
     // Персонажи (изображения)
-    if (STORY.assets.characters) {
-      Object.entries(STORY.assets.characters).forEach(([charId, char]) => {
+    if (storyAssets.characters) {
+      Object.entries(storyAssets.characters).forEach(([charId, char]) => {
         if (char.images) {
           Object.entries(char.images).forEach(([emotion, path]) => {
             allFiles.push({
@@ -17207,8 +17421,8 @@ function checkAssetsFiles() {
     }
 
     // Аудио
-    if (STORY.assets.audio) {
-      Object.entries(STORY.assets.audio).forEach(([id, audioAsset]) => {
+    if (storyAssets.audio) {
+      Object.entries(storyAssets.audio).forEach(([id, audioAsset]) => {
         // Аудио может быть строкой или объектом с file/volume, поэтому проверяем фактический путь.
         var audioPath = getAudioAssetPrimaryPath(audioAsset);
         if (typeof audioPath !== "string" || audioPath.trim() === "") {
@@ -17230,8 +17444,8 @@ function checkAssetsFiles() {
     }
 
     // Игры
-    if (STORY.assets.games) {
-      Object.entries(STORY.assets.games).forEach(([id, game]) => {
+    if (storyAssets.games) {
+      Object.entries(storyAssets.games).forEach(([id, game]) => {
         var gamePath = "";
 
         if (game && typeof game === "object") {
@@ -17258,8 +17472,8 @@ function checkAssetsFiles() {
       });
     }
 
-    if (STORY.assets.videos) {
-      Object.entries(STORY.assets.videos).forEach(([id, video]) => {
+    if (storyAssets.videos) {
+      Object.entries(storyAssets.videos).forEach(([id, video]) => {
         var videoPath = "";
         var posterPath = "";
 
@@ -17301,7 +17515,7 @@ function checkAssetsFiles() {
     result.invalidNames = collectInvalidResourcePathNames(STORY);
 
     if (allFiles.length === 0) {
-      resolve(result);
+      finishCheck();
       return;
     }
 
@@ -17400,7 +17614,7 @@ function checkAssetsFiles() {
               files: result.files.length
             });
           }
-          resolve(result);
+          finishCheck();
         }
       }
 

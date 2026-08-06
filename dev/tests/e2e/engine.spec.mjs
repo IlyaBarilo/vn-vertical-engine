@@ -75,6 +75,35 @@ function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   ].join('\n');
 }
 
+// Создаёт историю с неиспользуемой CSS-панорамой и отсутствующим обычным изображением для раздельной статистики ресурсов.
+function createPanoramaStatisticsStorySource(panoramaPath, missingImagePath) {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Panorama statistics E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = debug',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    `statsPano file=${panoramaPath} 360`,
+    '',
+    '[char]',
+    `missing emotion=neutral file=${missingImagePath} name="Missing"`,
+    '',
+    '[scene]',
+    'scene intro',
+    '"Статистика панорам E2E"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт историю с HTML-подобными подписями, которые не должны стать активным DOM при построении графа.
 function createGraphSecurityStorySource() {
   return [
@@ -614,6 +643,57 @@ test('Mermaid-граф очищает пользовательский HTML пе
     externalGraphUrls: 0
   });
   expect(pageErrors).toEqual([]);
+});
+
+// CSS-панорамы получают отдельную HEAD-проверку и не попадают в список отсутствующих обычных файлов.
+test('статистика отдельно проверяет обычные изображения и CSS-панорамы', async function({ page }) {
+  const foundPanoramaPath = 'assets/360/stats-found-360.css';
+  const missingPanoramaPath = 'assets/360/stats-missing-360.css';
+  const missingImagePath = 'assets/characters/stats-missing.png';
+  let foundHeadRequests = 0;
+  let missingHeadRequests = 0;
+
+  await installRepositoryRoutes(page, {
+    storySource: createPanoramaStatisticsStorySource(foundPanoramaPath, missingImagePath),
+    story360Source: createScene360StorySource(missingPanoramaPath),
+    expectedText: 'Статистика панорам E2E'
+  });
+  await page.route(`${e2eServerOrigin}/${foundPanoramaPath}`, async function serveFoundPanoramaHead(route) {
+    if (route.request().method() === 'HEAD') foundHeadRequests++;
+    await route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: '' });
+  });
+  await page.route(`${e2eServerOrigin}/${missingPanoramaPath}`, async function rejectMissingPanoramaHead(route) {
+    if (route.request().method() === 'HEAD') missingHeadRequests++;
+    await route.fulfill({ status: 404, contentType: 'text/css; charset=utf-8', body: '' });
+  });
+  await page.goto('/');
+  await expect(page.locator('#textBox')).toHaveText('Статистика панорам E2E');
+
+  await page.locator('#btnStats').click();
+  await expect(page.locator('#statsBody')).toHaveValue(/=== 360° PANORAMA PACKAGES ===/);
+
+  const statsText = await page.locator('#statsBody').inputValue();
+  const fileCheckText = statsText.slice(
+    statsText.indexOf('=== FILE CHECK ==='),
+    statsText.indexOf('=== 360° PANORAMA PACKAGES ===')
+  );
+  const panoramaText = statsText.slice(
+    statsText.indexOf('=== 360° PANORAMA PACKAGES ==='),
+    statsText.indexOf('=== FILE STATISTICS ===')
+  );
+
+  expect(fileCheckText).toContain(missingImagePath);
+  expect(fileCheckText).not.toContain(foundPanoramaPath);
+  expect(fileCheckText).not.toContain(missingPanoramaPath);
+  expect(panoramaText).toContain(`✅ ${foundPanoramaPath}`);
+  expect(panoramaText).toContain('Found by HTTP HEAD');
+  expect(panoramaText).toContain(`❌ ${missingPanoramaPath}`);
+  expect(panoramaText).toContain('The server returned HTTP 404.');
+  expect(panoramaText).toContain('background: statsPano');
+  expect(panoramaText).toContain('story360: testSpace.start');
+  expect(statsText).toMatch(/❌ FILES\s+✅ IMAGES\s+❌ PANORAMAS/);
+  expect(foundHeadRequests).toBe(1);
+  expect(missingHeadRequests).toBe(1);
 });
 
 // Выбирает mobile CSS-вариант и никогда не запрашивает одноимённый исполняемый JS.
