@@ -36,7 +36,8 @@ test('движок не содержит загрузчика JS-пакетов 
   assert.doesNotMatch(engineSource, /ensureBg360PackLoaded/);
   assert.match(loaderSource, /JavaScript panorama packages are not supported/);
   assert.doesNotMatch(converterSource, /function buildPackJs\(|<option\s+value="js"/);
-  assert.match(converterSource, /<option\s+value="css"\s+selected>/);
+  assert.doesNotMatch(converterSource, /id="packOutputFormat"|Формат сохраняемых пакетов/);
+  assert.match(converterSource, /function getSelectedPackOutputFormat\(\)\s*\{\s*return "css";\s*\}/);
 });
 
 // Проверяет обязательные sandbox и Permissions Policy iframe, а также отсутствие переключателей legacy.
