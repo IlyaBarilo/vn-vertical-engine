@@ -1906,7 +1906,7 @@ test('Конвертер создаёт совместимый CSS-пакет 36
   });
   await expect(page.locator('#status')).toContainText('Можно генерировать CSS');
   await page.locator('#btnGenerate').click();
-  await expect(page.locator('#status')).toContainText('для сохранения выбран CSS');
+  await expect(page.locator('#status')).toContainText('сформированы в формате CSS');
   await expect(page.locator('#btnDownload')).toBeEnabled();
   await expect(page.locator('#btnDownload')).toHaveText('Скачать оба CSS');
   await page.locator('#resultGrid').getByRole('button', { name: 'Показать CSS' }).first().click();
@@ -1932,6 +1932,35 @@ test('Конвертер создаёт совместимый CSS-пакет 36
   expect(pageErrors).toEqual([]);
 });
 
+// Проверяет повторное открытие CSS-пакета и сохраняет пассивную миграцию старого JS через одно поле выбора.
+test('Конвертер открывает готовые CSS- и JS-пакеты', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/tools/convert-360-img-to-css.html');
+
+  const packInput = page.locator('#packInput');
+  await expect(packInput).toHaveAttribute('accept', /\.js,\.css/);
+  await packInput.setInputFiles({
+    name: 'reopen-360.css',
+    mimeType: 'text/css',
+    buffer: Buffer.from(createScene360CssPackSource())
+  });
+  await expect(page.locator('#status')).toContainText('Изображение извлечено из CSS-пакета без применения его правил');
+  await expect(page.locator('#imageInfo')).toContainText('CSS-пакет: режим normal, формат PNG');
+  await page.locator('#btnGenerate').click();
+  await expect(page.locator('#btnDownload')).toBeEnabled();
+
+  await packInput.setInputFiles({
+    name: 'legacy-360.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from(createScene360PackSource('converterImportExecuted'))
+  });
+  await expect(page.locator('#status')).toContainText('Изображение извлечено из старого JS-пакета без выполнения JavaScript');
+  await expect(page.locator('#imageInfo')).toContainText('JS-пакет: режим normal, формат PNG');
+  await expect(page.locator('body')).not.toHaveAttribute('data-converter-import-executed', '1');
+  expect(pageErrors).toEqual([]);
+});
+
 // Проверяет, что одиночный экспорт создаёт только декларативный CSS-пакет.
 test('Конвертер сохраняет только CSS-пакеты', async function({ page }) {
   const pageErrors = collectPageErrors(page);
@@ -1952,8 +1981,8 @@ test('Конвертер сохраняет только CSS-пакеты', asyn
   await page.locator('#btnGenerate').click();
   await expect(page.locator('#btnDownload')).toBeEnabled();
 
-  await expect(page.locator('#packOutputFormat option')).toHaveCount(1);
-  await expect(page.locator('#packOutputFormat')).toHaveValue('css');
+  await expect(page.locator('#packOutputFormat')).toHaveCount(0);
+  await expect(page.getByText('Формат сохраняемых пакетов')).toHaveCount(0);
   await expect(page.locator('#btnDownload')).toHaveText('Скачать оба CSS');
   await expect(page.locator('#btnBatchStart')).toHaveText('Пакетно преобразовать и скачать CSS');
   await expect(page.locator('#resultGrid').getByRole('button', { name: 'Скачать JS', exact: true })).toHaveCount(0);

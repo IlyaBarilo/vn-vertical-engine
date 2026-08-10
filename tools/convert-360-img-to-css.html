@@ -60,14 +60,6 @@
       flex-wrap: wrap;
       align-items: center;
     }
-    /* Выбор формата один для одиночной и пакетной вкладок, чтобы одна операция не сохраняла CSS и JS одновременно. */
-    .output-format-control {
-      display: grid;
-      grid-template-columns: minmax(180px, 260px) 1fr;
-      gap: 10px;
-      align-items: end;
-      margin-top: 12px;
-    }
     /* Вкладки разделяют одиночный и пакетный сценарии, чтобы длинная очередь не мешала ручной работе. */
     .tab-bar {
       display: flex;
@@ -174,7 +166,7 @@
       display: grid;
       gap: 6px;
     }
-    /* Колонки «картинка» / «JS-пакет» в одном ряду карточки «Входные данные». */
+    /* Колонки «картинка» / «готовый пакет» в одном ряду карточки «Входные данные». */
     .input-col {
       display: grid;
       gap: 6px;
@@ -237,8 +229,7 @@
     @media (max-width: 820px) {
       .row,
       .result-grid,
-      .settings-pair,
-      .output-format-control {
+      .settings-pair {
         grid-template-columns: 1fr;
       }
     }
@@ -249,16 +240,7 @@
     <div class="card">
       <h1>Конвертер 360 изображения — CSS-пакет</h1>
       <div class="hint">
-        Назначение: подготовить безопасный <span class="mono">*-360.css</span> для офлайн-режима. Старый <span class="mono">*-360.js</span> можно только импортировать для переноса данных в CSS.
-      </div>
-      <div class="output-format-control">
-        <div class="field">
-          <label for="packOutputFormat">Формат сохраняемых пакетов</label>
-          <select id="packOutputFormat">
-            <option value="css" selected>CSS — безопасный</option>
-          </select>
-        </div>
-        <div id="packOutputFormatHint" class="hint">Все кнопки сохранения и пакетная очередь создают только CSS.</div>
+        Преобразует панорамное 360°-изображение в автономный CSS-пакет <span class="mono">*-360.css</span> для использования в новелле без локального сервера. Здесь также можно повторно открыть готовый CSS-пакет или перенести изображение из старого <span class="mono">*-360.js</span>.
       </div>
     </div>
 
@@ -276,9 +258,9 @@
             <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
           </div>
           <div class="input-col">
-            <label for="packJsInput">Или загрузите готовый <span class="mono">*-360.js</span> / <span class="mono">*-360-mobile.js</span></label>
-            <input id="packJsInput" type="file" accept=".js,text/javascript,application/javascript" />
-            <div class="hint">Изображение извлекается как текстовые данные без выполнения JavaScript, после чего его можно сохранить в CSS-пакете.</div>
+            <label for="packInput">Или загрузите готовый пакет <span class="mono">*-360.js</span> / <span class="mono">*-360.css</span></label>
+            <input id="packInput" type="file" accept=".js,.css,text/javascript,application/javascript,text/css" />
+            <div class="hint">Поддерживаются варианты normal и mobile. Изображение извлекается без выполнения JavaScript и без применения правил CSS, после чего пакет можно сохранить заново.</div>
           </div>
         </div>
         <div id="imageInfo" class="hint" style="margin-top:8px;">Файл еще не выбран.</div>
@@ -387,7 +369,7 @@
 
       <div class="card">
         <h2>Предпросмотр пакета</h2>
-        <textarea id="output" spellcheck="false" placeholder="Здесь появится выбранный JS- или CSS-пакет"></textarea>
+        <textarea id="output" spellcheck="false" placeholder="Здесь появится готовый CSS-пакет"></textarea>
       </div>
     </section>
 
@@ -489,7 +471,7 @@
       <div class="card">
         <h2>Пакетная обработка</h2>
         <div class="actions">
-          <button id="btnBatchStart" class="primary" type="button">Пакетно преобразовать и скачать</button>
+          <button id="btnBatchStart" class="primary" type="button">Пакетно преобразовать и скачать CSS</button>
           <button id="btnBatchStop" type="button" disabled>Остановить</button>
         </div>
         <progress id="batchProgress" class="batch-progress" value="0" max="1" style="margin-top:10px;"></progress>
@@ -509,12 +491,10 @@
     var singlePanel = document.getElementById("singlePanel");
     var batchPanel = document.getElementById("batchPanel");
     var fileInput = document.getElementById("fileInput");
-    var packJsInput = document.getElementById("packJsInput");
+    var packInput = document.getElementById("packInput");
     var imageInfoEl = document.getElementById("imageInfo");
     var statusEl = document.getElementById("status");
     var outputEl = document.getElementById("output");
-    var packOutputFormatEl = document.getElementById("packOutputFormat");
-    var packOutputFormatHintEl = document.getElementById("packOutputFormatHint");
     var btnGenerate = document.getElementById("btnGenerate");
     var btnDownload = document.getElementById("btnDownload");
     var normalHeightEl = document.getElementById("normalHeight");
@@ -547,6 +527,7 @@
     var PANORAMA_PACK_MAX_IMAGE_BYTES = 96 * 1024 * 1024;
     var PANORAMA_PACK_MAX_CHUNKS = 4096;
     var PANORAMA_PACK_CHUNK_LENGTH = 32 * 1024;
+    var PANORAMA_PACK_MAX_SOURCE_LENGTH = PANORAMA_PACK_MAX_ENCODED_LENGTH + 2 * 1024 * 1024;
     var PANORAMA_PACK_MAX_WIDTH = 20000;
     var PANORAMA_PACK_MAX_HEIGHT = 15000;
     var PANORAMA_PACK_MAX_PIXELS = 300000000;
@@ -624,7 +605,7 @@
       return match ? match[1].toLowerCase() : "";
     }
 
-    // Считает примерный размер бинарного изображения внутри data-url без учета JS-обертки.
+    // Считает примерный размер бинарного изображения внутри data-url без учёта текстовой обёртки пакета.
     function getDataUrlByteSize(dataUrl) {
       var text = String(dataUrl || "");
       var comma = text.indexOf(",");
@@ -659,12 +640,13 @@
       return isFinite(number) ? Math.round(number * 100) + "%" : "не указано";
     }
 
-    // Собирает человекочитаемую сводку о том, как JS-пакет был сохранён; все поля опциональны для совместимости со старыми файлами.
-    function formatPackMetaSummary(packMeta) {
+    // Собирает человекочитаемую сводку о загруженном пакете; все поля опциональны для совместимости со старыми JS-файлами.
+    function formatPackMetaSummary(packMeta, packFormat) {
       if (!packMeta || typeof packMeta !== "object") return "";
       var settings = packMeta.settings && typeof packMeta.settings === "object" ? packMeta.settings : {};
       var actualType = packMeta.actualType || packMeta.type || settings.actualFormat || settings.format || "";
       var requestedType = settings.requestedFormat || packMeta.requestedType || "";
+      var formatLabel = String(packFormat || packMeta.packFormat || "пакет").toUpperCase();
       var parts = [];
 
       if (packMeta.mode || settings.mode) parts.push("режим " + (packMeta.mode || settings.mode));
@@ -684,10 +666,10 @@
       if (packMeta.generatedAt) parts.push("дата " + packMeta.generatedAt);
       if (Array.isArray(packMeta.warnings) && packMeta.warnings.length) parts.push("предупреждение: " + packMeta.warnings.join(" "));
 
-      return parts.length ? "JS-пакет сохранён: " + parts.join(", ") + "." : "";
+      return parts.length ? formatLabel + "-пакет: " + parts.join(", ") + "." : "";
     }
 
-    // Обновляет небольшой статус по выбранному изображению и проверяет пропорцию 2:1; если источник — JS-пакет, добавляет найденные метаданные сохранения.
+    // Обновляет статус выбранного изображения и добавляет метаданные исходного JS- или CSS-пакета без выполнения его содержимого.
     function updateImageInfo(meta) {
       if (!meta) {
         imageInfoEl.textContent = "Файл еще не выбран.";
@@ -705,11 +687,11 @@
         "кадр: " + meta.width + "x" + meta.height + ", " +
         "ratio: " + ratio.toFixed(4) + " " +
         (ratioOk ? "<span class='ok'>(OK ~ 2:1)</span>" : "<span class='warn'>(не похоже на 2:1)</span>");
-      var packSummary = formatPackMetaSummary(meta.packMeta);
+      var packSummary = formatPackMetaSummary(meta.packMeta, meta.packFormat);
       if (packSummary) {
         imageInfoEl.innerHTML += "<br>" + escapeHtml(packSummary);
       } else if (meta.fromPack) {
-        imageInfoEl.innerHTML += "<br>Метаданные сохранения в JS не найдены: это допустимо для старых пакетов.";
+        imageInfoEl.innerHTML += "<br>Метаданные пакета не найдены: это допустимо для старых JS-пакетов.";
       }
       imageInfoEl.className = "hint";
       btnDownloadImageNormal.disabled = false;
@@ -868,20 +850,169 @@
       return extractLegacyPackMetaFromPackJs(text);
     }
 
-    // Читает data-url в Image и возвращает те же поля, что readImageFile, для общей ветки «источник загружен».
-    function decodeImageFromDataUrl(dataUrl, displayName, packMeta) {
+    // Строго разбирает единственное правило CSS-пакета, чтобы файл не требовалось применять как таблицу стилей.
+    function parsePackCssProperties(cssSource) {
+      var source = String(cssSource || "").replace(/^\uFEFF/, "");
+      if (!source || source.length > PANORAMA_PACK_MAX_SOURCE_LENGTH) {
+        throw new Error("CSS-пакет отсутствует или превышает допустимый размер исходного текста.");
+      }
+      var sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      if (/\/\*|\*\//.test(sourceWithoutComments)) {
+        throw new Error("CSS-пакет содержит незавершённый комментарий.");
+      }
+      var ruleMatch = sourceWithoutComments.trim().match(/^#vn360-pack\s*\{([\s\S]*)\}$/);
+      if (!ruleMatch) {
+        throw new Error("CSS-пакет должен содержать только правило #vn360-pack без @import и сторонних стилей.");
+      }
+
+      var declarationBody = ruleMatch[1];
+      var declarationPattern = /(--vn360-(?:schema|mode|mime|width|height|size|quality|chunk-count|data-(?:0|[1-9][0-9]*)))\s*:\s*"([^"\\]*)"\s*;/g;
+      var properties = Object.create(null);
+      var cursor = 0;
+      var propertyCount = 0;
+      var declarationMatch;
+      while ((declarationMatch = declarationPattern.exec(declarationBody))) {
+        if (!/^\s*$/.test(declarationBody.slice(cursor, declarationMatch.index))) {
+          throw new Error("CSS-пакет содержит недопустимую декларацию.");
+        }
+        var propertyName = declarationMatch[1];
+        if (Object.prototype.hasOwnProperty.call(properties, propertyName)) {
+          throw new Error("CSS-пакет содержит повторное свойство " + propertyName + ".");
+        }
+        propertyCount++;
+        if (propertyCount > PANORAMA_PACK_MAX_CHUNKS + 8) {
+          throw new Error("CSS-пакет содержит слишком много свойств.");
+        }
+        properties[propertyName] = declarationMatch[2];
+        cursor = declarationPattern.lastIndex;
+      }
+      if (!/^\s*$/.test(declarationBody.slice(cursor))) {
+        throw new Error("CSS-пакет содержит недопустимую декларацию.");
+      }
+
+      var requiredProperties = ["schema", "mode", "mime", "width", "height", "size", "quality", "chunk-count"];
+      for (var requiredIndex = 0; requiredIndex < requiredProperties.length; requiredIndex++) {
+        if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-" + requiredProperties[requiredIndex])) {
+          throw new Error("CSS-пакет не содержит обязательные метаданные.");
+        }
+      }
+      var declaredChunkCount = Number(properties["--vn360-chunk-count"]);
+      if (!Number.isInteger(declaredChunkCount) || declaredChunkCount < 1 || declaredChunkCount > PANORAMA_PACK_MAX_CHUNKS) {
+        throw new Error("Некорректное количество частей CSS-пакета 360.");
+      }
+      for (var dataIndex = 0; dataIndex < declaredChunkCount; dataIndex++) {
+        if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-data-" + dataIndex)) {
+          throw new Error("CSS-пакет содержит неполный набор частей.");
+        }
+      }
+      if (propertyCount !== requiredProperties.length + declaredChunkCount) {
+        throw new Error("CSS-пакет содержит части вне объявленного диапазона.");
+      }
+      return properties;
+    }
+
+    // Извлекает проверенный data-url и доступные метаданные из CSS, не применяя правила файла к странице.
+    function extractPackFromCss(cssText) {
+      var properties = parsePackCssProperties(cssText);
+      var schema = properties["--vn360-schema"];
+      if (schema !== "vn360-css-pack-v1") throw new Error("Неподдерживаемая версия CSS-пакета 360.");
+
+      var mode = properties["--vn360-mode"];
+      if (mode !== "normal" && mode !== "mobile") throw new Error("Некорректный режим CSS-пакета 360.");
+      var mimeType = String(properties["--vn360-mime"] || "").toLowerCase();
+      if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) {
+        throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
+      }
+
+      var declaredWidth = Number(properties["--vn360-width"]);
+      var declaredHeight = Number(properties["--vn360-height"]);
+      var declaredSize = Number(properties["--vn360-size"]);
+      validatePanoramaPackDimensions(declaredWidth, declaredHeight);
+      if (!Number.isInteger(declaredSize) || declaredSize < 1 || declaredSize > PANORAMA_PACK_MAX_IMAGE_BYTES) {
+        throw new Error("CSS-пакет содержит недопустимый размер изображения.");
+      }
+
+      var chunkCount = Number(properties["--vn360-chunk-count"]);
+      var encodedParts = [];
+      var encodedLength = 0;
+      for (var index = 0; index < chunkCount; index++) {
+        var cssChunk = properties["--vn360-data-" + index];
+        if (cssChunk.length > PANORAMA_PACK_CHUNK_LENGTH) {
+          throw new Error("Часть CSS-пакета превышает допустимый размер.");
+        }
+        if (index === 0) {
+          var prefixMatch = cssChunk.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/i);
+          if (!prefixMatch) throw new Error("Первая часть CSS-пакета не содержит ожидаемый data:image base64.");
+          if (prefixMatch[1].toLowerCase() !== mimeType) throw new Error("MIME CSS-пакета не совпадает с данными изображения.");
+          cssChunk = prefixMatch[2];
+        }
+        if (!/^[a-z0-9+/]*={0,2}$/i.test(cssChunk) || (index < chunkCount - 1 && cssChunk.indexOf("=") !== -1)) {
+          throw new Error("CSS-пакет содержит недопустимые символы base64.");
+        }
+        encodedLength += cssChunk.length;
+        if (encodedLength > PANORAMA_PACK_MAX_ENCODED_LENGTH) throw new Error("CSS-пакет превышает допустимый размер.");
+        encodedParts.push(cssChunk);
+      }
+
+      var encodedPayload = encodedParts.join("");
+      if (!encodedPayload || encodedPayload.length % 4 !== 0) {
+        throw new Error("CSS-пакет содержит обрезанные данные base64.");
+      }
+      var dataUrl = "data:" + mimeType + ";base64," + encodedPayload;
+      if (getDataUrlByteSize(dataUrl) !== declaredSize) {
+        throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
+      }
+
+      var qualityText = properties["--vn360-quality"];
+      var quality = qualityText === "" ? null : Number(qualityText);
+      if (quality !== null && (!isFinite(quality) || quality < 0 || quality > 1)) {
+        throw new Error("CSS-пакет содержит некорректное качество изображения.");
+      }
+      return {
+        dataUrl: dataUrl,
+        packMeta: {
+          schema: schema,
+          packFormat: "CSS",
+          mode: mode,
+          type: mimeType,
+          size: declaredSize,
+          width: declaredWidth,
+          height: declaredHeight,
+          quality: quality
+        }
+      };
+    }
+
+    // Определяет формат выбранного пакета по расширению или MIME и отклоняет остальные типы до чтения содержимого.
+    function getImportedPackFormat(file) {
+      var fileName = String(file && file.name || "").toLowerCase();
+      var mimeType = String(file && file.type || "").toLowerCase();
+      if (/\.css$/.test(fileName) || mimeType === "text/css") return "CSS";
+      if (/\.js$/.test(fileName) || /(?:java|ecma)script/.test(mimeType)) return "JS";
+      throw new Error("Выберите пакет с расширением .js или .css.");
+    }
+
+    // Читает data-url в Image и возвращает общие поля источника, дополнительно сверяя размеры CSS с его метаданными.
+    function decodeImageFromDataUrl(dataUrl, displayName, packMeta, packFormat) {
       return new Promise(function(resolve, reject) {
         var img = new Image();
         img.onload = function() {
+          var width = img.naturalWidth || img.width || 0;
+          var height = img.naturalHeight || img.height || 0;
+          if (packFormat === "CSS" && packMeta && (width !== packMeta.width || height !== packMeta.height)) {
+            reject(new Error("Размер изображения " + width + "x" + height + " не совпадает с метаданными CSS-пакета " + packMeta.width + "x" + packMeta.height + "."));
+            return;
+          }
           resolve({
             dataUrl: dataUrl,
             meta: {
-              name: displayName || "из-js-пакета",
+              name: displayName || "из-пакета",
               size: getDataUrlByteSize(dataUrl),
               type: getDataUrlMime(dataUrl) || "image/jpeg",
-              width: img.naturalWidth || img.width || 0,
-              height: img.naturalHeight || img.height || 0,
+              width: width,
+              height: height,
               fromPack: true,
+              packFormat: packFormat || "JS",
               packMeta: packMeta || null
             },
             image: img
@@ -1035,12 +1166,12 @@
       return buildImageVariantFromSource(mode, title, settings, loadedImage, loadedMeta);
     }
 
-    // Создает normal-вариант по ручным настройкам основного JS-пакета.
+    // Создает normal-вариант по ручным настройкам основного CSS-пакета.
     function buildNormalVariant() {
       return buildImageVariant("normal", "Normal", getVariantSettings(normalHeightEl, normalQualityEl, normalFormatEl));
     }
 
-    // Создает mobile-вариант по ручным настройкам облегченного JS-пакета.
+    // Создает mobile-вариант по ручным настройкам облегченного CSS-пакета.
     function buildMobileVariant() {
       return buildImageVariant("mobile", "Mobile", getVariantSettings(mobileHeightEl, mobileQualityEl, mobileFormatEl));
     }
@@ -1054,10 +1185,10 @@
       return "img";
     }
 
-    // Базовое имя для скачиваемого растра: убираем суффикс (из JS), расширение и хвосты *-360 из имени источника.
+    // Базовое имя для скачиваемого растра: убираем отметку исходного пакета, расширение и хвосты *-360.
     function getDownloadImageBaseName() {
       var name = loadedMeta && loadedMeta.name ? String(loadedMeta.name) : "asset";
-      name = name.replace(/\s*\(из JS\)\s*$/i, "");
+      name = name.replace(/\s*\(из (?:JS|CSS)\)\s*$/i, "");
       var dot = name.lastIndexOf(".");
       if (dot > 0) name = name.slice(0, dot);
       name = name.replace(/-360-mobile$/i, "").replace(/-360$/i, "");
@@ -1099,7 +1230,7 @@
     // Перекодирует загруженное изображение по настройкам блока normal или mobile и инициирует скачивание файла.
     function downloadSettingsRaster(mode) {
       if (!loadedDataUrl || !loadedMeta || !loadedImage) {
-        statusEl.innerHTML = "<span class='warn'>Сначала загрузите изображение или JS-пакет.</span>";
+        statusEl.innerHTML = "<span class='warn'>Сначала загрузите изображение, JS- или CSS-пакет.</span>";
         return;
       }
       try {
@@ -1201,7 +1332,7 @@
       return lines.join("\n");
     }
 
-    // Подсказывает имена CSS-файлов на основе имени входа; у старого импортируемого *-360.js убирает суффикс, чтобы не было *-360-360.css.
+    // Подсказывает имена CSS-файлов на основе имени входного изображения, JS- или CSS-пакета без повторения суффикса *-360.
     function suggestPackFileNames(fileName) {
       var name = String(fileName || "asset");
       var dot = name.lastIndexOf(".");
@@ -1230,24 +1361,6 @@
         return;
       }
       outputEl.value = pack.cssText;
-    }
-
-    // Обновляет действия экспорта и явно фиксирует единственный разрешённый CSS-формат.
-    function updatePackOutputFormatUi() {
-      var selectedFormat = getSelectedPackOutputFormat();
-      var formatLabel = getPackOutputFormatLabel(selectedFormat);
-      if (btnDownload) btnDownload.textContent = "Скачать оба " + formatLabel;
-      if (btnBatchStart) btnBatchStart.textContent = "Пакетно преобразовать и скачать " + formatLabel;
-      if (packOutputFormatHintEl) {
-        packOutputFormatHintEl.textContent = "Все кнопки сохранения и пакетная очередь создают только " + formatLabel + ".";
-      }
-      if (generatedPacks.normal || generatedPacks.mobile) {
-        renderResults();
-        showOutputVariant("normal", selectedFormat);
-      }
-      if (!batchState.running) {
-        resetBatchCurrentPreview("Выбран формат " + formatLabel + ". При запуске очереди будет показан текущий обработанный файл.");
-      }
     }
 
     // Создает Blob URL для просмотра результата без огромного data-url в адресной строке.
@@ -1521,7 +1634,6 @@
       if (batchFileInput) batchFileInput.disabled = running;
       if (batchNormalChk) batchNormalChk.disabled = running;
       if (batchMobileChk) batchMobileChk.disabled = running;
-      if (packOutputFormatEl) packOutputFormatEl.disabled = running;
       if (btnBatchStart) btnBatchStart.disabled = running;
       if (btnBatchStop) btnBatchStop.disabled = !running;
       setExportSettingsDisabled(running);
@@ -1730,7 +1842,7 @@
         statusEl.textContent = "Файл не выбран.";
         return;
       }
-      packJsInput.value = "";
+      packInput.value = "";
       suggestedFileNames = suggestPackFileNames(file.name);
       statusEl.textContent = "Чтение изображения...";
       readImageFile(file).then(function(result) {
@@ -1748,8 +1860,8 @@
       });
     });
 
-    packJsInput.addEventListener("change", function() {
-      var file = packJsInput.files && packJsInput.files[0] ? packJsInput.files[0] : null;
+    packInput.addEventListener("change", function() {
+      var file = packInput.files && packInput.files[0] ? packInput.files[0] : null;
       resetGeneratedPacks();
       loadedFile = null;
       if (!file) {
@@ -1757,32 +1869,50 @@
         loadedMeta = null;
         loadedImage = null;
         updateImageInfo(null);
-        statusEl.textContent = "JS-пакет не выбран.";
+        statusEl.textContent = "JS- или CSS-пакет не выбран.";
         return;
       }
       fileInput.value = "";
       suggestedFileNames = suggestPackFileNames(file.name);
-      statusEl.textContent = "Разбор JS-пакета...";
+      var packFormat;
+      try {
+        packFormat = getImportedPackFormat(file);
+      } catch (err) {
+        loadedDataUrl = "";
+        loadedMeta = null;
+        loadedImage = null;
+        updateImageInfo(null);
+        statusEl.innerHTML = "<span class='warn'>" + escapeHtml(err.message) + "</span>";
+        return;
+      }
+      statusEl.textContent = "Разбор " + packFormat + "-пакета...";
       var reader = new FileReader();
       reader.onerror = function() {
-        statusEl.innerHTML = "<span class='warn'>Ошибка чтения JS-файла.</span>";
+        statusEl.innerHTML = "<span class='warn'>Ошибка чтения " + packFormat + "-файла.</span>";
       };
       reader.onload = function() {
         Promise.resolve().then(function() {
-          var jsText = String(reader.result || "");
-          var dataUrl = extractDataUrlFromPackJs(jsText);
-          var packMeta = extractPackMetaFromPackJs(jsText);
-          return decodeImageFromDataUrl(dataUrl, file.name + " (из JS)", packMeta);
+          var packText = String(reader.result || "");
+          if (packFormat === "CSS") {
+            var cssPack = extractPackFromCss(packText);
+            return decodeImageFromDataUrl(cssPack.dataUrl, file.name + " (из CSS)", cssPack.packMeta, packFormat);
+          }
+          var dataUrl = extractDataUrlFromPackJs(packText);
+          var packMeta = extractPackMetaFromPackJs(packText);
+          return decodeImageFromDataUrl(dataUrl, file.name + " (из JS)", packMeta, packFormat);
         }).then(function(result) {
           loadedDataUrl = result.dataUrl;
           loadedMeta = result.meta;
           loadedImage = result.image;
           updateImageInfo(loadedMeta);
-          var packSummary = formatPackMetaSummary(loadedMeta.packMeta);
-          statusEl.innerHTML = "<span class='ok'>Изображение извлечено из старого пакета без выполнения JavaScript. Можно генерировать CSS.</span>" +
+          var packSummary = formatPackMetaSummary(loadedMeta.packMeta, loadedMeta.packFormat);
+          var extractionMessage = packFormat === "CSS"
+            ? "Изображение извлечено из CSS-пакета без применения его правил. Можно генерировать CSS."
+            : "Изображение извлечено из старого JS-пакета без выполнения JavaScript. Можно генерировать CSS.";
+          statusEl.innerHTML = "<span class='ok'>" + extractionMessage + "</span>" +
             (packSummary
               ? " " + escapeHtml(packSummary)
-              : " Метаданные сохранения отсутствуют, пакет старого формата принят.");
+              : " Метаданные сохранения отсутствуют, старый JS-пакет принят.");
         }).catch(function(err) {
           loadedDataUrl = "";
           loadedMeta = null;
@@ -1830,10 +1960,6 @@
     bindExportSettingSync(batchMobileQualityEl, "batch");
     bindExportSettingSync(batchMobileFormatEl, "batch");
 
-    packOutputFormatEl.addEventListener("change", function() {
-      updatePackOutputFormatUi();
-    });
-
     btnDownloadImageNormal.addEventListener("click", function() {
       downloadSettingsRaster("normal");
     });
@@ -1843,7 +1969,7 @@
 
     btnGenerate.addEventListener("click", function() {
       if (!loadedDataUrl || !loadedMeta || !loadedImage) {
-        statusEl.innerHTML = "<span class='warn'>Сначала выберите изображение или JS-пакет.</span>";
+        statusEl.innerHTML = "<span class='warn'>Сначала выберите изображение, JS- или CSS-пакет.</span>";
         return;
       }
       btnGenerate.disabled = true;
@@ -1851,8 +1977,7 @@
       setTimeout(function() {
         try {
           generatePacks();
-          statusEl.innerHTML = "<span class='ok'>Готово. Пакеты normal/mobile сформированы; для сохранения выбран " +
-            getPackOutputFormatLabel(getSelectedPackOutputFormat()) + ".</span>";
+          statusEl.innerHTML = "<span class='ok'>Готово. Пакеты normal/mobile сформированы в формате CSS.</span>";
         } catch (err) {
           resetGeneratedPacks();
           statusEl.innerHTML = "<span class='warn'>" + escapeHtml(err.message) + "</span>";
@@ -1866,7 +1991,6 @@
       downloadBothSelectedPacks();
     });
 
-    updatePackOutputFormatUi();
   </script>
 </body>
 </html>
