@@ -31,6 +31,17 @@ function readRepositoryFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
 }
 
+// Проверяет прямое копирование обязательного файла: условная команда не должна скрывать его отсутствие.
+function assertRequiredReleaseCopy(releaseSource, relativePath, destination) {
+  const command = 'cp ' + relativePath + (destination ? ' ' + destination : ' ');
+  assert.ok(releaseSource.includes(command), 'В release.yml отсутствует копирование ' + relativePath);
+  assert.equal(
+    releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
+    false,
+    'release.yml молча пропускает обязательный файл ' + relativePath
+  );
+}
+
 // Извлекает из массива ENGINE_SCRIPTS только обязательные записи, которые должны попасть в сборку.
 function collectRequiredEngineScripts(indexSource) {
   const scriptsBlock = indexSource.match(/var\s+ENGINE_SCRIPTS\s*=\s*\[([\s\S]*?)\];/);
@@ -91,10 +102,7 @@ test('релизная сборка включает обязательные ru
   ];
 
   requiredPaths.forEach(function(relativePath) {
-    assert.ok(
-      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
-      'В release.yml отсутствует копирование ' + relativePath
-    );
+    assertRequiredReleaseCopy(releaseSource, relativePath);
   });
 });
 
@@ -103,10 +111,7 @@ test('релизная сборка включает пользовательс�
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
   requiredAuthoringTools.forEach(function(relativePath) {
-    assert.ok(
-      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
-      'В release.yml отсутствует копирование ' + relativePath
-    );
+    assertRequiredReleaseCopy(releaseSource, relativePath);
   });
 });
 
@@ -115,10 +120,7 @@ test('релизная сборка включает документы пров
   const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
 
   requiredReviewDocuments.forEach(function(relativePath) {
-    assert.ok(
-      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
-      'В release.yml отсутствует копирование ' + relativePath
-    );
+    assertRequiredReleaseCopy(releaseSource, relativePath);
   });
 });
 
@@ -132,11 +134,50 @@ test('релизная сборка включает руководства, н�
   for (const relativePath of requiredReleaseGuides) {
     await access(path.join(repositoryRoot, relativePath));
     assert.ok(readmeSource.includes('(' + relativePath + ')'), 'README.md не ссылается на ' + relativePath);
-    assert.ok(
-      releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath + ' "build/$APP_NAME/docs/"'),
-      'В release.yml отсутствует копирование ' + relativePath
-    );
+    assertRequiredReleaseCopy(releaseSource, relativePath, '"build/$APP_NAME/docs/"');
   }
+});
+
+// Закрепляет полный кандидат в обычном CI и оставляет дорогой Windows smoke только релизуемым push в main.
+test('обычный CI переиспользует релизную сборку для каждого изменения', async function() {
+  const [testsSource, releaseSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/tests.yml'),
+    readRepositoryFile('.github/workflows/release.yml')
+  ]);
+
+  assert.match(releaseSource, /  workflow_call:\r?\n    inputs:/);
+  assert.match(releaseSource, /      ci_candidate:\r?\n[\s\S]*?type: boolean/);
+  assert.match(releaseSource, /      run_node_tests:\r?\n[\s\S]*?type: boolean/);
+  assert.match(releaseSource, /      run_windows_smoke:\r?\n[\s\S]*?type: boolean/);
+  assert.ok(testsSource.includes('uses: ./.github/workflows/release.yml'));
+  assert.ok(testsSource.includes('ci_candidate: true'));
+  assert.ok(testsSource.includes('tag: ci-${{ github.sha }}'));
+  assert.ok(testsSource.includes('upload_to_release: false'));
+  assert.ok(testsSource.includes('deploy_pages: false'));
+  assert.ok(testsSource.includes('run_node_tests: false'));
+  assert.ok(testsSource.includes("run_windows_smoke: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  assert.ok(testsSource.includes("github.ref == 'refs/heads/main' && github.sha || github.ref"));
+  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true || inputs.run_node_tests == true"));
+  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true || inputs.run_windows_smoke == true"));
+  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true && (github.event_name == 'release'"));
+});
+
+// Проверяет раздельную конкуренцию кандидатов и минимальные права до финальной публикации.
+test('релизный workflow не отменяет версии и выдаёт write-права только публикации', async function() {
+  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const publishStart = releaseSource.indexOf('  publish:');
+  const buildSection = releaseSource.slice(0, publishStart);
+  const publishSection = releaseSource.slice(publishStart);
+
+  assert.ok(releaseSource.includes('group: release-${{ github.event.release.tag_name || inputs.tag || github.ref }}'));
+  assert.ok(releaseSource.includes('cancel-in-progress: false'));
+  assert.match(releaseSource, /permissions:\r?\n  contents: read/);
+  assert.equal(buildSection.includes('contents: write'), false);
+  assert.equal(buildSection.includes('pages: write'), false);
+  assert.ok(publishSection.includes('contents: write'));
+  assert.ok(publishSection.includes('pages: write'));
+  assert.ok(publishSection.includes('id-token: write'));
+  assert.ok(publishSection.includes('group: release-publish'));
 });
 
 // Закрепляет единый helper, который сохраняет вложенные пути вместо плоского копирования файлов через shell.

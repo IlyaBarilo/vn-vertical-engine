@@ -5,6 +5,34 @@ on:
   # Запускать после публикации релиза
   release:
     types: [published]
+
+  # Обычный CI переиспользует ту же сборку кандидата без публикации.
+  workflow_call:
+    inputs:
+      ci_candidate:
+        description: "Вызов выполняется из обычного CI без публикации"
+        required: true
+        type: boolean
+      tag:
+        description: "Версия тестовой сборки"
+        required: true
+        type: string
+      upload_to_release:
+        description: "Загрузить архивы в GitHub Release"
+        required: true
+        type: boolean
+      deploy_pages:
+        description: "Обновить демо на GitHub Pages"
+        required: true
+        type: boolean
+      run_node_tests:
+        description: "Повторно запустить Node-тесты внутри сборки кандидата"
+        required: true
+        type: boolean
+      run_windows_smoke:
+        description: "Проверить распакованный кандидат в Edge и Firefox на Windows"
+        required: true
+        type: boolean
   
   # Ручной запуск из вкладки Actions
   workflow_dispatch:
@@ -28,14 +56,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
-  # Нужно для загрузки файлов в релиз
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: release-pages
-  cancel-in-progress: true
+  # Разные версии не отменяют друг друга, а повторная проверка той же версии не прерывает текущую.
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -58,6 +84,7 @@ jobs:
           cache-dependency-path: dev/package-lock.json
 
       - name: Run engine tests
+        if: inputs.ci_candidate != true || inputs.run_node_tests == true
         run: node --test
 
       - name: Detect version
@@ -91,35 +118,36 @@ jobs:
           mkdir -p "build/$APP_NAME/docs/specs"
 
           # Копируем основные файлы проекта
-          [ -f index.html ] && cp index.html "build/$APP_NAME/"
-          [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/"
-          [ -f README.md ] && cp README.md "build/$APP_NAME/"
-          [ -f README-EN.md ] && cp README-EN.md "build/$APP_NAME/"
-          [ -f LICENSE ] && cp LICENSE "build/$APP_NAME/"
-          [ -f COMMERCIAL-USE.md ] && cp COMMERCIAL-USE.md "build/$APP_NAME/"
-          [ -f NOTICE.md ] && cp NOTICE.md "build/$APP_NAME/"
-          [ -f tools/student-project-auditor.html ] && cp tools/student-project-auditor.html "build/$APP_NAME/tools/"
-          [ -f tools/game-tester.html ] && cp tools/game-tester.html "build/$APP_NAME/tools/"
-          [ -f tools/media-focus-editor.html ] && cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
-          [ -f tools/convert-360-img-to-css.html ] && cp tools/convert-360-img-to-css.html "build/$APP_NAME/tools/"
-          [ -f tools/panorama-cleaner.html ] && cp tools/panorama-cleaner.html "build/$APP_NAME/tools/"
-          [ -f tools/scene360-editor.html ] && cp tools/scene360-editor.html "build/$APP_NAME/tools/"
-          [ -f FIRST-STEPS.md ] && cp FIRST-STEPS.md "build/$APP_NAME/"
-          [ -f FIRST-STEPS-EN.md ] && cp FIRST-STEPS-EN.md "build/$APP_NAME/"
+          # Все перечисленные файлы обязательны: обычный cp останавливает job при их отсутствии.
+          cp index.html "build/$APP_NAME/"
+          cp story-example.js "build/$APP_NAME/"
+          cp README.md "build/$APP_NAME/"
+          cp README-EN.md "build/$APP_NAME/"
+          cp LICENSE "build/$APP_NAME/"
+          cp COMMERCIAL-USE.md "build/$APP_NAME/"
+          cp NOTICE.md "build/$APP_NAME/"
+          cp tools/student-project-auditor.html "build/$APP_NAME/tools/"
+          cp tools/game-tester.html "build/$APP_NAME/tools/"
+          cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
+          cp tools/convert-360-img-to-css.html "build/$APP_NAME/tools/"
+          cp tools/panorama-cleaner.html "build/$APP_NAME/tools/"
+          cp tools/scene360-editor.html "build/$APP_NAME/tools/"
+          cp FIRST-STEPS.md "build/$APP_NAME/"
+          cp FIRST-STEPS-EN.md "build/$APP_NAME/"
 
-          [ -f engine/engine.css ] && cp engine/engine.css "build/$APP_NAME/engine/"
-          [ -f engine/engine.js ] && cp engine/engine.js "build/$APP_NAME/engine/"
-          [ -f engine/expression.js ] && cp engine/expression.js "build/$APP_NAME/engine/"
-          [ -f engine/game-protocol.js ] && cp engine/game-protocol.js "build/$APP_NAME/engine/"
-          [ -f engine/resource-path-policy.js ] && cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
-          [ -f engine/story-sandbox-loader.js ] && cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
-          [ -f engine/story-loader.js ] && cp engine/story-loader.js "build/$APP_NAME/engine/"
+          cp engine/engine.css "build/$APP_NAME/engine/"
+          cp engine/engine.js "build/$APP_NAME/engine/"
+          cp engine/expression.js "build/$APP_NAME/engine/"
+          cp engine/game-protocol.js "build/$APP_NAME/engine/"
+          cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
+          cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
+          cp engine/story-loader.js "build/$APP_NAME/engine/"
 
-          [ -f story-example.js ] && cp story-example.js "build/$APP_NAME/docs/examples/"
-          [ -f docs/specs/spec-story.md ] && cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
-          [ -f docs/specs/spec-game.md ] && cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
-          [ -f docs/student-project-review.md ] && cp docs/student-project-review.md "build/$APP_NAME/docs/"
-          [ -f docs/360-first-steps.md ] && cp docs/360-first-steps.md "build/$APP_NAME/docs/"
+          cp story-example.js "build/$APP_NAME/docs/examples/"
+          cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
+          cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
+          cp docs/student-project-review.md "build/$APP_NAME/docs/"
+          cp docs/360-first-steps.md "build/$APP_NAME/docs/"
           [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
           [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
           [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
@@ -127,9 +155,9 @@ jobs:
           [ -d docs/stat ] && cp -a docs/stat "build/$APP_NAME/docs/"
           [ -d docs/tools ] && cp -a docs/tools "build/$APP_NAME/docs/"
 
-          [ -f lib/mermaid.min.js ] && cp lib/mermaid.min.js "build/$APP_NAME/lib/"
-          [ -f lib/jsrsasign-all-min.js ] && cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"
-          [ -f lib/three.min.js ] && cp lib/three.min.js "build/$APP_NAME/lib/"
+          cp lib/mermaid.min.js "build/$APP_NAME/lib/"
+          cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"
+          cp lib/three.min.js "build/$APP_NAME/lib/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
           # Копируем разрешённые форматы ассетов, сохраняя вложенные каталоги.
@@ -253,15 +281,14 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Setup Pages
+      - name: Upload internal Pages candidate
         if: github.event_name == 'release' || inputs.deploy_pages == true
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        if: github.event_name == 'release' || inputs.deploy_pages == true
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
+          name: release-site-${{ github.run_id }}
           path: build/site
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Debug build
         run: ls -R build
@@ -269,6 +296,7 @@ jobs:
   smoke-windows:
     name: Release smoke on Windows
     needs: build
+    if: inputs.ci_candidate != true || inputs.run_windows_smoke == true
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -338,7 +366,16 @@ jobs:
   publish:
     name: Publish verified release
     needs: [build, smoke-windows]
+    if: inputs.ci_candidate != true && (github.event_name == 'release' || inputs.upload_to_release == true || inputs.deploy_pages == true)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    concurrency:
+      # Публикации выполняются последовательно, чтобы более старый Pages artifact не перезаписал новый.
+      group: release-publish
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -367,6 +404,23 @@ jobs:
             ${{ github.event.repository.name }}-${{ env.VERSION }}-update.zip.sha256
             ${{ github.event.repository.name }}-latest-update.zip
             ${{ github.event.repository.name }}-latest-update.zip.sha256
+
+      - name: Download verified Pages candidate
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/download-artifact@v7
+        with:
+          name: release-site-${{ github.run_id }}
+          path: build/site
+
+      - name: Setup Pages
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'release' || inputs.deploy_pages == true
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/site
 
       - name: Deploy to GitHub Pages
         if: github.event_name == 'release' || inputs.deploy_pages == true

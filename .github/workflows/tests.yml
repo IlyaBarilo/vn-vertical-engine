@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
+  # Каждый push в main получает собственную группу; устаревшие проверки PR по-прежнему отменяются.
+  group: tests-${{ github.workflow }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -83,3 +84,17 @@ jobs:
             dev/.playwright/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  release-candidate:
+    name: Release candidate package
+    # Сборка идёт параллельно обычным тестам; Windows smoke нужен для каждого релизуемого состояния main.
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: read
+    with:
+      ci_candidate: true
+      tag: ci-${{ github.sha }}
+      upload_to_release: false
+      deploy_pages: false
+      run_node_tests: false
+      run_windows_smoke: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
