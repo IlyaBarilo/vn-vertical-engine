@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// Возвращает пути, которые попадут в чистый checkout CI, чтобы локальные игнорируемые файлы не скрывали ошибку ESLint.
+function listTrackedFiles() {
+  return new Set(execFileSync('git', ['ls-files'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8'
+  }).split(/\r?\n/).filter(Boolean));
+}
 
 // Закрепляет обязательный контур статической проверки, его область исходников и запуск для каждого обычного CI.
 test('ESLint проверяет runtime и тестовый код в отдельной CI-задаче', async function() {
@@ -24,6 +33,17 @@ test('ESLint проверяет runtime и тестовый код в отдел
   assert.match(lintCommand, /eslint/);
   assert.ok(lintCommand.includes('engine/*.js'));
   assert.ok(lintCommand.includes('dev/tests/**/*.mjs'));
+  const explicitLintTargets = Array.from(lintCommand.matchAll(/"([^"]+)"/g), function(match) {
+    return match[1];
+  }).filter(function(target) {
+    return !/[?*[\]]/.test(target);
+  });
+  const trackedFiles = listTrackedFiles();
+  const untrackedExplicitTargets = explicitLintTargets.filter(function(target) {
+    return !trackedFiles.has(target);
+  });
+  assert.deepEqual(untrackedExplicitTargets, [],
+    'ESLint явно ссылается на отсутствующие в чистом checkout файлы');
   assert.ok(configSource.includes("'no-dupe-keys': 'error'"));
   assert.ok(configSource.includes("'no-undef': 'error'"));
   assert.ok(configSource.includes("'no-unused-vars': ['error'"));
