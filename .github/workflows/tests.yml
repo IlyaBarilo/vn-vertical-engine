@@ -111,13 +111,11 @@ jobs:
   release-candidate:
     name: Release candidate package
     # Сборка идёт параллельно обычным тестам; Windows smoke нужен для каждого релизуемого состояния main.
-    uses: ./.github/workflows/release.yml
+    uses: ./.github/workflows/release-candidate.yml
     permissions:
       contents: read
     with:
-      ci_candidate: true
       tag: ci-${{ github.sha }}
-      upload_to_release: false
       deploy_pages: false
       run_node_tests: false
       run_windows_smoke: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

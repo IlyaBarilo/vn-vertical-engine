@@ -458,7 +458,8 @@ project/
 │   ├── DISCUSSION_TEMPLATE/            формы вопросов, идей и showcase
 │   └── workflows/
 │       ├── tests.yml                   проверки main и pull request
-│       └── release.yml                 сборка ZIP и публикация Pages
+│       ├── release-candidate.yml       сборка и smoke-проверка ZIP
+│       └── release.yml                 публикация проверенного кандидата
 ├── FIRST-STEPS.md                     первые шаги на русском
 ├── FIRST-STEPS-EN.md                  первые шаги на английском
 ├── README.md                          основное описание на русском

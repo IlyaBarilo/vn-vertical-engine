@@ -1,40 +1,12 @@
-# Сборка zip архива для релиза GitHub
+# Проверяет релизный кандидат и только после этого выполняет разрешённую публикацию.
 name: Build ZIP for Release
 
 on:
-  # Запускать после публикации релиза
+  # Опубликованный релиз автоматически получает проверенные архивы и обновляет Pages.
   release:
     types: [published]
 
-  # Обычный CI переиспользует ту же сборку кандидата без публикации.
-  workflow_call:
-    inputs:
-      ci_candidate:
-        description: "Вызов выполняется из обычного CI без публикации"
-        required: true
-        type: boolean
-      tag:
-        description: "Версия тестовой сборки"
-        required: true
-        type: string
-      upload_to_release:
-        description: "Загрузить архивы в GitHub Release"
-        required: true
-        type: boolean
-      deploy_pages:
-        description: "Обновить демо на GitHub Pages"
-        required: true
-        type: boolean
-      run_node_tests:
-        description: "Повторно запустить Node-тесты внутри сборки кандидата"
-        required: true
-        type: boolean
-      run_windows_smoke:
-        description: "Проверить распакованный кандидат в Edge и Firefox на Windows"
-        required: true
-        type: boolean
-  
-  # Ручной запуск из вкладки Actions
+  # Ручной запуск безопасен по умолчанию и может использоваться только для проверки ZIP.
   workflow_dispatch:
     inputs:
       tag:
@@ -64,309 +36,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-
-    env:
-      APP_NAME: ${{ github.event.repository.name }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Node.js for tests
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: dev/package-lock.json
-
-      - name: Run engine tests
-        if: inputs.ci_candidate != true || inputs.run_node_tests == true
-        run: node --test
-
-      - name: Detect version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-          else
-            VERSION="${{ inputs.tag }}"
-          fi
-
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          
-      - name: Prepare release folder
-        run: |
-          # VERSION уже подготовлена в Detect version
-
-          mkdir -p "build/$APP_NAME"
-          mkdir -p "build/$APP_NAME/assets"
-          mkdir -p "build/$APP_NAME/assets/backgrounds"
-          mkdir -p "build/$APP_NAME/assets/characters"
-          mkdir -p "build/$APP_NAME/assets/audio"
-          mkdir -p "build/$APP_NAME/assets/games"
-          mkdir -p "build/$APP_NAME/assets/video"
-          mkdir -p "build/$APP_NAME/lib"
-          mkdir -p "build/$APP_NAME/engine"
-          mkdir -p "build/$APP_NAME/tools"
-          mkdir -p "build/$APP_NAME/docs"
-          mkdir -p "build/$APP_NAME/docs/examples"
-          mkdir -p "build/$APP_NAME/docs/specs"
-
-          # Копируем основные файлы проекта
-          # Все перечисленные файлы обязательны: обычный cp останавливает job при их отсутствии.
-          cp index.html "build/$APP_NAME/"
-          cp story-example.js "build/$APP_NAME/"
-          cp README.md "build/$APP_NAME/"
-          cp README-EN.md "build/$APP_NAME/"
-          cp LICENSE "build/$APP_NAME/"
-          cp COMMERCIAL-USE.md "build/$APP_NAME/"
-          cp NOTICE.md "build/$APP_NAME/"
-          cp tools/student-project-auditor.html "build/$APP_NAME/tools/"
-          cp tools/game-tester.html "build/$APP_NAME/tools/"
-          cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
-          cp tools/convert-360-img-to-css.html "build/$APP_NAME/tools/"
-          cp tools/panorama-cleaner.html "build/$APP_NAME/tools/"
-          cp tools/scene360-editor.html "build/$APP_NAME/tools/"
-          cp FIRST-STEPS.md "build/$APP_NAME/"
-          cp FIRST-STEPS-EN.md "build/$APP_NAME/"
-
-          cp engine/engine.css "build/$APP_NAME/engine/"
-          cp engine/engine.js "build/$APP_NAME/engine/"
-          cp engine/expression.js "build/$APP_NAME/engine/"
-          cp engine/game-protocol.js "build/$APP_NAME/engine/"
-          cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
-          cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
-          cp engine/story-loader.js "build/$APP_NAME/engine/"
-
-          cp story-example.js "build/$APP_NAME/docs/examples/"
-          cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
-          cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
-          cp docs/student-project-review.md "build/$APP_NAME/docs/"
-          cp docs/360-first-steps.md "build/$APP_NAME/docs/"
-          [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
-          [ -d docs/demo ] && cp -a docs/demo "build/$APP_NAME/docs/"
-          [ -d docs/games ] && cp -a docs/games "build/$APP_NAME/docs/"
-          [ -d docs/kiosk ] && cp -a docs/kiosk "build/$APP_NAME/docs/"
-          [ -d docs/stat ] && cp -a docs/stat "build/$APP_NAME/docs/"
-          [ -d docs/tools ] && cp -a docs/tools "build/$APP_NAME/docs/"
-
-          cp lib/mermaid.min.js "build/$APP_NAME/lib/"
-          cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"
-          cp lib/three.min.js "build/$APP_NAME/lib/"
-          # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
-
-          # Копируем разрешённые форматы ассетов, сохраняя вложенные каталоги.
-          # Helper также останавливает сборку при небезопасном пути или коллизии имён.
-          node dev/scripts/copy-release-assets.mjs \
-            --source assets \
-            --destination "build/$APP_NAME/assets"
-      - name: Prepare site build
-        shell: bash
-        run: |
-          mkdir -p build/site
-          cp -r build/$APP_NAME/* build/site/
-
-      - name: Inject version into engine/engine.js
-        shell: bash
-        run: |
-
-          # Подставляем номер версии в engine/engine.js
-          VERSION_SAFE=$(printf '%s' "$VERSION" | sed 's/[\/&]/\\&/g')
-
-          for TARGET in \
-            "build/$APP_NAME/engine/engine.js" \
-            "build/site/engine/engine.js"
-          do
-            if [ -f "$TARGET" ]; then
-              sed -i "0,/__VERSION__/s/__VERSION__/$VERSION_SAFE/" "$TARGET"
-            fi
-          done
-
-      - name: Create ZIP archives
-        run: |
-          # VERSION уже подготовлена в Detect version
-
-          cd build
-          zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
-
-          # Update-архив не содержит пользовательские assets и корневые файлы истории.
-          # Справочный пример остаётся только в docs/examples, чтобы не перезаписать рабочий файл пользователя.
-          cp -r "$APP_NAME" "${APP_NAME}-update"
-          rm -rf "${APP_NAME}-update/assets"
-          rm -f "${APP_NAME}-update/story.js"
-          rm -f "${APP_NAME}-update/story-example.js"
-          zip -r "../${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-update"
-          cd ..
-
-          cp "${APP_NAME}-${VERSION}.zip" "${APP_NAME}-latest.zip"
-          cp "${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-latest-update.zip"
-
-          # Создаём отдельную SHA-256 для каждого имени архива, доступного пользователю.
-          node dev/scripts/release-checksums.mjs create \
-            "${APP_NAME}-${VERSION}.zip" \
-            "${APP_NAME}-${VERSION}-update.zip" \
-            "${APP_NAME}-latest.zip" \
-            "${APP_NAME}-latest-update.zip"
-
-      - name: Verify ZIP archives
-        shell: bash
-        run: |
-          # Проверяем контрольные суммы и целостность архивов до публикации или выдачи пользователю.
-          node dev/scripts/release-checksums.mjs verify \
-            "${APP_NAME}-${VERSION}.zip.sha256" \
-            "${APP_NAME}-${VERSION}-update.zip.sha256" \
-            "${APP_NAME}-latest.zip.sha256" \
-            "${APP_NAME}-latest-update.zip.sha256"
-          unzip -tq "${APP_NAME}-${VERSION}.zip"
-          unzip -tq "${APP_NAME}-${VERSION}-update.zip"
-          unzip -Z1 "${APP_NAME}-${VERSION}.zip" > build/full-zip-contents.txt
-          unzip -Z1 "${APP_NAME}-${VERSION}-update.zip" > build/update-zip-contents.txt
-
-          # Полный архив должен содержать пример, ассеты, runtime и все авторские инструменты.
-          grep -Fxq "${APP_NAME}/story-example.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/assets/" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/resource-path-policy.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/docs/student-project-review.md" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/docs/360-first-steps.md" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
-
-          # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
-          grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/engine/resource-path-policy.js" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/tools/student-project-auditor.html" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/docs/student-project-review.md" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/docs/360-first-steps.md" build/update-zip-contents.txt
-          grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
-
-          # Developer-файлы не должны попадать ни в один пользовательский ZIP.
-          if grep -Eq "^${APP_NAME}/(dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/full-zip-contents.txt; then
-            echo "Полный архив содержит developer-файлы."
-            exit 1
-          fi
-          if grep -Eiq "^${APP_NAME}/assets/360/.+-360(-[^/]+)?\\.js$" build/full-zip-contents.txt; then
-            echo "Полный архив содержит запрещённый панорамный JS-пакет."
-            exit 1
-          fi
-          if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$)" build/update-zip-contents.txt; then
-            echo "Update-архив содержит пользовательские данные или developer-файлы."
-            exit 1
-          fi
-
-      - name: Upload internal release candidate
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-candidate-${{ github.run_id }}
-          path: |
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip
-            ${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256
-            ${{ github.event.repository.name }}-latest.zip
-            ${{ github.event.repository.name }}-latest.zip.sha256
-            ${{ github.event.repository.name }}-latest-update.zip
-            ${{ github.event.repository.name }}-latest-update.zip.sha256
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-
-      - name: Upload internal Pages candidate
-        if: github.event_name == 'release' || inputs.deploy_pages == true
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-site-${{ github.run_id }}
-          path: build/site
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Debug build
-        run: ls -R build
-
-  smoke-windows:
-    name: Release smoke on Windows
-    needs: build
-    if: inputs.ci_candidate != true || inputs.run_windows_smoke == true
-    runs-on: windows-latest
-    timeout-minutes: 20
-
-    env:
-      APP_NAME: ${{ github.event.repository.name }}
-      VERSION: ${{ needs.build.outputs.version }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Node.js for release smoke
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: dev/package-lock.json
-
-      - name: Download internal release candidate
-        uses: actions/download-artifact@v7
-        with:
-          name: release-candidate-${{ github.run_id }}
-          path: .
-
-      - name: Install release smoke dependencies
-        run: npm ci
-        working-directory: dev
-
-      - name: Install Firefox for release smoke
-        run: npx playwright install firefox
-        working-directory: dev
-
-      - name: Run unpacked release smoke in Microsoft Edge
-        run: npm run test:release:smoke -- "../${{ env.APP_NAME }}-${{ env.VERSION }}.zip" --browser=msedge
-        working-directory: dev
-
-      - name: Run unpacked release smoke in Firefox
-        run: npm run test:release:smoke -- "../${{ env.APP_NAME }}-${{ env.VERSION }}.zip" --browser=firefox
-        working-directory: dev
-
-      - name: Upload release smoke failure report
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-smoke-windows-report-${{ github.run_id }}
-          path: dev/.playwright/release-smoke/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload ZIP artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-zips-${{ github.run_id }}
-          path: |
-            ${{ env.APP_NAME }}-${{ env.VERSION }}.zip
-            ${{ env.APP_NAME }}-${{ env.VERSION }}.zip.sha256
-            ${{ env.APP_NAME }}-${{ env.VERSION }}-update.zip
-            ${{ env.APP_NAME }}-${{ env.VERSION }}-update.zip.sha256
-            ${{ env.APP_NAME }}-latest.zip
-            ${{ env.APP_NAME }}-latest.zip.sha256
-            ${{ env.APP_NAME }}-latest-update.zip
-            ${{ env.APP_NAME }}-latest-update.zip.sha256
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
+  candidate:
+    name: Verify release candidate
+    uses: ./.github/workflows/release-candidate.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      deploy_pages: ${{ github.event_name == 'release' || inputs.deploy_pages == true }}
+      run_node_tests: true
+      run_windows_smoke: true
 
   publish:
     name: Publish verified release
-    needs: [build, smoke-windows]
-    if: inputs.ci_candidate != true && (github.event_name == 'release' || inputs.upload_to_release == true || inputs.deploy_pages == true)
+    needs: candidate
+    if: github.event_name == 'release' || inputs.upload_to_release == true || inputs.deploy_pages == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -381,7 +65,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     env:
-      VERSION: ${{ needs.build.outputs.version }}
+      VERSION: ${{ needs.candidate.outputs.version }}
 
     steps:
       - name: Download verified ZIP artifacts

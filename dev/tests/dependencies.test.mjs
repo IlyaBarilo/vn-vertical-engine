@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 const manifestPath = path.join(repositoryRoot, 'dev', 'dependencies.json');
 const noticePath = path.join(repositoryRoot, 'NOTICE.md');
-const releaseWorkflowPath = path.join(repositoryRoot, '.github', 'workflows', 'release.yml');
+const releaseCandidateWorkflowPath = path.join(repositoryRoot, '.github', 'workflows', 'release-candidate.yml');
 
 // Читает и проверяет общий формат manifest до проверок отдельных библиотек.
 async function readDependencyManifest() {
@@ -67,10 +67,10 @@ test('bundled-библиотеки соответствуют manifest', async f
 // Подтверждает, что каждый заявленный потребитель действительно ссылается на файл библиотеки.
 test('manifest связывает библиотеки с runtime и релизной сборкой', async function() {
   const manifest = await readDependencyManifest();
-  const releaseSource = await readFile(releaseWorkflowPath, 'utf8');
+  const releaseCandidateSource = await readFile(releaseCandidateWorkflowPath, 'utf8');
 
   for (const library of manifest.libraries) {
-    assert.ok(releaseSource.includes(library.file), 'Release workflow не содержит ' + library.file);
+    assert.ok(releaseCandidateSource.includes(library.file), 'Release candidate workflow не содержит ' + library.file);
     for (const consumerPath of library.usedBy) {
       const consumerSource = await readFile(path.join(repositoryRoot, consumerPath), 'utf8');
       const expectedReference = consumerPath.startsWith('tools/')

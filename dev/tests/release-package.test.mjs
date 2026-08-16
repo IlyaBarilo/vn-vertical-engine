@@ -32,13 +32,13 @@ function readRepositoryFile(relativePath) {
 }
 
 // Проверяет прямое копирование обязательного файла: условная команда не должна скрывать его отсутствие.
-function assertRequiredReleaseCopy(releaseSource, relativePath, destination) {
+function assertRequiredReleaseCopy(candidateSource, relativePath, destination) {
   const command = 'cp ' + relativePath + (destination ? ' ' + destination : ' ');
-  assert.ok(releaseSource.includes(command), 'В release.yml отсутствует копирование ' + relativePath);
+  assert.ok(candidateSource.includes(command), 'В release-candidate.yml отсутствует копирование ' + relativePath);
   assert.equal(
-    releaseSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
+    candidateSource.includes('[ -f ' + relativePath + ' ] && cp ' + relativePath),
     false,
-    'release.yml молча пропускает обязательный файл ' + relativePath
+    'release-candidate.yml молча пропускает обязательный файл ' + relativePath
   );
 }
 
@@ -90,9 +90,9 @@ test('обязательные runtime-файлы из index.html существ
 
 // Проверяет, что workflow копирует каждый обязательный runtime-файл в релизный каталог.
 test('релизная сборка включает обязательные runtime-файлы', async function() {
-  const [indexSource, releaseSource] = await Promise.all([
+  const [indexSource, candidateSource] = await Promise.all([
     readRepositoryFile('index.html'),
-    readRepositoryFile('.github/workflows/release.yml')
+    readRepositoryFile('.github/workflows/release-candidate.yml')
   ]);
   const requiredPaths = [
     'index.html',
@@ -102,91 +102,112 @@ test('релизная сборка включает обязательные ru
   ];
 
   requiredPaths.forEach(function(relativePath) {
-    assertRequiredReleaseCopy(releaseSource, relativePath);
+    assertRequiredReleaseCopy(candidateSource, relativePath);
   });
 });
 
 // Проверяет, что релизный workflow не теряет локальные инструменты подготовки проекта.
 test('релизная сборка включает пользовательские инструменты', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
   requiredAuthoringTools.forEach(function(relativePath) {
-    assertRequiredReleaseCopy(releaseSource, relativePath);
+    assertRequiredReleaseCopy(candidateSource, relativePath);
   });
 });
 
 // Проверяет доставку инструкции преподавателя вместе с автономным аудитором.
 test('релизная сборка включает документы проверки студенческих проектов', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
   requiredReviewDocuments.forEach(function(relativePath) {
-    assertRequiredReleaseCopy(releaseSource, relativePath);
+    assertRequiredReleaseCopy(candidateSource, relativePath);
   });
 });
 
 // Проверяет, что ссылки README на подробные руководства не становятся битыми после распаковки релизного ZIP.
 test('релизная сборка включает руководства, на которые ссылается README', async function() {
-  const [releaseSource, readmeSource] = await Promise.all([
-    readRepositoryFile('.github/workflows/release.yml'),
+  const [candidateSource, readmeSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
     readRepositoryFile('README.md')
   ]);
 
   for (const relativePath of requiredReleaseGuides) {
     await access(path.join(repositoryRoot, relativePath));
     assert.ok(readmeSource.includes('(' + relativePath + ')'), 'README.md не ссылается на ' + relativePath);
-    assertRequiredReleaseCopy(releaseSource, relativePath, '"build/$APP_NAME/docs/"');
+    assertRequiredReleaseCopy(candidateSource, relativePath, '"build/$APP_NAME/docs/"');
   }
 });
 
 // Закрепляет полный кандидат в обычном CI и оставляет дорогой Windows smoke только релизуемым push в main.
 test('обычный CI переиспользует релизную сборку для каждого изменения', async function() {
-  const [testsSource, releaseSource] = await Promise.all([
+  const [testsSource, candidateSource] = await Promise.all([
     readRepositoryFile('.github/workflows/tests.yml'),
-    readRepositoryFile('.github/workflows/release.yml')
+    readRepositoryFile('.github/workflows/release-candidate.yml')
   ]);
 
-  assert.match(releaseSource, /  workflow_call:\r?\n    inputs:/);
-  assert.match(releaseSource, /      ci_candidate:\r?\n[\s\S]*?type: boolean/);
-  assert.match(releaseSource, /      run_node_tests:\r?\n[\s\S]*?type: boolean/);
-  assert.match(releaseSource, /      run_windows_smoke:\r?\n[\s\S]*?type: boolean/);
-  assert.ok(testsSource.includes('uses: ./.github/workflows/release.yml'));
-  assert.ok(testsSource.includes('ci_candidate: true'));
+  assert.match(candidateSource, /  workflow_call:\r?\n    inputs:/);
+  assert.match(candidateSource, /      run_node_tests:\r?\n[\s\S]*?type: boolean/);
+  assert.match(candidateSource, /      run_windows_smoke:\r?\n[\s\S]*?type: boolean/);
+  assert.match(candidateSource, /    outputs:\r?\n      version:/);
+  assert.ok(testsSource.includes('uses: ./.github/workflows/release-candidate.yml'));
   assert.ok(testsSource.includes('tag: ci-${{ github.sha }}'));
-  assert.ok(testsSource.includes('upload_to_release: false'));
   assert.ok(testsSource.includes('deploy_pages: false'));
   assert.ok(testsSource.includes('run_node_tests: false'));
   assert.ok(testsSource.includes("run_windows_smoke: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   assert.ok(testsSource.includes("github.ref == 'refs/heads/main' && github.sha || github.ref"));
-  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true || inputs.run_node_tests == true"));
-  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true || inputs.run_windows_smoke == true"));
-  assert.ok(releaseSource.includes("if: inputs.ci_candidate != true && (github.event_name == 'release'"));
+  assert.ok(candidateSource.includes('if: inputs.run_node_tests == true'));
+  assert.ok(candidateSource.includes('if: inputs.run_windows_smoke == true'));
 });
 
-// Проверяет раздельную конкуренцию кандидатов и минимальные права до финальной публикации.
-test('релизный workflow не отменяет версии и выдаёт write-права только публикации', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+// Проверяет границу reusable workflow: read-only кандидат не должен содержать job с правами публикации.
+test('CI вызывает read-only кандидата, а write-права остаются в релизном workflow', async function() {
+  const [testsSource, candidateSource, releaseSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/tests.yml'),
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
+    readRepositoryFile('.github/workflows/release.yml')
+  ]);
+  const testsCandidateStart = testsSource.indexOf('  release-candidate:');
+  const testsCandidateSection = testsSource.slice(testsCandidateStart);
+  const releaseCandidateStart = releaseSource.indexOf('  candidate:');
   const publishStart = releaseSource.indexOf('  publish:');
-  const buildSection = releaseSource.slice(0, publishStart);
+  const releaseCandidateSection = releaseSource.slice(releaseCandidateStart, publishStart);
   const publishSection = releaseSource.slice(publishStart);
 
+  assert.ok(candidateSource.includes('group: release-candidate-${{ inputs.tag }}'));
+  assert.ok(candidateSource.includes('cancel-in-progress: false'));
+  assert.match(candidateSource, /permissions:\r?\n  contents: read/);
+  assert.equal(candidateSource.includes('contents: write'), false);
+  assert.equal(candidateSource.includes('pages: write'), false);
+  assert.equal(candidateSource.includes('id-token: write'), false);
+  assert.equal(candidateSource.includes('  publish:'), false);
+  assert.ok(testsCandidateStart >= 0);
+  assert.ok(testsCandidateSection.includes('uses: ./.github/workflows/release-candidate.yml'));
+  assert.match(testsCandidateSection, /permissions:\r?\n      contents: read/);
+  assert.equal(testsCandidateSection.includes('contents: write'), false);
+  assert.equal(testsSource.includes('uses: ./.github/workflows/release.yml'), false);
+  assert.ok(releaseCandidateStart >= 0 && publishStart > releaseCandidateStart);
+  assert.ok(releaseCandidateSection.includes('uses: ./.github/workflows/release-candidate.yml'));
+  assert.ok(releaseCandidateSection.includes('contents: read'));
+  assert.equal(releaseCandidateSection.includes('contents: write'), false);
   assert.ok(releaseSource.includes('group: release-${{ github.event.release.tag_name || inputs.tag || github.ref }}'));
   assert.ok(releaseSource.includes('cancel-in-progress: false'));
   assert.match(releaseSource, /permissions:\r?\n  contents: read/);
-  assert.equal(buildSection.includes('contents: write'), false);
-  assert.equal(buildSection.includes('pages: write'), false);
+  assert.equal(releaseSource.includes('workflow_call:'), false);
   assert.ok(publishSection.includes('contents: write'));
   assert.ok(publishSection.includes('pages: write'));
   assert.ok(publishSection.includes('id-token: write'));
   assert.ok(publishSection.includes('group: release-publish'));
+  assert.ok(publishSection.includes('needs: candidate'));
+  assert.ok(publishSection.includes('VERSION: ${{ needs.candidate.outputs.version }}'));
 });
 
 // Закрепляет единый helper, который сохраняет вложенные пути вместо плоского копирования файлов через shell.
 test('релизная сборка сохраняет структуру каталогов ассетов', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
-  assert.ok(releaseSource.includes('node dev/scripts/copy-release-assets.mjs'));
-  assert.ok(releaseSource.includes('--source assets'));
-  assert.ok(releaseSource.includes('--destination "build/$APP_NAME/assets"'));
+  assert.ok(candidateSource.includes('node dev/scripts/copy-release-assets.mjs'));
+  assert.ok(candidateSource.includes('--source assets'));
+  assert.ok(candidateSource.includes('--destination "build/$APP_NAME/assets"'));
   [
     'find assets/backgrounds',
     'find assets/characters',
@@ -196,9 +217,9 @@ test('релизная сборка сохраняет структуру кат
     'cp -a assets/360'
   ].forEach(function(flatCopyCommand) {
     assert.equal(
-      releaseSource.includes(flatCopyCommand),
+      candidateSource.includes(flatCopyCommand),
       false,
-      `В release.yml осталось прямое копирование без helper: ${flatCopyCommand}`
+      `В release-candidate.yml осталось прямое копирование без helper: ${flatCopyCommand}`
     );
   });
 });
@@ -219,30 +240,30 @@ test('ручная релизная сборка безопасна по умо�
 
 // Проверяет, что пользовательский artifact появляется только после Windows smoke, а внутренняя копия живёт один день.
 test('релизная сборка выдаёт проверенный artifact с ZIP и SHA-256', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
-  assert.ok(releaseSource.includes('uses: actions/upload-artifact@v7'));
-  assert.ok(releaseSource.includes('name: release-candidate-${{ github.run_id }}'));
-  assert.ok(releaseSource.includes('retention-days: 1'));
-  assert.ok(releaseSource.includes('name: release-zips-${{ github.run_id }}'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256'));
-  assert.ok(releaseSource.includes('if-no-files-found: error'));
-  assert.ok(releaseSource.includes('retention-days: 7'));
+  assert.ok(candidateSource.includes('uses: actions/upload-artifact@v7'));
+  assert.ok(candidateSource.includes('name: release-candidate-${{ github.run_id }}'));
+  assert.ok(candidateSource.includes('retention-days: 1'));
+  assert.ok(candidateSource.includes('name: release-zips-${{ github.run_id }}'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}.zip.sha256'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-${{ steps.version.outputs.version }}-update.zip.sha256'));
+  assert.ok(candidateSource.includes('if-no-files-found: error'));
+  assert.ok(candidateSource.includes('retention-days: 7'));
 });
 
 // Закрепляет создание, повторную проверку и публикацию SHA-256 для всех имён релизных архивов.
 test('релизный workflow создаёт и проверяет SHA-256 архивов', async function() {
-  const [releaseSource, packageSource] = await Promise.all([
-    readRepositoryFile('.github/workflows/release.yml'),
+  const [candidateSource, packageSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
     readRepositoryFile('dev/package.json')
   ]);
   const packageData = JSON.parse(packageSource);
-  const createPosition = releaseSource.indexOf('node dev/scripts/release-checksums.mjs create');
-  const verifyPosition = releaseSource.indexOf('node dev/scripts/release-checksums.mjs verify');
-  const uploadPosition = releaseSource.indexOf('- name: Upload ZIP artifacts');
+  const createPosition = candidateSource.indexOf('node dev/scripts/release-checksums.mjs create');
+  const verifyPosition = candidateSource.indexOf('node dev/scripts/release-checksums.mjs verify');
+  const uploadPosition = candidateSource.indexOf('- name: Upload ZIP artifacts');
 
   assert.ok(packageData.scripts['test:release'].includes('tests/release-checksums.test.mjs'));
   await Promise.all([
@@ -251,59 +272,61 @@ test('релизный workflow создаёт и проверяет SHA-256 а�
   ]);
   assert.ok(createPosition >= 0 && verifyPosition > createPosition);
   assert.ok(uploadPosition > verifyPosition);
-  assert.ok(releaseSource.includes('${APP_NAME}-latest.zip.sha256'));
-  assert.ok(releaseSource.includes('${APP_NAME}-latest-update.zip.sha256'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-latest.zip.sha256'));
-  assert.ok(releaseSource.includes('${{ github.event.repository.name }}-latest-update.zip.sha256'));
+  assert.ok(candidateSource.includes('${APP_NAME}-latest.zip.sha256'));
+  assert.ok(candidateSource.includes('${APP_NAME}-latest-update.zip.sha256'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-latest.zip.sha256'));
+  assert.ok(candidateSource.includes('${{ github.event.repository.name }}-latest-update.zip.sha256'));
 });
 
 // Проверяет наличие проверки целостности и ключевых различий полного и update-архивов.
 test('релизный workflow проверяет фактический состав ZIP', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
-  assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}.zip"'));
-  assert.ok(releaseSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
-  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));
-  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
-  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt'));
-  assert.ok(releaseSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
-  assert.ok(releaseSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}/tools/student-project-auditor.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/tools/student-project-auditor.html'));
-  assert.ok(releaseSource.includes('${APP_NAME}/docs/student-project-review.md'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/docs/student-project-review.md'));
-  assert.ok(releaseSource.includes('${APP_NAME}/docs/360-first-steps.md'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/docs/360-first-steps.md'));
-  assert.ok(releaseSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
-  assert.ok(releaseSource.includes('${APP_NAME}/(dev/|tests/'));
-  assert.ok(releaseSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
-  assert.ok(releaseSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
+  assert.ok(candidateSource.includes('unzip -tq "${APP_NAME}-${VERSION}.zip"'));
+  assert.ok(candidateSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
+  assert.ok(candidateSource.includes('${APP_NAME}/tools/student-project-auditor.html'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/tools/student-project-auditor.html'));
+  assert.ok(candidateSource.includes('${APP_NAME}/docs/student-project-review.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/docs/student-project-review.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}/docs/360-first-steps.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/docs/360-first-steps.md'));
+  assert.ok(candidateSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
+  assert.ok(candidateSource.includes('${APP_NAME}/(dev/|tests/'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
+  assert.ok(candidateSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$)'));
 });
 
 // Закрепляет Windows smoke настоящего Edge и Firefox после упаковки полного ZIP и до выдачи artifact пользователю.
 test('релизный workflow запускает распакованный ZIP в Edge и Firefox через HTTP и file://', async function() {
-  const [releaseSource, packageSource, smokeSource] = await Promise.all([
+  const [candidateSource, releaseSource, packageSource, smokeSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
     readRepositoryFile('.github/workflows/release.yml'),
     readRepositoryFile('dev/package.json'),
     readRepositoryFile('dev/tests/release-smoke.mjs')
   ]);
   const packageData = JSON.parse(packageSource);
-  const createArchivePosition = releaseSource.indexOf('- name: Create ZIP archives');
-  const edgeSmokePosition = releaseSource.indexOf('- name: Run unpacked release smoke in Microsoft Edge');
-  const firefoxSmokePosition = releaseSource.indexOf('- name: Run unpacked release smoke in Firefox');
-  const uploadPosition = releaseSource.indexOf('- name: Upload ZIP artifacts');
+  const createArchivePosition = candidateSource.indexOf('- name: Create ZIP archives');
+  const edgeSmokePosition = candidateSource.indexOf('- name: Run unpacked release smoke in Microsoft Edge');
+  const firefoxSmokePosition = candidateSource.indexOf('- name: Run unpacked release smoke in Firefox');
+  const uploadPosition = candidateSource.indexOf('- name: Upload ZIP artifacts');
   const publishPosition = releaseSource.indexOf('- name: Upload to release');
 
   assert.equal(packageData.scripts['test:release:smoke'], 'node tests/release-smoke.mjs');
   await access(path.join(repositoryRoot, 'dev/tests/release-smoke.mjs'));
-  assert.ok(releaseSource.includes('run: npm ci'));
-  assert.ok(releaseSource.includes('runs-on: windows-latest'));
-  assert.ok(releaseSource.includes('run: npx playwright install firefox'));
-  assert.ok(releaseSource.includes('--browser=msedge'));
-  assert.ok(releaseSource.includes('--browser=firefox'));
-  assert.ok(releaseSource.includes('needs: [build, smoke-windows]'));
-  assert.ok(releaseSource.includes('dev/.playwright/release-smoke/'));
+  assert.ok(candidateSource.includes('run: npm ci'));
+  assert.ok(candidateSource.includes('runs-on: windows-latest'));
+  assert.ok(candidateSource.includes('run: npx playwright install firefox'));
+  assert.ok(candidateSource.includes('--browser=msedge'));
+  assert.ok(candidateSource.includes('--browser=firefox'));
+  assert.ok(candidateSource.includes('needs: build'));
+  assert.ok(candidateSource.includes('dev/.playwright/release-smoke/'));
+  assert.ok(releaseSource.includes('needs: candidate'));
   assert.ok(smokeSource.includes('pathToFileURL'));
   assert.ok(smokeSource.includes("new Set(['chromium', 'firefox', 'msedge'])"));
   assert.ok(smokeSource.includes("channel: 'msedge'"));
@@ -319,24 +342,24 @@ test('релизный workflow запускает распакованный ZI
   assert.ok(createArchivePosition >= 0 && edgeSmokePosition > createArchivePosition);
   assert.ok(firefoxSmokePosition > edgeSmokePosition);
   assert.ok(uploadPosition > firefoxSmokePosition);
-  assert.ok(publishPosition > uploadPosition);
+  assert.ok(publishPosition >= 0);
 });
 
 // Защищает пользовательский ZIP от каталога разработки, браузеров, отчётов и конфигурации.
 test('релизная сборка не копирует каталог dev', async function() {
-  const releaseSource = await readRepositoryFile('.github/workflows/release.yml');
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
-  assert.equal(releaseSource.includes('[ -d dev ]'), false);
-  assert.equal(releaseSource.includes('cp -r dev'), false);
-  assert.equal(releaseSource.includes('cp -a dev'), false);
-  assert.equal(releaseSource.includes('[ -d tests ]'), false);
-  assert.equal(releaseSource.includes('cp -r tests'), false);
-  assert.equal(releaseSource.includes('cp -a tests'), false);
-  assert.equal(releaseSource.includes('cp package.json'), false);
-  assert.equal(releaseSource.includes('cp package-lock.json'), false);
-  assert.equal(releaseSource.includes('cp playwright.config.mjs'), false);
-  assert.equal(releaseSource.includes('cp -r node_modules'), false);
-  assert.equal(releaseSource.includes('cp -r playwright-report'), false);
-  assert.equal(releaseSource.includes('cp -r test-results'), false);
-  assert.equal(releaseSource.includes('cp docs/TESTING.md'), false);
+  assert.equal(candidateSource.includes('[ -d dev ]'), false);
+  assert.equal(candidateSource.includes('cp -r dev'), false);
+  assert.equal(candidateSource.includes('cp -a dev'), false);
+  assert.equal(candidateSource.includes('[ -d tests ]'), false);
+  assert.equal(candidateSource.includes('cp -r tests'), false);
+  assert.equal(candidateSource.includes('cp -a tests'), false);
+  assert.equal(candidateSource.includes('cp package.json'), false);
+  assert.equal(candidateSource.includes('cp package-lock.json'), false);
+  assert.equal(candidateSource.includes('cp playwright.config.mjs'), false);
+  assert.equal(candidateSource.includes('cp -r node_modules'), false);
+  assert.equal(candidateSource.includes('cp -r playwright-report'), false);
+  assert.equal(candidateSource.includes('cp -r test-results'), false);
+  assert.equal(candidateSource.includes('cp docs/TESTING.md'), false);
 });
