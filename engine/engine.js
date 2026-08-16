@@ -192,11 +192,9 @@ const UI_I18N = {
     statsTitle: "Script Statistics",
     fullGraphButton: "📊 Full Graph",
     resourcesGraphButton: "📦 Resources graph",
-    gamesButton: "🎮 Games",
     textButton: "📄 Text",
     fullGraphButtonTitle: "Show full graph",
     resourcesGraphButtonTitle: "Compact resources graph: start scene only, same full asset blocks as the main graph",
-    gamesButtonTitle: "Show games catalog",
     textButtonTitle: "Show text statistics",
     settingsTitle: "About app",
     closeSettings: "Close app info",
@@ -241,11 +239,9 @@ const UI_I18N = {
     statsTitle: "Статистика сценария",
     fullGraphButton: "📊 Граф полный",
     resourcesGraphButton: "📦 Граф ресурсов",
-    gamesButton: "🎮 Игры",
     textButton: "📄 Текст",
     fullGraphButtonTitle: "Показать полный граф",
     resourcesGraphButtonTitle: "Компактный граф ресурсов: на схеме только стартовая сцена, блоки ассетов — полные, как на основном графе",
-    gamesButtonTitle: "Показать каталог игр",
     textButtonTitle: "Показать текстовую статистику",
     settingsTitle: "Информация о программе",
     closeSettings: "Закрыть информацию",
@@ -987,7 +983,6 @@ const STORY_WINDOW_AUTO = "auto";
 var elTitle = document.getElementById("title");
 var elStage = document.getElementById("stage");
 var elNovelWindow = document.getElementById("novelWindow");
-var elUiFrame = document.getElementById("uiFrame");
 var elBg = document.getElementById("bgLayer");
 var elBgVideo = document.getElementById("bgVideoLayer");
 var elBg360 = document.getElementById("bg360Layer");
@@ -5931,19 +5926,6 @@ function getCharacterSlotRatio(pos) {
   return 0.5;
 }
 
-// Применяет только слот персонажа; итоговые px-координаты пересчитываются общей функцией focus/scale.
-function applyCharacterVisualPosition(pos) {
-  currentCharacterVisualOptions = normalizeCharacterFocusOptions(
-    { pos: pos },
-    currentCharacterVisualOptions
-  );
-  logCharacterFocusDebug("applyVisualPosition", {
-    inputPos: pos,
-    normalizedOptions: currentCharacterVisualOptions
-  });
-  adjustCharacterScale("applyVisualPosition");
-}
-
 // Применяет focusX/focusY/scale и сохраняет нормализованное состояние для автосейва и resize.
 function applyCharacterFocusOptions(options, reason) {
   var beforeOptions = currentCharacterVisualOptions;
@@ -6752,7 +6734,6 @@ function executeAction(action) {
 
       // Проверяем, нужно ли реально загружать изображение
       const currentSrc = elChar.getAttribute('src');
-      const currentCharId = elChar.dataset.charId;
       const isHidden = elChar.classList.contains('hidden');
       const focusAlreadyApplied = areCharacterFocusOptionsEqual(charFocusOptions, currentCharacterVisualOptions);
 
@@ -16905,9 +16886,6 @@ function renderStats() {
         var bgmCount = stats.bgmActions || 0;                 // смены музыки
         var bgCount = (stats.usedBackgroundIds || []).length; // используемые фоны
 
-        var totalDialogActions = sayCount + textCount;
-        var totalInteractiveActions = choiceCount;
-
         text += "Performance estimate:\n";
         text += "  Per 100 scenes: ~" + Math.round(estimatedFor100Scenes) + "ms (" + (estimatedFor100Scenes/1000).toFixed(1) + "с)\n";
         text += "  Per 1,000 actions: ~" + Math.round(estimatedFor1000Actions) + "ms (" + (estimatedFor1000Actions/1000).toFixed(1) + "с)\n\n";
@@ -19059,11 +19037,6 @@ function buildMermaidGraph(story, unreachableList, options) {
     // Формируем многострочную метку - ВАЖНО: порядок элементов
     var label = escapeMermaidLabelText(node.sceneId) + "<br/>";
 
-    // Параметры настройки
-    var imageSize = 80;           // Размер миниатюр
-    var imageGap = 2;             // Расстояние между миниатюрами
-    var containerPadding = 8;     // Внутренние отступы контейнера
-
     var sceneVideoBgCount = 0;
     var sceneBgImagesOnly = [];
     var sceneBg360ImagesOnly = [];
@@ -19136,7 +19109,7 @@ function buildMermaidGraph(story, unreachableList, options) {
     // Статистика персонажей и счетчики - БЕЗ ЛИШНЕГО ПЕРЕНОСА СТРОКИ
     var statsParts = [];
 
-    if (chars != '(none)') {
+    if (chars !== '(none)') {
       statsParts.push("<div>👤 " + chars + "</div>");
     }
 
@@ -19149,16 +19122,16 @@ function buildMermaidGraph(story, unreachableList, options) {
     if (sceneVideoBgCount > 0) {
       counters.push("🎬" + sceneVideoBgCount);
     }
-    if (node.bgImageCount != 0) {
+    if (node.bgImageCount !== 0) {
       counters.push("🖼️" + (node.bgImageCount === node.uniqueBgImageCount ? node.uniqueBgImageCount : (node.bgImageCount + "/" + node.uniqueBgImageCount)));
     }
-    if (node.bg360Count != 0) {
+    if (node.bg360Count !== 0) {
       counters.push("🌐" + (node.bg360Count === node.uniqueBg360Count ? node.uniqueBg360Count : (node.bg360Count + "/" + node.uniqueBg360Count)));
     }
-    if (node.phraseCount != 0) {
+    if (node.phraseCount !== 0) {
       counters.push("💬" + node.phraseCount);
     }
-    if (node.bgmCount != 0) {
+    if (node.bgmCount !== 0) {
       counters.push("🎵" + node.bgmCount);
     }
 
@@ -19343,7 +19316,6 @@ function buildCharactersGraph(story, options) {
   var mermaid = "";
   var characters = story.assets.characters || {};
   var scenes = story.scenes || [];
-  var startId = (story.meta && story.meta.start) ? story.meta.start : (scenes[0] ? scenes[0].id : "START");
   var characterUseCounts = {};
   var characterSceneUseMap = {};
   
@@ -19505,9 +19477,6 @@ function buildCharactersGraph(story, options) {
     
     // Добавляем связи пунктирной линией
     mermaid += '\n    %% Character connections from Chapter 1\n';
-    
-    // Связь от "Персонажи" к первому узлу (опционально)
-    // mermaid += '    characters -.-> ' + startId + ';\n';
     
     // Связи от персонажей к "Персонажи"
     for (var j = 0; j < charNodes.length; j++) {
@@ -20176,7 +20145,6 @@ function buildGamesGraph(story, options) {
 
     var safeGameId = escapeMermaidLabelText(gameId);
     var safeTitle = escapeMermaidLabelText(game.title || gameId);
-    var safeDescription = escapeMermaidLabelText(game.description || "");
     var safeCover = getGraphImageSrc(game.cover || "");
     
 
@@ -20514,12 +20482,6 @@ function extractAliasId(ref, group) {
   if (parts.length < 2) return "";
   if (parts[0] !== group) return "";
   return parts.slice(1).join(".");
-}
-
-function countKeys(obj) {
-  var n = 0;
-  for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) n++;
-  return n;
 }
 
 function keysSorted(obj) {
@@ -20976,7 +20938,6 @@ function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
 // Элементы и состояние управления panzoom для графиков статистики.
 var panzoomWrapper = document.getElementById("panzoomWrapper");
 var panzoomContent = document.getElementById("panzoomContent");
-var mermaidWrapper = document.getElementById("mermaidWrapper");
 var zoomLevelSpan = document.getElementById("zoomLevel");
 var zoomInBtn = document.getElementById("zoomInBtn");
 var zoomOutBtn = document.getElementById("zoomOutBtn");
@@ -21112,11 +21073,6 @@ function restorePanzoomWhenGraphReady(stateKey, attempt, renderSequence) {
   });
 }
 
-
-
-// Переменные для обработчиков событий
-var panzoomHandlers = {};
-
 // Функция обновления трансформации
 function updatePanzoomTransform() {
   if (!panzoomContent) return;
@@ -21227,31 +21183,6 @@ function fitGraphToViewport() {
 function resetPanzoom() {
   fitGraphToViewport();
 }
-
-
-
-// Функция зумирования
-function zoom(delta, mouseX, mouseY) {
-  var oldScale = panzoomState.scale;
-  var newScale = panzoomState.scale * (1 + delta * 0.1);
-  newScale = clampPanzoomScale(newScale);
-  
-  if (newScale === oldScale) return;
-  
-  // Если есть координаты мыши, зумируем относительно них
-  if (mouseX !== undefined && mouseY !== undefined && panzoomWrapper) {
-    var rect = panzoomWrapper.getBoundingClientRect();
-    var mouseXRatio = (mouseX - rect.left - panzoomState.translateX) / oldScale;
-    var mouseYRatio = (mouseY - rect.top - panzoomState.translateY) / oldScale;
-    
-    panzoomState.translateX = mouseX - rect.left - mouseXRatio * newScale;
-    panzoomState.translateY = mouseY - rect.top - mouseYRatio * newScale;
-  }
-  
-  panzoomState.scale = newScale;
-  updatePanzoomTransform();
-}
-
 // Ограничивает масштаб графа общими пределами panzoom, чтобы wheel, кнопки и pinch вели себя одинаково.
 function clampPanzoomScale(scale) {
   return Math.max(panzoomState.minScale, Math.min(panzoomState.maxScale, scale));
@@ -21846,96 +21777,6 @@ function renderGraphViewWithPanzoomLifecycle(stateKey) {
     return true;
   });
 }
-
-function debugCharacterGraphLayout() {
-  if (!isExplicitDebugCategoryEnabled("graph")) return;
-
-  try {
-    var svg = mermaidGraph && mermaidGraph.querySelector('svg');
-    if (!svg) {
-      console.log('[GRAPH DEBUG] svg not found');
-      return;
-    }
-
-    var nodes = svg.querySelectorAll('g.node');
-    console.log('[GRAPH DEBUG] total nodes:', nodes.length);
-
-    nodes.forEach(function(node, index) {
-      var fo = node.querySelector('foreignObject');
-      var container = node.querySelector('.char-emotions-container');
-      var thumbs = node.querySelectorAll('.char-emotion-thumbnail');
-
-      if (!container && !thumbs.length) return;
-
-      var nodeBox = (typeof node.getBBox === 'function') ? node.getBBox() : null;
-      var foRect = fo ? fo.getBoundingClientRect() : null;
-      var containerRect = container ? container.getBoundingClientRect() : null;
-
-      console.group('[GRAPH DEBUG NODE] index=' + index);
-      console.log('index =', index);
-      console.log('thumbCount =', thumbs.length);
-
-      if (nodeBox) {
-        console.log(
-          'nodeBBox width =', Math.round(nodeBox.width),
-          'height =', Math.round(nodeBox.height)
-        );
-      } else {
-        console.log('nodeBBox = unavailable');
-      }
-
-      if (fo) {
-        console.log(
-          'foreignObject attr width =', fo.getAttribute('width'),
-          'attr height =', fo.getAttribute('height')
-        );
-      } else {
-        console.log('foreignObject = not found');
-      }
-
-      if (foRect) {
-        console.log(
-          'foreignObject rect width =', Math.round(foRect.width),
-          'height =', Math.round(foRect.height)
-        );
-      }
-
-      if (container && containerRect) {
-        var ccs = window.getComputedStyle(container);
-        console.log(
-          'container rect width =', Math.round(containerRect.width),
-          'height =', Math.round(containerRect.height)
-        );
-        console.log(
-          'container computed width =', ccs.width,
-          'maxWidth =', ccs.maxWidth,
-          'display =', ccs.display,
-          'flexWrap =', ccs.flexWrap,
-          'gap =', ccs.gap,
-          'overflow =', ccs.overflow
-        );
-      } else {
-        console.log('char-emotions-container = not found');
-      }
-
-      thumbs.forEach(function(img, i) {
-        var r = img.getBoundingClientRect();
-        var cs = window.getComputedStyle(img);
-        console.log(
-          'thumb[' + i + '] rect width =', Math.round(r.width),
-          'height =', Math.round(r.height),
-          'computed width =', cs.width,
-          'computed height =', cs.height
-        );
-      });
-
-      console.groupEnd();
-    });
-  } catch (err) {
-    console.error('[GRAPH DEBUG ERROR]', err);
-  }
-}
-
 
 // Принудительно пересчитывает SVG после переключения вкладок статистики.
 function forceRedraw(element) {

@@ -16,6 +16,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: ESLint quality gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dev/package-lock.json
+
+      - name: Install static analysis dependencies
+        run: npm ci
+        working-directory: dev
+
+      - name: Run ESLint quality gate
+        run: npm run lint
+        working-directory: dev
+
   test:
     runs-on: ubuntu-latest
 
