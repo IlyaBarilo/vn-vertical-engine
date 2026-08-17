@@ -1383,6 +1383,7 @@ test('projectId сохраняет повреждённый legacy-слот бе
 // Проверяет gameInit v2, блокировку поддельных и повторных результатов и продолжение сценария после игры.
 test('мини-игра обменивается сообщениями с движком', async function({ page }) {
   const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
 
   await openStory(page);
   await chooseRoute(page, 'Левая ветка');
@@ -1431,6 +1432,35 @@ test('мини-игра обменивается сообщениями с дв�
   await expect(page.locator('#textBox')).toHaveText('Игра завершена: 7');
   await advanceDialog(page);
   await expect(page.locator('#textBox')).toHaveText('Финал: left, результат: 7');
+  const messages = await readConsoleMessages(page);
+  expect(messages.some(function(message) {
+    return message.text.includes('[GAME DEPRECATION]');
+  })).toBe(false);
+  expect(pageErrors).toEqual([]);
+});
+
+// Прежний результат v2 с правильной сессией продолжает игру, но предупреждает разработчика о миграции до версии 1.0.
+test('результат мини-игры без protocolVersion принимается с предупреждением', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installConsoleCapture(page);
+
+  await openStory(page);
+  await chooseRoute(page, 'Левая ветка');
+  await advanceDialog(page);
+
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.getByRole('button', { name: 'Отправить результат без версии' }).click();
+
+  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toHaveText('Игра завершена: 6');
+  const messages = await readConsoleMessages(page);
+  const warnings = messages.filter(function(message) {
+    return message.method === 'warn' && message.text.includes('[GAME DEPRECATION]');
+  });
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0].text).toContain('Игра testGame не вернула protocolVersion');
+  expect(warnings[0].text).toContain('совместимость будет удалена в версии 1.0');
   expect(pageErrors).toEqual([]);
 });
 

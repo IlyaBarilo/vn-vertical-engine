@@ -3948,13 +3948,22 @@ btnCloseStatsGame.addEventListener("click", function (e) {
   swallowEvent(e);
 });
 
-// Принимает результат только от iframe активного запуска и сразу закрывает сессию для повторных сообщений.
+// Принимает результат только от iframe активного запуска, предупреждает о временной совместимости без версии и закрывает сессию.
 function handleGameResultMessage(event) {
   var activeGame = state.currentGame;
   var session = activeGame && activeGame.session;
 
   // В офлайн-режиме origin может быть "null", поэтому доверие строится на точном event.source и id сессии.
   if (!window.VN_GAME_PROTOCOL.isGameResultEventAllowed(event, session)) return;
+
+  // До версии 1.0 принимаем прежний результат v2 без номера, но сообщаем разработчику о необходимой миграции.
+  if (!Object.prototype.hasOwnProperty.call(event.data, "protocolVersion")) {
+    console.warn(
+      "[GAME DEPRECATION] Игра",
+      String(activeGame.gameId || "game"),
+      "не вернула protocolVersion. Такая совместимость будет удалена в версии 1.0."
+    );
+  }
 
   session.resultAccepted = true;
   closeGame(event.data);

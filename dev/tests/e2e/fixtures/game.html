@@ -20,6 +20,7 @@
   </dl>
   <button id="legacyResult" type="button" disabled>Отправить результат без сессии</button>
   <button id="wrongSession" type="button" disabled>Отправить неверную сессию</button>
+  <button id="versionlessResult" type="button" disabled>Отправить результат без версии</button>
   <button id="unsafeType" type="button" disabled>Отправить опасный тип</button>
   <button id="finishGame" type="button" disabled>Завершить игру</button>
 
@@ -74,6 +75,7 @@
       inspectSandboxBoundaries();
       document.getElementById("legacyResult").disabled = false;
       document.getElementById("wrongSession").disabled = false;
+      document.getElementById("versionlessResult").disabled = false;
       document.getElementById("unsafeType").disabled = false;
       document.getElementById("finishGame").disabled = false;
     }
@@ -96,6 +98,17 @@
         gameId: receivedInit.gameId,
         sessionId: "outdated-session",
         result: 99
+      }, "*");
+    }
+
+    // Имитирует прежний результат v2 с правильной сессией, но без возвращаемого номера протокола.
+    function sendVersionlessResult() {
+      if (!receivedInit) return;
+      window.parent.postMessage({
+        type: "gameResult",
+        gameId: receivedInit.gameId,
+        sessionId: receivedInit.sessionId,
+        result: 6
       }, "*");
     }
 
@@ -130,6 +143,7 @@
     window.addEventListener("message", handleGameMessage);
     document.getElementById("legacyResult").addEventListener("click", sendLegacyResult);
     document.getElementById("wrongSession").addEventListener("click", sendWrongSession);
+    document.getElementById("versionlessResult").addEventListener("click", sendVersionlessResult);
     document.getElementById("unsafeType").addEventListener("click", sendUnsafeType);
     document.getElementById("finishGame").addEventListener("click", finishGame);
   </script>
