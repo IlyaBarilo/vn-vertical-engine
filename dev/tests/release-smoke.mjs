@@ -688,7 +688,8 @@ test(`распакованный полный ZIP запускает движо�
       access(path.join(releaseRoot, 'engine', 'story-graph.js')),
       access(path.join(releaseRoot, 'engine', 'story-video-controller.js')),
       access(path.join(releaseRoot, 'engine', 'story-sandbox-loader.js')),
-      access(path.join(releaseRoot, 'engine', 'story-loader.js'))
+      access(path.join(releaseRoot, 'engine', 'story-loader.js')),
+      access(path.join(releaseRoot, 'engine', 'visual-transition-controller.js'))
     ]);
 
     const storySource = await readFile(fixtureStoryPath, 'utf8');

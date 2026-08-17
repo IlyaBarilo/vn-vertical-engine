@@ -167,16 +167,6 @@ if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
 
 let __charSeq = 0;
 let __activeCharSeq = 0;
-let __visualTransitionSeq = 0;
-
-var VISUAL_TRANSITION_OUT_MS = 80;
-var VISUAL_TRANSITION_IN_MS = 100;
-var VISUAL_TRANSITION_TOTAL_MS = VISUAL_TRANSITION_OUT_MS + VISUAL_TRANSITION_IN_MS;
-var elVisualTransitionCover = null;
-var elVisualBgCrossfade = null;
-var elVisualBgVideoCrossfade = null;
-var elVisualBlurBgCrossfade = null;
-var elVisualBlurBgVideoCrossfade = null;
 
 const UI_I18N = {
   en: {
@@ -2693,6 +2683,73 @@ var backgroundMediaController = window.VN_BACKGROUND_MEDIA_CONTROLLER.createBack
   clamp: clamp
 });
 
+// Возвращает visual controller только актуальные meta-настройки, не передавая ему глобальный STORY.
+function getVisualTransitionStoryMeta() {
+  return STORY && STORY.meta ? STORY.meta : {};
+}
+
+// Сообщает, что текущий фон отрисовывается панорамным renderer и не должен участвовать в обычном crossfade.
+function isCurrentVisualTransitionBackground360() {
+  return !!(backgroundScroll && backgroundScroll.backgroundOptions && backgroundScroll.backgroundOptions.is360 === true);
+}
+
+// Загружает растровый ассет через общую цепочку оптимизированных кандидатов до начала fade-out.
+function preloadVisualTransitionImage(src) {
+  var storyPath = String(src || "").trim();
+  if (!storyPath || areAllImageCandidatesFailed(storyPath)) return Promise.resolve(false);
+
+  return new Promise(function(resolve) {
+    loadRasterImageResource(storyPath, {
+      onLoad: function handleVisualTransitionPreloadSuccess() {
+        resolve(true);
+      },
+      onError: function handleVisualTransitionPreloadFailure() {
+        resolve(false);
+      }
+    });
+  });
+}
+
+// Проверяет video-src временного слоя через ту же политику ресурсов, что и основной фон.
+function resolveVisualTransitionVideoUrl(src) {
+  return resolveRuntimeStoryAssetUrl(src, "video");
+}
+
+// Контроллер владеет батчами, временными DOM-слоями, ожиданиями media и отменой визуальных переходов.
+var visualTransitionController = window.VN_VISUAL_TRANSITION_CONTROLLER.createVisualTransitionController({
+  document: document,
+  novelWindow: elNovelWindow,
+  backgroundImage: elBg,
+  backgroundVideo: elBgVideo,
+  panorama: elBg360,
+  character: elChar,
+  blurLayer: elBlurBgLayer,
+  blurImage: elBlurBgImage,
+  blurVideo: elBlurBgVideo,
+  getStoryMeta: getVisualTransitionStoryMeta,
+  isCurrentBackground360: isCurrentVisualTransitionBackground360,
+  prepareBackground: prepareBackgroundVisualAction,
+  prepareCharacter: prepareCharacterVisualAction,
+  applyBackground: applyPreparedBackgroundVisualState,
+  applyCharacter: applyPreparedCharacterVisualState,
+  applyPanoramaMarks: applyBg360Marks,
+  preloadImage: preloadVisualTransitionImage,
+  assignRasterImage: assignRasterImageToElement,
+  resolveVideoUrl: resolveVisualTransitionVideoUrl,
+  normalizeUrl: normalizeAssetUrl,
+  isVideoPath: isVideoAssetPath,
+  isBlurEnabled: isBackgroundMediaBlurEnabled,
+  normalizeScrollOptions: normalizeBackgroundScrollOptions,
+  normalizeMediaScale: normalizeMediaScale,
+  normalizeScrollStart: normalizeBackgroundScrollStart,
+  computeFocusedMediaPosition: computeFocusedMediaPosition,
+  resetScrollableMediaPosition: resetScrollableMediaPosition,
+  clamp: clamp,
+  requestAnimationFrame: window.requestAnimationFrame.bind(window),
+  cancelAnimationFrame: typeof window.cancelAnimationFrame === "function" ? window.cancelAnimationFrame.bind(window) : null,
+  warn: console.warn.bind(console)
+});
+
 function normalizeAssetUrl(url) {
   if (!url) return "";
   try {
@@ -3878,6 +3935,7 @@ window.addEventListener("pagehide", function (event) {
   if (!event || event.persisted !== true) {
     autosaveController.dispose();
     gameHost.dispose();
+    visualTransitionController.dispose();
     storyVideoController.dispose();
     backgroundMediaController.dispose();
     audioController.dispose();
@@ -5187,8 +5245,7 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
 function restart() {
   vnAutosaveBgScrollRestorePending = null;
   vnAutosaveStory360RestorePending = null;
-  __visualTransitionSeq++;
-  clearVisualTransitionClasses();
+  visualTransitionController.cancel();
 
   // Сбрасываем ошибки парсинга
   window.PARSE_ERRORS = [];
@@ -5375,8 +5432,8 @@ function runCurrent() {
       actionFromPending = true;
     } else {
       action = scene.actions[actionIndexBeforeInc];
-      if (isVisualBatchCandidate(action)) {
-        var visualBatchActions = collectVisualBatchActions(scene, actionIndexBeforeInc);
+      if (visualTransitionController.isCandidate(action)) {
+        var visualBatchActions = visualTransitionController.collectActions(scene, actionIndexBeforeInc);
         action = {
           type: "visual_batch",
           actions: visualBatchActions
@@ -5545,270 +5602,9 @@ function validateAndCollectSafeExpressionIdentifiers(expression) {
 //                   ACTION EXECUTION
 // =========================================================
 
-// Эти действия можно собрать в один визуальный переход до ближайшей реплики/выбора.
-function isVisualBatchCandidate(action) {
-  return !!(action && (
-    action.type === "bg" ||
-    action.type === "char" ||
-    action.type === "bg360marks"
-  ));
-}
-
-// Забирает подряд идущие визуальные действия, чтобы фон и персонаж менялись синхронно.
-function collectVisualBatchActions(scene, startIndex) {
-  var actions = [];
-  if (!scene || !Array.isArray(scene.actions)) return actions;
-  for (var i = startIndex; i < scene.actions.length; i++) {
-    var action = scene.actions[i];
-    if (!isVisualBatchCandidate(action)) break;
-    actions.push(action);
-  }
-  return actions;
-}
-
-function delayVisualTransition(ms) {
-  return new Promise(function(resolve) {
-    setTimeout(resolve, Math.max(0, ms || 0));
-  });
-}
-
-function waitVisualTransitionFrame() {
-  return new Promise(function(resolve) {
-    requestAnimationFrame(function() {
-      requestAnimationFrame(resolve);
-    });
-  });
-}
-
-// Читает transition/transitionMs с учетом [meta] и локального override в команде bg.
-function getVisualTransitionSettings(override) {
-  var meta = STORY && STORY.meta ? STORY.meta : {};
-  var modeSource = override && override.transition !== undefined && override.transition !== null
-    ? override.transition
-    : meta.transition;
-  var rawMode = String(modeSource === undefined || modeSource === null ? "fade" : modeSource).trim().toLowerCase();
-  var enabled = !(rawMode === "none" || rawMode === "instant" || rawMode === "off" || rawMode === "false" || rawMode === "0");
-  var mode = rawMode === "black" || rawMode === "white" ? "cover" : "fade";
-  var coverColor = rawMode === "white" ? "#fff" : "#000";
-  var durationSource = override && override.transitionMs !== undefined && override.transitionMs !== null
-    ? override.transitionMs
-    : meta.transitionMs;
-  var totalMs = typeof durationSource === "number" && isFinite(durationSource)
-    ? clamp(durationSource, 0, 2000)
-    : VISUAL_TRANSITION_TOTAL_MS;
-  var outRatio = VISUAL_TRANSITION_OUT_MS / VISUAL_TRANSITION_TOTAL_MS;
-  var outMs = Math.round(totalMs * outRatio);
-  var inMs = Math.max(0, totalMs - outMs);
-
-  return {
-    enabled: enabled && totalMs > 0,
-    mode: mode,
-    coverColor: coverColor,
-    outMs: outMs,
-    inMs: inMs
-  };
-}
-
-// CSS-переход берёт длительность из переменной, поэтому для fade-out и fade-in можно задавать разные части.
-function setVisualTransitionDuration(ms) {
-  document.documentElement.style.setProperty("--visualTransitionMs", Math.max(0, Math.round(ms || 0)) + "ms");
-}
-
-// Создаёт отдельную завесу перехода поверх сцены, не затрагивая сюжетный overlay.
-function ensureVisualTransitionCover() {
-  if (elVisualTransitionCover) return elVisualTransitionCover;
-  if (!elNovelWindow) return null;
-
-  var cover = document.createElement("div");
-  cover.className = "visual-transition-cover hidden";
-  cover.setAttribute("aria-hidden", "true");
-  elNovelWindow.appendChild(cover);
-  elVisualTransitionCover = cover;
-  return cover;
-}
-
-function showVisualTransitionCover(color, visible) {
-  var cover = ensureVisualTransitionCover();
-  if (!cover) return;
-  cover.style.background = color || "#000";
-  cover.classList.remove("hidden");
-  cover.classList.toggle("is-visible", !!visible);
-}
-
-function hideVisualTransitionCover() {
-  if (!elVisualTransitionCover) return;
-  elVisualTransitionCover.classList.remove("is-visible");
-  elVisualTransitionCover.classList.add("hidden");
-}
-
-// Временный слой нужен только для fade обычных изображений: новый фон проявляется поверх старого.
-function ensureVisualBgCrossfadeLayer() {
-  if (elVisualBgCrossfade) return elVisualBgCrossfade;
-  if (!elNovelWindow) return null;
-
-  var layer = document.createElement("img");
-  layer.className = "visual-bg-crossfade hidden";
-  layer.alt = "";
-  layer.draggable = false;
-  layer.setAttribute("aria-hidden", "true");
-  elNovelWindow.appendChild(layer);
-  elVisualBgCrossfade = layer;
-  return layer;
-}
-
-function hideVisualBgCrossfadeLayer() {
-  if (!elVisualBgCrossfade) return;
-  elVisualBgCrossfade.classList.remove("is-visible");
-  elVisualBgCrossfade.classList.add("hidden");
-  elVisualBgCrossfade.removeAttribute("src");
-}
-
-// Видео-crossfade использует отдельный немой video-слой, чтобы старый bgVideo не терял кадр до проявления нового.
-function ensureVisualBgVideoCrossfadeLayer() {
-  if (elVisualBgVideoCrossfade) return elVisualBgVideoCrossfade;
-  if (!elNovelWindow) return null;
-
-  var layer = document.createElement("video");
-  layer.className = "visual-bg-crossfade hidden";
-  layer.muted = true;
-  layer.defaultMuted = true;
-  layer.loop = true;
-  layer.preload = "auto";
-  if ("playsInline" in layer) layer.playsInline = true;
-  layer.setAttribute("playsinline", "");
-  layer.setAttribute("aria-hidden", "true");
-  elNovelWindow.appendChild(layer);
-  elVisualBgVideoCrossfade = layer;
-  return layer;
-}
-
-function hideVisualBgVideoCrossfadeLayer() {
-  if (!elVisualBgVideoCrossfade) return;
-  elVisualBgVideoCrossfade.classList.remove("is-visible");
-  elVisualBgVideoCrossfade.classList.add("hidden");
-  try {
-    elVisualBgVideoCrossfade.pause();
-  } catch (e) {}
-  elVisualBgVideoCrossfade.removeAttribute("src");
-  try {
-    elVisualBgVideoCrossfade.load();
-  } catch (e2) {}
-}
-
-// Размытый фон имеет отдельный DOM-слой, поэтому для него нужен свой временный overlay.
-function ensureVisualBlurBgCrossfadeLayer() {
-  if (elVisualBlurBgCrossfade) return elVisualBlurBgCrossfade;
-  if (!elBlurBgLayer) return null;
-
-  var layer = document.createElement("img");
-  layer.className = "blur-bg-image blur-bg-crossfade hidden";
-  layer.alt = "";
-  layer.draggable = false;
-  layer.setAttribute("aria-hidden", "true");
-  elBlurBgLayer.appendChild(layer);
-  elVisualBlurBgCrossfade = layer;
-  return layer;
-}
-
-function hideVisualBlurBgCrossfadeLayer() {
-  if (!elVisualBlurBgCrossfade) return;
-  elVisualBlurBgCrossfade.classList.remove("is-visible");
-  elVisualBlurBgCrossfade.classList.add("hidden");
-  elVisualBlurBgCrossfade.removeAttribute("src");
-}
-
-// Размытый video-overlay показывает первый кадр нового ролика под тем же blur-фильтром.
-function ensureVisualBlurBgVideoCrossfadeLayer() {
-  if (elVisualBlurBgVideoCrossfade) return elVisualBlurBgVideoCrossfade;
-  if (!elBlurBgLayer) return null;
-
-  var layer = document.createElement("video");
-  layer.className = "blur-bg-video blur-bg-crossfade hidden";
-  layer.muted = true;
-  layer.defaultMuted = true;
-  layer.loop = false;
-  layer.autoplay = false;
-  layer.preload = "auto";
-  if ("playsInline" in layer) layer.playsInline = true;
-  layer.setAttribute("playsinline", "");
-  layer.setAttribute("aria-hidden", "true");
-  elBlurBgLayer.appendChild(layer);
-  elVisualBlurBgVideoCrossfade = layer;
-  return layer;
-}
-
-function hideVisualBlurBgVideoCrossfadeLayer() {
-  if (!elVisualBlurBgVideoCrossfade) return;
-  elVisualBlurBgVideoCrossfade.classList.remove("is-visible");
-  elVisualBlurBgVideoCrossfade.classList.add("hidden");
-  try {
-    elVisualBlurBgVideoCrossfade.pause();
-  } catch (e) {}
-  elVisualBlurBgVideoCrossfade.removeAttribute("src");
-  try {
-    elVisualBlurBgVideoCrossfade.load();
-  } catch (e2) {}
-}
-
-// Загружает картинку до старта fade-out, чтобы после исчезновения старого кадра не было пустой паузы.
-function preloadImageForVisualTransition(src) {
-  var storyPath = String(src || "").trim();
-  if (!storyPath) return Promise.resolve(false);
-  if (areAllImageCandidatesFailed(storyPath)) return Promise.resolve(false);
-
-  return new Promise(function(resolve) {
-    loadRasterImageResource(storyPath, {
-      onLoad: function() {
-        resolve(true);
-      },
-      onError: function() {
-        resolve(false);
-      }
-    });
-  });
-}
-
-function setVisualTransitionTransparent(el, transparent) {
-  if (!el) return;
-  el.classList.toggle("visual-transition-transparent", !!transparent);
-}
-
-function clearVisualTransitionClasses() {
-  [elBg, elBgVideo, elBg360, elChar].forEach(function(el) {
-    setVisualTransitionTransparent(el, false);
-  });
-  hideVisualTransitionCover();
-  hideVisualBgCrossfadeLayer();
-  hideVisualBgVideoCrossfadeLayer();
-  hideVisualBlurBgCrossfadeLayer();
-  hideVisualBlurBgVideoCrossfadeLayer();
-}
-
+// Проверяет видимость основного слоя при подготовке финального состояния персонажа.
 function isElementVisibleForVisualTransition(el) {
   return !!(el && !el.classList.contains("hidden"));
-}
-
-function getVisibleBackgroundTransitionElements() {
-  return [elBg, elBgVideo, elBg360].filter(function(el) {
-    return isElementVisibleForVisualTransition(el);
-  });
-}
-
-function getPreparedBackgroundTargetElement(preparedBg) {
-  if (!preparedBg || !preparedBg.file) return null;
-  if (preparedBg.mediaOptions && preparedBg.mediaOptions.is360 === true) return elBg360;
-  if (isVideoAssetPath(preparedBg.file)) return elBgVideo;
-  return elBg;
-}
-
-// Crossfade безопасен для обычных фоновых media; 360 остаётся на отдельной схеме рендера.
-function canCrossfadePreparedBackground(preparedBg) {
-  return !!(
-    preparedBg &&
-    preparedBg.changesVisual &&
-    preparedBg.file &&
-    !(preparedBg.mediaOptions && preparedBg.mediaOptions.is360 === true)
-  );
 }
 
 function getCharacterSlotRatio(pos) {
@@ -5969,69 +5765,6 @@ function prepareCharacterVisualAction(action) {
   };
 }
 
-// Из набора подряд идущих визуальных команд оставляет финальный фон, финального персонажа и все метки 360.
-function buildVisualBatchPlan(actions) {
-  var plan = {
-    bg: null,
-    char: null,
-    marks: []
-  };
-
-  actions.forEach(function(action) {
-    if (!action) return;
-    if (action.type === "bg") {
-      plan.bg = prepareBackgroundVisualAction(action);
-    } else if (action.type === "char") {
-      plan.char = prepareCharacterVisualAction(action);
-    } else if (action.type === "bg360marks") {
-      plan.marks.push(action);
-    }
-  });
-
-  return plan;
-}
-
-function preloadVisualBatchPlan(plan) {
-  var waits = [];
-  if (plan && plan.bg && plan.bg.file && !isVideoAssetPath(plan.bg.file)) {
-    waits.push(preloadImageForVisualTransition(plan.bg.file));
-  }
-  if (plan && plan.char && plan.char.kind === "show" && plan.char.changesVisual) {
-    waits.push(preloadImageForVisualTransition(plan.char.normalizedSrc));
-  }
-  return Promise.all(waits);
-}
-
-function planHasVisualTransition(plan) {
-  return !!(plan && (
-    (plan.bg && plan.bg.changesVisual) ||
-    (plan.char && plan.char.changesVisual)
-  ));
-}
-
-function getVisualBatchFadeOutElements(plan) {
-  var elements = [];
-  if (plan && plan.bg && plan.bg.changesVisual && !canCrossfadePreparedBackground(plan.bg)) {
-    elements = elements.concat(getVisibleBackgroundTransitionElements());
-  }
-  if (plan && plan.char && plan.char.changesVisual && isElementVisibleForVisualTransition(elChar)) {
-    elements.push(elChar);
-  }
-  return elements;
-}
-
-function getVisualBatchFadeInElements(plan) {
-  var elements = [];
-  if (plan && plan.bg && plan.bg.changesVisual && !canCrossfadePreparedBackground(plan.bg)) {
-    var bgTarget = getPreparedBackgroundTargetElement(plan.bg);
-    if (bgTarget) elements.push(bgTarget);
-  }
-  if (plan && plan.char && plan.char.kind === "show" && plan.char.changesVisual && elChar) {
-    elements.push(elChar);
-  }
-  return elements;
-}
-
 function applyPreparedBackgroundVisualState(preparedBg) {
   if (!preparedBg) return;
   setBackground(preparedBg.file, preparedBg.fallback, preparedBg.volume, preparedBg.mediaOptions);
@@ -6099,443 +5832,29 @@ function applyPreparedCharacterVisualState(preparedChar) {
   });
 }
 
-function applyVisualBatchPlan(plan) {
-  if (!plan) return;
-  applyPreparedBackgroundVisualState(plan.bg);
-  plan.marks.forEach(function(action) {
-    applyBg360Marks(action);
-  });
-  applyPreparedCharacterVisualState(plan.char);
-}
-
-// Применяет батч без фона: фон для crossfade фиксируется после проявления временного слоя.
-function applyVisualBatchPlanWithoutBackground(plan) {
-  if (!plan) return;
-  plan.marks.forEach(function(action) {
-    applyBg360Marks(action);
-  });
-  applyPreparedCharacterVisualState(plan.char);
-}
-
-function copyBackgroundCrossfadePosition(layer) {
-  var source = null;
-  if (elBgVideo && !elBgVideo.classList.contains("hidden")) {
-    source = elBgVideo;
-  } else if (elBg && !elBg.classList.contains("hidden")) {
-    source = elBg;
-  } else {
-    source = elBg || elBgVideo;
-  }
-  if (!layer || !source) return;
-  layer.style.objectFit = source.style.objectFit || "";
-  layer.style.objectPosition = source.style.objectPosition || "";
-  layer.style.transform = source.style.transform || "";
-  layer.style.transformOrigin = source.style.transformOrigin || "";
-}
-
-// Применяет к временному overlay финальные scroll/focus/scale, чтобы после swap не было горизонтального рывка.
-function applyMediaScrollOptionsToTemporaryLayer(layer, options, containerEl) {
-  if (!layer) return;
-  var normalized = normalizeBackgroundScrollOptions(options);
-  var container = containerEl || elNovelWindow;
-  var mediaScale = normalizeMediaScale(normalized.scale, 1);
-  var hasTransform =
-    normalized.enabled ||
-    typeof normalized.focusX === "number" ||
-    typeof normalized.focusY === "number" ||
-    Math.abs(mediaScale - 1) > 1e-6;
-
-  if (!hasTransform) {
-    resetScrollableMediaPosition(layer);
-    return;
-  }
-
-  var position = typeof normalized.focusX === "number"
-    ? computeFocusedMediaPosition(layer, container, normalized.focusX, mediaScale)
-    : normalizeBackgroundScrollStart(normalized.start, 0.5);
-  var x = clamp(position, 0, 1) * 100;
-  var yCss = "center";
-  var yOrigin = "50%";
-  if (typeof normalized.focusY === "number") {
-    var yFrac = clamp(normalized.focusY, 0, 1);
-    yCss = (yFrac * 100).toFixed(3) + "%";
-    yOrigin = yCss;
-  }
-  layer.style.objectPosition = x.toFixed(3) + "% " + yCss;
-  layer.style.transformOrigin = x.toFixed(3) + "% " + yOrigin;
-  layer.style.transform = Math.abs(mediaScale - 1) > 1e-6 ? "scale(" + mediaScale + ")" : "";
-}
-
-// Дожидается размеров картинки overlay: focusX нельзя корректно посчитать до naturalWidth/naturalHeight.
-function loadVisualCrossfadeImage(imageEl, src) {
-  var storyPath = String(src || "").trim();
-  if (!imageEl || !storyPath) return Promise.resolve(false);
-
-  return new Promise(function(resolve) {
-    var done = false;
-    function finish(ok) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(!!ok);
-    }
-
-    var timer = setTimeout(function() {
-      finish(!!(imageEl.naturalWidth && imageEl.naturalHeight));
-    }, 5000);
-
-    assignRasterImageToElement(imageEl, storyPath, {
-      onLoad: function() {
-        finish(true);
-      },
-      onAllFailed: function() {
-        finish(false);
-      }
-    });
-  });
-}
-
-// Загружает временный video-слой до проявления, чтобы зритель не видел пустой кадр.
-function loadVisualCrossfadeVideo(videoEl, src, shouldPlay) {
-  var normalizedSrc = resolveRuntimeStoryAssetUrl(src || "", "video");
-  if (!videoEl || !normalizedSrc) return Promise.resolve(false);
-
-  return new Promise(function(resolve) {
-    var done = false;
-    function finish(ok) {
-      if (done) return;
-      done = true;
-      videoEl.onloadeddata = null;
-      videoEl.onerror = null;
-      clearTimeout(timer);
-      resolve(!!ok);
-    }
-
-    var timer = setTimeout(function() {
-      finish(false);
-    }, 5000);
-
-    videoEl.onloadeddata = function() {
-      if (normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") !== normalizedSrc) return;
-      if (shouldPlay) {
-        var playPromise = videoEl.play();
-        if (playPromise && typeof playPromise.catch === "function") {
-          playPromise.catch(function() {});
-        }
-      } else {
-        try {
-          videoEl.pause();
-          videoEl.currentTime = 0;
-        } catch (e) {}
-      }
-      finish(true);
-    };
-    videoEl.onerror = function() {
-      finish(false);
-    };
-    videoEl.src = normalizedSrc;
-    try {
-      videoEl.load();
-    } catch (e2) {}
-  });
-}
-
-// Ждёт, пока основной bgVideo примет новый src; overlay остаётся видимым и закрывает перезагрузку.
-function waitForBackgroundVideoReady(normalizedSrc) {
-  if (!elBgVideo || !normalizedSrc) return Promise.resolve(false);
-  if (
-    normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "") === normalizedSrc &&
-    elBgVideo.readyState >= 2 &&
-    !elBgVideo.classList.contains("hidden")
-  ) {
-    return Promise.resolve(true);
-  }
-
-  return new Promise(function(resolve) {
-    var done = false;
-    function finish(ok) {
-      if (done) return;
-      done = true;
-      elBgVideo.removeEventListener("loadeddata", onLoaded);
-      elBgVideo.removeEventListener("error", onError);
-      clearTimeout(timer);
-      resolve(!!ok);
-    }
-    function onLoaded() {
-      if (normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "") !== normalizedSrc) return;
-      finish(true);
-    }
-    function onError() {
-      finish(false);
-    }
-
-    var timer = setTimeout(function() {
-      finish(false);
-    }, 5000);
-    elBgVideo.addEventListener("loadeddata", onLoaded);
-    elBgVideo.addEventListener("error", onError);
-  });
-}
-
-// Ждёт финальный blur-дубликат видео, чтобы временный blur-overlay не исчезал раньше готового кадра.
-function waitForBlurBackgroundVideoReady(normalizedSrc) {
-  if (!STORY || !STORY.meta || !STORY.meta.blurBackground) return Promise.resolve(true);
-  if (!elBlurBgVideo || !normalizedSrc) return Promise.resolve(true);
-  if (
-    normalizeAssetUrl(elBlurBgVideo.currentSrc || elBlurBgVideo.src || "") === normalizedSrc &&
-    elBlurBgVideo.readyState >= 2 &&
-    !elBlurBgVideo.classList.contains("hidden")
-  ) {
-    return Promise.resolve(true);
-  }
-
-  return new Promise(function(resolve) {
-    var done = false;
-    function finish(ok) {
-      if (done) return;
-      done = true;
-      elBlurBgVideo.removeEventListener("loadeddata", onLoaded);
-      elBlurBgVideo.removeEventListener("error", onError);
-      clearTimeout(timer);
-      resolve(!!ok);
-    }
-    function onLoaded() {
-      if (normalizeAssetUrl(elBlurBgVideo.currentSrc || elBlurBgVideo.src || "") !== normalizedSrc) return;
-      finish(true);
-    }
-    function onError() {
-      finish(false);
-    }
-
-    var timer = setTimeout(function() {
-      finish(false);
-    }, 5000);
-    elBlurBgVideo.addEventListener("loadeddata", onLoaded);
-    elBlurBgVideo.addEventListener("error", onError);
-  });
-}
-
-// Готовит верхний blur-слой только когда размытие включено: он проявляется вместе с основным фоном.
-function prepareBlurBackgroundImageCrossfade(src) {
-  if (!src) return null;
-  if (!STORY || !STORY.meta || !STORY.meta.blurBackground) return null;
-  if (!elBlurBgLayer || !elBlurBgImage) return null;
-
-  var layer = ensureVisualBlurBgCrossfadeLayer();
-  if (!layer) return null;
-
-  // Старый blur-слой не трогаем до конца fade, иначе он исчезнет раньше основного фона.
-  elBlurBgLayer.classList.remove("hidden");
-  elBlurBgLayer.style.display = "block";
-  layer.classList.remove("is-visible");
-  layer.classList.remove("hidden");
-  assignRasterImageToElement(layer, src, {});
-  return layer;
-}
-
-// Для video-blur готовим первый кадр нового ролика, а при наличии fallback можем проявить статичную картинку.
-function prepareBlurBackgroundVideoCrossfade(preparedBg) {
-  if (!preparedBg || !preparedBg.normalizedSrc) return Promise.resolve(null);
-  if (!STORY || !STORY.meta || !STORY.meta.blurBackground) return Promise.resolve(null);
-  if (!elBlurBgLayer) return Promise.resolve(null);
-
-  var fallbackSrc = normalizeAssetUrl(preparedBg.fallback || "");
-  if (fallbackSrc && !isVideoAssetPath(fallbackSrc)) {
-    return Promise.resolve(prepareBlurBackgroundImageCrossfade(fallbackSrc));
-  }
-
-  var layer = ensureVisualBlurBgVideoCrossfadeLayer();
-  if (!layer) return Promise.resolve(null);
-
-  // Старый blur-video остаётся под временным слоем, пока новый кадр не проявится полностью.
-  elBlurBgLayer.classList.remove("hidden");
-  elBlurBgLayer.style.display = "block";
-  layer.classList.remove("is-visible");
-  layer.classList.remove("hidden");
-  return loadVisualCrossfadeVideo(layer, preparedBg.normalizedSrc, false).then(function(ok) {
-    if (!ok) {
-      hideVisualBlurBgVideoCrossfadeLayer();
-      return null;
-    }
-    return layer;
-  });
-}
-
-// Новый фон и его blur-дубликат проявляются поверх старых слоев, затем становятся основными.
-function runBackgroundMediaCrossfade(preparedBg, transitionSettings) {
-  if (!canCrossfadePreparedBackground(preparedBg)) {
-    return Promise.resolve(false);
-  }
-
-  var isVideo = isVideoAssetPath(preparedBg.file);
-  var layer = isVideo ? ensureVisualBgVideoCrossfadeLayer() : ensureVisualBgCrossfadeLayer();
-  if (!layer) return Promise.resolve(false);
-
-  copyBackgroundCrossfadePosition(layer);
-  setVisualTransitionDuration(transitionSettings.inMs);
-  layer.classList.remove("is-visible");
-  layer.classList.remove("hidden");
-
-  var mediaReady = isVideo
-    ? loadVisualCrossfadeVideo(layer, preparedBg.normalizedSrc, true)
-    : loadVisualCrossfadeImage(layer, preparedBg.file || preparedBg.normalizedSrc);
-  var blurReady = isVideo
-    ? prepareBlurBackgroundVideoCrossfade(preparedBg)
-    : Promise.resolve(prepareBlurBackgroundImageCrossfade(preparedBg.file || preparedBg.normalizedSrc));
-
-  return Promise.all([mediaReady, blurReady]).then(function(results) {
-    if (!results[0]) {
-      if (isVideo) hideVisualBgVideoCrossfadeLayer();
-      else hideVisualBgCrossfadeLayer();
-      applyPreparedBackgroundVisualState(preparedBg);
-      return false;
-    }
-    var blurLayer = results[1];
-    applyMediaScrollOptionsToTemporaryLayer(layer, preparedBg.mediaOptions, elNovelWindow);
-    if (isVideo && blurLayer && String(blurLayer.tagName || "").toLowerCase() === "video") {
-      applyMediaScrollOptionsToTemporaryLayer(blurLayer, preparedBg.mediaOptions, elNovelWindow);
-    }
-    return waitVisualTransitionFrame().then(function() {
-      layer.classList.add("is-visible");
-      if (blurLayer) blurLayer.classList.add("is-visible");
-      return delayVisualTransition(transitionSettings.inMs);
-    }).then(function() {
-      var finalVideoReady = isVideo ? waitForBackgroundVideoReady(preparedBg.normalizedSrc) : Promise.resolve(true);
-      applyPreparedBackgroundVisualState(preparedBg);
-      return finalVideoReady;
-    }).then(function() {
-      if (!isVideo || (preparedBg.fallback && !isVideoAssetPath(preparedBg.fallback))) return true;
-      return waitForBlurBackgroundVideoReady(preparedBg.normalizedSrc);
-    }).then(function() {
-      return waitVisualTransitionFrame();
-    }).then(function() {
-      if (isVideo) hideVisualBgVideoCrossfadeLayer();
-      else hideVisualBgCrossfadeLayer();
-      hideVisualBlurBgCrossfadeLayer();
-      hideVisualBlurBgVideoCrossfadeLayer();
-      return true;
-    });
-  });
-}
-
-// Переход через завесу: кадр меняется, пока экран полностью закрыт чёрным/белым цветом.
-function runCoverVisualTransition(plan, transitionSettings, seq) {
-  return preloadVisualBatchPlan(plan).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    setVisualTransitionDuration(transitionSettings.outMs);
-    showVisualTransitionCover(transitionSettings.coverColor, false);
-    return waitVisualTransitionFrame();
-  }).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    showVisualTransitionCover(transitionSettings.coverColor, true);
-    return delayVisualTransition(transitionSettings.outMs);
-  }).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    applyVisualBatchPlan(plan);
-    setVisualTransitionDuration(transitionSettings.inMs);
-    return waitVisualTransitionFrame();
-  }).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    showVisualTransitionCover(transitionSettings.coverColor, false);
-    return delayVisualTransition(transitionSettings.inMs);
-  }).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-    hideVisualTransitionCover();
-  });
-}
-
-// Обычный fade-through: старые изменившиеся слои исчезают, затем новые появляются.
-function runFadeVisualTransition(plan, transitionSettings, seq) {
-  var hasBgCrossfade = canCrossfadePreparedBackground(plan && plan.bg);
-  return preloadVisualBatchPlan(plan).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    var fadeOutElements = getVisualBatchFadeOutElements(plan);
-    setVisualTransitionDuration(transitionSettings.outMs);
-    fadeOutElements.forEach(function(el) {
-      setVisualTransitionTransparent(el, true);
-    });
-
-    return delayVisualTransition(fadeOutElements.length > 0 ? transitionSettings.outMs : 0);
-  }).then(function() {
-    if (seq !== __visualTransitionSeq) return;
-
-    var fadeInElements = getVisualBatchFadeInElements(plan);
-    setVisualTransitionDuration(transitionSettings.inMs);
-    fadeInElements.forEach(function(el) {
-      setVisualTransitionTransparent(el, true);
-    });
-
-    if (hasBgCrossfade) {
-      applyVisualBatchPlanWithoutBackground(plan);
-    } else {
-      applyVisualBatchPlan(plan);
-    }
-
-    return waitVisualTransitionFrame().then(function() {
-      if (seq !== __visualTransitionSeq) return;
-      fadeInElements.forEach(function(el) {
-        setVisualTransitionTransparent(el, false);
-      });
-      var waits = [];
-      if (fadeInElements.length > 0) {
-        waits.push(delayVisualTransition(transitionSettings.inMs));
-      }
-      if (hasBgCrossfade) {
-        waits.push(runBackgroundMediaCrossfade(plan.bg, transitionSettings));
-      }
-      return Promise.all(waits);
-    });
-  });
-}
-
-// Выполняет общий короткий переход для финального фона и персонажа, затем продолжает сценарий.
+// Передаёт батч контроллеру и после завершения только актуального перехода возобновляет runCurrent.
 function executeVisualBatch(actions) {
-  if (!actions || actions.length === 0) return false;
-
-  var plan = buildVisualBatchPlan(actions);
-  var bgAction = plan && plan.bg && plan.bg.action ? plan.bg.action : null;
-  var hasBgTransitionOverride = !!(bgAction && (bgAction.transition !== undefined || bgAction.transitionMs !== undefined));
-  var transitionSettings = getVisualTransitionSettings(bgAction);
-  // Для переходов с 360 по умолчанию используем резкую смену (none), но не ломаем явный override в bg.
-  var currentIs360 = !!(backgroundScroll && backgroundScroll.backgroundOptions && backgroundScroll.backgroundOptions.is360 === true);
-  var nextIs360 = !!(plan && plan.bg && plan.bg.mediaOptions && plan.bg.mediaOptions.is360 === true);
-  var has360InSwap = currentIs360 || nextIs360;
-  if (has360InSwap && !hasBgTransitionOverride) {
-    transitionSettings.enabled = false;
-  }
-  var hasTransition = planHasVisualTransition(plan) && transitionSettings.enabled;
-  var hasCharacterShow = !!(plan.char && plan.char.kind === "show");
+  var execution = visualTransitionController.execute(actions);
+  var hasCharacterShow = !!execution.hasCharacterShow;
 
   if (hasCharacterShow && !firstScreenMetrics.firstScreenShown) {
     firstScreenMetrics.waitingForCharacter = true;
   }
 
-  if (!hasTransition) {
-    applyVisualBatchPlan(plan);
+  if (!execution.async) {
     if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
     return false;
   }
 
-  var seq = ++__visualTransitionSeq;
-  var transitionPromise = transitionSettings.mode === "cover"
-    ? runCoverVisualTransition(plan, transitionSettings, seq)
-    : runFadeVisualTransition(plan, transitionSettings, seq);
-
-  transitionPromise.then(function() {
-    if (seq !== __visualTransitionSeq) return;
-    clearVisualTransitionClasses();
+  execution.promise.then(function continueAfterVisualTransition(shouldContinue) {
+    if (!shouldContinue) return;
     if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
     state.nextLocked = false;
     state.waitingNext = false;
     runCurrent();
-  }).catch(function(err) {
-    console.warn("[VISUAL BATCH] transition failed:", err);
-    clearVisualTransitionClasses();
+  }).catch(function recoverUnexpectedVisualTransitionFailure(error) {
+    console.warn("[VISUAL BATCH] unexpected controller failure:", error);
+    visualTransitionController.cancel();
     if (hasCharacterShow) firstScreenMetrics.waitingForCharacter = false;
     state.nextLocked = false;
     state.waitingNext = false;
@@ -10985,8 +10304,7 @@ function gotoScene(sceneId) {
   
   // ПОВЫШАЕМ СЧЁТЧИК, чтобы отменить все ожидающие загрузки
   __activeCharSeq++;
-  __visualTransitionSeq++;
-  clearVisualTransitionClasses();
+  visualTransitionController.cancel();
 
   state.sceneId = sceneId;
   currentSceneId = sceneId;

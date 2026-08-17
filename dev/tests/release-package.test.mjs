@@ -328,6 +328,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-video-controller.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/visual-transition-controller.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/visual-transition-controller.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('${APP_NAME}/SECURITY.md'));
   assert.ok(candidateSource.includes('${APP_NAME}-update/SECURITY.md'));
   assert.ok(candidateSource.includes('${APP_NAME}/docs/security/threat-model.md'));

@@ -425,7 +425,8 @@ project/
 │   ├── story-graph.js                 анализ переходов, достижимости и циклов
 │   ├── story-video-controller.js      lifecycle сюжетных видео и постеров
 │   ├── story-sandbox-loader.js         изолированная загрузка авторских JS-данных
-│   └── story-loader.js                загрузка и разбор сценария
+│   ├── story-loader.js                загрузка и разбор сценария
+│   └── visual-transition-controller.js батчи, fade/crossfade и lifecycle переходов
 │
 ├── assets/                            материалы истории
 │   ├── backgrounds/                   фоны, широкие изображения и видео

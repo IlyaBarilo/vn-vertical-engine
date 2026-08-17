@@ -122,6 +122,7 @@ jobs:
           cp engine/story-video-controller.js "build/$APP_NAME/engine/"
           cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
           cp engine/story-loader.js "build/$APP_NAME/engine/"
+          cp engine/visual-transition-controller.js "build/$APP_NAME/engine/"
 
           cp story-example.js "build/$APP_NAME/docs/examples/"
           cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
@@ -224,6 +225,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/story-graph.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-video-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/visual-transition-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
@@ -245,6 +247,7 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/story-graph.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-video-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/visual-transition-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/SECURITY.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/security/threat-model.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt

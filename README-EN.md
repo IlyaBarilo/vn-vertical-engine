@@ -305,7 +305,8 @@ project/
 │   ├── story-graph.js                 transitions, reachability, and cycle analysis
 │   ├── story-video-controller.js      story video and poster lifecycle
 │   ├── story-sandbox-loader.js         isolated author JS data loader
-│   └── story-loader.js                story loading and parsing
+│   ├── story-loader.js                story loading and parsing
+│   └── visual-transition-controller.js batches, fade/crossfade, and transition lifecycle
 │
 ├── assets/
 │   ├── backgrounds/                   backgrounds and video

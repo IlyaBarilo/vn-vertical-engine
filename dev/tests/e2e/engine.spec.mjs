@@ -80,6 +80,38 @@ function createMediaControllerStorySource() {
   ].join('\n');
 }
 
+// Создаёт два последовательных image-crossfade и длинный второй переход для проверки отмены через restart.
+function createVisualTransitionStorySource() {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Visual transitions E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = fade',
+    'transitionMs = 700',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    'hall file=assets/backgrounds/bg-campus-hall.jpg',
+    'cafe file=assets/backgrounds/bg-campus-cafe.jpg',
+    '',
+    '[scene]',
+    'scene intro',
+    'bg hall transition=none',
+    '"Первый фон перехода"',
+    'bg cafe transition=fade transitionMs=700',
+    '"Второй фон перехода"',
+    'bg hall transition=fade transitionMs=1400',
+    '"Третий фон перехода"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт минимальную историю с 360-фоном, чтобы проверять CSS-only загрузку в настоящем runtime движка.
 function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   return [
@@ -652,6 +684,39 @@ test('медиаконтроллеры сохраняют fallback и пропу
     ];
   });
   expect(moduleTypes).toEqual(['function', 'function', 'function']);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет настоящий image-crossfade и отмену незавершённого поколения перехода через restart в обоих браузерах.
+test('visual transition controller завершает crossfade и очищает его при restart', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page, '/', {
+    storySource: createVisualTransitionStorySource(),
+    expectedText: 'Первый фон перехода'
+  });
+
+  await advanceDialog(page);
+  const crossfadeLayer = page.locator('#novelWindow > img.visual-bg-crossfade');
+  await expect(crossfadeLayer).toHaveClass(/is-visible/);
+  await expect(page.locator('#textBox')).toHaveText('Второй фон перехода');
+  await expect(page.locator('#bgLayer')).toHaveAttribute('src', /bg-campus-cafe\.jpg$/);
+  await expect(crossfadeLayer).toHaveClass(/hidden/);
+
+  await advanceDialog(page);
+  await expect(crossfadeLayer).toHaveClass(/is-visible/);
+  await page.locator('#btnRestart').click({ force: true });
+  await expect(page.locator('#textBox')).toHaveText('Первый фон перехода');
+  await expect(page.locator('#bgLayer')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);
+  await expect(crossfadeLayer).toHaveClass(/hidden/);
+
+  const runtimeState = await page.evaluate(function readVisualTransitionRuntimeState() {
+    return {
+      moduleType: typeof window.VN_VISUAL_TRANSITION_CONTROLLER?.createVisualTransitionController,
+      transparentElements: document.querySelectorAll('.visual-transition-transparent').length,
+      visibleCrossfades: document.querySelectorAll('.visual-bg-crossfade.is-visible, .blur-bg-crossfade.is-visible').length
+    };
+  });
+  expect(runtimeState).toEqual({ moduleType: 'function', transparentElements: 0, visibleCrossfades: 0 });
   expect(pageErrors).toEqual([]);
 });
 

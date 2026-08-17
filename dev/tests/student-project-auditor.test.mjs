@@ -270,6 +270,7 @@ test('аудитор обнаруживает опасные файлы в по�
     'engine/story-video-controller.js',
     'engine/story-loader.js',
     'engine/story-sandbox-loader.js',
+    'engine/visual-transition-controller.js',
     'lib/mermaid.min.js',
     'lib/jsrsasign-all-min.js',
     'lib/three.min.js',
