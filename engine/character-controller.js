@@ -68,9 +68,15 @@
       return setTimeoutFn(callback, 0);
     };
     var cancelAnimationFrameFn = options.cancelAnimationFrame || clearTimeoutFn;
-    var warn = typeof options.warn === "function" ? options.warn : function() {};
-    var log = typeof options.log === "function" ? options.log : function() {};
-    var verbose = typeof options.writeVerbose === "function" ? options.writeVerbose : function() {};
+    var warn = typeof options.warn === "function" ? options.warn : function() {
+      // Диагностика необязательна для автономной работы контроллера.
+    };
+    var log = typeof options.log === "function" ? options.log : function() {
+      // Диагностика необязательна для автономной работы контроллера.
+    };
+    var verbose = typeof options.writeVerbose === "function" ? options.writeVerbose : function() {
+      // Подробная диагностика необязательна для автономной работы контроллера.
+    };
     var focusOptions = cloneFocusOptions(DEFAULT_FOCUS_OPTIONS);
     var issuedSequence = 0;
     var activeSequence = 0;

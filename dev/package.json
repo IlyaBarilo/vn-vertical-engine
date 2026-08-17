@@ -16,6 +16,7 @@
     "test:autosave": "node --test tests/autosave-storage.test.mjs tests/autosave-payload.test.mjs tests/autosave-controller.test.mjs",
     "test:ui": "node --test tests/ui-config-runtime.test.mjs",
     "test:logs": "node --test tests/runtime-logging.test.mjs",
+    "test:defensive": "node --test tests/runtime-defensive-contracts.test.mjs tests/audio-controller.test.mjs tests/background-media-controller.test.mjs tests/panorama-package-controller.test.mjs tests/story-sandbox-loader.test.mjs",
     "test:dependencies": "node --test tests/dependencies.test.mjs",
     "test:license": "node --test tests/license-runtime.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs tests/game-host.test.mjs",

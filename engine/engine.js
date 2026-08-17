@@ -57,7 +57,9 @@ function writeRuntimeDebug() {
   if (!isRuntimeDebugModeEnabled() && !isExplicitDebugCategoryEnabled("runtime")) return;
   try {
     console.log.apply(console, arguments);
-  } catch (error) {}
+  } catch (error) {
+    // Недоступная консоль не должна влиять на выполнение runtime.
+  }
 }
 
 // Оставляет старые подробные сообщения только для целевой диагностики ?Debug=runtime или ?Debug=all.
@@ -65,7 +67,9 @@ function writeRuntimeVerbose() {
   if (!isExplicitDebugCategoryEnabled("runtime")) return;
   try {
     console.log.apply(console, arguments);
-  } catch (error) {}
+  } catch (error) {
+    // Недоступная консоль не должна влиять на выполнение runtime.
+  }
 }
 
 // =========================================================
@@ -2527,7 +2531,9 @@ function handleBackgroundScrollPointerDown(e) {
     if (typeof elNovelWindow.setPointerCapture === "function") {
       try {
         elNovelWindow.setPointerCapture(e.pointerId);
-      } catch (captureError) {}
+      } catch (captureError) {
+        // Pointer capture необязателен: drag продолжает отслеживаться по pointerId.
+      }
     }
   }
 }
@@ -2597,7 +2603,9 @@ function handleBackgroundScrollPointerUp(e) {
     if (typeof elNovelWindow.releasePointerCapture === "function") {
       try {
         elNovelWindow.releasePointerCapture(e.pointerId);
-      } catch (captureError) {}
+      } catch (captureError) {
+        // Pointer capture мог быть уже снят браузером, состояние drag всё равно очищается ниже.
+      }
     }
   }
 
@@ -2885,7 +2893,9 @@ function resolveRuntimeStoryAssetUrl(path, kind) {
       var internalCheck = policy.validate(relative, kind);
       if (internalCheck.ok) return absolute.href;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Некорректный URL обрабатывается общей блокировкой ресурса ниже.
+  }
 
   console.warn("[SECURITY] Заблокирован недопустимый путь ресурса:", sanitizeDiagnosticResource(value), kind || "asset");
   return "";
@@ -4414,7 +4424,9 @@ function applyAutosaveBgmSnapshot(bgmSnap) {
         audio.bgm.currentTime = resumeAt;
       } catch (timeError) {
         audio.bgm.addEventListener("loadedmetadata", function restoreBgmTimeOnce() {
-          try { audio.bgm.currentTime = resumeAt; } catch (e) {}
+          try { audio.bgm.currentTime = resumeAt; } catch (e) {
+            // Если seek недоступен и после metadata, восстановление безопасно продолжится с начала трека.
+          }
         }, { once: true });
       }
     }
@@ -4872,7 +4884,9 @@ function applyAutosavePayload(data, raw) {
       try {
         var restoreBgAsset = resolveBackgroundAsset("@bg." + state.currentBgId);
         restoreIs360 = !!(restoreBgAsset && restoreBgAsset.is360);
-      } catch (e) {}
+      } catch (e) {
+        // Повреждённая ссылка ассета не отменяет восстановление по уже сохранённому пути пакета.
+      }
     }
     if (restoreIs360) {
       mergedScroll = mergeMediaFocusOptions(mergedScroll, null, undefined, null, true);
@@ -4887,7 +4901,9 @@ function applyAutosavePayload(data, raw) {
         if (blurAsset && blurAsset.fallback && !isBg360PackPath(blurAsset.fallback)) {
           blurFb = blurAsset.fallback;
         }
-      } catch (e) {}
+      } catch (e) {
+        // Необязательный blur fallback не должен отменять восстановление основного фона.
+      }
     }
     setBackground(restoreBgSnapshot.src, blurFb, null, mergedScroll);
     // После успешного восстановления обновляем кэш унаследованного визуала.
@@ -7439,7 +7455,9 @@ function handleBg360PointerDown(e) {
     bg360Runtime.dragPointerId = null;
   }
   if (elBg360.setPointerCapture) {
-    try { elBg360.setPointerCapture(e.pointerId); } catch (err) {}
+    try { elBg360.setPointerCapture(e.pointerId); } catch (err) {
+      // Pointer capture необязателен: обзор продолжает отслеживаться по pointerId.
+    }
   }
   updateBg360CursorClasses();
   e.preventDefault();
@@ -7479,7 +7497,9 @@ function handleBg360PointerMove(e) {
 // Очищает pointer-состояние при завершении касания/мыши.
 function handleBg360PointerUpLike(e) {
   if (elBg360 && elBg360.releasePointerCapture) {
-    try { elBg360.releasePointerCapture(e.pointerId); } catch (err) {}
+    try { elBg360.releasePointerCapture(e.pointerId); } catch (err) {
+      // Pointer capture мог быть уже снят браузером, runtime-состояние очищается ниже.
+    }
   }
   var travel = bg360Runtime.pointerTravelSum || 0;
   delete bg360Runtime.pointers[e.pointerId];
@@ -7695,7 +7715,9 @@ function clearBg360MediaResources() {
     bg360Runtime.texture.dispose();
   }
   if (bg360Runtime.video) {
-    try { bg360Runtime.video.pause(); } catch (e) {}
+    try { bg360Runtime.video.pause(); } catch (e) {
+      // Ошибка Media API не должна прерывать освобождение остальных ресурсов панорамы.
+    }
     bg360Runtime.video.removeAttribute("src");
     bg360Runtime.video.load();
   }
@@ -8217,7 +8239,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     bg360Runtime.video = video;
     video.onloadeddata = function() {
       if (!isCurrentBg360Load()) {
-        try { video.pause(); } catch (e) {}
+        try { video.pause(); } catch (e) {
+          // Устаревшая загрузка уже исключена из runtime и очищается best-effort.
+        }
         return;
       }
       var texture = new window.THREE.VideoTexture(video);
@@ -8228,7 +8252,9 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       if (!isCurrentBg360Load()) return;
       var playPromise = video.play();
       if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(function() {});
+        playPromise.catch(function ignorePanoramaAutoplayFailure() {
+          // Запрет autoplay оставляет первый декодированный кадр и не ломает панораму.
+        });
       }
     };
     video.onerror = onLoadError;
@@ -9519,7 +9545,9 @@ function detectConfidentPhoneUserAgent() {
     if (uad && uad.mobile === true && (/Android/i.test(ua) || /iPhone/i.test(ua))) {
       return true;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Недоступный userAgentData оставляет консервативный результат проверки по userAgent.
+  }
   return false;
 }
 
@@ -14649,7 +14677,9 @@ function initPanzoom() {
     panzoomState.activePointers[e.pointerId] = pointer;
 
     if (panzoomWrapper.setPointerCapture) {
-      try { panzoomWrapper.setPointerCapture(e.pointerId); } catch (err) {}
+      try { panzoomWrapper.setPointerCapture(e.pointerId); } catch (err) {
+        // Pointer capture необязателен: жест продолжает отслеживаться по pointerId.
+      }
     }
 
     if (getPanzoomPointerList().length >= 2) {
@@ -14721,7 +14751,9 @@ function initPanzoom() {
     e.preventDefault();
 
     if (panzoomWrapper.releasePointerCapture) {
-      try { panzoomWrapper.releasePointerCapture(e.pointerId); } catch (err) {}
+      try { panzoomWrapper.releasePointerCapture(e.pointerId); } catch (err) {
+        // Pointer capture мог быть уже снят браузером, состояние жеста очищается ниже.
+      }
     }
 
     delete panzoomState.activePointers[e.pointerId];

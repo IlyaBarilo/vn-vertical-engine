@@ -121,6 +121,12 @@ npm.cmd --prefix dev run test:ui
 npm.cmd --prefix dev run test:logs
 ```
 
+Receiver-sensitive browser API и отказоустойчивая очистка media/Blob-ресурсов:
+
+```powershell
+npm.cmd --prefix dev run test:defensive
+```
+
 Bundled-зависимости и текущий лицензионный runtime:
 
 ```powershell

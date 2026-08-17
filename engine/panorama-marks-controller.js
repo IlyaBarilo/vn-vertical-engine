@@ -1712,7 +1712,9 @@
         var r = elBg360Marks.getBoundingClientRect();
         locX = clientX - r.left;
         locY = clientY - r.top;
-      } catch (e) {}
+      } catch (e) {
+        // Без геометрии контейнера переданные координаты считаются уже локальными.
+      }
     
       var bestIdx = -1;
       var bestScore = Infinity;

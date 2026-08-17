@@ -353,8 +353,12 @@
             bgm.src = newSrc;
             bgm.currentTime = 0;
             var playPromise = bgm.play();
-            if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function ignoreFadePlayFailure() {});
-          } catch (error) {}
+            if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function ignoreFadePlayFailure() {
+              // Ожидаемый запрет autoplay не должен прерывать обновление состояния канала.
+            });
+          } catch (error) {
+            // Ошибка Media API не должна оставлять незавершённым уже запущенный переход громкости.
+          }
           fadeInBgm(target, fadeMs);
         }
       }, stepTime);
@@ -413,16 +417,24 @@
             logState("playBgm quick fail");
           });
         }
-      } catch (error) {}
+      } catch (error) {
+        // Ошибка Media API безопасно оставляет канал в уже установленном состоянии.
+      }
     }
 
     // Немедленно останавливает BGM и очищает его источник без запуска следующего трека.
     function stopBgmImmediate() {
       try {
         bgm.pause();
+      } catch (error) {
+        // Ошибка pause не должна мешать очистке источника канала.
+      }
+      try {
         bgm.src = "";
         bgm.currentTime = 0;
-      } catch (error) {}
+      } catch (error) {
+        // Очистка повреждённого media-элемента выполняется best-effort.
+      }
     }
 
     // Проигрывает одиночный SFX только после проверки пути общей политикой ресурсов.
@@ -437,8 +449,12 @@
         sfx.currentTime = 0;
         applySettings();
         var playPromise = sfx.play();
-        if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function ignoreSfxPlayFailure() {});
-      } catch (error) {}
+        if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function ignoreSfxPlayFailure() {
+          // Запрет autoplay для необязательного эффекта не должен останавливать сценарий.
+        });
+      } catch (error) {
+        // Ошибка отдельного звукового эффекта не должна останавливать сценарий.
+      }
     }
 
     // Обрабатывает явное переключение mute и использует жест для повторного запуска заблокированных media.
@@ -479,9 +495,19 @@
       if (badSrc) failedAudio[badSrc] = true;
       try {
         bgm.pause();
+      } catch (error) {
+        // Ошибка pause не должна мешать очистке ошибочного источника.
+      }
+      try {
         if (typeof bgm.removeAttribute === "function") bgm.removeAttribute("src");
+      } catch (error) {
+        // Ошибка DOM-очистки не должна мешать сбросу состояния Media API.
+      }
+      try {
         if (typeof bgm.load === "function") bgm.load();
-      } catch (error) {}
+      } catch (error) {
+        // Повторная инициализация повреждённого media-элемента выполняется best-effort.
+      }
     }
 
     // Записывает событие play в целевую диагностику без изменения состояния канала.
@@ -541,10 +567,24 @@
       state.bgmDuckingTimer = null;
       try {
         bgm.pause();
+      } catch (error) {
+        // Ошибка одного канала не должна блокировать освобождение второго.
+      }
+      try {
         sfx.pause();
+      } catch (error) {
+        // Ошибка одного канала не должна блокировать очистку их источников.
+      }
+      try {
         if (typeof bgm.removeAttribute === "function") bgm.removeAttribute("src");
+      } catch (error) {
+        // Повреждённый BGM-элемент не должен блокировать очистку SFX.
+      }
+      try {
         if (typeof sfx.removeAttribute === "function") sfx.removeAttribute("src");
-      } catch (error) {}
+      } catch (error) {
+        // Очистка повреждённого SFX-элемента выполняется best-effort.
+      }
       disposed = true;
     }
 

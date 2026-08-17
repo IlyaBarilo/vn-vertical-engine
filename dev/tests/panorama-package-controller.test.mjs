@@ -123,6 +123,44 @@ test('dispose освобождает незавершённый ресурс к�
   assert.deepEqual(revoked, ['blob:dispose']);
 });
 
+// Имитирует отказ revokeObjectURL и проверяет, что dispose освобождает каждый выданный ресурс независимо.
+test('dispose продолжает освобождение Blob URL после ошибки revoke', async function() {
+  let createCount = 0;
+  let revokeCount = 0;
+  const readyResources = [];
+  const controller = panoramaModule.createPanoramaPackageController({
+    resolveAssetUrl: function(source) { return source; },
+    resolveEffectiveQuality: function() { return 'normal'; },
+    readCssPack: function() { return Promise.resolve(createTestPack('normal')); },
+    URL: {
+      createObjectURL: function() {
+        createCount++;
+        return 'blob:fault-' + createCount;
+      },
+      revokeObjectURL: function() {
+        revokeCount++;
+        throw new Error('revoke failed');
+      }
+    }
+  });
+
+  ['hall', 'cafe'].forEach(function resolveTestResource(name) {
+    const path = `assets/360/${name}-360.css`;
+    controller.resolveResource(path, 'normal', function collectReadyResource() {
+      readyResources.push(controller.resolveResource(path, 'normal'));
+    });
+  });
+  await waitForController();
+  assert.equal(readyResources.length, 2);
+
+  assert.doesNotThrow(function disposeFaultedResources() {
+    controller.dispose();
+  });
+  assert.equal(revokeCount, 2);
+  controller.releaseResource(readyResources[0], false);
+  assert.equal(revokeCount, 2);
+});
+
 // Проверяет фоновую полную проверку, дедупликацию ссылок и отсутствие тяжёлого ресурса в повторном снимке.
 test('очередь инспекции декодирует пакет один раз и сохраняет только результат', async function() {
   let imageCount = 0;

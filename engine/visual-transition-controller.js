@@ -67,7 +67,9 @@
       return setTimeoutFn(callback, 0);
     };
     var cancelAnimationFrameFn = options.cancelAnimationFrame || clearTimeoutFn;
-    var warn = typeof options.warn === "function" ? options.warn : function() {};
+    var warn = typeof options.warn === "function" ? options.warn : function() {
+      // Диагностика необязательна для автономной работы контроллера.
+    };
     var transitionSequence = 0;
     var disposed = false;
     var pendingCleanups = [];
@@ -113,7 +115,9 @@
       cleanups.forEach(function(cleanup) {
         try {
           cleanup();
-        } catch (error) {}
+        } catch (error) {
+          // Ошибка одной отмены не должна мешать освобождению остальных операций.
+        }
       });
     }
 
@@ -292,11 +296,15 @@
       backgroundVideoCrossfade.classList.add("hidden");
       try {
         backgroundVideoCrossfade.pause();
-      } catch (error) {}
+      } catch (error) {
+        // Ошибка Media API не должна прерывать обязательную очистку временного слоя.
+      }
       backgroundVideoCrossfade.removeAttribute("src");
       try {
         backgroundVideoCrossfade.load();
-      } catch (error2) {}
+      } catch (error2) {
+        // Повторная инициализация после удаления src выполняется best-effort.
+      }
     }
 
     // Создаёт отдельный image-overlay внутри blur-слоя.
@@ -353,11 +361,15 @@
       blurBackgroundVideoCrossfade.classList.add("hidden");
       try {
         blurBackgroundVideoCrossfade.pause();
-      } catch (error) {}
+      } catch (error) {
+        // Ошибка Media API не должна прерывать обязательную очистку временного blur-слоя.
+      }
       blurBackgroundVideoCrossfade.removeAttribute("src");
       try {
         blurBackgroundVideoCrossfade.load();
-      } catch (error2) {}
+      } catch (error2) {
+        // Повторная инициализация после удаления src выполняется best-effort.
+      }
     }
 
     // Переключает прозрачность основного элемента через CSS-класс перехода.
@@ -619,12 +631,16 @@
           if (currentUrl !== normalizedSrc) return;
           if (shouldPlay) {
             var playPromise = videoElement.play();
-            if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function() {});
+            if (playPromise && typeof playPromise.catch === "function") playPromise.catch(function ignoreCrossfadeAutoplayFailure() {
+              // Запрет autoplay не отменяет уже подготовленный визуальный переход.
+            });
           } else {
             try {
               videoElement.pause();
               videoElement.currentTime = 0;
-            } catch (error) {}
+            } catch (error) {
+              // Сбой сброса позиции оставляет первый доступный кадр временного видео.
+            }
           }
           finishVideoLoad(true);
         };
@@ -634,7 +650,9 @@
         videoElement.src = normalizedSrc;
         try {
           videoElement.load();
-        } catch (error2) {}
+        } catch (error2) {
+          // Таймер ожидания завершит переход fallback-веткой при синхронном сбое load.
+        }
       });
     }
 

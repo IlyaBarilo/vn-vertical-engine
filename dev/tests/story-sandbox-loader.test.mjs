@@ -24,8 +24,8 @@ function extractWorkerBootstrap(source) {
   return source.slice(start, end);
 }
 
-// Выполняет bootstrap среди доступных Worker API и перехватывает данные до имитации structured clone.
-async function runWorkerFixture(userSource, kind = 'story360') {
+// Выполняет bootstrap среди доступных Worker API и позволяет имитировать неустранимый глобальный API.
+async function runWorkerFixture(userSource, kind = 'story360', options = {}) {
   const loaderSource = await readRuntimeFile('engine/story-sandbox-loader.js');
   const listeners = new Map();
   const messages = [];
@@ -46,6 +46,14 @@ async function runWorkerFixture(userSource, kind = 'story360') {
   });
   sandbox.indexedDB = { open: exposedWorkerApi };
   sandbox.caches = { open: exposedWorkerApi };
+  if (options.lockedApi) {
+    Object.defineProperty(sandbox, options.lockedApi, {
+      value: exposedWorkerApi,
+      configurable: false,
+      enumerable: true,
+      writable: false
+    });
+  }
 
   sandbox.self = sandbox;
   sandbox.addEventListener = function addEventListener(type, listener) {
@@ -149,6 +157,20 @@ test('story sandbox блокирует сеть, хранилища и влож�
   });
   assert.equal(room.importScriptsType, 'function');
   assert.equal(room.nestedImportBlocked, true);
+});
+
+// Не запускает пользовательский файл, если хотя бы один опасный Worker API невозможно подменить.
+test('story sandbox закрывается при невозможности заблокировать Worker API', async function() {
+  const messages = await runWorkerFixture(
+    'window.STORY360 = { version: 1, spaces: { room: {} } };',
+    'story360',
+    { lockedApi: 'fetch' }
+  );
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'invalid');
+  assert.match(messages[0].message, /Безопасное окружение Worker недоступно/);
+  assert.equal(Object.hasOwn(messages[0], 'value'), false);
 });
 
 // Проверяет, что исходный объект валидируется в Worker и в канал попадает уже безопасная копия.

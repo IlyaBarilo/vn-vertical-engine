@@ -616,7 +616,9 @@
         var waiters = entry.waiters.slice();
         entry.waiters.length = 0;
         for (var index = 0; index < waiters.length; index++) {
-          try { waiters[index](true); } catch (error) {}
+          try { waiters[index](true); } catch (error) {
+            // Ошибка одного подписчика не должна блокировать уведомление остальных.
+          }
         }
         schedule(function() {
           var current = cssPackState[cssUrl];
@@ -642,7 +644,9 @@
         var waiters = entry.waiters.slice();
         entry.waiters.length = 0;
         for (var index = 0; index < waiters.length; index++) {
-          try { waiters[index](false); } catch (waiterError) {}
+          try { waiters[index](false); } catch (waiterError) {
+            // Ошибка одного подписчика не должна блокировать уведомление остальных.
+          }
         }
       });
       return "loading";
@@ -683,7 +687,9 @@
       resource.released = true;
       var resourceIndex = activeResources.indexOf(resource);
       if (resourceIndex >= 0) activeResources.splice(resourceIndex, 1);
-      try { if (URLRef) URLRef.revokeObjectURL(resource.src); } catch (error) {}
+      try { if (URLRef) URLRef.revokeObjectURL(resource.src); } catch (error) {
+        // Ресурс уже исключён из активного списка, revoke выполняется best-effort.
+      }
       var state = resource.cssState;
       if (!state) return;
       state.refs = Math.max(0, Number(state.refs || 0) - 1);
@@ -934,7 +940,9 @@
               image.onload = null;
               image.onerror = null;
               releaseResource(resource, true);
-              try { image.removeAttribute("src"); } catch (error) {}
+              try { image.removeAttribute("src"); } catch (error) {
+                // Ресурс уже освобождён, очистка DOM-атрибута выполняется best-effort.
+              }
               finish({ status: "invalid", details: "The panorama image decoder timed out.", meta: resource.meta });
             }, 30000);
             image.onload = function() {
@@ -943,7 +951,9 @@
               image.onload = null;
               image.onerror = null;
               releaseResource(resource, Boolean(validationError));
-              try { image.removeAttribute("src"); } catch (error) {}
+              try { image.removeAttribute("src"); } catch (error) {
+                // Ресурс уже освобождён, очистка DOM-атрибута выполняется best-effort.
+              }
               finish({
                 status: validationError ? "invalid" : "verified",
                 details: validationError || "CSS package and image were fully validated and decoded.",
@@ -955,7 +965,9 @@
               image.onload = null;
               image.onerror = null;
               releaseResource(resource, true);
-              try { image.removeAttribute("src"); } catch (error) {}
+              try { image.removeAttribute("src"); } catch (error) {
+                // Ресурс уже освобождён, очистка DOM-атрибута выполняется best-effort.
+              }
               finish({ status: "invalid", details: "The browser could not decode the panorama image.", meta: resource.meta });
             };
             image.src = resource.src;
@@ -1090,7 +1102,9 @@
       disposed = true;
       trackedTimers.slice().forEach(cancelTimer);
       abortControllers.slice().forEach(function(controller) {
-        try { controller.abort(); } catch (error) {}
+        try { controller.abort(); } catch (error) {
+          // Ошибка одного abort не должна мешать освобождению остальных ресурсов.
+        }
       });
       abortControllers = [];
       activeFrames.slice().forEach(removeFrame);

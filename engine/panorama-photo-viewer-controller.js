@@ -644,7 +644,9 @@
         };
         parts.viewport.classList.add("is-panning");
         if (parts.viewport.setPointerCapture) {
-          try { parts.viewport.setPointerCapture(event.pointerId); } catch (error) {}
+          try { parts.viewport.setPointerCapture(event.pointerId); } catch (error) {
+            // Pointer capture необязателен: pan продолжает отслеживаться по pointerId.
+          }
         }
         event.preventDefault();
         event.stopPropagation();
@@ -701,7 +703,9 @@
       if (pan && pan.pointerId === event.pointerId) {
         var parts = getViewerElements();
         if (parts && parts.viewport && parts.viewport.releasePointerCapture) {
-          try { parts.viewport.releasePointerCapture(event.pointerId); } catch (error) {}
+          try { parts.viewport.releasePointerCapture(event.pointerId); } catch (error) {
+            // Pointer capture мог быть уже снят браузером, состояние pan очищается ниже.
+          }
         }
         if (parts && parts.viewport) parts.viewport.classList.remove("is-panning");
         var panTravel = Math.abs(event.clientX - pan.startX) + Math.abs(event.clientY - pan.startY);

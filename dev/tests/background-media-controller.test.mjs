@@ -190,6 +190,33 @@ test('dispose очищает основной и blur video lifecycle', function
   assert.equal(fixture.video.listenerCount('loadeddata'), 0);
 });
 
+// Имитирует синхронные сбои Media API и проверяет независимую очистку обоих video-слоёв.
+test('dispose продолжает очистку после ошибок pause и load', function() {
+  const fixture = createFixture({ isBlurEnabled() { return true; } });
+  fixture.video.src = 'file:///project/background/assets/bg.mp4';
+  fixture.blurVideo.src = fixture.video.src;
+  fixture.video.pause = function throwMainPauseFailure() {
+    throw new Error('main pause failed');
+  };
+  fixture.video.load = function throwMainLoadFailure() {
+    throw new Error('main load failed');
+  };
+  fixture.blurVideo.pause = function throwBlurPauseFailure() {
+    throw new Error('blur pause failed');
+  };
+  fixture.blurVideo.load = function throwBlurLoadFailure() {
+    throw new Error('blur load failed');
+  };
+
+  assert.doesNotThrow(function disposeFaultedBackgroundMedia() {
+    fixture.controller.dispose();
+  });
+  assert.equal(fixture.video.src, '');
+  assert.equal(fixture.blurVideo.src, '');
+  assert.equal(fixture.video.classList.contains('hidden'), true);
+  assert.equal(fixture.blurVideo.classList.contains('hidden'), true);
+});
+
 // Защищает bootstrap-порядок и сохранение setBackground как тонкой координаторной функции.
 test('runtime подключает background media controller до engine.js', async function() {
   const [indexSource, engineSource] = await Promise.all([

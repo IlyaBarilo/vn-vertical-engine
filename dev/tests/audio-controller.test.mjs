@@ -174,6 +174,24 @@ test('ошибка BGM очищает канал и сохраняет failed-ca
   assert.equal(fixture.bgm.playCalls, 0);
 });
 
+// Проверяет, что исключение pause не скрывает обязательную очистку ошибочного BGM.
+test('ошибка pause не прерывает очистку BGM после media error', function() {
+  const fixture = createFixture();
+  fixture.controller.start();
+  fixture.bgm.src = 'file:///project/assets/broken.ogg';
+  fixture.bgm.currentSrc = fixture.bgm.src;
+  fixture.bgm.pause = function throwPauseFailure() {
+    throw new Error('pause failed');
+  };
+
+  assert.doesNotThrow(function dispatchMediaError() {
+    fixture.bgm.dispatch('error');
+  });
+  assert.equal(fixture.failedAudio['file:///project/assets/broken.ogg'], true);
+  assert.equal(fixture.bgm.src, '');
+  assert.equal(fixture.bgm.loadCalls, 1);
+});
+
 // Снимает все долгоживущие обработчики и останавливает оба канала при dispose.
 test('dispose очищает аудиообработчики, интервалы и media-источники', function() {
   const fixture = createFixture();
@@ -187,6 +205,25 @@ test('dispose очищает аудиообработчики, интервал�
   assert.equal(fixture.volumeSlider.listenerCount(), 0);
   assert.equal(fixture.bgm.src, '');
   assert.equal(fixture.sfx.src, '');
+});
+
+// Имитирует отказ одного канала и доказывает независимую очистку оставшихся media-ресурсов.
+test('dispose продолжает очистку после ошибки одного media-канала', function() {
+  const fixture = createFixture();
+  fixture.controller.start();
+  fixture.bgm.src = 'file:///project/assets/theme.ogg';
+  fixture.sfx.src = 'file:///project/assets/click.ogg';
+  fixture.bgm.pause = function throwPauseFailure() {
+    throw new Error('pause failed');
+  };
+
+  assert.doesNotThrow(function disposeFaultedAudio() {
+    fixture.controller.dispose();
+  });
+  assert.equal(fixture.sfx.pauseCalls, 1);
+  assert.equal(fixture.bgm.src, '');
+  assert.equal(fixture.sfx.src, '');
+  assert.equal(fixture.muteButton.listenerCount(), 0);
 });
 
 // Защищает порядок bootstrap и отсутствие прежнего непосредственного создания основных Audio-каналов в монолите.

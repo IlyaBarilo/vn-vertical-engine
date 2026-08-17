@@ -21,7 +21,9 @@
     if (!isLoaderVerboseEnabled()) return;
     try {
       console.log.apply(console, arguments);
-    } catch (error) {}
+    } catch (error) {
+      // Недоступная консоль не должна влиять на загрузку истории.
+    }
   }
 
   // Учитывает release из meta и URL ещё до загрузки engine.js, чтобы loader не оставлял ранний информационный лог.

@@ -184,7 +184,9 @@
       resetMediaHandlers();
 
       if (video) {
-        try { video.pause(); } catch (error) {}
+        try { video.pause(); } catch (error) {
+          // Ошибка Media API не должна прерывать очистку источника и UI.
+        }
         if (typeof video.removeAttribute === "function") video.removeAttribute("src");
         if (typeof video.load === "function") video.load();
         video.classList.add("hidden");
@@ -228,7 +230,9 @@
         setSkipHint("", false);
         if (fallbackText) fallbackText.classList.add("hidden");
         if (video) {
-          try { video.pause(); } catch (error) {}
+          try { video.pause(); } catch (error) {
+            // Ошибка Media API не должна мешать скрытию остановленного видео.
+          }
         }
         setStoryVideoVolume(0);
       } else {
@@ -263,7 +267,9 @@
       updateAudioDucking("story video fallback: " + (reason || "fallback"));
 
       if (video) {
-        try { video.pause(); } catch (error) {}
+        try { video.pause(); } catch (error) {
+          // Ошибка Media API не должна мешать показу текстового fallback.
+        }
         video.classList.add("hidden");
       }
       if (overlay) overlay.classList.remove("hidden");

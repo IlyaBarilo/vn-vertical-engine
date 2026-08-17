@@ -40,7 +40,12 @@ export default [
         module: 'readonly'
       }
     },
-    rules: correctnessRules
+    rules: {
+      ...correctnessRules,
+      // Тихое подавление допустимо только с поясняющим комментарием внутри catch/callback.
+      'no-empty': ['error', { allowEmptyCatch: false }],
+      'no-empty-function': 'error'
+    }
   },
   {
     name: 'Worker-контекст загрузчика сценариев',

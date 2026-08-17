@@ -102,11 +102,15 @@
       clearRefreshLoadedHandler();
       video.onloadeddata = null;
       video.onerror = null;
-      try { video.pause(); } catch (error) {}
+      try { video.pause(); } catch (error) {
+        // Ошибка Media API не должна прерывать обязательную очистку источника.
+      }
       if (typeof video.removeAttribute === "function") video.removeAttribute("src");
       try {
         if (typeof video.load === "function") video.load();
-      } catch (error2) {}
+      } catch (error2) {
+        // Повторная инициализация после удаления src выполняется best-effort.
+      }
       video.classList.add("hidden");
     }
 
@@ -116,11 +120,15 @@
       if (blurLoadedHandler) blurVideo.removeEventListener("loadeddata", blurLoadedHandler);
       blurLoadedHandler = null;
       blurVideo.onerror = null;
-      try { blurVideo.pause(); } catch (error) {}
+      try { blurVideo.pause(); } catch (error) {
+        // Ошибка Media API не должна прерывать обязательную очистку blur-источника.
+      }
       if (typeof blurVideo.removeAttribute === "function") blurVideo.removeAttribute("src");
       try {
         if (typeof blurVideo.load === "function") blurVideo.load();
-      } catch (error2) {}
+      } catch (error2) {
+        // Повторная инициализация после удаления src выполняется best-effort.
+      }
       blurVideo.classList.add("hidden");
     }
 
@@ -212,7 +220,9 @@
         try {
           blurVideo.pause();
           blurVideo.currentTime = 0;
-        } catch (error) {}
+        } catch (error) {
+          // Сбой сброса позиции не мешает синхронизировать новый blur-источник.
+        }
         copyVideoPositionToBlur(sourceVideo, blurVideo);
         blurVideo.style.objectFit = "cover";
         blurVideo.style.width = "100%";
@@ -244,7 +254,9 @@
       };
       blurVideo.addEventListener("loadeddata", blurLoadedHandler, { once: true });
       blurVideo.src = sourceVideo.currentSrc || sourceVideo.src || "";
-      try { blurVideo.load(); } catch (error) {}
+      try { blurVideo.load(); } catch (error) {
+        // Таймер ниже покажет резервный blur даже при синхронном сбое загрузки.
+      }
 
       refreshTimers.push(setTimeoutFn(function showBlurFallbackAfterTimeout() {
         if (seq !== blurSyncSeq || disposed) return;

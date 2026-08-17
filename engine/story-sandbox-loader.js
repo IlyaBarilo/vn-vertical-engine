@@ -150,7 +150,7 @@
       return copied;
     }
 
-    // Подменяет доступный Worker API до запуска пользовательского файла, не затрагивая сохранённый importScripts.
+    // Подменяет Worker API до запуска файла и аварийно прекращает sandbox, если блокировку нельзя гарантировать.
     function blockWorkerGlobal(name, replacement) {
       try {
         safeObjectDefineProperty(self, name, {
@@ -160,7 +160,12 @@
           writable: false
         });
       } catch (error) {
-        try { self[name] = replacement; } catch (ignored) {}
+        try { self[name] = replacement; } catch (ignored) {
+          throw new SafeError("Не удалось заблокировать Worker API " + name + ".");
+        }
+      }
+      if (self[name] !== replacement) {
+        throw new SafeError("Worker API " + name + " сохранил небезопасное значение.");
       }
     }
 
@@ -196,9 +201,13 @@
               kind: kind,
               message: "Данные пользовательского скрипта нельзя безопасно скопировать."
             });
-          } catch (ignored) {}
+          } catch (ignored) {
+            // Ошибка отправки ответа означает закрытый канал и не требует повторной отправки.
+          }
         }
-        try { closePort(); } catch (ignoredClose) {}
+        try { closePort(); } catch (ignoredClose) {
+          // Канал мог быть уже закрыт другой стороной.
+        }
       }
 
       // Запоминает runtime-ошибку импортированного файла и не позволяет ей уйти как необработанная ошибка страницы.
@@ -212,20 +221,29 @@
       }, true);
 
       // Отдельный объект window сохраняет старый контракт присваивания, но не открывает глобальные API Worker.
-      blockWorkerGlobal("window", dataWindow);
-      blockWorkerGlobal("fetch", undefined);
-      blockWorkerGlobal("XMLHttpRequest", undefined);
-      blockWorkerGlobal("WebSocket", undefined);
-      blockWorkerGlobal("EventSource", undefined);
-      blockWorkerGlobal("WebTransport", undefined);
-      blockWorkerGlobal("Worker", undefined);
-      blockWorkerGlobal("SharedWorker", undefined);
-      blockWorkerGlobal("BroadcastChannel", undefined);
-      blockWorkerGlobal("indexedDB", undefined);
-      blockWorkerGlobal("caches", undefined);
-      blockWorkerGlobal("importScripts", function rejectNestedScriptLoad() {
-        throw new SafeError("Пользовательскому сценарию запрещено подключать дополнительные скрипты.");
-      });
+      try {
+        blockWorkerGlobal("window", dataWindow);
+        blockWorkerGlobal("fetch", undefined);
+        blockWorkerGlobal("XMLHttpRequest", undefined);
+        blockWorkerGlobal("WebSocket", undefined);
+        blockWorkerGlobal("EventSource", undefined);
+        blockWorkerGlobal("WebTransport", undefined);
+        blockWorkerGlobal("Worker", undefined);
+        blockWorkerGlobal("SharedWorker", undefined);
+        blockWorkerGlobal("BroadcastChannel", undefined);
+        blockWorkerGlobal("indexedDB", undefined);
+        blockWorkerGlobal("caches", undefined);
+        blockWorkerGlobal("importScripts", function rejectNestedScriptLoad() {
+          throw new SafeError("Пользовательскому сценарию запрещено подключать дополнительные скрипты.");
+        });
+      } catch (blockError) {
+        finish({
+          status: "invalid",
+          kind: kind,
+          message: "Безопасное окружение Worker недоступно: " + SafeString(blockError && blockError.message ? blockError.message : blockError)
+        });
+        return;
+      }
 
       if (!source) {
         finish({ status: "invalid", kind: kind, message: "Не задан путь пользовательского скрипта." });
@@ -304,7 +322,9 @@
         channel = new MessageChannel();
       } catch (error) {
         if (workerUrl) {
-          try { URL.revokeObjectURL(workerUrl); } catch (revokeError) {}
+          try { URL.revokeObjectURL(workerUrl); } catch (revokeError) {
+            // Worker не создан, поэтому повторная очистка URL выполняется best-effort.
+          }
         }
         reject(error);
         return;
@@ -316,14 +336,22 @@
         settled = true;
         if (timeoutId !== null) clearTimeout(timeoutId);
         if (channel) {
-          try { channel.port1.close(); } catch (closeError) {}
-          try { channel.port2.close(); } catch (closeError2) {}
+          try { channel.port1.close(); } catch (closeError) {
+            // Порт мог быть уже закрыт обработчиком ответа или ошибки.
+          }
+          try { channel.port2.close(); } catch (closeError2) {
+            // Порт мог быть уже закрыт обработчиком ответа или ошибки.
+          }
         }
         if (worker) {
-          try { worker.terminate(); } catch (terminateError) {}
+          try { worker.terminate(); } catch (terminateError) {
+            // Worker мог завершиться самостоятельно до общей очистки.
+          }
         }
         if (workerUrl) {
-          try { URL.revokeObjectURL(workerUrl); } catch (revokeError) {}
+          try { URL.revokeObjectURL(workerUrl); } catch (revokeError) {
+            // URL уже не используется, повторное освобождение выполняется best-effort.
+          }
         }
         if (error) reject(error);
         else resolve(result);
