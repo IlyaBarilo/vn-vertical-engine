@@ -295,6 +295,7 @@ project/
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── game-protocol.js               engine and mini-game messages
+│   ├── story-graph.js                 transitions, reachability, and cycle analysis
 │   ├── story-sandbox-loader.js         isolated author JS data loader
 │   └── story-loader.js                story loading and parsing
 │

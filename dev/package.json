@@ -11,7 +11,7 @@
     "test:variables": "node --test tests/variables.test.mjs tests/expression-runtime.test.mjs",
     "test:assets": "node --test tests/assets.test.mjs tests/media-options.test.mjs",
     "test:360": "node --test tests/story360-commands.test.mjs tests/panorama-css-security.test.mjs",
-    "test:stats": "node --test tests/loader-stats.test.mjs",
+    "test:stats": "node --test tests/loader-stats.test.mjs tests/story-graph.test.mjs",
     "test:ui": "node --test tests/ui-config-runtime.test.mjs",
     "test:logs": "node --test tests/runtime-logging.test.mjs",
     "test:dependencies": "node --test tests/dependencies.test.mjs",

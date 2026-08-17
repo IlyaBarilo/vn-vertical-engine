@@ -111,6 +111,7 @@ jobs:
           cp engine/expression.js "build/$APP_NAME/engine/"
           cp engine/game-protocol.js "build/$APP_NAME/engine/"
           cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
+          cp engine/story-graph.js "build/$APP_NAME/engine/"
           cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
           cp engine/story-loader.js "build/$APP_NAME/engine/"
 
@@ -205,6 +206,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/resource-path-policy.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/story-graph.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
@@ -217,6 +219,7 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/resource-path-policy.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/story-graph.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/SECURITY.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/security/threat-model.md" build/update-zip-contents.txt

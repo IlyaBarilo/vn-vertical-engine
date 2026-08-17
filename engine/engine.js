@@ -16457,7 +16457,7 @@ function renderStats() {
       var errors = validateStory(STORY);
       var textInfo = computeTextInfo(STORY);
       var reach = findUnreachableScenes(STORY);
-      var cycles = findCyclesSCC(STORY);
+      var cycles = window.VN_STORY_GRAPH.findCyclesSCC(STORY);
       var story360Visibility = analyzeStory360VisibilityConditions(STORY);
       var variableCaseAnalysis = analyzeScenarioVariableCaseConflicts(STORY);
       var identifierNameAnalysis = analyzeStoryIdentifierNames(STORY);
@@ -18227,79 +18227,6 @@ function checkAssetsFiles() {
 
 
 
-function forEachOutgoingTarget(actions, cb, currentLabel) {
-  if (!Array.isArray(actions)) return;
-  var label = currentLabel || "";
-
-  for (var i = 0; i < actions.length; i++) {
-    var act = actions[i];
-    if (!act || !act.type) continue;
-
-    if (act.type === "goto" && act.target) {
-      cb({ to: act.target, label: label });
-      continue;
-    }
-
-    if (act.type === "if_expr" && act.target) {
-      cb({ to: act.target, label: String(act.condition || "") });
-      continue;
-    }
-
-    if (act.type === "if_block") {
-      if (Array.isArray(act.branches)) {
-        for (var b = 0; b < act.branches.length; b++) {
-          var br = act.branches[b];
-          if (br && Array.isArray(br.actions)) {
-            forEachOutgoingTarget(br.actions, cb, String(br.condition || ""));
-          }
-        }
-      }
-      if (Array.isArray(act.elseActions)) {
-        forEachOutgoingTarget(act.elseActions, cb, "else");
-      }
-      continue;
-    }
-
-    if (act.type === "choice" && Array.isArray(act.choices)) {
-      for (var c = 0; c < act.choices.length; c++) {
-        var ch = act.choices[c];
-        if (!ch) continue;
-        var chLabel = String(ch.text || "");
-        if (ch.goto) {
-          cb({ to: ch.goto, label: chLabel });
-        }
-        if (Array.isArray(ch.actions)) {
-          forEachOutgoingTarget(ch.actions, cb, chLabel);
-        }
-      }
-    }
-  }
-}
-
-function buildAdjacency(story) {
-  var scenes = story.scenes || [];
-  var sceneMap = {};
-  var adj = {}; // from -> array of { to, label }
-
-  for (var i = 0; i < scenes.length; i++) {
-    if (scenes[i] && scenes[i].id) {
-      sceneMap[scenes[i].id] = true;
-      adj[scenes[i].id] = [];
-    }
-  }
-
-  for (var s = 0; s < scenes.length; s++) {
-    var sc = scenes[s];
-    if (!sc || !sc.id) continue;
-
-    forEachOutgoingTarget(sc.actions || [], function (edge) {
-      adj[sc.id].push({ to: edge.to, label: edge.label });
-    });
-  }
-
-  return { sceneMap: sceneMap, adj: adj };
-}
-
 // Обходит команды goto360 в обычных сценах и вложенных ветках, чтобы граф показывал входы в 360-пространства.
 function forEachOutgoingStory360Target(actions, cb, currentLabel) {
   if (!Array.isArray(actions)) return;
@@ -18579,7 +18506,7 @@ function buildCombinedStoryGraphReachability(story, story360GraphData) {
     var scene = scenes[s];
     if (!scene || !scene.id) continue;
 
-    forEachOutgoingTarget(scene.actions || [], function(edge) {
+    window.VN_STORY_GRAPH.forEachOutgoingTarget(scene.actions || [], function(edge) {
       addEdge(scene.id, edge.to);
     });
   }
@@ -18595,22 +18522,7 @@ function buildCombinedStoryGraphReachability(story, story360GraphData) {
     addEdge(story360Edges[e].from, story360Edges[e].to);
   }
 
-  var visited = {};
-  if (startId && allNodes[startId]) {
-    var stack = [startId];
-    visited[startId] = true;
-    while (stack.length) {
-      var current = stack.pop();
-      var edges = adj[current] || [];
-      for (var ai = 0; ai < edges.length; ai++) {
-        var to = edges[ai];
-        if (!visited[to] && allNodes[to]) {
-          visited[to] = true;
-          stack.push(to);
-        }
-      }
-    }
-  }
+  var visited = window.VN_STORY_GRAPH.findReachableNodes(startId, allNodes, adj);
 
   var reachableScenes = [];
   var unreachableScenes = [];
@@ -18639,7 +18551,7 @@ function buildCombinedStoryGraphReachability(story, story360GraphData) {
 
 function findUnreachableScenes(story) {
   var startId = (story.meta && story.meta.start) ? story.meta.start : null;
-  var built = buildAdjacency(story);
+  var built = window.VN_STORY_GRAPH.buildAdjacency(story);
   var sceneMap = built.sceneMap;
 
   if (!startId || !sceneMap[startId]) {
@@ -18650,89 +18562,6 @@ function findUnreachableScenes(story) {
   var combinedReach = buildCombinedStoryGraphReachability(story, buildStory360GraphData(story));
   return { unreachable: combinedReach.unreachableScenes, reachable: combinedReach.reachableScenes };
 }
-
-
-function findCyclesSCC(story) {
-  var built = buildAdjacency(story);
-  var sceneMap = built.sceneMap;
-  var adj = built.adj;
-
-  var index = 0;
-  var stack = [];
-  var onStack = {};
-  var idx = {};
-  var low = {};
-  var sccs = [];
-
-  function strongconnect(v) {
-    idx[v] = index;
-    low[v] = index;
-    index++;
-
-    stack.push(v);
-    onStack[v] = true;
-
-    var edges = adj[v] || [];
-    for (var i = 0; i < edges.length; i++) {
-      var w = edges[i].to;
-      if (!sceneMap[w]) continue; // игнорируем переходы в несуществующие
-
-      if (idx[w] === undefined) {
-        strongconnect(w);
-        low[v] = Math.min(low[v], low[w]);
-      } else if (onStack[w]) {
-        low[v] = Math.min(low[v], idx[w]);
-      }
-    }
-
-    // root SCC
-    if (low[v] === idx[v]) {
-      var comp = [];
-      while (true) {
-        var w2 = stack.pop();
-        onStack[w2] = false;
-        comp.push(w2);
-        if (w2 === v) break;
-      }
-      sccs.push(comp);
-    }
-  }
-
-  // Запускаем для всех вершин
-  for (var v in sceneMap) {
-    if (!Object.prototype.hasOwnProperty.call(sceneMap, v)) continue;
-    if (idx[v] === undefined) strongconnect(v);
-  }
-
-  // Оставляем только “циклические” SCC:
-  // - размер > 1
-  // - или самопетля (v -> v)
-  var cycles = [];
-  for (var i = 0; i < sccs.length; i++) {
-    var comp = sccs[i];
-    if (comp.length > 1) {
-      comp.sort();
-      cycles.push(comp);
-    } else {
-      var single = comp[0];
-      var edges = adj[single] || [];
-      for (var e = 0; e < edges.length; e++) {
-        if (edges[e].to === single) {
-          cycles.push([single]);
-          break;
-        }
-      }
-    }
-  }
-
-  // Стабильный порядок
-  cycles.sort(function (a, b) {
-    return a[0].localeCompare(b[0]);
-  });
-
-  return cycles;
-}
-
 
 // Сборка Mermaid-графа сценария.
 //
@@ -18910,11 +18739,11 @@ function buildMermaidGraph(story, unreachableList, options) {
     collectSceneActionStats(actions);
 
     // Рёбра графа считаем отдельно по верхнему уровню:
-    // forEachOutgoingTarget сам рекурсивно обходит вложенные goto в choice/if_block.
+    // Общий модуль графа сам рекурсивно обходит вложенные goto в choice/if_block.
     for (var a = 0; a < actions.length; a++) {
       var act = actions[a];
       if (!act || !act.type) continue;
-      forEachOutgoingTarget([act], function (edge) {
+      window.VN_STORY_GRAPH.forEachOutgoingTarget([act], function (edge) {
         var lbl = String(edge.label || "");
         if (lbl.length > 40) lbl = lbl.substring(0, 40) + "...";
 
