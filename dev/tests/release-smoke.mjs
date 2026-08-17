@@ -677,7 +677,10 @@ test(`распакованный полный ZIP запускает движо�
       access(path.join(releaseRoot, 'engine', 'engine.css')),
       access(path.join(releaseRoot, 'engine', 'engine.js')),
       access(path.join(releaseRoot, 'engine', 'expression.js')),
+      access(path.join(releaseRoot, 'engine', 'game-host.js')),
       access(path.join(releaseRoot, 'engine', 'resource-path-policy.js')),
+      access(path.join(releaseRoot, 'engine', 'story-analysis.js')),
+      access(path.join(releaseRoot, 'engine', 'story-graph.js')),
       access(path.join(releaseRoot, 'engine', 'story-sandbox-loader.js')),
       access(path.join(releaseRoot, 'engine', 'story-loader.js'))
     ]);

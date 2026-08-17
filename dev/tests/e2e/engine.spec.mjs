@@ -1499,6 +1499,35 @@ test('мини-игра обменивается сообщениями с дв�
   expect(pageErrors).toEqual([]);
 });
 
+// URL-режим использует тот же host, удерживает завершённую игру и создаёт новую сессию по кнопке перезапуска.
+test('URL-запуск мини-игры перезапускает iframe через game host', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/?game=testGame&diff=5&token=url-token');
+
+  await expect(page.locator('#gameModal')).toBeVisible();
+  await expect(page.locator('#stage')).toHaveClass(/url-game-mode/);
+  await expect(page.locator('#btnCloseGame')).toHaveText('Перезапустить');
+
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await expect(game.locator('#difficulty')).toHaveText('5');
+  await expect(game.locator('#token')).toHaveText('url-token');
+  const firstSessionId = await game.locator('#sessionId').textContent();
+  expect(firstSessionId).toBeTruthy();
+
+  await game.getByRole('button', { name: 'Завершить игру' }).click();
+  await expect(page.locator('#gameModal')).toBeVisible();
+  await page.locator('#btnCloseGame').click();
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await expect(game.locator('#sessionId')).not.toHaveText(String(firstSessionId));
+
+  const secondSessionId = await game.locator('#sessionId').textContent();
+  expect(secondSessionId).toBeTruthy();
+  expect(secondSessionId).not.toBe(firstSessionId);
+  expect(pageErrors).toEqual([]);
+});
+
 // Прежний результат v2 с правильной сессией продолжает игру, но предупреждает разработчика о миграции до версии 1.0.
 test('результат мини-игры без protocolVersion принимается с предупреждением', async function({ page }) {
   const pageErrors = collectPageErrors(page);

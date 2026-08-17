@@ -294,6 +294,7 @@ project/
 ├── engine/
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
+│   ├── game-host.js                   mini-game iframe and session lifecycle
 │   ├── game-protocol.js               engine and mini-game messages
 │   ├── story-analysis.js              text, action, and resource statistics
 │   ├── story-graph.js                 transitions, reachability, and cycle analysis

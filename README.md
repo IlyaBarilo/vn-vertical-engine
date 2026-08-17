@@ -413,6 +413,7 @@ project/
 ├── engine/
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка
+│   ├── game-host.js                   lifecycle iframe и сессий мини-игр
 │   ├── game-protocol.js               сообщения движка и мини-игр
 │   ├── resource-path-policy.js        правила безопасных путей авторских ресурсов
 │   ├── story-analysis.js              подсчёт текста, действий и ресурсов

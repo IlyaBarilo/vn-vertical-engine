@@ -42,9 +42,10 @@ test('движок не содержит загрузчика JS-пакетов 
 
 // Проверяет обязательные sandbox и Permissions Policy iframe, а также отсутствие переключателей legacy.
 test('мини-игры поддерживают только strict sandbox, ограниченную Permissions Policy и протокол v2', async function() {
-  const [indexSource, engineSource, protocolSource, testerSource] = await Promise.all([
+  const [indexSource, engineSource, hostSource, protocolSource, testerSource] = await Promise.all([
     readProjectFile('index.html'),
     readProjectFile('engine/engine.js'),
+    readProjectFile('engine/game-host.js'),
     readProjectFile('engine/game-protocol.js'),
     readProjectFile('tools/game-tester.html')
   ]);
@@ -53,9 +54,11 @@ test('мини-игры поддерживают только strict sandbox, о
   assert.match(indexSource, /id="statsGameFrame"[^>]+sandbox="allow-scripts"[^>]+referrerpolicy="no-referrer"/);
   assert.match(indexSource, /id="gameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
   assert.match(indexSource, /id="statsGameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
-  assert.match(engineSource, /frame\.setAttribute\("allow", GAME_FRAME_PERMISSIONS_POLICY\)/);
-  assert.match(engineSource, /if \(!prepareSingleGameFrameLaunch\("story"\)\) return/);
-  assert.match(engineSource, /if \(!prepareSingleGameFrameLaunch\("stats"\)\) return/);
+  assert.match(hostSource, /frame\.setAttribute\("allow", GAME_FRAME_PERMISSIONS_POLICY\)/);
+  assert.match(hostSource, /protocol\.isGameResultEventAllowed\(event, activeLaunch\.session\)/);
+  assert.match(engineSource, /VN_GAME_HOST\.createGameHost/);
+  assert.match(engineSource, /gameHost\.canOpen\("story", true\)/);
+  assert.match(engineSource, /frameKind: "stats"/);
   assert.match(testerSource, /id="gameFrame"[^>]+allow="autoplay;[^\"]+camera 'none';[^\"]+microphone 'none';[^\"]+usb 'none'/);
   assert.doesNotMatch(engineSource, /resolveGameSandboxMode|allowLegacyResult/);
   assert.doesNotMatch(protocolSource, /allowLegacyResult/);

@@ -258,23 +258,27 @@ test('протокол заменяет некорректный результ�
   assert.equal(protocol.normalizeGameResult(null), 0);
 });
 
-// Защищает обязательное подключение общего модуля до основного кода движка.
-test('модуль протокола подключён к runtime до engine.js', async function() {
-  const [indexSource, engineSource, testerSource] = await Promise.all([
+// Защищает порядок protocol → game host → engine и разделение проверки сообщений и сюжетного результата.
+test('модуль протокола подключён к game host до engine.js', async function() {
+  const [indexSource, engineSource, hostSource, testerSource] = await Promise.all([
     readFile(new URL('../../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../../engine/engine.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../engine/game-host.js', import.meta.url), 'utf8'),
     readFile(new URL('../../tools/game-tester.html', import.meta.url), 'utf8')
   ]);
   const protocolPosition = indexSource.indexOf('engine/game-protocol.js');
+  const hostPosition = indexSource.indexOf('engine/game-host.js');
   const enginePosition = indexSource.indexOf('engine/engine.js');
 
   assert.ok(protocolPosition >= 0);
-  assert.ok(enginePosition > protocolPosition);
-  assert.ok(engineSource.includes('VN_GAME_PROTOCOL.createGameSessionId'));
-  assert.ok(engineSource.includes('VN_GAME_PROTOCOL.createGameInitMessage'));
-  assert.ok(engineSource.includes('VN_GAME_PROTOCOL.isGameResultEventAllowed'));
+  assert.ok(hostPosition > protocolPosition);
+  assert.ok(enginePosition > hostPosition);
+  assert.ok(hostSource.includes('protocol.createGameSessionId'));
+  assert.ok(hostSource.includes('protocol.createGameInitMessage'));
+  assert.ok(hostSource.includes('protocol.isGameResultEventAllowed'));
+  assert.ok(hostSource.includes('protocolVersion: protocol.GAME_PROTOCOL_VERSION'));
+  assert.ok(engineSource.includes('VN_GAME_HOST.createGameHost'));
   assert.ok(engineSource.includes('VN_GAME_PROTOCOL.normalizeGameResult'));
-  assert.ok(engineSource.includes('protocolVersion: window.VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION'));
   assert.ok(testerSource.includes('readGameProtocolVersionFromHtml'));
   assert.ok(testerSource.includes("GAME_PROTOCOL_VERSION = 2"));
 });

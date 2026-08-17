@@ -109,6 +109,7 @@ jobs:
           cp engine/engine.css "build/$APP_NAME/engine/"
           cp engine/engine.js "build/$APP_NAME/engine/"
           cp engine/expression.js "build/$APP_NAME/engine/"
+          cp engine/game-host.js "build/$APP_NAME/engine/"
           cp engine/game-protocol.js "build/$APP_NAME/engine/"
           cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
           cp engine/story-analysis.js "build/$APP_NAME/engine/"
@@ -206,6 +207,7 @@ jobs:
           grep -Fxq "${APP_NAME}/assets/" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/game-host.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/resource-path-policy.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-analysis.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-graph.js" build/full-zip-contents.txt
@@ -220,6 +222,7 @@ jobs:
           # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
           grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/game-host.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/resource-path-policy.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-analysis.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-graph.js" build/update-zip-contents.txt

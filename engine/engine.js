@@ -1068,6 +1068,71 @@ function syncStatsGameFrameWrapToStoryGameWindow() {
   });
 }
 
+// Готовит сюжетную модалку после того, как game host применил ограничения iframe и показал окно.
+function prepareStoryGameHostUi(launch) {
+  updateStoryGameControlButtonLabel(launch && launch.mode);
+}
+
+// Возвращает подпись кнопки сюжетной игры после очистки или переключения на другой iframe.
+function resetStoryGameHostUi() {
+  updateStoryGameControlButtonLabel(null);
+}
+
+// Подгоняет модалку игры из статистики к геометрии основного окна после её показа.
+function prepareStatsGameHostUi() {
+  syncStatsGameFrameWrapToStoryGameWindow();
+}
+
+// Очищает вычисленную геометрию статистической модалки перед следующим запуском.
+function resetStatsGameHostUi() {
+  if (!elStatsGameFrameWrap) return;
+  elStatsGameFrameWrap.style.left = "";
+  elStatsGameFrameWrap.style.top = "";
+  elStatsGameFrameWrap.style.width = "";
+  elStatsGameFrameWrap.style.height = "";
+}
+
+// Сохраняет прежнее предупреждение о параллельном запуске, не связывая game host с runtime-логгером.
+function reportGameHostWarning(message, frameKind) {
+  console.warn(message, frameKind);
+}
+
+// Записывает подробное подтверждение gameInit только при явно включённой runtime-диагностике.
+function reportGameHostInitSent(launch) {
+  var label = launch.frameKind === "stats" ? "gameInit статистики отправлен" : "gameInit отправлен";
+  writeRuntimeDebug("[VN DEBUG] " + label, launch.gameId);
+}
+
+// Выводит техническую ошибку postMessage без раскрытия параметров игры или состояния сценария.
+function reportGameHostPostMessageError(error, launch) {
+  var label = launch && launch.frameKind === "stats" ? "stats gameInit" : "gameInit";
+  console.error("[GAME] failed to send " + label, error && error.message ? error.message : error);
+}
+
+// Создаёт единственный host для сюжетной, статистической и URL-игры с общей активной сессией.
+var gameHost = window.VN_GAME_HOST.createGameHost({
+  eventTarget: window,
+  protocol: window.VN_GAME_PROTOCOL,
+  frames: {
+    story: {
+      frame: elGameFrame,
+      modal: elGameModal,
+      onOpen: prepareStoryGameHostUi,
+      onClose: resetStoryGameHostUi
+    },
+    stats: {
+      frame: elStatsGameFrame,
+      modal: elStatsGameModal,
+      onOpen: prepareStatsGameHostUi,
+      onClose: resetStatsGameHostUi
+    }
+  },
+  onResult: handleGameResultMessage,
+  onWarning: reportGameHostWarning,
+  onInitSent: reportGameHostInitSent,
+  onPostMessageError: reportGameHostPostMessageError
+});
+
 function swallowEvent(e) {
   if (!e) return;
   e.preventDefault();
@@ -3765,7 +3830,7 @@ window.addEventListener("resize", applyUiScale);
 window.addEventListener("resize", updateBackgroundScrollAvailability);
 window.addEventListener("resize", resizeBg360Renderer);
 
-window.addEventListener("pagehide", function () {
+window.addEventListener("pagehide", function (event) {
   autosaveDebugLog("lifecycle:pagehide", {
     sceneId: state && state.sceneId,
     actionIndex: state && state.actionIndex,
@@ -3778,6 +3843,8 @@ window.addEventListener("pagehide", function () {
     vnAutosaveTimer = null;
   }
   flushAutosaveToStorageSync();
+  // При реальном уходе очищаем message-listener и iframe; bfcache сохраняет живой host для возврата на страницу.
+  if (!event || event.persisted !== true) gameHost.dispose();
 });
 document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "hidden") {
@@ -3948,13 +4015,10 @@ btnCloseStatsGame.addEventListener("click", function (e) {
   swallowEvent(e);
 });
 
-// Принимает результат только от iframe активного запуска, предупреждает о временной совместимости без версии и закрывает сессию.
-function handleGameResultMessage(event) {
+// Применяет уже проверенный game host результат, предупреждает о временной совместимости и завершает режим движка.
+function handleGameResultMessage(event, acceptedLaunch) {
   var activeGame = state.currentGame;
-  var session = activeGame && activeGame.session;
-
-  // В офлайн-режиме origin может быть "null", поэтому доверие строится на точном event.source и id сессии.
-  if (!window.VN_GAME_PROTOCOL.isGameResultEventAllowed(event, session)) return;
+  if (!activeGame || !acceptedLaunch || activeGame.session !== acceptedLaunch.session) return;
 
   // До версии 1.0 принимаем прежний результат v2 без номера, но сообщаем разработчику о необходимой миграции.
   if (!Object.prototype.hasOwnProperty.call(event.data, "protocolVersion")) {
@@ -3965,11 +4029,8 @@ function handleGameResultMessage(event) {
     );
   }
 
-  session.resultAccepted = true;
   closeGame(event.data);
 }
-
-window.addEventListener("message", handleGameResultMessage);
 
 // ---------- Старт ----------
 startLicensedEngine();
@@ -5093,7 +5154,7 @@ function tryApplyAutosave() {
 
   hideChoices();
   cleanupStoryVideoVisualOnly();
-  closeGameFrameVisualOnly();
+  gameHost.closeFrame("story");
 
   var restoreBgSnapshot = (data.bg && isUsableAutosaveBgSrc(data.bg.src))
     ? data.bg
@@ -5339,7 +5400,7 @@ function restart() {
   hideChoices();
   reset360InteractionStateForRestart("restart");
   cleanupStoryVideoVisualOnly();
-  closeGameFrameVisualOnly();
+  gameHost.closeFrame("story");
   hideOverlay();
   // Явно сбрасываем персонажа до запуска стартовой сцены.
   hideAllCharacters();
@@ -14237,7 +14298,7 @@ function startStandaloneGameFromUrl() {
 function restartStandaloneGameFromUrl() {
   if (!standaloneGameLaunch) return;
 
-  closeGameFrameVisualOnly();
+  gameHost.closeFrame("story");
   state.inGame = false;
   state.currentGame = null;
   startStandaloneGameFromUrl();
@@ -14248,67 +14309,7 @@ function isCurrentStoryGameUrlMode() {
   return !!(state && state.currentGame && state.currentGame.mode === "url");
 }
 
-// Разрешает игре только autoplay, а чувствительные браузерные API явно закрывает через Permissions Policy.
-var GAME_FRAME_PERMISSIONS_POLICY = [
-  "autoplay",
-  "accelerometer 'none'",
-  "camera 'none'",
-  "clipboard-read 'none'",
-  "clipboard-write 'none'",
-  "display-capture 'none'",
-  "fullscreen 'none'",
-  "gamepad 'none'",
-  "geolocation 'none'",
-  "gyroscope 'none'",
-  "hid 'none'",
-  "magnetometer 'none'",
-  "microphone 'none'",
-  "payment 'none'",
-  "serial 'none'",
-  "usb 'none'",
-  "xr-spatial-tracking 'none'"
-].join("; ");
-
-// Настраивает iframe до каждой навигации и не позволяет данным сценария снять sandbox или Permissions Policy.
-function applyGameFrameSandbox(frame) {
-  if (!frame) return;
-  frame.setAttribute("sandbox", "allow-scripts");
-  frame.setAttribute("allow", GAME_FRAME_PERMISSIONS_POLICY);
-  frame.setAttribute("referrerpolicy", "no-referrer");
-}
-
-// Не допускает параллельный запуск двух игр и очищает второй iframe перед созданием единственной активной сессии.
-function prepareSingleGameFrameLaunch(frameKind) {
-  var storyFrameVisible = elGameModal && !elGameModal.classList.contains("hidden");
-  var statsFrameVisible = elStatsGameModal && !elStatsGameModal.classList.contains("hidden");
-
-  if (state.currentGame || storyFrameVisible || statsFrameVisible) {
-    console.warn("[GAME] Новый запуск отклонён: другая мини-игра уже активна", frameKind);
-    return false;
-  }
-
-  if (frameKind === "stats") {
-    closeGameFrameVisualOnly();
-  } else {
-    closeStatsGameFrameVisualOnly();
-  }
-  return true;
-}
-
-// Создаёт одноразовую сессию текущего протокола; v2 временно принимает старый результат без явного номера версии.
-function createActiveGameSession(gameId, frameKind) {
-  return {
-    gameId: String(gameId),
-    sessionId: window.VN_GAME_PROTOCOL.createGameSessionId(),
-    protocolVersion: window.VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION,
-    requireProtocolVersion: false,
-    expectedSource: null,
-    frameKind: frameKind,
-    resultAccepted: false
-  };
-}
-
-// Открывает единственную локальную игру из assets, применяет sandbox до навигации и после загрузки отправляет gameInit.
+// Проверяет сюжетную игру, фиксирует checkpoint и делегирует host безопасную навигацию и отправку gameInit.
 function openGame(action) {
   if (!action || !action.src) {
     console.warn('[GAME] openGame: missing action.src', state.sceneId, state.actionIndex - 1);
@@ -14320,7 +14321,7 @@ function openGame(action) {
     console.warn("[GAME] Запуск заблокирован политикой локальных ресурсов", sanitizeDiagnosticResource(action.src));
     return;
   }
-  if (!prepareSingleGameFrameLaunch("story")) return;
+  if (!gameHost.canOpen("story", true)) return;
 
   // Пока inGame=true, buildAutosavePayload не пишет слот — фиксируем индекс шага «game» до открытия модалки.
   var gameStepIdx = state.actionIndex - 1;
@@ -14350,6 +14351,18 @@ function openGame(action) {
   }
 
   var currentGameId = action.gameId || 'game';
+  var gameFrameSrc = action.mode === "url"
+    ? appendGameParamsToUrl(safeGameSrc, normalizedParams)
+    : safeGameSrc;
+  var gameSession = gameHost.open({
+    frameKind: "story",
+    gameId: currentGameId,
+    src: gameFrameSrc,
+    params: normalizedParams,
+    mode: action.mode || null
+  });
+  if (!gameSession) return;
+
   state.inGame = true;
   state.currentGame = {
     mode: action.mode || null,
@@ -14360,40 +14373,8 @@ function openGame(action) {
     sandboxMode: "strict",
     resultVar: action.resultVar || null,
     params: normalizedParams,
-    session: createActiveGameSession(currentGameId, "story")
+    session: gameSession
   };
-  var openedGame = state.currentGame;
-
-  updateStoryGameControlButtonLabel(state.currentGame.mode);
-  elGameModal.classList.remove("hidden");
-  applyGameFrameSandbox(elGameFrame);
-
-  // После загрузки привязываем сессию к фактическому contentWindow и отправляем игре все named params.
-  elGameFrame.onload = function () {
-    if (state.currentGame !== openedGame || !openedGame.session) return;
-
-    var gameWindow = elGameFrame.contentWindow;
-    if (!gameWindow) return;
-    openedGame.session.expectedSource = gameWindow;
-
-    var payload = window.VN_GAME_PROTOCOL.createGameInitMessage(
-      openedGame.gameId,
-      openedGame.params,
-      openedGame.session.sessionId
-    );
-
-    try {
-      gameWindow.postMessage(payload, '*');
-      writeRuntimeDebug('[VN DEBUG] gameInit отправлен', openedGame.gameId);
-    } catch (e) {
-      console.error('[GAME] failed to send gameInit', e && e.message ? e.message : e);
-    }
-  };
-
-  // Обработчик устанавливается до навигации, чтобы не пропустить быструю загрузку локального HTML-файла.
-  elGameFrame.src = action.mode === "url"
-    ? appendGameParamsToUrl(safeGameSrc, normalizedParams)
-    : safeGameSrc;
 }
 
 // Нормализует результат, закрывает текущую игру и продолжает соответствующий режим движка.
@@ -14416,9 +14397,9 @@ function closeGame(resultData) {
   }
 
   if (finishedGame && finishedGame.mode === "stats") {
-    closeStatsGameFrameVisualOnly();
+    gameHost.closeFrame("stats");
   } else {
-    closeGameFrameVisualOnly();
+    gameHost.closeFrame("story");
   }
   state.inGame = false;
 
@@ -14479,27 +14460,6 @@ function closeGame(resultData) {
   flushAutosaveToStorageSync();
   // Закрытие модалки по кнопке задаёт lastNextTime — снимаем охладитель, чтобы первый клик по диалогу прошёл.
   lastNextTime = 0;
-}
-
-function closeGameFrameVisualOnly() {
-  elGameModal.classList.add("hidden");
-  elGameFrame.onload = null;
-  elGameFrame.src = "about:blank";
-  updateStoryGameControlButtonLabel(null);
-}
-
-function closeStatsGameFrameVisualOnly() {
-  elStatsGameModal.classList.add("hidden");
-
-  if (elStatsGameFrameWrap) {
-    elStatsGameFrameWrap.style.left = "";
-    elStatsGameFrameWrap.style.top = "";
-    elStatsGameFrameWrap.style.width = "";
-    elStatsGameFrameWrap.style.height = "";
-  }
-
-  elStatsGameFrame.onload = null;
-  elStatsGameFrame.src = "about:blank";
 }
 
 // =========================================================
@@ -15636,7 +15596,7 @@ function renderGamesCatalog() {
   });
 }
 
-// Открывает единственную игру из статистики с обязательным строгим sandbox и контрактом gameInit v2.
+// Проверяет ресурс игры из статистики и делегирует host отдельную сессию в iframe со строгим sandbox.
 function openStatsGame(item, difficulty) {
   if (!item || !item.file) {
     if (gamesStatus) {
@@ -15656,7 +15616,19 @@ function openStatsGame(item, difficulty) {
     }
     return;
   }
-  if (!prepareSingleGameFrameLaunch("stats")) return;
+
+  var gameParams = {
+    difficulty: difficulty,
+    source: "statsGamesPanel"
+  };
+  var gameSession = gameHost.open({
+    frameKind: "stats",
+    gameId: item.id,
+    src: safeGameSrc,
+    params: gameParams,
+    mode: "stats"
+  });
+  if (!gameSession) return;
 
   state.inGame = true;
   state.currentGame = {
@@ -15666,40 +15638,9 @@ function openStatsGame(item, difficulty) {
     difficulty: difficulty,
     sandboxMode: "strict",
     resultVar: null,
-    params: {
-      difficulty: difficulty,
-      source: "statsGamesPanel"
-    },
-    session: createActiveGameSession(item.id, "stats")
+    params: gameParams,
+    session: gameSession
   };
-  var openedGame = state.currentGame;
-
-  elStatsGameModal.classList.remove("hidden");
-  syncStatsGameFrameWrapToStoryGameWindow();
-  applyGameFrameSandbox(elStatsGameFrame);
-
-  elStatsGameFrame.onload = function () {
-    if (state.currentGame !== openedGame || !openedGame.session) return;
-
-    var gameWindow = elStatsGameFrame.contentWindow;
-    if (!gameWindow) return;
-    openedGame.session.expectedSource = gameWindow;
-
-    var payload = window.VN_GAME_PROTOCOL.createGameInitMessage(
-      openedGame.gameId,
-      openedGame.params,
-      openedGame.session.sessionId
-    );
-
-    try {
-      gameWindow.postMessage(payload, "*");
-      writeRuntimeDebug("[VN DEBUG] gameInit статистики отправлен", openedGame.gameId);
-    } catch (e) {
-      console.error("[GAME] failed to send stats gameInit", e && e.message ? e.message : e);
-    }
-  };
-
-  elStatsGameFrame.src = safeGameSrc;
 }
 
 
