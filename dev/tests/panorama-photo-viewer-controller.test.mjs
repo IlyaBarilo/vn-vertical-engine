@@ -37,7 +37,12 @@ function createElementStub(options = {}) {
     naturalHeight: options.naturalHeight || 0,
     offsetHeight: options.offsetHeight || 0,
     parentElement: options.parentElement || null,
+    focusCalls: 0,
     classList: createClassList(options.classes || []),
+    focus() {
+      element.focusCalls++;
+      if (typeof options.onFocus === 'function') options.onFocus(element);
+    },
     addEventListener(type, callback) {
       if (!listeners.has(type)) listeners.set(type, new Set());
       listeners.get(type).add(callback);
@@ -85,6 +90,7 @@ function createElementStub(options = {}) {
 function createEventTargetStub() {
   const listeners = new Map();
   return {
+    activeElement: null,
     addEventListener(type, callback) {
       if (!listeners.has(type)) listeners.set(type, new Set());
       listeners.get(type).add(callback);
@@ -117,19 +123,22 @@ function createManualFrames() {
 
 // Собирает полностью управляемый viewer и журналы назначений изображения.
 function createFixture(overrides = {}) {
+  const documentTarget = createEventTargetStub();
   const stage = createElementStub({ rectWidth: 1000, rectHeight: 700 });
   const media = createElementStub();
   const viewport = createElementStub({ parentElement: media, rectWidth: 800, rectHeight: 450 });
   const inner = createElementStub();
   const image = createElementStub({ naturalWidth: 1600, naturalHeight: 900 });
   const caption = createElementStub({ classes: ['hidden'], offsetHeight: 42 });
+  const closeButton = createElementStub({
+    onFocus(element) { documentTarget.activeElement = element; }
+  });
   const previousButton = createElementStub({ classes: ['hidden'] });
   const nextButton = createElementStub({ classes: ['hidden'] });
   const viewer = createElementStub({ classes: ['hidden'] });
   const panoramaCanvas = createElementStub();
   const marksLayer = createElementStub();
   const windowTarget = createEventTargetStub();
-  const documentTarget = createEventTargetStub();
   const frames = createManualFrames();
   const assignments = [];
   const warnings = [];
@@ -139,6 +148,7 @@ function createFixture(overrides = {}) {
   let panoramaInteractive = true;
 
   viewer.setQueryResult('.bg360-photo-viewer-stage', stage);
+  viewer.setQueryResult('[data-bg360-photo-close]', closeButton);
   viewer.setQueryResult('[data-bg360-photo-prev]', previousButton);
   viewer.setQueryResult('[data-bg360-photo-next]', nextButton);
   viewport.addContained(inner);
@@ -176,6 +186,7 @@ function createFixture(overrides = {}) {
     inner,
     image,
     caption,
+    closeButton,
     previousButton,
     nextButton,
     panoramaCanvas,
@@ -228,9 +239,13 @@ test('open проверяет runtime и содержимое photo-метки �
   fixture.controller.dispose();
 });
 
-// Открывает карточку, листает один img и полностью восстанавливает 360 после Escape.
+// Открывает карточку, листает один img и после Escape восстанавливает 360 вместе с фокусом метки.
 test('viewer синхронизирует изображение, подпись, навигацию и закрытие', function() {
   const fixture = createFixture();
+  const trigger = createElementStub({
+    onFocus(element) { fixture.documentTarget.activeElement = element; }
+  });
+  fixture.documentTarget.activeElement = trigger;
   const mark = {
     kind: 'photo',
     id: 'gallery',
@@ -251,6 +266,7 @@ test('viewer синхронизирует изображение, подпись
   assert.equal(fixture.nextButton.classList.contains('hidden'), false);
   fixture.assignments[0].handlers.onLoad();
   fixture.frames.runAll();
+  assert.equal(fixture.documentTarget.activeElement, fixture.closeButton);
 
   fixture.documentTarget.dispatch('keydown', {
     key: 'ArrowRight',
@@ -273,6 +289,7 @@ test('viewer синхронизирует изображение, подпись
   assert.equal(fixture.getPanoramaInteractive(), true);
   assert.equal(fixture.panoramaCanvas.classList.contains('is-photo-viewer-open'), false);
   assert.equal(fixture.marksLayer.classList.contains('is-photo-viewer-open'), false);
+  assert.equal(fixture.documentTarget.activeElement, trigger);
   fixture.controller.dispose();
 });
 

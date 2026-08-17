@@ -3165,3 +3165,16 @@ video {
   touch-action: none !important;
 }
 
+/* Клавиатурный фокус остаётся заметным на интерактивных элементах поверх фото и видео. */
+.dialog:focus-visible,
+.btn:focus-visible,
+.slider:focus-visible,
+.choiceBtn:focus-visible,
+.gameCatalogLaunchBtn:focus-visible,
+.bg360-photo-viewer-close:focus-visible,
+.bg360-photo-nav:focus-visible,
+.bg360-mark:focus-visible {
+  outline: 3px solid rgba(255,255,255,0.95);
+  outline-offset: 2px;
+}
+

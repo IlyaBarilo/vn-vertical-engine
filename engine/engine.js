@@ -172,8 +172,10 @@ if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
 const UI_I18N = {
   en: {
     mute: "Mute",
+    volume: "Volume",
     settings: "About app",
     stats: "Stats",
+    restart: "Restart story",
     next: "Next",
     choices: "Choices",
     game: "Game",
@@ -219,8 +221,10 @@ const UI_I18N = {
   },
   ru: {
     mute: "Звук",
+    volume: "Громкость",
     settings: "Информация о программе",
     stats: "Статистика",
+    restart: "Перезапустить историю",
     next: "Далее",
     choices: "Выбор",
     game: "Игра",
@@ -291,6 +295,9 @@ function applyUiLanguage() {
   var btnMute = document.getElementById("btnMute");
   if (btnMute) btnMute.setAttribute("aria-label", t("mute"));
 
+  var volume = document.getElementById("volume");
+  if (volume) volume.setAttribute("aria-label", t("volume"));
+
   var btnSettings = document.getElementById("btnSettings");
   if (btnSettings) {
     btnSettings.setAttribute("aria-label", t("settings"));
@@ -299,6 +306,9 @@ function applyUiLanguage() {
 
   var btnStats = document.getElementById("btnStats");
   if (btnStats) btnStats.setAttribute("aria-label", t("stats"));
+
+  var btnRestart = document.getElementById("btnRestart");
+  if (btnRestart) btnRestart.setAttribute("aria-label", t("restart"));
 
   var dialog = document.getElementById("dialog");
   if (dialog) dialog.setAttribute("aria-label", t("next"));
@@ -1024,6 +1034,8 @@ var elStatsGameModal = document.getElementById("statsGameModal");
 var elStatsGameFrameWrap = document.getElementById("statsGameFrameWrap");
 var elStatsGameFrame = document.getElementById("statsGameFrame");
 var btnCloseStatsGame = document.getElementById("btnCloseStatsGame");
+var storyGameReturnFocus = null;
+var statsGameReturnFocus = null;
 
 function syncStatsGameFrameWrapToStoryGameWindow() {
   if (!elNovelWindow || !elGameModal || !elStatsGameModal || !elStatsGameFrameWrap) return;
@@ -1059,26 +1071,35 @@ function syncStatsGameFrameWrapToStoryGameWindow() {
 
 // Готовит сюжетную модалку после того, как game host применил ограничения iframe и показал окно.
 function prepareStoryGameHostUi(launch) {
+  storyGameReturnFocus = getCurrentUiFocusTarget(elDialog);
   updateStoryGameControlButtonLabel(launch && launch.mode);
 }
 
-// Возвращает подпись кнопки сюжетной игры после очистки или переключения на другой iframe.
+// Возвращает подпись кнопки и клавиатурный фокус после закрытия сюжетной игры.
 function resetStoryGameHostUi() {
+  var returnFocus = storyGameReturnFocus;
+  storyGameReturnFocus = null;
   updateStoryGameControlButtonLabel(null);
+  focusUiElement(returnFocus);
 }
 
 // Подгоняет модалку игры из статистики к геометрии основного окна после её показа.
 function prepareStatsGameHostUi() {
+  statsGameReturnFocus = getCurrentUiFocusTarget(btnShowGames);
   syncStatsGameFrameWrapToStoryGameWindow();
 }
 
-// Очищает вычисленную геометрию статистической модалки перед следующим запуском.
+// Очищает геометрию статистической модалки и возвращает фокус к запустившему элементу.
 function resetStatsGameHostUi() {
-  if (!elStatsGameFrameWrap) return;
-  elStatsGameFrameWrap.style.left = "";
-  elStatsGameFrameWrap.style.top = "";
-  elStatsGameFrameWrap.style.width = "";
-  elStatsGameFrameWrap.style.height = "";
+  var returnFocus = statsGameReturnFocus;
+  statsGameReturnFocus = null;
+  if (elStatsGameFrameWrap) {
+    elStatsGameFrameWrap.style.left = "";
+    elStatsGameFrameWrap.style.top = "";
+    elStatsGameFrameWrap.style.width = "";
+    elStatsGameFrameWrap.style.height = "";
+  }
+  focusUiElement(returnFocus);
 }
 
 // Сохраняет прежнее предупреждение о параллельном запуске, не связывая game host с runtime-логгером.
@@ -1086,10 +1107,11 @@ function reportGameHostWarning(message, frameKind) {
   console.warn(message, frameKind);
 }
 
-// Записывает подробное подтверждение gameInit только при явно включённой runtime-диагностике.
+// Записывает подтверждение gameInit и передаёт клавиатурный фокус загруженному iframe игры.
 function reportGameHostInitSent(launch) {
   var label = launch.frameKind === "stats" ? "gameInit статистики отправлен" : "gameInit отправлен";
   writeRuntimeDebug("[VN DEBUG] " + label, launch.gameId);
+  focusUiElement(launch && launch.frame);
 }
 
 // Выводит техническую ошибку postMessage без раскрытия параметров игры или состояния сценария.
@@ -1168,6 +1190,38 @@ var elGraphLoadProgress = document.getElementById("graphLoadProgress");
 var elGraphLoadProgressBar = document.getElementById("graphLoadProgressBar");
 var elGraphLoadProgressText = document.getElementById("graphLoadProgressText");
 var elGraphLoadProgressLabel = document.getElementById("graphLoadProgressLabel");
+var settingsPanelReturnFocus = null;
+var statsPanelReturnFocus = null;
+
+// Переводит фокус без прокрутки и безопасно поддерживает браузеры со старой сигнатурой focus().
+function focusUiElement(element) {
+  if (!element || typeof element.focus !== "function" || element.isConnected === false) return false;
+  try {
+    element.focus({ preventScroll: true });
+  } catch (error) {
+    try {
+      element.focus();
+    } catch (fallbackError) {
+      // Недоступный элемент уже удалён или скрыт; lifecycle интерфейса продолжается без ошибки.
+      return false;
+    }
+  }
+  return true;
+}
+
+// Запоминает реальный активный элемент либо устойчивую кнопку, к которой можно вернуться после модалки.
+function getCurrentUiFocusTarget(fallback) {
+  var activeElement = document.activeElement;
+  if (
+    activeElement &&
+    activeElement !== document.body &&
+    activeElement !== document.documentElement &&
+    typeof activeElement.focus === "function"
+  ) {
+    return activeElement;
+  }
+  return fallback || null;
+}
 
 // Новые DOM-элементы
 var elBlurBgLayer = document.getElementById("blurBgLayer");
@@ -3900,8 +3954,9 @@ btnRestart.addEventListener("click", function () {
   restart({ clearAutosave: true });
 });
 
-btnCloseGame.addEventListener("pointerup", function (e) {
-  writeRuntimeVerbose("[LOG] close pointerup", {
+// Закрывает или перезапускает сюжетную игру одинаково для pointer и клавиатурной активации кнопки.
+function closeStoryGameFromControl(e) {
+  writeRuntimeVerbose("[LOG] close control", {
     inGame: state.inGame,
     modalHidden: elGameModal.classList.contains("hidden"),
     waitingNext: state.waitingNext,
@@ -3932,20 +3987,32 @@ btnCloseGame.addEventListener("pointerup", function (e) {
     waitingNext: state.waitingNext,
     nextLocked: state.nextLocked
   });
+}
+
+btnCloseGame.addEventListener("pointerup", function (e) {
+  closeStoryGameFromControl(e);
 });
 
 btnCloseGame.addEventListener("click", function (e) {
-  swallowEvent(e);
+  // Нативная клавиатурная активация button создаёт click без pointerup и с detail=0.
+  if (e.detail === 0) closeStoryGameFromControl(e);
+  else swallowEvent(e);
 });
 
-btnCloseStatsGame.addEventListener("pointerup", function (e) {
+// Закрывает игру из статистики через общий путь и не пропускает активирующее событие под модалку.
+function closeStatsGameFromControl(e) {
   swallowEvent(e);
   lastNextTime = Date.now();
   closeGame({ manualClose: true, result: 0 });
+}
+
+btnCloseStatsGame.addEventListener("pointerup", function (e) {
+  closeStatsGameFromControl(e);
 });
 
 btnCloseStatsGame.addEventListener("click", function (e) {
-  swallowEvent(e);
+  if (e.detail === 0) closeStatsGameFromControl(e);
+  else swallowEvent(e);
 });
 
 // Применяет уже проверенный game host результат, предупреждает о временной совместимости и завершает режим движка.
@@ -8505,12 +8572,16 @@ function getFitChoiceRows(widths, containerWidth, gap) {
   return rows;
 }
 
-// Измеряет кнопки fit-меню, разбивает их на строки и растягивает каждую строку на всю ширину списка.
+// Измеряет fit-меню, перестраивает строки на всю ширину и сохраняет фокус выбранной кнопки.
 function applyFitChoiceLayout(list) {
   if (!list || !list.parentNode || elChoices.classList.contains("hidden")) return;
 
   var buttons = Array.prototype.slice.call(list.querySelectorAll(".choiceBtn"));
   if (!buttons.length) return;
+  // Перестройка DOM не должна сбрасывать клавиатурный фокус с выбранного пункта.
+  var focusedChoice = document.activeElement && list.contains(document.activeElement)
+    ? document.activeElement
+    : null;
 
   // Перед повторной раскладкой возвращаем кнопки в исходный порядок и убираем старые строки.
   while (list.firstChild) {
@@ -8525,7 +8596,10 @@ function applyFitChoiceLayout(list) {
   });
 
   var containerWidth = Math.floor(list.clientWidth);
-  if (containerWidth <= 0) return;
+  if (containerWidth <= 0) {
+    focusUiElement(focusedChoice);
+    return;
+  }
 
   var savedDisplay = list.style.display;
   list.style.display = "block";
@@ -8575,6 +8649,7 @@ function applyFitChoiceLayout(list) {
 
     list.appendChild(row);
   });
+  focusUiElement(focusedChoice);
 }
 
 function showChoices(choices, choiceAction) {
@@ -8665,6 +8740,8 @@ function showChoices(choices, choiceAction) {
         }
 
         hideChoices();
+        // После выбора возвращаем управление диалогу; следующая модалка при необходимости заберёт фокус сама.
+        focusUiElement(elDialog);
 
         if (Array.isArray(choice.actions) && choice.actions.length > 0) {
           var clonedChoiceActions = JSON.parse(JSON.stringify(choice.actions));
@@ -8688,6 +8765,7 @@ function showChoices(choices, choiceAction) {
 
   panel.appendChild(list);
   elChoices.appendChild(panel);
+  focusUiElement(list.querySelector(".choiceBtn"));
   if (isFitChoices) {
     scheduleFitChoiceLayout(list);
   }
@@ -9280,6 +9358,8 @@ function closeGame(resultData) {
     // state.nextLocked = false;
 
     renderGamesCatalog();
+    // Каталог пересоздаёт кнопки уровней, поэтому устойчиво возвращаем фокус на вкладку игр.
+    focusUiElement(btnShowGames);
     return;
   }
 
@@ -9711,26 +9791,37 @@ function toggleSettingsPanel() {
   else hideSettingsPanel();
 }
 
+// Открывает информацию, запоминает источник и переводит фокус на доступную кнопку закрытия.
 function showSettingsPanel() {
   if (!elSettingsPanel) return;
+  settingsPanelReturnFocus = getCurrentUiFocusTarget(btnSettings);
   if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
     // Окно статистики скрывается без setStatsView, поэтому отдельно отменяем отложенный рендер графа.
     graphRenderSequence++;
     elStatsPanel.classList.add("hidden");
+    statsPanelReturnFocus = null;
   }
   renderSettingsPanel();
   elSettingsPanel.classList.remove("hidden");
+  focusUiElement(btnCloseSettings);
 }
 
+// Закрывает информацию и возвращает фокус элементу, которым пользователь открыл панель.
 function hideSettingsPanel() {
   if (!elSettingsPanel) return;
+  var returnFocus = settingsPanelReturnFocus;
+  settingsPanelReturnFocus = null;
   elSettingsPanel.classList.add("hidden");
   tryResumeNovelAfterStatsClose("hideSettingsPanel");
+  focusUiElement(returnFocus || btnSettings);
 }
 
+// Открывает статистику, запоминает источник и удерживает начальный фокус внутри панели.
 function showStatsPanel() {
+  statsPanelReturnFocus = getCurrentUiFocusTarget(btnStats);
   if (elSettingsPanel && !elSettingsPanel.classList.contains("hidden")) {
     elSettingsPanel.classList.add("hidden");
+    settingsPanelReturnFocus = null;
   }
   setStatsView("text");
 
@@ -9739,6 +9830,7 @@ function showStatsPanel() {
 
   renderStats();
   elStatsPanel.classList.remove("hidden");
+  focusUiElement(btnCloseStats);
 }
 
 // Аккуратно восстанавливает поток новеллы после закрытия статистики, если UI оставил движок в подвешенном состоянии.
@@ -9769,11 +9861,15 @@ function tryResumeNovelAfterStatsClose(reason) {
   runCurrent();
 }
 
+// Закрывает статистику и возвращает фокус, не изменяя текущий вид диагностического отчёта.
 function hideStatsPanel() {
+  var returnFocus = statsPanelReturnFocus;
+  statsPanelReturnFocus = null;
   // Закрытие панели не меняет currentStatsView, но все отложенные операции графа уже неактуальны.
   graphRenderSequence++;
   elStatsPanel.classList.add("hidden");
   tryResumeNovelAfterStatsClose("hideStatsPanel");
+  focusUiElement(returnFocus || btnStats);
 }
 
 

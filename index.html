@@ -22,10 +22,10 @@
   -->
   <div id="app" class="app">
 
-    <div id="statsPanel" class="statsPanel hidden" aria-label="Statistics">
+    <div id="statsPanel" class="statsPanel hidden" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
       <div class="statsCard">
         <div class="statsHeader">
-          <div class="statsTitle">Script Statistics</div>
+          <div id="statsTitle" class="statsTitle">Script Statistics</div>
           <div class="statsHeaderActions">
             <div class="statsViewTabs" role="tablist" aria-label="Statistics views">
               <button id="btnShowFullGraph" class="btn" type="button" title="Show full graph">📊 Full Graph</button>
@@ -97,10 +97,10 @@
       </div>
     </div>
 
-    <div id="settingsPanel" class="statsPanel hidden" aria-label="Информация о программе">
+    <div id="settingsPanel" class="statsPanel hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <div class="statsCard settingsCard">
         <div class="statsHeader">
-          <div class="statsTitle settingsTitle">Информация о программе</div>
+          <div id="settingsTitle" class="statsTitle settingsTitle">Информация о программе</div>
           <div class="statsHeaderActions">
             <button id="btnCloseSettings" class="btn" type="button" aria-label="Закрыть информацию">✕</button>
           </div>
@@ -112,7 +112,7 @@
     </div>
 
     <!-- Контейнер standalone-игры из вкладки "Игры" -->
-    <div id="statsGameModal" class="gameModal hidden" aria-label="Game">
+    <div id="statsGameModal" class="gameModal hidden" role="dialog" aria-modal="true" aria-label="Game">
       <div id="statsGameFrameWrap" class="gameFrameWrap statsGameFrameWrap">
         <iframe id="statsGameFrame" class="gameFrame" title="Standalone mini game" src="about:blank" sandbox="allow-scripts" allow="autoplay; accelerometer 'none'; camera 'none'; clipboard-read 'none'; clipboard-write 'none'; display-capture 'none'; fullscreen 'none'; gamepad 'none'; geolocation 'none'; gyroscope 'none'; hid 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; serial 'none'; usb 'none'; xr-spatial-tracking 'none'" referrerpolicy="no-referrer"></iframe>
         <div class="gameControls">
@@ -158,14 +158,14 @@
               <button id="btnMute" class="btn icon-btn" type="button" aria-label="Mute"><span class="btn-icon">🔊</span></button>
 
               <!-- Volume -->
-              <input id="volume" class="slider" type="range" min="0" max="100" value="20" />
+              <input id="volume" class="slider" type="range" min="0" max="100" value="20" aria-label="Volume" />
 
               <!-- НОВОЕ: статистика/настройки -->
               <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация о программе"><span class="btn-icon">ℹ️</span></button>
               <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
 
               <!-- Restart -->
-              <button id="btnRestart" class="btn icon-btn" type="button"><span class="btn-icon">🔄</span></button>
+              <button id="btnRestart" class="btn icon-btn" type="button" aria-label="Restart story"><span class="btn-icon">🔄</span></button>
             </div>
           </div>
 
@@ -181,7 +181,7 @@
           <div id="choices" class="choices hidden" aria-label="Choices"></div>
 
           <!-- Контейнер мини-игры (iframe) -->
-          <div id="gameModal" class="gameModal hidden" aria-label="Game">
+          <div id="gameModal" class="gameModal hidden" role="dialog" aria-modal="true" aria-label="Game">
             <div class="gameFrameWrap">
               <iframe id="gameFrame" class="gameFrame" title="Mini game" src="about:blank" sandbox="allow-scripts" allow="autoplay; accelerometer 'none'; camera 'none'; clipboard-read 'none'; clipboard-write 'none'; display-capture 'none'; fullscreen 'none'; gamepad 'none'; geolocation 'none'; gyroscope 'none'; hid 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; serial 'none'; usb 'none'; xr-spatial-tracking 'none'" referrerpolicy="no-referrer"></iframe>
               <div class="gameControls">

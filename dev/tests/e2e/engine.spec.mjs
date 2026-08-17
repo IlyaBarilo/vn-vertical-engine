@@ -715,6 +715,83 @@ test('движок запускает историю в браузере без 
   expect(pageErrors).toEqual([]);
 });
 
+// Проверяет основной клавиатурный маршрут, доступные имена и возврат фокуса из служебных модалок.
+test('accessibility: диалог, выборы и служебные панели доступны с клавиатуры', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page);
+
+  await expect(page.locator('#btnMute')).toHaveAttribute('aria-label', 'Звук');
+  await expect(page.locator('#volume')).toHaveAttribute('aria-label', 'Громкость');
+  await expect(page.locator('#btnSettings')).toHaveAttribute('aria-label', 'Информация о программе');
+  await expect(page.locator('#btnStats')).toHaveAttribute('aria-label', 'Статистика');
+  await expect(page.locator('#btnRestart')).toHaveAttribute('aria-label', 'Перезапустить историю');
+
+  const settingsButton = page.locator('#btnSettings');
+  await settingsButton.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Информация о программе' })).toBeVisible();
+  await expect(page.locator('#btnCloseSettings')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#settingsPanel')).toBeHidden();
+  await expect(settingsButton).toBeFocused();
+
+  const statsButton = page.locator('#btnStats');
+  await statsButton.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Статистика сценария' })).toBeVisible();
+  await expect(page.locator('#btnCloseStats')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#statsPanel')).toBeHidden();
+  await expect(statsButton).toBeFocused();
+
+  const dialog = page.locator('#dialog');
+  await dialog.focus();
+  await page.keyboard.press('Enter');
+  const choiceButtons = page.locator('.choiceBtn');
+  await expect(choiceButtons).toHaveCount(2);
+  await expect(choiceButtons.nth(0)).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(choiceButtons.nth(1)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#textBox')).toHaveText('Выбрана правая ветка');
+  await expect(dialog).toBeFocused();
+
+  await page.waitForTimeout(350);
+  await page.keyboard.press('Space');
+  await expect(page.locator('#textBox')).toHaveText('Финал: right, результат: 0');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет клавиатурное закрытие сюжетной игры и возврат в диалог после очистки iframe.
+test('accessibility: мини-игра возвращает фокус после закрытия клавишей', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page);
+
+  const dialog = page.locator('#dialog');
+  await dialog.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.choiceBtn').nth(0)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#textBox')).toHaveText('Выбрана левая ветка');
+  await expect(dialog).toBeFocused();
+
+  await page.waitForTimeout(350);
+  await page.keyboard.press('Enter');
+  await expect(page.frameLocator('#gameFrame').locator('#status')).toHaveText('gameInit получен');
+  await expect.poll(async function readFocusedElementId() {
+    return page.evaluate(function readActiveElementId() {
+      return document.activeElement ? document.activeElement.id : '';
+    });
+  }).toBe('gameFrame');
+
+  await page.locator('#btnCloseGame').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#gameModal')).toBeHidden();
+  await expect(page.locator('#textBox')).toHaveText('Игра завершена: 0');
+  await expect(dialog).toBeFocused();
+  expect(pageErrors).toEqual([]);
+});
+
 // Проверяет компактное окно информации и полный набор технических версий только в статистике.
 test('информация и статистика разделяют пользовательские и технические сведения', async function({ page }) {
   const pageErrors = collectPageErrors(page);
@@ -933,14 +1010,17 @@ test('контроллеры 360-меток открывают фото и вы�
   await photoMark.click();
   await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
   await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);
+  await expect(page.locator('[data-bg360-photo-close]')).toBeFocused();
 
   await page.locator('[data-bg360-photo-next]').click();
   await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-cafe\.jpg$/);
   await page.keyboard.press('Escape');
   await expect(page.locator('#bg360PhotoViewer')).toBeHidden();
   await expect(photoMark).toBeVisible();
+  await expect(photoMark).toBeFocused();
   await photoMark.click();
   await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
+  await expect(page.locator('[data-bg360-photo-close]')).toBeFocused();
   expect(await page.evaluate(function readPhotoViewerModuleType() {
     return [
       typeof window.VN_PANORAMA_PHOTO_VIEWER_CONTROLLER?.createPanoramaPhotoViewerController,
@@ -948,6 +1028,7 @@ test('контроллеры 360-меток открывают фото и вы�
     ];
   })).toEqual(['function', 'function']);
   await page.keyboard.press('Escape');
+  await expect(photoMark).toBeFocused();
   await sceneMark.click();
   await expect(page.locator('#textBox')).toHaveText('После навигации E2E');
   expect(pageErrors).toEqual([]);

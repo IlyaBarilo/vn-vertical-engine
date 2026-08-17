@@ -86,6 +86,10 @@ backgrounds, characters, and audio.
 - mouse, keyboard, and touch controls;
 - an adaptive interface tested on a real 4K display.
 
+For keyboard use, Enter/Space advances dialogue, Tab moves between choices,
+and utility or game dialogs restore focus after closing. Escape closes the
+360° photo-marker viewer.
+
 ## 9:16 target format
 
 The public target format is a **9:16 portrait screen**.

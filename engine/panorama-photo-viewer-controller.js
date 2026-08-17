@@ -74,12 +74,14 @@
     var marksLayer = options.marksLayer || null;
     var windowTarget = options.window || null;
     var documentTarget = options.document || null;
+    var closeButton = viewer && viewer.querySelector ? viewer.querySelector("[data-bg360-photo-close]") : null;
     var previousButton = viewer && viewer.querySelector ? viewer.querySelector("[data-bg360-photo-prev]") : null;
     var nextButton = viewer && viewer.querySelector ? viewer.querySelector("[data-bg360-photo-next]") : null;
     var lifecycleStarted = false;
     var disposed = false;
     var imageGeneration = 0;
     var scheduledFrames = [];
+    var returnFocusTarget = null;
 
     var state = {
       active: false,
@@ -107,6 +109,22 @@
       } else if (typeof console !== "undefined" && typeof console.warn === "function") {
         console.warn.apply(console, arguments);
       }
+    }
+
+    // Переводит фокус без прокрутки и не позволяет удалённому элементу нарушить lifecycle viewer.
+    function focusElement(element) {
+      if (!element || typeof element.focus !== "function" || element.isConnected === false) return false;
+      try {
+        element.focus({ preventScroll: true });
+      } catch (error) {
+        try {
+          element.focus();
+        } catch (fallbackError) {
+          // Возврат фокуса является best-effort и не влияет на закрытие изображения.
+          return false;
+        }
+      }
+      return true;
     }
 
     // Запрашивает кадр через окно или синхронно выполняет callback в среде без requestAnimationFrame.
@@ -448,7 +466,7 @@
       return true;
     }
 
-    // Замораживает 360 и показывает первый кадр только для доступной photo-метки с изображениями.
+    // Замораживает 360, показывает первый кадр и переводит фокус на кнопку закрытия viewer.
     function open(mark) {
       if (disposed || !mark || !isPhotoMark(mark)) return false;
       if (!viewer || !image || !isPanoramaActive() || isMarksLocked()) return false;
@@ -460,6 +478,8 @@
       }
 
       cancelScheduledFrames();
+      var activeElement = documentTarget && documentTarget.activeElement;
+      returnFocusTarget = activeElement && typeof activeElement.focus === "function" ? activeElement : null;
       state.active = true;
       state.markId = String(mark.id || "");
       state.images = images;
@@ -481,13 +501,16 @@
 
       scheduleFrame(function layoutOpenedPhotoViewer() {
         layoutCard(true);
+        focusElement(closeButton);
       });
       return true;
     }
 
-    // Закрывает карточку, отменяет её async-работу и возвращает прежнюю интерактивность активной панорамы.
+    // Закрывает карточку, отменяет async-работу и возвращает интерактивность вместе с прежним фокусом.
     function close(reason) {
       if (!state.active) return false;
+      var focusTarget = returnFocusTarget;
+      returnFocusTarget = null;
       state.active = false;
       imageGeneration++;
       cancelScheduledFrames();
@@ -514,6 +537,8 @@
       if (marksLayer) marksLayer.classList.remove("is-photo-viewer-open");
       if (isPanoramaActive()) setPanoramaInteractive(state.was360Interactive);
       if (panoramaCanvas) panoramaCanvas.classList.remove("is-photo-viewer-open");
+
+      if (reason !== "dispose") focusElement(focusTarget);
 
       if (reason) {
         // Причина сохраняется только в стеке вызова для отладки и не меняет пользовательское поведение.
