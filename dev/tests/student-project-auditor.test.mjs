@@ -2,23 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { loadStudentAuditorCore } from './helpers/load-student-auditor-core.mjs';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
-const auditorPath = path.join(repositoryRoot, 'tools', 'student-project-auditor.html');
-
-// Загружает чистое ядро аудитора из single-file HTML без выполнения DOM-интерфейса.
-async function loadAuditorCore() {
-  const html = await readFile(auditorPath, 'utf8');
-  const match = html.match(/\/\* STUDENT_PROJECT_AUDITOR_CORE_START \*\/([\s\S]*?)\/\* STUDENT_PROJECT_AUDITOR_CORE_END \*\//);
-  assert.ok(match, 'В HTML-аудиторе не найдены маркеры тестируемого ядра.');
-
-  const context = vm.createContext({});
-  vm.runInContext(match[1], context, { filename: 'student-project-auditor-core.js' });
-  assert.ok(context.VNStudentProjectAuditorCore, 'Ядро аудитора не экспортировано в globalThis.');
-  return { core: context.VNStudentProjectAuditorCore, html };
-}
 
 // Читает файл репозитория в UTF-8 для проверки реального демонстрационного комплекта.
 function readRepositoryFile(relativePath) {
@@ -27,7 +14,7 @@ function readRepositoryFile(relativePath) {
 
 // Подтверждает автономность инструмента и наличие обоих способов явного выбора каталога.
 test('HTML-аудитор остаётся одним автономным файлом с выбором и переносом каталога', async function() {
-  const { html } = await loadAuditorCore();
+  const { html } = await loadStudentAuditorCore();
 
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /connect-src 'none'/);
@@ -40,7 +27,7 @@ test('HTML-аудитор остаётся одним автономным фа�
 
 // Закрепляет безусловный запрет старых JS-пакетов панорам при сохранении корневого story360.js.
 test('аудитор отличает story360.js от запрещённых панорамных JS-пакетов', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
 
   assert.equal(core.isPanoramaJavaScript('story360.js'), false);
   assert.equal(core.isPanoramaJavaScript('assets/360/hall-360.js'), true);
@@ -51,7 +38,7 @@ test('аудитор отличает story360.js от запрещённых п
 
 // Требует литеральную версию корневого формата STORY360 и отклоняет неизвестную схему до публикации.
 test('аудитор проверяет версию STORY360', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const validIssues = Array.from(core.inspectStory360Source('window.STORY360 = { spaces: {}, version: 1 };'));
   const missingIssues = Array.from(core.inspectStory360Source('window.STORY360 = { spaces: {} };'));
   const futureIssues = Array.from(core.inspectStory360Source('window.STORY360 = { version: 2, spaces: {} };'));
@@ -63,7 +50,7 @@ test('аудитор проверяет версию STORY360', async function()
 
 // Проверяет пассивное извлечение DSL и отказ от интерполяции или дополнительного JavaScript.
 test('аудитор принимает только декларативную обёртку story.js', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const safe = core.inspectStorySource('window.STORY_TEXT = `\n[scene]\nscene intro\n"Текст"\n`;');
   const interpolation = core.inspectStorySource('window.STORY_TEXT = `Значение: ${dangerous()}`;');
   const extraCode = core.inspectStorySource('window.STORY_TEXT = `Текст`;\nfetch("https://example.invalid");');
@@ -80,7 +67,7 @@ test('аудитор принимает только декларативную 
 
 // Проверяет извлечение реестра игр и обязательный локальный HTML-путь.
 test('аудитор извлекает только допустимые пути мини-игр из story.js', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const result = core.collectRegisteredGames([
     '[game]',
     'first file=assets/games/first.html',
@@ -101,7 +88,7 @@ test('аудитор извлекает только допустимые пут
 
 // Проверяет единые ограничения assets для основных и резервных ресурсов сценария.
 test('аудитор отклоняет неоднозначные и выходящие из assets пути сценария', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const safeIssues = Array.from(core.inspectStoryResourcePaths([
     '[bg]',
     'hall file=assets/custom/hall.jpg fallbackimage=assets/preview/hall.svg'
@@ -121,7 +108,7 @@ test('аудитор отклоняет неоднозначные и выход
 
 // Проверяет активное содержимое SVG и сохраняет поддержку безопасной векторной картинки.
 test('аудитор разрешает пассивный SVG и блокирует активные конструкции', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const safeSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path id="p" d="M0 0L10 10"/><use href="#p"/></svg>';
   const unsafeSvg = '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(\'https://example.invalid\')"><script>alert(1)</script><image href="https://example.invalid/a.png"/></svg>';
 
@@ -134,7 +121,7 @@ test('аудитор разрешает пассивный SVG и блокиру
 
 // Проверяет обязательность и строгость CSP до первого исполняемого содержимого мини-игры.
 test('аудитор требует строгий CSP внутри мини-игры', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const strictCsp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'";
   const safeGame = '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="' + strictCsp + '"><meta name="vn-game-protocol" content="2"><style>body{margin:0}</style></head><script>const gameInit="gameInit", gameResult="gameResult", protocolVersion=2, gameId="gameId", sessionId="sessionId"; parent.postMessage({gameResult,protocolVersion,gameId,sessionId},"*");</script>';
   const missingGame = '<!doctype html><script>const gameInit="gameInit";</script>';
@@ -147,7 +134,7 @@ test('аудитор требует строгий CSP внутри мини-и�
 
 // Проверяет обязательный HTML-маркер: версия берётся из самой игры, а не из story.js.
 test('аудитор проверяет версию протокола внутри мини-игры', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const missing = Array.from(core.inspectMiniGameProtocolVersion('assets/games/missing.html', '<html><head></head></html>'));
   const supported = Array.from(core.inspectMiniGameProtocolVersion('assets/games/supported.html', '<html><head><meta name="vn-game-protocol" content="2"></head></html>'));
   const unsupported = Array.from(core.inspectMiniGameProtocolVersion('assets/games/future.html', '<html><head><meta name="vn-game-protocol" content="3"></head></html>'));
@@ -159,7 +146,7 @@ test('аудитор проверяет версию протокола внут
 
 // Фиксирует основные сетевые и исполняемые конструкции, запрещённые для HTML-мини-игры.
 test('аудитор обнаруживает внешние зависимости и сетевые API мини-игры', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const source = [
     '<!doctype html>',
     '<link rel="stylesheet" href="https://cdn.example.invalid/game.css">',
@@ -185,7 +172,7 @@ test('аудитор обнаруживает внешние зависимос�
 
 // Проверяет, что серверно-опасные и неизвестные файлы блокируются единым allowlist независимо от denylist расширений.
 test('аудитор разрешает только известный состав проекта и безопасные авторские ресурсы', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const registeredGames = ['assets/games/registered.html'];
   const allowedPaths = [
     'index.html',
@@ -253,7 +240,7 @@ test('аудитор разрешает только известный сост
 
 // Проверяет дополнительные JS, старые панорамные пакеты и незарегистрированный HTML по дереву проекта.
 test('аудитор обнаруживает опасные файлы в полном перечне проекта', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const requiredPaths = [
     'index.html',
     'engine/engine.css',
@@ -317,7 +304,7 @@ test('аудитор обнаруживает опасные файлы в по�
 
 // Проверяет реальный пример, доступность всех зарегистрированных файлов и безопасную штатную игру.
 test('аудитор читает демонстрационный story.js и все зарегистрированные мини-игры', async function() {
-  const { core } = await loadAuditorCore();
+  const { core } = await loadStudentAuditorCore();
   const storySource = await readRepositoryFile('story-example.js');
   const storyInspection = core.inspectStorySource(storySource);
   const storyIssues = Array.from(storyInspection.issues);

@@ -84,6 +84,12 @@ npm.cmd --prefix dev run test:variables
 npm.cmd --prefix dev run test:assets
 ```
 
+Единый контракт допустимых путей ресурсов для runtime и аудитора:
+
+```powershell
+npm.cmd --prefix dev run test:contracts
+```
+
 Обычное аудио, сюжетное видео, фоновые image/video, персонажи, визуальные переходы и их lifecycle:
 
 ```powershell
