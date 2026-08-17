@@ -257,6 +257,7 @@ test('аудитор обнаруживает опасные файлы в по�
     'engine/engine.css',
     'engine/engine.js',
     'engine/expression.js',
+    'engine/autosave-storage.js',
     'engine/game-host.js',
     'engine/game-protocol.js',
     'engine/resource-path-policy.js',

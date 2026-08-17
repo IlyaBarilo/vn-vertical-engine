@@ -4042,7 +4042,6 @@ startLicensedEngine();
 // ---------- Автосейв (localStorage, legacy-слот или отдельный слот projectId/novel) ----------
 // Состояние сценария живёт в памяти движка; в localStorage пишем с дебаунсом (редко перезаписываем диск),
 // плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
-var VN_AUTOSAVE_STORAGE_KEY = "vn_engine_autosave_v1";
 // Версия поднята после смены модели позиционирования персонажей:
 // старые autosave-слоты могли восстановить прежний pos/focus и снова сдвинуть персонажа.
 var VN_AUTOSAVE_PAYLOAD_VERSION = 3;
@@ -4107,23 +4106,17 @@ function getActiveProjectSaveId() {
   return String(STORY.meta.projectId).trim().toLowerCase();
 }
 
-// Строит прежний общий или novel-ключ, чтобы старые проекты продолжали работать и могли мигрировать сохранение.
-function getLegacyAutosaveStorageKey() {
-  var novelSaveId = getActiveNovelSaveId();
-  if (!novelSaveId) return VN_AUTOSAVE_STORAGE_KEY;
-  return VN_AUTOSAVE_STORAGE_KEY + ":novel:" + encodeURIComponent(novelSaveId);
+// Получает localStorage только внутри защищённой операции модуля, чтобы запрет API не останавливал запуск движка.
+function getAutosaveLocalStorage() {
+  return window.localStorage;
 }
 
-// Выбирает изолированный projectId-ключ, а без projectId полностью сохраняет прежнее имя слота.
-function getAutosaveStorageKey() {
-  var projectSaveId = getActiveProjectSaveId();
-  if (!projectSaveId) return getLegacyAutosaveStorageKey();
-
-  var storageKey = VN_AUTOSAVE_STORAGE_KEY + ":project:" + encodeURIComponent(projectSaveId);
-  var novelSaveId = getActiveNovelSaveId();
-  if (novelSaveId) storageKey += ":novel:" + encodeURIComponent(novelSaveId);
-  return storageKey;
-}
+// Создаёт единый адаптер ключей и Storage API; payload и правила принадлежности остаются ответственностью движка.
+var autosaveStorage = window.VN_AUTOSAVE_STORAGE.createAutosaveStorage({
+  getStorage: getAutosaveLocalStorage,
+  getProjectId: getActiveProjectSaveId,
+  getNovelId: getActiveNovelSaveId
+});
 
 // Запрещает любые операции с localStorage для nosave, scene-режима и ошибочного novel-параметра.
 function isStoryUrlAutosaveStorageBlocked() {
@@ -4767,54 +4760,58 @@ function copyLegacyAutosaveToProjectSlot() {
   var legacyFingerprint = computeLegacyStoryFingerprintForProjectMigration();
   if (!legacyFingerprint) return null;
 
-  var legacyStorageKey = getLegacyAutosaveStorageKey();
-  var targetStorageKey = getAutosaveStorageKey();
-  var legacyRaw = null;
-  try {
-    legacyRaw = localStorage.getItem(legacyStorageKey);
-  } catch (err) {
-    autosaveDebugLog("migration:legacy_read_failed", String(err && err.message ? err.message : err));
+  // Проверяет legacy-payload в контексте прежнего fingerprint до добавления нового projectId.
+  function validateLegacyPayloadForMigration(legacyData) {
+    return validateAutosavePayload(legacyData, {
+      allowMissingProjectId: true,
+      requiredFingerprint: legacyFingerprint
+    });
+  }
+
+  // Перепривязывает проверенный payload к текущему проекту и актуальному fingerprint текста истории.
+  function transformLegacyPayloadForProject(legacyData, context) {
+    var currentFingerprint = computeStoryTextFingerprint();
+    legacyData.projectId = context.projectId;
+    legacyData.hashHex = currentFingerprint.hashHex;
+    legacyData.textLength = currentFingerprint.textLength;
+    return legacyData;
+  }
+
+  var migrationResult = autosaveStorage.migrateLegacy({
+    validate: validateLegacyPayloadForMigration,
+    transform: transformLegacyPayloadForProject
+  });
+
+  if (migrationResult.status === "read-error" || migrationResult.status === "context-error") {
+    var readError = migrationResult.error;
+    autosaveDebugLog(
+      "migration:legacy_read_failed",
+      String(readError && readError.message ? readError.message : readError)
+    );
     return null;
   }
-  if (!legacyRaw) return null;
-
-  var legacyData = null;
-  try {
-    legacyData = JSON.parse(legacyRaw);
-  } catch (err) {
+  if (migrationResult.status === "parse-error") {
     autosaveDebugLog("migration:legacy_parse_failed", {});
     return null;
   }
-
-  if (!validateAutosavePayload(legacyData, {
-    allowMissingProjectId: true,
-    requiredFingerprint: legacyFingerprint
-  })) {
+  if (migrationResult.status === "rejected" || migrationResult.status === "validation-error") {
     autosaveDebugLog("migration:legacy_rejected", {
-      legacyStorageKey: legacyStorageKey,
-      targetStorageKey: targetStorageKey
+      legacyStorageKey: migrationResult.legacyKey,
+      targetStorageKey: migrationResult.targetKey
     });
     return null;
   }
-
-  var currentFingerprint = computeStoryTextFingerprint();
-  legacyData.projectId = projectSaveId;
-  legacyData.hashHex = currentFingerprint.hashHex;
-  legacyData.textLength = currentFingerprint.textLength;
-  var migratedRaw = JSON.stringify(legacyData);
-
-  try {
-    localStorage.setItem(targetStorageKey, migratedRaw);
-  } catch (err) {
-    console.warn("[AUTOSAVE] migration write failed:", err);
+  if (migrationResult.status === "write-error" || migrationResult.status === "transform-error") {
+    console.warn("[AUTOSAVE] migration write failed:", migrationResult.error);
     return null;
   }
+  if (migrationResult.status !== "migrated") return null;
 
   autosaveDebugLog("migration:completed", {
-    legacyStorageKey: legacyStorageKey,
-    targetStorageKey: targetStorageKey
+    legacyStorageKey: migrationResult.legacyKey,
+    targetStorageKey: migrationResult.targetKey
   });
-  return migratedRaw;
+  return migrationResult.raw;
 }
 
 /**
@@ -4840,10 +4837,10 @@ function flushAutosaveToStorageSync(prebuiltPayload) {
       });
       return;
     }
-    var storageKey = getAutosaveStorageKey();
-    localStorage.setItem(storageKey, JSON.stringify(payload));
+    var writeResult = autosaveStorage.writeCurrent(JSON.stringify(payload));
+    if (!writeResult.ok) throw writeResult.error;
     autosaveDebugLog("flush:written", {
-      storageKey: storageKey,
+      storageKey: writeResult.key,
       usesPrebuilt: usesPrebuilt,
       sceneId: payload.sceneId,
       actionIndex: payload.actionIndex,
@@ -4866,9 +4863,9 @@ function clearAutosaveStorage() {
     return;
   }
   try {
-    var storageKey = getAutosaveStorageKey();
-    localStorage.removeItem(storageKey);
-    autosaveDebugLog("clear:removed", { storageKey: storageKey });
+    var removeResult = autosaveStorage.removeCurrent();
+    if (!removeResult.ok) throw removeResult.error;
+    autosaveDebugLog("clear:removed", { storageKey: removeResult.key });
   } catch (err) {
     console.warn("[AUTOSAVE] clear failed:", err);
     autosaveDebugLog("clear:error", String(err && err.message ? err.message : err));
@@ -5057,12 +5054,9 @@ function tryApplyAutosave() {
 
   if (!STORY || !isStoryAutosaveEnabled()) return false;
   vnAutosaveStory360RestorePending = null;
-  var raw = null;
-  try {
-    raw = localStorage.getItem(getAutosaveStorageKey());
-  } catch (err) {
-    return false;
-  }
+  var readResult = autosaveStorage.readCurrent();
+  if (!readResult.ok) return false;
+  var raw = readResult.raw;
   if (!raw) raw = copyLegacyAutosaveToProjectSlot();
   if (!raw) return false;
 

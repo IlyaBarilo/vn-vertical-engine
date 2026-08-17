@@ -96,6 +96,12 @@ npm.cmd --prefix dev run test:360
 npm.cmd --prefix dev run test:stats
 ```
 
+Ключи, операции хранилища и безопасная миграция автосохранений:
+
+```powershell
+npm.cmd --prefix dev run test:autosave
+```
+
 UI-схема, диапазоны и URL-параметры отступов:
 
 ```powershell

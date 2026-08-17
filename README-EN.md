@@ -292,6 +292,7 @@ project/
 ├── story360.js                        optional 360° space map
 │
 ├── engine/
+│   ├── autosave-storage.js            autosave keys, storage, and migration
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── game-host.js                   mini-game iframe and session lifecycle

@@ -411,6 +411,7 @@ project/
 ├── story360.js                        необязательная карта 360°-пространства
 │
 ├── engine/
+│   ├── autosave-storage.js            ключи, хранилище и миграция автосохранений
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка
 │   ├── game-host.js                   lifecycle iframe и сессий мини-игр
