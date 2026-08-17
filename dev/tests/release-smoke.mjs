@@ -682,6 +682,7 @@ test(`распакованный полный ZIP запускает движо�
       access(path.join(releaseRoot, 'engine', 'character-controller.js')),
       access(path.join(releaseRoot, 'engine', 'panorama-package-controller.js')),
       access(path.join(releaseRoot, 'engine', 'panorama-photo-viewer-controller.js')),
+      access(path.join(releaseRoot, 'engine', 'panorama-marks-controller.js')),
       access(path.join(releaseRoot, 'engine', 'engine.css')),
       access(path.join(releaseRoot, 'engine', 'engine.js')),
       access(path.join(releaseRoot, 'engine', 'expression.js')),

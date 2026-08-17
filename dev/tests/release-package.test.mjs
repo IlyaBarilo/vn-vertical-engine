@@ -322,6 +322,8 @@ test('релизный workflow проверяет фактический сос
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/panorama-package-controller.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/panorama-photo-viewer-controller.js" build/full-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/panorama-photo-viewer-controller.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/panorama-marks-controller.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/panorama-marks-controller.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/game-host.js" build/full-zip-contents.txt'));

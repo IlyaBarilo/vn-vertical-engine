@@ -421,6 +421,7 @@ project/
 │   ├── engine.js                      основная логика движка
 │   ├── panorama-package-controller.js безопасная загрузка и проверка CSS-пакетов 360
 │   ├── panorama-photo-viewer-controller.js просмотр, листание и zoom/pan фото из 360-меток
+│   ├── panorama-marks-controller.js   DOM/SVG-метки, компас и WebGL-навигация 360
 │   ├── game-host.js                   lifecycle iframe и сессий мини-игр
 │   ├── game-protocol.js               сообщения движка и мини-игр
 │   ├── resource-path-policy.js        правила безопасных путей авторских ресурсов

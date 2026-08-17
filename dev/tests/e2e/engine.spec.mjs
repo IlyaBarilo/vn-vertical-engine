@@ -193,8 +193,11 @@ function createPhotoViewerStorySource(assetPath) {
     '[scene]',
     'scene intro',
     'bg sphere',
-    'bg360marks sphere (gallery, 0.5, 0.5, photo, assets/backgrounds/bg-campus-hall.jpg|assets/backgrounds/bg-campus-cafe.jpg)',
+    'bg360marks sphere (exit, 0.5, 0.5, walk, next) (gallery, 0.5, 0.45, photo, assets/backgrounds/bg-campus-hall.jpg|assets/backgrounds/bg-campus-cafe.jpg)',
     'walk360 sphere text="Откройте фото E2E" button="Закрыть обзор"',
+    '',
+    'scene next',
+    '"После навигации E2E"',
     '`;',
     ''
   ].join('\n');
@@ -825,8 +828,8 @@ test('character controller сохраняет позицию при смене, 
   expect(pageErrors).toEqual([]);
 });
 
-// Проверяет реальный DOM photo-viewer: открытие метки, листание одного img и восстановление управления по Escape.
-test('photo-viewer controller открывает, листает и закрывает изображения 360-метки', async function({ page }) {
+// Проверяет общий DOM-поток: photo-viewer и переход по scene-метке после восстановления управления.
+test('контроллеры 360-меток открывают фото и выполняют переход в сцену', async function({ page }) {
   const pageErrors = collectPageErrors(page);
   const panoramaPath = 'assets/360/photo-viewer-test-360.css';
   await installRepositoryRoutes(page, {
@@ -844,7 +847,9 @@ test('photo-viewer controller открывает, листает и закрыв
   await expect(page.locator('#bg360Layer')).toBeVisible();
 
   const photoMark = page.locator('.bg360-mark.kind-photo');
+  const sceneMark = page.locator('.bg360-mark.kind-scene-target');
   await expect(photoMark).toBeVisible();
+  await expect(sceneMark).toBeVisible();
   await photoMark.click();
   await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
   await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);
@@ -857,8 +862,14 @@ test('photo-viewer controller открывает, листает и закрыв
   await photoMark.click();
   await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
   expect(await page.evaluate(function readPhotoViewerModuleType() {
-    return typeof window.VN_PANORAMA_PHOTO_VIEWER_CONTROLLER?.createPanoramaPhotoViewerController;
-  })).toBe('function');
+    return [
+      typeof window.VN_PANORAMA_PHOTO_VIEWER_CONTROLLER?.createPanoramaPhotoViewerController,
+      typeof window.VN_PANORAMA_MARKS_CONTROLLER?.createPanoramaMarksController
+    ];
+  })).toEqual(['function', 'function']);
+  await page.keyboard.press('Escape');
+  await sceneMark.click();
+  await expect(page.locator('#textBox')).toHaveText('После навигации E2E');
   expect(pageErrors).toEqual([]);
 });
 

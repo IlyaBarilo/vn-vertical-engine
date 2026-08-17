@@ -114,6 +114,7 @@ jobs:
           cp engine/character-controller.js "build/$APP_NAME/engine/"
           cp engine/panorama-package-controller.js "build/$APP_NAME/engine/"
           cp engine/panorama-photo-viewer-controller.js "build/$APP_NAME/engine/"
+          cp engine/panorama-marks-controller.js "build/$APP_NAME/engine/"
           cp engine/engine.css "build/$APP_NAME/engine/"
           cp engine/engine.js "build/$APP_NAME/engine/"
           cp engine/expression.js "build/$APP_NAME/engine/"
@@ -223,6 +224,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/character-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/panorama-package-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/panorama-photo-viewer-controller.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/panorama-marks-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/game-host.js" build/full-zip-contents.txt
@@ -248,6 +250,7 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/character-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/panorama-package-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/panorama-photo-viewer-controller.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/panorama-marks-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/game-host.js" build/update-zip-contents.txt
