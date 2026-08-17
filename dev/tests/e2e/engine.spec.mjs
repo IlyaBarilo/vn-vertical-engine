@@ -408,6 +408,26 @@ async function handleEngineHttpRequest(request, response) {
     return;
   }
 
+  // Имитирует потерю обязательного runtime-файла без удаления настоящего файла из рабочего дерева.
+  if (pathname === routeOptions.missingRuntimePath) {
+    sendEngineHttpResponse(response, 404, 'text/plain; charset=utf-8', 'Not Found');
+    return;
+  }
+
+  // Подменяет отдельный runtime-файл безопасной fixture для проверки загруженного, но неполного API.
+  if (
+    routeOptions.runtimeSourceOverrides &&
+    Object.prototype.hasOwnProperty.call(routeOptions.runtimeSourceOverrides, pathname)
+  ) {
+    sendEngineHttpResponse(
+      response,
+      200,
+      'text/javascript; charset=utf-8',
+      String(routeOptions.runtimeSourceOverrides[pathname])
+    );
+    return;
+  }
+
   if (blockedLocalRoutes.has(pathname)) {
     sendEngineHttpResponse(response, 404, 'text/plain; charset=utf-8', 'Not Found');
     return;
@@ -603,11 +623,51 @@ test('повреждённый story.js не подменяется story-exampl
   await page.goto('/');
 
   await expect(page.locator('#textBox')).toHaveText(
-    'Не удалось запустить новеллу. Проверьте наличие story.js или story-example.js.'
+    'Не удалось загрузить сценарий: файл story.js отсутствует или содержит ошибку.'
   );
   expect(await page.evaluate(function readBrokenStorySource() {
     return window.STORY_SCRIPT_SOURCE || '';
   })).toBe('');
+});
+
+// Недоступный обязательный модуль останавливает цепочку до engine.js и показывает пользователю точный путь.
+test('bootstrap сообщает имя отсутствующего runtime-файла', async function({ page }) {
+  await installRepositoryRoutes(page, {
+    missingRuntimePath: '/engine/story-analysis.js'
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#textBox')).toHaveText(
+    'Не удалось запустить движок: обязательный файл engine/story-analysis.js отсутствует или повреждён.'
+  );
+  expect(await page.evaluate(function readMissingRuntimeState() {
+    return {
+      analysisLoaded: Boolean(window.VN_STORY_ANALYSIS),
+      graphLoaded: Boolean(window.VN_STORY_GRAPH),
+      engineReady: window.VN_ENGINE_READY === true
+    };
+  })).toEqual({ analysisLoaded: false, graphLoaded: false, engineReady: false });
+});
+
+// Полученный файл без ожидаемых функций считается повреждённым и также не допускает частичный запуск движка.
+test('bootstrap отклоняет runtime-файл без ожидаемого API', async function({ page }) {
+  await installRepositoryRoutes(page, {
+    runtimeSourceOverrides: {
+      '/engine/story-analysis.js': 'window.VN_STORY_ANALYSIS = {};'
+    }
+  });
+  await page.goto('/');
+
+  await expect(page.locator('#textBox')).toHaveText(
+    'Не удалось запустить движок: обязательный файл engine/story-analysis.js отсутствует или повреждён.'
+  );
+  expect(await page.evaluate(function readInvalidRuntimeState() {
+    return {
+      analysisExported: Boolean(window.VN_STORY_ANALYSIS),
+      graphLoaded: Boolean(window.VN_STORY_GRAPH),
+      engineReady: window.VN_ENGINE_READY === true
+    };
+  })).toEqual({ analysisExported: true, graphLoaded: false, engineReady: false });
 });
 
 // Корневая карта 360 проходит отдельный sandbox и становится объектом без пользовательского прототипа.

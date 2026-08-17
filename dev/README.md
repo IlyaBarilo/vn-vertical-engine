@@ -115,7 +115,7 @@ npm.cmd --prefix dev run test:dependencies
 npm.cmd --prefix dev run test:license
 ```
 
-Протокол мини-игр, состав релиза, ссылки и формы сообщества:
+Протокол мини-игр, bootstrap и состав релиза, ссылки и формы сообщества:
 
 ```powershell
 npm.cmd --prefix dev run test:protocol

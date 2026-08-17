@@ -269,19 +269,70 @@
       var STORY_EXAMPLE_SCRIPT = "story-example.js";
       var STORY360_SCRIPT = "story360.js";
       var ENGINE_SCRIPTS = [
-        { src: "engine/resource-path-policy.js" },
-        { src: "engine/expression.js" },
-        { src: "engine/story-loader.js" },
+        { src: "engine/resource-path-policy.js", requires: ["VNResourcePathPolicy.validate:function", "VNResourcePathPolicy.resolve:function", "VNResourcePathPolicy.getExtension:function", "VNResourcePathPolicy.isExtensionAllowed:function"] },
+        { src: "engine/expression.js", requires: ["VNExpression.evaluate:function", "VNExpression.inspect:function"] },
+        { src: "engine/story-loader.js", requires: ["VN_STORY_DSL_VERSION:number", "STORY:object"] },
         { src: "license-key.js", optional: true },
-        { src: "lib/jsrsasign-all-min.js" },
+        { src: "lib/jsrsasign-all-min.js", requires: ["KJUR.crypto.Signature:function", "KEYUTIL.getKey:function"] },
         { src: "lib/three.min.js", optional: true },
-        { src: "engine/game-protocol.js" },
-        { src: "engine/story-analysis.js" },
-        { src: "engine/story-graph.js" },
-        { src: "engine/engine.js" }
+        { src: "engine/game-protocol.js", requires: ["VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION:number", "VN_GAME_PROTOCOL.isSupportedGameProtocolVersion:function", "VN_GAME_PROTOCOL.createGameSessionId:function", "VN_GAME_PROTOCOL.createGameInitMessage:function", "VN_GAME_PROTOCOL.isGameResultMessage:function", "VN_GAME_PROTOCOL.isGameResultEventAllowed:function", "VN_GAME_PROTOCOL.normalizeGameResult:function"] },
+        { src: "engine/story-analysis.js", requires: ["VN_STORY_ANALYSIS.extractAliasId:function", "VN_STORY_ANALYSIS.computeTextInfo:function", "VN_STORY_ANALYSIS.computeStoryStats:function"] },
+        { src: "engine/story-graph.js", requires: ["VN_STORY_GRAPH.forEachOutgoingTarget:function", "VN_STORY_GRAPH.buildAdjacency:function", "VN_STORY_GRAPH.findReachableNodes:function", "VN_STORY_GRAPH.findSceneReachability:function", "VN_STORY_GRAPH.findCyclesSCC:function"] },
+        { src: "engine/engine.js", requires: ["VN_ENGINE_READY:true"] }
       ];
 
-      // Динамически подключает JavaScript-файл; отсутствие ожидаемого optional-файла не засоряет консоль.
+      // Создаёт ошибку с категорией и безопасным относительным источником для пользовательской и консольной диагностики.
+      function createBootstrapError(category, source, detail) {
+        var safeSource = String(source || "неизвестный файл");
+        var safeDetail = String(detail || "Неизвестная ошибка загрузки.");
+        var error = new Error(safeDetail + " Источник: " + safeSource);
+        error.bootstrapCategory = category;
+        error.bootstrapSource = safeSource;
+        return error;
+      }
+
+      // Читает экспортированный модулем путь только из window, не выполняя вычисляемый код и не обращаясь к прототипам.
+      function readRuntimeContractValue(contractPath) {
+        var parts = String(contractPath || "").split(".");
+        var value = window;
+
+        for (var partIndex = 0; partIndex < parts.length; partIndex++) {
+          var part = parts[partIndex];
+          if (!part || part === "__proto__" || part === "prototype" || part === "constructor") return undefined;
+          if (value === null || value === undefined) return undefined;
+          value = value[part];
+        }
+
+        return value;
+      }
+
+      // Проверяет минимальный публичный API обязательного файла, чтобы повреждённый скрипт не считался успешно загруженным.
+      function validateRuntimeContract(src, requirements) {
+        if (!Array.isArray(requirements) || requirements.length === 0) return;
+
+        for (var requirementIndex = 0; requirementIndex < requirements.length; requirementIndex++) {
+          var requirement = String(requirements[requirementIndex] || "");
+          var separatorIndex = requirement.lastIndexOf(":");
+          var contractPath = separatorIndex >= 0 ? requirement.slice(0, separatorIndex) : requirement;
+          var expected = separatorIndex >= 0 ? requirement.slice(separatorIndex + 1) : "defined";
+          var value = readRuntimeContractValue(contractPath);
+          var matches = expected === "true"
+            ? value === true
+            : expected === "defined"
+              ? value !== undefined
+              : typeof value === expected && (expected !== "object" || value !== null);
+
+          if (!matches) {
+            throw createBootstrapError(
+              "runtime",
+              src,
+              "Обязательный runtime-файл загружен, но не предоставил ожидаемый API " + contractPath + "."
+            );
+          }
+        }
+      }
+
+      // Динамически подключает JavaScript-файл и подтверждает контракт обязательного модуля после выполнения.
       function loadScript(src, options) {
         options = options || {};
 
@@ -291,7 +342,12 @@
           script.async = false;
 
           script.onload = function() {
-            resolve({ src: src, loaded: true });
+            try {
+              validateRuntimeContract(src, options.requires);
+              resolve({ src: src, loaded: true });
+            } catch (error) {
+              reject(error);
+            }
           };
 
           script.onerror = function() {
@@ -300,7 +356,7 @@
               return;
             }
 
-            reject(new Error("Не удалось загрузить " + src));
+            reject(createBootstrapError("runtime", src, "Обязательный runtime-файл недоступен."));
           };
 
           document.body.appendChild(script);
@@ -311,7 +367,11 @@
       function getStorySandboxLoader() {
         var loader = window.VNStorySandboxLoader;
         if (!loader || typeof loader.loadStoryText !== "function" || typeof loader.loadStory360 !== "function") {
-          throw new Error("Не удалось загрузить engine/story-sandbox-loader.js");
+          throw createBootstrapError(
+            "runtime",
+            "engine/story-sandbox-loader.js",
+            "Обязательный sandbox-загрузчик недоступен или повреждён."
+          );
         }
         return loader;
       }
@@ -320,7 +380,7 @@
       function createSandboxLoadError(result) {
         var source = result && result.source ? result.source : "пользовательский файл";
         var detail = result && result.message ? result.message : "Неизвестная ошибка sandbox-загрузчика.";
-        return new Error("Не удалось принять данные из " + source + ": " + detail);
+        return createBootstrapError("story", source, "Не удалось принять данные сценария: " + detail);
       }
 
       // Принимает обязательный сценарий только как строку и запоминает фактический источник для диагностики парсера.
@@ -368,15 +428,21 @@
       function loadScriptsInOrder(scripts) {
         return scripts.reduce(function(sequence, item) {
           return sequence.then(function() {
-            return loadScript(item.src, { optional: item.optional });
+            return loadScript(item.src, { optional: item.optional, requires: item.requires });
           });
         }, Promise.resolve());
       }
 
-      // Показывает понятную ошибку запуска, если не удалось загрузить сценарий или движок.
+      // Показывает отдельные безопасные сообщения для ошибок сценария и обязательных файлов движка.
       function showBootstrapError(error) {
         var textBox = document.getElementById("textBox");
-        var message = "Не удалось запустить новеллу. Проверьте наличие story.js или story-example.js.";
+        var message = "Не удалось запустить новеллу. Проверьте файлы проекта.";
+
+        if (error && error.bootstrapCategory === "runtime") {
+          message = "Не удалось запустить движок: обязательный файл " + error.bootstrapSource + " отсутствует или повреждён.";
+        } else if (error && error.bootstrapCategory === "story") {
+          message = "Не удалось загрузить сценарий: файл " + error.bootstrapSource + " отсутствует или содержит ошибку.";
+        }
 
         console.error("[Bootstrap]", error);
 
