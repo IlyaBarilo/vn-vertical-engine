@@ -300,6 +300,35 @@ test('релизный workflow создаёт и проверяет SHA-256 а�
   assert.ok(candidateSource.includes('${{ github.event.repository.name }}-latest-update.zip.sha256'));
 });
 
+// Закрепляет создание манифеста после подстановки версии и до упаковки одинакового runtime в ZIP и Pages.
+test('релизная сборка создаёт и проверяет release-manifest', async function() {
+  const [candidateSource, packageSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
+    readRepositoryFile('dev/package.json')
+  ]);
+  const packageData = JSON.parse(packageSource);
+  const versionPosition = candidateSource.indexOf('- name: Inject version into engine/engine.js');
+  const manifestPosition = candidateSource.indexOf('- name: Create and verify release manifest');
+  const archivePosition = candidateSource.indexOf('- name: Create ZIP archives');
+
+  assert.ok(packageData.scripts['test:release'].includes('tests/release-manifest.test.mjs'));
+  await Promise.all([
+    access(path.join(repositoryRoot, 'dev/scripts/release-manifest.mjs')),
+    access(path.join(repositoryRoot, 'dev/tests/release-manifest.test.mjs'))
+  ]);
+  assert.ok(versionPosition >= 0 && manifestPosition > versionPosition);
+  assert.ok(archivePosition > manifestPosition);
+  assert.ok(candidateSource.includes('release-manifest.mjs create --root "build/$APP_NAME"'));
+  assert.ok(candidateSource.includes('--commit "${{ github.sha }}"'));
+  assert.ok(candidateSource.includes('--node-tests "${{ inputs.run_node_tests }}"'));
+  assert.ok(candidateSource.includes('--windows-smoke "${{ inputs.run_windows_smoke }}"'));
+  assert.ok(candidateSource.includes('cp "build/$APP_NAME/release-manifest.json" "build/site/release-manifest.json"'));
+  assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/$APP_NAME"'));
+  assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/site"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/release-manifest.json"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/release-manifest.json"'));
+});
+
 // Проверяет наличие проверки целостности и ключевых различий полного и update-архивов.
 test('релизный workflow проверяет фактический состав ZIP', async function() {
   const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');

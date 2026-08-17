@@ -173,6 +173,14 @@ jobs:
             fi
           done
 
+      - name: Create and verify release manifest
+        shell: bash
+        run: |
+          node dev/scripts/release-manifest.mjs create --root "build/$APP_NAME" --version "$VERSION" --commit "${{ github.sha }}" --node-tests "${{ inputs.run_node_tests }}" --windows-smoke "${{ inputs.run_windows_smoke }}"
+          cp "build/$APP_NAME/release-manifest.json" "build/site/release-manifest.json"
+          node dev/scripts/release-manifest.mjs verify --root "build/$APP_NAME" --version "$VERSION" --commit "${{ github.sha }}" --node-tests "${{ inputs.run_node_tests }}" --windows-smoke "${{ inputs.run_windows_smoke }}"
+          node dev/scripts/release-manifest.mjs verify --root "build/site" --version "$VERSION" --commit "${{ github.sha }}" --node-tests "${{ inputs.run_node_tests }}" --windows-smoke "${{ inputs.run_windows_smoke }}"
+
       - name: Create ZIP archives
         run: |
           # VERSION уже подготовлена в Detect version
@@ -216,6 +224,7 @@ jobs:
           # Полный архив должен содержать пример, ассеты, runtime и все авторские инструменты.
           grep -Fxq "${APP_NAME}/story-example.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/assets/" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/release-manifest.json" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/autosave-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/autosave-payload.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/autosave-storage.js" build/full-zip-contents.txt
@@ -242,6 +251,7 @@ jobs:
           grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
 
           # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
+          grep -Fxq "${APP_NAME}-update/release-manifest.json" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/autosave-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/autosave-payload.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/autosave-storage.js" build/update-zip-contents.txt

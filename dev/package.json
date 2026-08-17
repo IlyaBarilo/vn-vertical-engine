@@ -22,7 +22,7 @@
     "test:dependencies": "node --test tests/dependencies.test.mjs",
     "test:license": "node --test tests/license-runtime.test.mjs",
     "test:protocol": "node --test tests/game-protocol.test.mjs tests/game-host.test.mjs",
-    "test:release": "node --test tests/bootstrap-runtime.test.mjs tests/release-package.test.mjs tests/release-assets.test.mjs tests/release-checksums.test.mjs tests/student-project-auditor.test.mjs",
+    "test:release": "node --test tests/bootstrap-runtime.test.mjs tests/release-package.test.mjs tests/release-assets.test.mjs tests/release-checksums.test.mjs tests/release-manifest.test.mjs tests/student-project-auditor.test.mjs",
     "test:release:smoke": "node tests/release-smoke.mjs",
     "test:links": "node --test tests/markdown-links.test.mjs",
     "test:community": "node --test tests/discussion-forms.test.mjs",

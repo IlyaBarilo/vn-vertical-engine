@@ -364,6 +364,10 @@ The update ZIP excludes `assets/`, `story.js`, and the root
 The current reference story remains available as
 `docs/examples/story-example.js`.
 
+Both release archives include `release-manifest.json` with the engine version,
+source Git commit, supported format versions, and SHA-256 values of the runtime
+files. This identifies the exact contents of an extracted engine version.
+
 ## Documentation
 
 - [First Steps in English](FIRST-STEPS-EN.md)
