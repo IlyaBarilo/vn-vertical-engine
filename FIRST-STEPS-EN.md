@@ -138,7 +138,7 @@ or move through a connected space rather than only read a static scene.
 Useful local tools:
 
 - `tools/scene360-editor.html` — build `story360.js`, place markers, and define panorama links visually;
-- `tools/convert-360-img-to-css.html` — convert panorama images into offline CSS/JS packages;
+- `tools/convert-360-img-to-css.html` — convert panorama images into offline CSS packages or safely migrate data from old JS packages without executing them;
 - `tools/panorama-cleaner.html` — remove people and moving objects with matching areas from a second shot;
 - `tools/media-focus-editor.html` — tune focus points for media-heavy scenes;
 - `tools/game-tester.html` — test mini-games before connecting them to the story.
