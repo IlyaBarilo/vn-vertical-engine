@@ -112,6 +112,38 @@ function createVisualTransitionStorySource() {
   ].join('\n');
 }
 
+// Создаёт историю для реальной проверки смены персонажа, focus/scale, resize, hide и restart.
+function createCharacterControllerStorySource() {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Character controller E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'engine.gameSandbox = strict',
+    '',
+    '[char]',
+    'anna emotion=neutral file=assets/characters/ch-anna-neutral-smallresolution.png name="Анна"',
+    'igor emotion=smile file=assets/characters/ch-igor-smile-smallresolution.png name="Игорь"',
+    '',
+    '[scene]',
+    'scene intro',
+    'show anna neutral left focusx=25 focusy=top scale=1.2',
+    'anna: "Первый персонаж"',
+    'show igor smile right focusx=70 focusy=bottom scale=0.9',
+    'igor: "Второй персонаж"',
+    'hide all',
+    '"Персонаж скрыт"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт минимальную историю с 360-фоном, чтобы проверять CSS-only загрузку в настоящем runtime движка.
 function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   return [
@@ -717,6 +749,51 @@ test('visual transition controller завершает crossfade и очищае�
     };
   });
   expect(runtimeState).toEqual({ moduleType: 'function', transparentElements: 0, visibleCrossfades: 0 });
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет новый character controller через настоящий parser/runtime сразу в Chromium и Firefox.
+test('character controller сохраняет позицию при смене, resize, hide и restart', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page, '/', {
+    storySource: createCharacterControllerStorySource(),
+    expectedText: 'Первый персонаж'
+  });
+
+  const character = page.locator('#charLayer');
+  const frame = page.locator('#charFrame');
+  await expect(character).toBeVisible();
+  await expect(character).toHaveAttribute('data-char-id', 'anna');
+  await expect(character).toHaveAttribute('src', /ch-anna-neutral-smallresolution\.png$/);
+
+  const beforeResize = await frame.boundingBox();
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect.poll(async function readResizedCharacterFrame() {
+    return frame.boundingBox();
+  }).not.toEqual(beforeResize);
+  const resizedFrame = await frame.boundingBox();
+  const novelWindow = await page.locator('#novelWindow').boundingBox();
+  expect(resizedFrame.x + resizedFrame.width / 2).toBeLessThan(novelWindow.x + novelWindow.width / 2);
+
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Второй персонаж');
+  await expect(character).toBeVisible();
+  await expect(character).toHaveAttribute('data-char-id', 'igor');
+  await expect(character).toHaveAttribute('src', /ch-igor-smile-smallresolution\.png$/);
+  const rightFrame = await frame.boundingBox();
+  expect(rightFrame.x + rightFrame.width / 2).toBeGreaterThan(novelWindow.x + novelWindow.width / 2);
+
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Персонаж скрыт');
+  await expect(character).toBeHidden();
+
+  await page.locator('#btnRestart').click({ force: true });
+  await expect(page.locator('#textBox')).toHaveText('Первый персонаж');
+  await expect(character).toHaveAttribute('data-char-id', 'anna');
+  await expect(character).toBeVisible();
+  expect(await page.evaluate(function readCharacterControllerType() {
+    return typeof window.VN_CHARACTER_CONTROLLER?.createCharacterController;
+  })).toBe('function');
   expect(pageErrors).toEqual([]);
 });
 

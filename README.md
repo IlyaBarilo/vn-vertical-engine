@@ -416,6 +416,7 @@ project/
 │   ├── autosave-storage.js            ключи, хранилище и миграция автосохранений
 │   ├── audio-controller.js            BGM, SFX, громкость и ducking видео
 │   ├── background-media-controller.js обычные фоны, fallback и blur-video
+│   ├── character-controller.js        показ, фокус, масштаб и lifecycle персонажей
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка
 │   ├── game-host.js                   lifecycle iframe и сессий мини-игр

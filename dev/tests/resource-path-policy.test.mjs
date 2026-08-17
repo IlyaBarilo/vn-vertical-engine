@@ -62,12 +62,13 @@ test('политика разрешает путь относительно inde
 
 // Закрепляет загрузку политики до парсера и повторную проверку в критических runtime-приёмниках.
 test('парсер и runtime используют общую политику для всех типов ресурсов', async function() {
-  const [indexSource, loaderSource, engineSource, storyVideoSource, backgroundMediaSource, visualTransitionSource] = await Promise.all([
+  const [indexSource, loaderSource, engineSource, storyVideoSource, backgroundMediaSource, characterSource, visualTransitionSource] = await Promise.all([
     readFile(path.join(repositoryRoot, 'index.html'), 'utf8'),
     readFile(path.join(repositoryRoot, 'engine', 'story-loader.js'), 'utf8'),
     readFile(path.join(repositoryRoot, 'engine', 'engine.js'), 'utf8'),
     readFile(path.join(repositoryRoot, 'engine', 'story-video-controller.js'), 'utf8'),
     readFile(path.join(repositoryRoot, 'engine', 'background-media-controller.js'), 'utf8'),
+    readFile(path.join(repositoryRoot, 'engine', 'character-controller.js'), 'utf8'),
     readFile(path.join(repositoryRoot, 'engine', 'visual-transition-controller.js'), 'utf8')
   ]);
   const policyPosition = indexSource.indexOf('engine/resource-path-policy.js');
@@ -83,6 +84,8 @@ test('парсер и runtime используют общую политику �
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(action\.src, "game"\)/);
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(src, "audio"\)/);
   assert.match(backgroundMediaSource, /resolveAssetUrl\(src, sourceKind\)/);
+  assert.match(characterSource, /options\.assignRasterImage\(character, src, callbacks\)/);
+  assert.match(engineSource, /assignRasterImage: assignRasterImageToElement/);
   assert.match(visualTransitionSource, /options\.resolveVideoUrl\(src \|\| ""\)/);
   assert.match(engineSource, /resolveRuntimeStoryAssetUrl\(src, "video"\)/);
   assert.match(engineSource, /!isVideoAssetPath\(bgPath\) && !isBg360PackCssPath\(bgPath\) && areAllImageCandidatesFailed\(bgPath\)/);

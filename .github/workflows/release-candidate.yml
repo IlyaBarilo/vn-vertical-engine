@@ -111,6 +111,7 @@ jobs:
           cp engine/autosave-storage.js "build/$APP_NAME/engine/"
           cp engine/audio-controller.js "build/$APP_NAME/engine/"
           cp engine/background-media-controller.js "build/$APP_NAME/engine/"
+          cp engine/character-controller.js "build/$APP_NAME/engine/"
           cp engine/engine.css "build/$APP_NAME/engine/"
           cp engine/engine.js "build/$APP_NAME/engine/"
           cp engine/expression.js "build/$APP_NAME/engine/"
@@ -217,6 +218,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/autosave-storage.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/audio-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/background-media-controller.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/character-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/game-host.js" build/full-zip-contents.txt
@@ -239,6 +241,7 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/autosave-storage.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/audio-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/background-media-controller.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/character-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/game-host.js" build/update-zip-contents.txt

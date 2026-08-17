@@ -84,7 +84,7 @@ npm.cmd --prefix dev run test:variables
 npm.cmd --prefix dev run test:assets
 ```
 
-Обычное аудио, сюжетное видео, фоновые image/video, визуальные переходы и их lifecycle:
+Обычное аудио, сюжетное видео, фоновые image/video, персонажи, визуальные переходы и их lifecycle:
 
 ```powershell
 npm.cmd --prefix dev run test:media

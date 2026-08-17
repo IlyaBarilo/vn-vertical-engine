@@ -679,6 +679,7 @@ test(`распакованный полный ZIP запускает движо�
       access(path.join(releaseRoot, 'engine', 'autosave-storage.js')),
       access(path.join(releaseRoot, 'engine', 'audio-controller.js')),
       access(path.join(releaseRoot, 'engine', 'background-media-controller.js')),
+      access(path.join(releaseRoot, 'engine', 'character-controller.js')),
       access(path.join(releaseRoot, 'engine', 'engine.css')),
       access(path.join(releaseRoot, 'engine', 'engine.js')),
       access(path.join(releaseRoot, 'engine', 'expression.js')),

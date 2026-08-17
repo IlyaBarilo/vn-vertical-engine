@@ -297,6 +297,7 @@ project/
 │   ├── autosave-storage.js            autosave keys, storage, and migration
 │   ├── audio-controller.js            BGM, SFX, volume, and video ducking
 │   ├── background-media-controller.js regular backgrounds, fallback, and blur video
+│   ├── character-controller.js        character display, focus, scaling, and lifecycle
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── game-host.js                   mini-game iframe and session lifecycle
