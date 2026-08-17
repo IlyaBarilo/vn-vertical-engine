@@ -90,7 +90,7 @@ npm.cmd --prefix dev run test:assets
 npm.cmd --prefix dev run test:360
 ```
 
-Счётчики загрузчика и чистый анализ графа истории:
+Счётчики загрузчика и чистый анализ статистики и графа истории:
 
 ```powershell
 npm.cmd --prefix dev run test:stats

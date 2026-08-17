@@ -16453,9 +16453,9 @@ function renderStats() {
       panoramaPackages: (fileStats.panoramaPackages || []).length
     });
     try {
-      var stats = computeStoryStats(STORY);
+      var stats = window.VN_STORY_ANALYSIS.computeStoryStats(STORY);
       var errors = validateStory(STORY);
-      var textInfo = computeTextInfo(STORY);
+      var textInfo = window.VN_STORY_ANALYSIS.computeTextInfo(STORY);
       var reach = findUnreachableScenes(STORY);
       var cycles = window.VN_STORY_GRAPH.findCyclesSCC(STORY);
       var story360Visibility = analyzeStory360VisibilityConditions(STORY);
@@ -18665,7 +18665,7 @@ function buildMermaidGraph(story, unreachableList, options) {
         // Подсчёт фонов и сохранение превью для карточки сцены.
         if (act.type === "bg" && act.src) {
           bgCount++;
-          var bgId = extractAliasId(act.src, "bg");
+          var bgId = window.VN_STORY_ANALYSIS.extractAliasId(act.src, "bg");
           if (bgId) {
             uniqueBgs[bgId] = true;
 
@@ -18837,7 +18837,7 @@ function buildMermaidGraph(story, unreachableList, options) {
   mermaid += "classDef games-group fill:#c0c0c0,stroke:#606060,color:#333,stroke-width:2px,r:12px;\n";
   mermaid += "classDef game-node fill:#d0d0d0,stroke:#808080,color:#333,stroke-width:1px,r:12px;\n";
 
-  var graphStats = computeStoryStats(story);
+  var graphStats = window.VN_STORY_ANALYSIS.computeStoryStats(story);
 
   var sharedGraphOptions = {
     compact: compact,
@@ -19369,7 +19369,7 @@ function buildBackgroundsGraph(story, options) {
       if (!action || !action.type) continue;
 
       if (action.type === "bg" && action.src) {
-        var bgId = extractAliasId(action.src, "bg");
+        var bgId = window.VN_STORY_ANALYSIS.extractAliasId(action.src, "bg");
         markBackgroundUsage(bgId, sceneId, addToUniqueList);
       }
 
@@ -19639,7 +19639,7 @@ function buildAudioGraph(story, options) {
     // Парсер может сохранить id, alias @audio.id или уже подставить прямой путь к файлу.
     if (explicitId && audioAssets[explicitId]) return explicitId;
 
-    var aliasId = extractAliasId(ref, "audio");
+    var aliasId = window.VN_STORY_ANALYSIS.extractAliasId(ref, "audio");
     if (aliasId && audioAssets[aliasId]) return aliasId;
 
     if (ref) {
@@ -19774,7 +19774,7 @@ function buildVideoGraph(story, options) {
     if (!action) return "";
     if (action.videoId && videoAssets[action.videoId]) return action.videoId;
 
-    var aliasId = extractAliasId(action.src, "video");
+    var aliasId = window.VN_STORY_ANALYSIS.extractAliasId(action.src, "video");
     if (aliasId && videoAssets[aliasId]) return aliasId;
 
     if (action.src) {
@@ -20021,40 +20021,7 @@ function buildGamesGraph(story, options) {
 }
 
 
-function computeTextInfo(story) {
-
-  var characters = 0;
-  var words = 0;
-
-  var scenes = story.scenes || [];
-
-  for (var s = 0; s < scenes.length; s++) {
-
-    var actions = scenes[s].actions || [];
-
-    for (var a = 0; a < actions.length; a++) {
-
-      var act = actions[a];
-
-      if (act.type === "say" || act.type === "text") {
-
-        var t = act.text || "";
-
-        characters += t.length;
-
-        var w = t.trim().split(/\s+/);
-
-        if (t.trim() !== "") words += w.length;
-      }
-    }
-  }
-
-  return {
-    characters: characters,
-    words: words
-  };
-}
-
+// Собирает дополнительные runtime-ошибки, включая проверки алиасов и условий видимости story360.
 function validateStory(story) {
 
   var errors = [];
@@ -20089,7 +20056,7 @@ function validateStory(story) {
 
       if (act.type === "bg") {
 
-        var id = extractAliasId(act.src, "bg");
+        var id = window.VN_STORY_ANALYSIS.extractAliasId(act.src, "bg");
 
         if (id && !story.assets.backgrounds[id]) {
           errors.push("Background not found: " + id);
@@ -20099,7 +20066,7 @@ function validateStory(story) {
       if (act.type === "char") {
         if (!act.charId || !act.src) continue; // hide all пропускаем
 
-        var id = extractAliasId(act.src, "ch");
+        var id = window.VN_STORY_ANALYSIS.extractAliasId(act.src, "ch");
 
         if (id && !story.assets.characters[id]) {
           errors.push("Character not found: " + id);
@@ -20118,208 +20085,6 @@ function validateStory(story) {
   }
 
   return errors;
-}
-
-// Подсчёт статистики.
-function computeStoryStats(story) {
-  var scenes = story.scenes || [];
-
-  var usedBg = {};                 // bgId -> true
-  var backgroundCounts = {};       // bgId -> count
-  var usedCh = {};                 // charId -> true
-  var usedCharacterEmotions = {};  // charId -> { emotion: true }
-  var characterEmotionCounts = {}; // charId -> { emotion: count }
-
-  var sayCount = 0;
-  var textCount = 0;
-  var choiceCount = 0;
-  var bgmActions = 0;
-  var sfxActions = 0;
-  var videoActions = 0;
-  var audioCounts = {};
-
-  // Рекурсивно обходит все вложенные ветки (choice/if_block), чтобы статистика по фонам и другим действиям
-  // включала меню и условные подветки, а не только верхний уровень сцен.
-  function collectStatsFromActions(actions) {
-    if (!Array.isArray(actions)) return;
-
-    for (var a = 0; a < actions.length; a++) {
-      var act = actions[a];
-      if (!act || !act.type) continue;
-
-      if (act.type === "bg") {
-        var bgId = extractAliasId(act.src, "bg");
-        if (bgId) {
-          usedBg[bgId] = true;
-          backgroundCounts[bgId] = (backgroundCounts[bgId] || 0) + 1;
-        }
-      }
-
-      if (act.type === "char") {
-        if (act.charId) {
-          usedCh[act.charId] = true;
-
-          if (!usedCharacterEmotions[act.charId]) {
-            usedCharacterEmotions[act.charId] = {};
-          }
-          if (!characterEmotionCounts[act.charId]) {
-            characterEmotionCounts[act.charId] = {};
-          }
-
-          if (act.emotion) {
-            usedCharacterEmotions[act.charId][act.emotion] = true;
-            characterEmotionCounts[act.charId][act.emotion] = (characterEmotionCounts[act.charId][act.emotion] || 0) + 1;
-          }
-        }
-      }
-
-      if (act.type === "say") sayCount++;
-      if (act.type === "text") textCount++;
-      if (act.type === "choice") {
-        choiceCount++;
-        if (Array.isArray(act.choices)) {
-          for (var c = 0; c < act.choices.length; c++) {
-            var choice = act.choices[c];
-            if (choice && Array.isArray(choice.actions)) {
-              collectStatsFromActions(choice.actions);
-            }
-          }
-        }
-      }
-      if (act.type === "if_block") {
-        if (Array.isArray(act.branches)) {
-          for (var b = 0; b < act.branches.length; b++) {
-            var branch = act.branches[b];
-            if (branch && Array.isArray(branch.actions)) {
-              collectStatsFromActions(branch.actions);
-            }
-          }
-        }
-        if (Array.isArray(act.elseActions)) {
-          collectStatsFromActions(act.elseActions);
-        }
-      }
-      if (act.type === "bgm") {
-        bgmActions++;
-        if (act.src) {
-          var audioIdFromBgm = extractAliasId(act.src, "audio");
-          if (audioIdFromBgm) {
-            audioCounts[audioIdFromBgm] = (audioCounts[audioIdFromBgm] || 0) + 1;
-          }
-        }
-      }
-      if (act.type === "sfx") sfxActions++;
-      if (act.type === "video") videoActions++;
-    }
-  }
-
-  for (var s = 0; s < scenes.length; s++) {
-    collectStatsFromActions(scenes[s].actions || []);
-  }
-
-  
-
-
-  var backgroundsMap = (story.assets && story.assets.backgrounds) ? story.assets.backgrounds : {};
-  var allBackgroundIds = Object.keys(backgroundsMap).sort();
-
-  var usedBackgroundIds = [];
-  var unusedBackgroundIds = [];
-
-  for (var i = 0; i < allBackgroundIds.length; i++) {
-    var bgId = allBackgroundIds[i];
-    if (usedBg[bgId]) usedBackgroundIds.push(bgId);
-    else unusedBackgroundIds.push(bgId);
-  }
-
-  var backgroundsDetailed = [];
-
-  for (var j = 0; j < usedBackgroundIds.length; j++) {
-    backgroundsDetailed.push({
-      id: usedBackgroundIds[j],
-      used: true
-    });
-  }
-
-  for (var k = 0; k < unusedBackgroundIds.length; k++) {
-    backgroundsDetailed.push({
-      id: unusedBackgroundIds[k],
-      used: false
-    });
-  }
-
-
-
-
-  var charactersMap = (story.assets && story.assets.characters) ? story.assets.characters : {};
-  var allCharacterIds = Object.keys(charactersMap).sort();
-
-  var usedCharacterIds = [];
-  var unusedCharacterIds = [];
-
-  for (var i = 0; i < allCharacterIds.length; i++) {
-    var charId = allCharacterIds[i];
-    if (usedCh[charId]) usedCharacterIds.push(charId);
-    else unusedCharacterIds.push(charId);
-  }
-
-  var orderedCharacterIds = usedCharacterIds.concat(unusedCharacterIds);
-
-  var usedCharactersDetailed = [];
-
-  for (var j = 0; j < orderedCharacterIds.length; j++) {
-    var currentCharId = orderedCharacterIds[j];
-    var charData = charactersMap[currentCharId] || {};
-    var displayName = charData.name || currentCharId;
-    var allEmotions = charData.images ? Object.keys(charData.images).sort() : [];
-    var usedEmotionsMap = usedCharacterEmotions[currentCharId] || {};
-
-    var usedEmotions = [];
-    var unusedEmotions = [];
-
-    for (var k = 0; k < allEmotions.length; k++) {
-      var emotion = allEmotions[k];
-      if (usedEmotionsMap[emotion]) usedEmotions.push(emotion);
-      else unusedEmotions.push(emotion + "*");
-    }
-
-    usedCharactersDetailed.push({
-      id: currentCharId,
-      name: displayName,
-      used: !!usedCh[currentCharId],
-      emotionsDisplay: usedEmotions.concat(unusedEmotions)
-    });
-  }
-
-  return {
-    sceneCount: scenes.length,
-    usedBackgroundIds: usedBackgroundIds,
-    unusedBackgroundIds: unusedBackgroundIds,
-    backgroundCounts: backgroundCounts,
-    backgroundsDetailed: backgroundsDetailed,
-    usedCharacterIds: usedCharacterIds,
-    unusedCharacterIds: unusedCharacterIds,
-    characterEmotionCounts: characterEmotionCounts,
-    usedCharactersDetailed: usedCharactersDetailed,
-    sayCount: sayCount,
-    textCount: textCount,
-    choiceCount: choiceCount,
-    bgmActions: bgmActions,
-    sfxActions: sfxActions,
-    videoActions: videoActions,
-    audioCounts: audioCounts
-  };
-} // function
-
-
-function extractAliasId(ref, group) {
-  // ref вида "@bg.campusHall" или "@ch.annaNeutral"
-  if (!ref || typeof ref !== "string") return "";
-  if (ref.indexOf("@") !== 0) return "";         // если прямой путь — не трогаем
-  var parts = ref.substring(1).split(".");
-  if (parts.length < 2) return "";
-  if (parts[0] !== group) return "";
-  return parts.slice(1).join(".");
 }
 
 function keysSorted(obj) {
