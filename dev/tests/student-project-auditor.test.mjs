@@ -263,6 +263,7 @@ test('аудитор обнаруживает опасные файлы в по�
     'engine/audio-controller.js',
     'engine/background-media-controller.js',
     'engine/character-controller.js',
+    'engine/panorama-package-controller.js',
     'engine/game-host.js',
     'engine/game-protocol.js',
     'engine/resource-path-policy.js',

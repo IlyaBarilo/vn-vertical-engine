@@ -3729,6 +3729,7 @@ window.addEventListener("pagehide", function (event) {
     gameHost.dispose();
     visualTransitionController.dispose();
     characterController.dispose();
+    panoramaPackageController.dispose();
     storyVideoController.dispose();
     backgroundMediaController.dispose();
     audioController.dispose();
@@ -10367,638 +10368,117 @@ function disableBg360Renderer() {
   hideBg360HoldLayer(true);
 }
 
-// Проверяет, что путь указывает на декларативный CSS-пакет 360.
+// Передаёт контроллеру актуальный аппаратный предел WebGL без раскрытия renderer.
+function getPanoramaPackageMaxTextureSize() {
+  return Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
+}
+
+// Передаёт очереди только поля текущей панорамы, необходимые для приоритета пользовательской загрузки.
+function getPanoramaPackageRuntimeState() {
+  return {
+    sourceSrc: bg360Runtime.sourceSrc,
+    sourceQuality: bg360Runtime.sourceQuality,
+    isVideoSource: bg360Runtime.isVideoSource,
+    textureReadyLoadSeq: bg360Runtime.textureReadyLoadSeq,
+    loadSeq: bg360Runtime.loadSeq
+  };
+}
+
+// Приостанавливает тяжёлую фоновую проверку, пока пользователь работает с полноразмерным графом.
+function isPanoramaPackageInspectionPaused() {
+  return Boolean(showingGraph && elStatsPanel && !elStatsPanel.classList.contains("hidden"));
+}
+
+// Обновляет DOM прогресса по небольшому снимку контроллера, не передавая ему элементы интерфейса.
+function renderPanoramaPackageInspectionProgress(progress) {
+  if (!elStatsLoadProgress || !elStatsLoadProgressBar || !elStatsLoadProgressLabel) return;
+  progress = progress || { completed: 0, total: 0 };
+  elStatsLoadProgressBar.max = Math.max(1, progress.total);
+  elStatsLoadProgressBar.value = progress.completed;
+  elStatsLoadProgressLabel.textContent = progress.completed + " / " + progress.total;
+  elStatsLoadProgress.classList.toggle(
+    "hidden",
+    currentStatsView !== "text" || progress.total === 0 || progress.completed >= progress.total
+  );
+}
+
+// Перерисовывает открытую текстовую статистику только после завершения всей фоновой очереди.
+function completePanoramaPackageInspection() {
+  if (currentStatsView === "text" && elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
+    renderStats();
+  }
+}
+
+// Контроллер владеет строгим чтением CSS, Blob URL и фоновой проверкой, а engine.js оставляет WebGL и UI.
+var panoramaPackageController = window.VN_PANORAMA_PACKAGE_CONTROLLER.createPanoramaPackageController({
+  window: window,
+  document: document,
+  resolveAssetUrl: resolveRuntimeStoryAssetUrl,
+  resolveEffectiveQuality: resolveBg360EffectiveQuality,
+  normalizeUrl: normalizeAssetUrl,
+  sanitizeResource: sanitizeDiagnosticResource,
+  getMaxTextureSize: getPanoramaPackageMaxTextureSize,
+  getRuntimePanoramaState: getPanoramaPackageRuntimeState,
+  isInspectionPaused: isPanoramaPackageInspectionPaused,
+  isPhone: isConfidentPhoneForUiBoost,
+  onInspectionProgress: renderPanoramaPackageInspectionProgress,
+  onInspectionComplete: completePanoramaPackageInspection,
+  writeVerbose: writeRuntimeVerbose
+});
+
+// Проверяет путь через единый контроллер декларативных CSS-пакетов.
 function isBg360PackCssPath(path) {
-  return /-360(?:-[a-z0-9_-]+)?\.css(\?.*)?$/i.test(String(path || ""));
+  return panoramaPackageController.isCssPackPath(path);
 }
 
-// Считает 360-пакетом только декларативный CSS; исполняемые JS-варианты намеренно не поддерживаются.
+// Сохраняет прежнюю точку вызова движка, не допуская исполняемые JS-пакеты.
 function isBg360PackPath(path) {
-  return isBg360PackCssPath(path);
+  return panoramaPackageController.isPackPath(path);
 }
 
-// Выбирает декларативный CSS-вариант нужного качества только для уже допустимого CSS-пути.
+// Выбирает normal или mobile CSS через общую политику путей контроллера.
 function getBg360PackCssUrl(sourceUrl, quality) {
-  var normalized = resolveRuntimeStoryAssetUrl(sourceUrl, "panorama");
-  var normalizedQuality = resolveBg360EffectiveQuality(quality);
-  if (!isBg360PackCssPath(normalized)) return "";
-
-  var cssUrl = normalized;
-  if (normalizedQuality === "normal" && /-360-mobile\.css(\?.*)?$/i.test(cssUrl)) {
-    return cssUrl.replace(/-360-mobile\.css(\?.*)?$/i, "-360.css$1");
-  }
-  if (normalizedQuality === "mobile" && /-360\.css(\?.*)?$/i.test(cssUrl)) {
-    return cssUrl.replace(/-360\.css(\?.*)?$/i, "-360-mobile.css$1");
-  }
-  return cssUrl;
+  return panoramaPackageController.getCssUrl(sourceUrl, quality);
 }
 
-// Ограничения совпадают с редактором: они отсекают заведомо вредные пакеты, но сохраняют поддержку панорам будущих камер.
-var BG360_CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
-var BG360_CSS_PACK_MAX_DECODED_SIZE = 96 * 1024 * 1024;
-var BG360_CSS_PACK_MAX_CHUNKS = 4096;
-var BG360_CSS_PACK_MAX_CHUNK_LENGTH = 32 * 1024;
-var BG360_CSS_PACK_MAX_SOURCE_LENGTH = BG360_CSS_PACK_MAX_ENCODED_LENGTH + 2 * 1024 * 1024;
-var BG360_CSS_DECODE_BATCH_LENGTH = 4 * 1024 * 1024;
-var BG360_CSS_IMAGE_MAX_WIDTH = 20000;
-var BG360_CSS_IMAGE_MAX_HEIGHT = 15000;
-var BG360_CSS_IMAGE_MAX_PIXELS = 300000000;
-var BG360_CSS_IMAGE_HEADER_MAX_BYTES = 4 * 1024 * 1024;
-var BG360_STATS_DESKTOP_CONCURRENCY = 4;
-var BG360_STATS_PHONE_CONCURRENCY = 2;
-// CSS-Blob хранится только до завершения декодирования текущей текстуры; пройденные панорамы не накапливаются в памяти.
-var bg360CssPackState = Object.create(null);
-// Фоновая статистика хранит между открытиями панели только статусы и малые метаданные, но не Blob, Image или object URL.
-var bg360PackageInspectionState = {
-  entries: Object.create(null),
-  queue: [],
-  activeKeys: [],
-  activeCount: 0,
-  timerId: null,
-  refreshScheduled: false
-};
-
-// Читает строго двойную строку custom property; CSS-escape и вычисляемые выражения не считаются данными пакета.
-function readBg360CssQuotedValue(computedStyle, propertyName) {
-  var raw = String(computedStyle.getPropertyValue(propertyName) || "").trim();
-  var match = raw.match(/^"([^"\\]*)"$/);
-  if (!match) throw new Error("CSS-пакет не содержит корректное свойство " + propertyName + ".");
-  return match[1];
-}
-
-// Разбирает только единственный декларативный #vn360-pack и отклоняет @import, сторонние правила, дубли и CSS-escape до декодирования.
-function createBg360CssPropertyReader(cssSource) {
-  var source = String(cssSource || "").replace(/^\uFEFF/, "");
-  if (!source || source.length > BG360_CSS_PACK_MAX_SOURCE_LENGTH) {
-    throw new Error("CSS-пакет отсутствует или превышает допустимый размер исходного текста.");
-  }
-  var sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  if (/\/\*|\*\//.test(sourceWithoutComments)) {
-    throw new Error("CSS-пакет содержит незавершённый комментарий.");
-  }
-  var ruleMatch = sourceWithoutComments.trim().match(/^#vn360-pack\s*\{([\s\S]*)\}$/);
-  if (!ruleMatch) {
-    throw new Error("CSS-пакет должен содержать только правило #vn360-pack без @import и сторонних стилей.");
-  }
-
-  var declarationBody = ruleMatch[1];
-  var declarationPattern = /(--vn360-(?:schema|mode|mime|width|height|size|quality|chunk-count|data-(?:0|[1-9][0-9]*)))\s*:\s*"([^"\\]*)"\s*;/g;
-  var properties = Object.create(null);
-  var cursor = 0;
-  var propertyCount = 0;
-  var declarationMatch;
-  while ((declarationMatch = declarationPattern.exec(declarationBody))) {
-    if (!/^\s*$/.test(declarationBody.slice(cursor, declarationMatch.index))) {
-      throw new Error("CSS-пакет содержит недопустимую декларацию.");
-    }
-    var propertyName = declarationMatch[1];
-    if (Object.prototype.hasOwnProperty.call(properties, propertyName)) {
-      throw new Error("CSS-пакет содержит повторное свойство " + propertyName + ".");
-    }
-    propertyCount++;
-    if (propertyCount > BG360_CSS_PACK_MAX_CHUNKS + 8) {
-      throw new Error("CSS-пакет содержит слишком много свойств.");
-    }
-    properties[propertyName] = declarationMatch[2];
-    cursor = declarationPattern.lastIndex;
-  }
-  if (!/^\s*$/.test(declarationBody.slice(cursor))) {
-    throw new Error("CSS-пакет содержит недопустимую декларацию.");
-  }
-
-  var requiredProperties = ["schema", "mode", "mime", "width", "height", "size", "quality", "chunk-count"];
-  for (var requiredIndex = 0; requiredIndex < requiredProperties.length; requiredIndex++) {
-    if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-" + requiredProperties[requiredIndex])) {
-      throw new Error("CSS-пакет не содержит обязательные метаданные.");
-    }
-  }
-  var declaredChunkCount = Number(properties["--vn360-chunk-count"]);
-  if (!Number.isInteger(declaredChunkCount) || declaredChunkCount < 1 || declaredChunkCount > BG360_CSS_PACK_MAX_CHUNKS) {
-    throw new Error("Некорректное количество частей CSS-пакета 360.");
-  }
-  for (var dataIndex = 0; dataIndex < declaredChunkCount; dataIndex++) {
-    if (!Object.prototype.hasOwnProperty.call(properties, "--vn360-data-" + dataIndex)) {
-      throw new Error("CSS-пакет содержит неполный набор частей.");
-    }
-  }
-  if (propertyCount !== requiredProperties.length + declaredChunkCount) {
-    throw new Error("CSS-пакет содержит части вне объявленного диапазона.");
-  }
-
-  return {
-    getPropertyValue: function(propertyName) {
-      return Object.prototype.hasOwnProperty.call(properties, propertyName)
-        ? '"' + properties[propertyName] + '"'
-        : "";
-    }
-  };
-}
-
-// Декодирует выровненную часть base64 в отдельный Uint8Array и сохраняет начало файла для проверки сигнатуры.
-function appendBg360CssDecodedPart(encodedPart, binaryParts, signatureBytes) {
-  if (!encodedPart) return;
-  var binary = atob(encodedPart);
-  var bytes = new Uint8Array(binary.length);
-  for (var i = 0; i < binary.length; i++) {
-    var byteValue = binary.charCodeAt(i);
-    bytes[i] = byteValue;
-    if (signatureBytes.length < 12) signatureBytes.push(byteValue);
-  }
-  binaryParts.push(bytes);
-}
-
-// Проверяет JPEG/PNG/WebP по magic bytes, чтобы CSS с произвольным содержимым не передавался декодеру изображения.
-function isBg360CssImageSignatureValid(mimeType, bytes) {
-  if (mimeType === "image/jpeg") {
-    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  }
-  if (mimeType === "image/png") {
-    return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
-      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
-  }
-  if (mimeType === "image/webp") {
-    return bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
-  }
-  return false;
-}
-
-// Возвращает нужное начало изображения без объединения всего сжатого файла во второй большой буфер.
-function collectBg360CssImageHeader(binaryParts, maxLength) {
-  var availableLength = 0;
-  for (var i = 0; i < binaryParts.length; i++) availableLength += binaryParts[i].length;
-  var headerLength = Math.min(availableLength, maxLength);
-  var header = new Uint8Array(headerLength);
-  var offset = 0;
-  for (var partIndex = 0; partIndex < binaryParts.length && offset < headerLength; partIndex++) {
-    var part = binaryParts[partIndex];
-    var copyLength = Math.min(part.length, headerLength - offset);
-    header.set(part.subarray(0, copyLength), offset);
-    offset += copyLength;
-  }
-  return header;
-}
-
-// Читает 32-битное целое с прямым порядком байтов без знакового преобразования JavaScript.
-function readBg360Uint32Be(bytes, offset) {
-  return bytes[offset] * 0x1000000 + bytes[offset + 1] * 0x10000 + bytes[offset + 2] * 0x100 + bytes[offset + 3];
-}
-
-// Находит фактические размеры JPEG по SOF-маркеру, не передавая потенциально огромный кадр браузерному декодеру.
-function readBg360JpegDimensions(header) {
-  var offset = 2;
-  while (offset + 1 < header.length) {
-    while (offset < header.length && header[offset] !== 0xff) offset++;
-    while (offset < header.length && header[offset] === 0xff) offset++;
-    if (offset >= header.length) break;
-    var marker = header[offset++];
-    if (marker === 0x00 || marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) continue;
-    if (marker === 0xd9 || marker === 0xda || offset + 1 >= header.length) break;
-    var segmentLength = header[offset] * 0x100 + header[offset + 1];
-    if (segmentLength < 2 || offset + segmentLength > header.length) break;
-    var isStartOfFrame = (marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) ||
-      (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf);
-    if (isStartOfFrame) {
-      if (segmentLength < 7) break;
-      return {
-        width: header[offset + 5] * 0x100 + header[offset + 6],
-        height: header[offset + 3] * 0x100 + header[offset + 4]
-      };
-    }
-    offset += segmentLength;
-  }
-  throw new Error("Не удалось определить размер JPEG до запуска декодера изображения.");
-}
-
-// Извлекает размеры из обязательного заголовка PNG, JPEG или WebP до создания Blob URL.
-function readBg360CssImageDimensions(mimeType, binaryParts) {
-  var header = collectBg360CssImageHeader(binaryParts, mimeType === "image/jpeg" ? BG360_CSS_IMAGE_HEADER_MAX_BYTES : 30);
-  if (mimeType === "image/png") {
-    if (header.length < 24 || header[12] !== 0x49 || header[13] !== 0x48 || header[14] !== 0x44 || header[15] !== 0x52) {
-      throw new Error("PNG в CSS-пакете не содержит корректный заголовок IHDR.");
-    }
-    return { width: readBg360Uint32Be(header, 16), height: readBg360Uint32Be(header, 20) };
-  }
-  if (mimeType === "image/jpeg") return readBg360JpegDimensions(header);
-  if (mimeType === "image/webp") {
-    if (header.length < 30) throw new Error("WebP в CSS-пакете содержит обрезанный заголовок.");
-    var chunkType = String.fromCharCode(header[12], header[13], header[14], header[15]);
-    if (chunkType === "VP8X") {
-      return {
-        width: 1 + header[24] + header[25] * 0x100 + header[26] * 0x10000,
-        height: 1 + header[27] + header[28] * 0x100 + header[29] * 0x10000
-      };
-    }
-    if (chunkType === "VP8L" && header[20] === 0x2f) {
-      return {
-        width: 1 + header[21] + (header[22] & 0x3f) * 0x100,
-        height: 1 + ((header[22] & 0xc0) >> 6) + header[23] * 4 + (header[24] & 0x0f) * 0x400
-      };
-    }
-    if (chunkType === "VP8 " && header[23] === 0x9d && header[24] === 0x01 && header[25] === 0x2a) {
-      return {
-        width: (header[26] + header[27] * 0x100) & 0x3fff,
-        height: (header[28] + header[29] * 0x100) & 0x3fff
-      };
-    }
-    throw new Error("WebP в CSS-пакете содержит неподдерживаемый заголовок изображения.");
-  }
-  throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
-}
-
-// Ограничивает стороны и площадь кадра единообразно для normal/mobile; это предохранитель от явно вредных размеров.
-function validateBg360CssImageDimensions(width, height) {
-  if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
-    throw new Error("CSS-пакет не содержит корректный размер панорамы.");
-  }
-  if (width > BG360_CSS_IMAGE_MAX_WIDTH || height > BG360_CSS_IMAGE_MAX_HEIGHT || width * height > BG360_CSS_IMAGE_MAX_PIXELS) {
-    throw new Error("Размер CSS-панорамы " + width + "x" + height + " превышает предел 20000x15000 px или 300000000 пикселей.");
-  }
-}
-
-// Извлекает только известные свойства декларативного CSS-пакета и собирает Blob порциями без выполнения кода.
-function extractBg360CssPackBlob(computedStyle) {
-  var schema = readBg360CssQuotedValue(computedStyle, "--vn360-schema");
-  if (schema !== "vn360-css-pack-v1") throw new Error("Неподдерживаемая версия CSS-пакета 360.");
-
-  var mode = readBg360CssQuotedValue(computedStyle, "--vn360-mode");
-  if (mode !== "normal" && mode !== "mobile") throw new Error("Некорректный режим CSS-пакета 360.");
-  var mimeType = readBg360CssQuotedValue(computedStyle, "--vn360-mime").toLowerCase();
-  if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) throw new Error("CSS-пакет содержит неподдерживаемый формат изображения.");
-
-  var chunkCount = Number(readBg360CssQuotedValue(computedStyle, "--vn360-chunk-count"));
-  if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > BG360_CSS_PACK_MAX_CHUNKS) {
-    throw new Error("Некорректное количество частей CSS-пакета 360.");
-  }
-  var declaredWidth = Number(readBg360CssQuotedValue(computedStyle, "--vn360-width"));
-  var declaredHeight = Number(readBg360CssQuotedValue(computedStyle, "--vn360-height"));
-  var declaredSize = Number(readBg360CssQuotedValue(computedStyle, "--vn360-size"));
-  validateBg360CssImageDimensions(declaredWidth, declaredHeight);
-  if (!Number.isInteger(declaredSize) || declaredSize < 1 || declaredSize > BG360_CSS_PACK_MAX_DECODED_SIZE) {
-    throw new Error("CSS-пакет содержит недопустимый размер изображения.");
-  }
-  var maxTextureSize = Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
-  if (maxTextureSize > 0 && (declaredWidth > maxTextureSize || declaredHeight > maxTextureSize)) {
-    throw new Error("Размер CSS-панорамы " + declaredWidth + "x" + declaredHeight + " превышает лимит WebGL " + maxTextureSize + " px.");
-  }
-
-  var binaryParts = [];
-  var signatureBytes = [];
-  var pendingBase64 = "";
-  var encodedLength = 0;
-  for (var index = 0; index < chunkCount; index++) {
-    var cssChunk = readBg360CssQuotedValue(computedStyle, "--vn360-data-" + index);
-    if (cssChunk.length > BG360_CSS_PACK_MAX_CHUNK_LENGTH) throw new Error("Часть CSS-пакета превышает допустимый размер.");
-    if (index === 0) {
-      var prefixMatch = cssChunk.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/i);
-      if (!prefixMatch) throw new Error("Первая часть CSS-пакета не содержит ожидаемый data:image base64.");
-      if (prefixMatch[1].toLowerCase() !== mimeType) throw new Error("MIME CSS-пакета не совпадает с данными изображения.");
-      cssChunk = prefixMatch[2];
-    }
-    if (!/^[a-z0-9+/]*={0,2}$/i.test(cssChunk) || (index < chunkCount - 1 && cssChunk.indexOf("=") !== -1)) {
-      throw new Error("CSS-пакет содержит недопустимые символы base64.");
-    }
-    encodedLength += cssChunk.length;
-    if (encodedLength > BG360_CSS_PACK_MAX_ENCODED_LENGTH) throw new Error("CSS-пакет превышает допустимый размер.");
-    pendingBase64 += cssChunk;
-    if (index < chunkCount - 1 && pendingBase64.length >= BG360_CSS_DECODE_BATCH_LENGTH) {
-      var readyLength = pendingBase64.length - (pendingBase64.length % 4);
-      appendBg360CssDecodedPart(pendingBase64.slice(0, readyLength), binaryParts, signatureBytes);
-      pendingBase64 = pendingBase64.slice(readyLength);
-    }
-  }
-
-  if (!pendingBase64 || pendingBase64.length % 4 !== 0) throw new Error("CSS-пакет содержит обрезанные данные base64.");
-  appendBg360CssDecodedPart(pendingBase64, binaryParts, signatureBytes);
-  if (!isBg360CssImageSignatureValid(mimeType, signatureBytes)) throw new Error("Сигнатура изображения в CSS-пакете не совпадает с MIME.");
-
-  var decodedSize = 0;
-  for (var partIndex = 0; partIndex < binaryParts.length; partIndex++) decodedSize += binaryParts[partIndex].length;
-  if (decodedSize !== declaredSize) throw new Error("Размер изображения в CSS-пакете не совпадает с метаданными.");
-  var actualDimensions = readBg360CssImageDimensions(mimeType, binaryParts);
-  validateBg360CssImageDimensions(actualDimensions.width, actualDimensions.height);
-  if (actualDimensions.width !== declaredWidth || actualDimensions.height !== declaredHeight) {
-    throw new Error("Размер изображения в заголовке " + actualDimensions.width + "x" + actualDimensions.height +
-      " не совпадает с метаданными CSS-пакета " + declaredWidth + "x" + declaredHeight + ".");
-  }
-  var blob = new Blob(binaryParts, { type: mimeType });
-  return {
-    blob: blob,
-    meta: {
-      schema: schema,
-      mode: mode,
-      type: mimeType,
-      size: blob.size,
-      width: declaredWidth,
-      height: declaredHeight,
-      quality: readBg360CssQuotedValue(computedStyle, "--vn360-quality"),
-      chunkCount: chunkCount,
-      encodedLength: encodedLength
-    }
-  };
-}
-
-// Загружает CSS как текстовый sandbox-документ: браузер не применяет его правила и не выполняет @import, а строгий парсер принимает только данные пакета.
-function readBg360CssPackFromTextDocument(cssUrl) {
-  return new Promise(function(resolve, reject) {
-    var settled = false;
-    var timeoutId = null;
-    var frame = document.createElement("iframe");
-    frame.hidden = true;
-    frame.setAttribute("aria-hidden", "true");
-    frame.setAttribute("sandbox", "allow-same-origin");
-    frame.setAttribute("referrerpolicy", "no-referrer");
-    frame.setAttribute("data-bg360-css-pack-loader", cssUrl);
-
-    function finish(error, result) {
-      if (settled) return;
-      settled = true;
-      if (timeoutId !== null) clearTimeout(timeoutId);
-      frame.onload = null;
-      if (frame.parentNode) frame.parentNode.removeChild(frame);
-      if (error) reject(error);
-      else resolve(result);
-    }
-
-    frame.onload = function() {
-      if (settled) return;
-      try {
-        var frameDocument;
-        try {
-          frameDocument = frame.contentDocument;
-        } catch (accessCause) {
-          var deniedAccessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
-          deniedAccessError.code = "VN360_CSS_TEXT_ACCESS";
-          throw deniedAccessError;
-        }
-        if (!frameDocument || !frameDocument.body) {
-          var accessError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
-          accessError.code = "VN360_CSS_TEXT_ACCESS";
-          throw accessError;
-        }
-        if (frameDocument.contentType !== "text/css") {
-          throw new Error("Локальный ресурс не является CSS-пакетом: " + cssUrl);
-        }
-        var cssSource;
-        try {
-          cssSource = frameDocument.body.textContent || "";
-        } catch (bodyAccessCause) {
-          var deniedBodyError = new Error("Браузер не разрешил прочитать локальный CSS-пакет как текст: " + cssUrl);
-          deniedBodyError.code = "VN360_CSS_TEXT_ACCESS";
-          throw deniedBodyError;
-        }
-        var propertyReader = createBg360CssPropertyReader(cssSource);
-        finish(null, extractBg360CssPackBlob(propertyReader));
-      } catch (err) {
-        finish(err);
-      }
-    };
-    frame.onerror = function() {
-      finish(new Error("Не удалось загрузить CSS-пакет: " + cssUrl));
-    };
-
-    timeoutId = setTimeout(function() {
-      finish(new Error("Истекло время загрузки CSS-пакета: " + cssUrl));
-    }, 30000);
-    frame.src = cssUrl;
-    document.body.appendChild(frame);
-  });
-}
-
-// Создаёт непредсказуемый nonce для единственного разрешённого локального link в совместимом file:// загрузчике Chromium.
-function createBg360CssStyleNonce() {
-  if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
-    throw new Error("Браузер не поддерживает безопасный генератор для загрузки CSS-пакета.");
-  }
-  var bytes = new Uint8Array(16);
-  window.crypto.getRandomValues(bytes);
-  var nonce = "";
-  for (var index = 0; index < bytes.length; index++) {
-    nonce += (bytes[index] < 16 ? "0" : "") + bytes[index].toString(16);
-  }
-  return nonce;
-}
-
-// Читает file:// CSS через изолированный link только когда Chromium запрещает доступ к тексту; CSP блокирует импорты и любые побочные ресурсы.
-function readBg360CssPackFromIsolatedStyle(cssUrl) {
-  return new Promise(function(resolve, reject) {
-    var settled = false;
-    var initialized = false;
-    var timeoutId = null;
-    var styleNonce = createBg360CssStyleNonce();
-    var frame = document.createElement("iframe");
-    frame.hidden = true;
-    frame.setAttribute("aria-hidden", "true");
-    frame.setAttribute("sandbox", "allow-same-origin");
-    frame.setAttribute("referrerpolicy", "no-referrer");
-    frame.setAttribute("data-bg360-css-pack-loader", cssUrl);
-    frame.srcdoc = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + styleNonce + "'; style-src-attr 'none'; script-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'\"><div id=\"vn360-pack\"></div>";
-
-    function finish(error, result) {
-      if (settled) return;
-      settled = true;
-      if (timeoutId !== null) clearTimeout(timeoutId);
-      frame.onload = null;
-      if (frame.parentNode) frame.parentNode.removeChild(frame);
-      if (error) reject(error);
-      else resolve(result);
-    }
-
-    frame.onload = function() {
-      if (initialized || settled) return;
-      initialized = true;
-      try {
-        var frameDocument = frame.contentDocument;
-        var marker = frameDocument && frameDocument.getElementById("vn360-pack");
-        if (!frameDocument || !marker) throw new Error("Не удалось создать изолированный загрузчик CSS-пакета.");
-        var link = frameDocument.createElement("link");
-        link.rel = "stylesheet";
-        link.nonce = styleNonce;
-        link.referrerPolicy = "no-referrer";
-        link.onload = function() {
-          try {
-            finish(null, extractBg360CssPackBlob(frame.contentWindow.getComputedStyle(marker)));
-          } catch (err) {
-            finish(err);
-          }
-        };
-        link.onerror = function() {
-          finish(new Error("Не удалось загрузить CSS-пакет: " + cssUrl));
-        };
-        link.href = cssUrl;
-        frameDocument.head.appendChild(link);
-      } catch (err) {
-        finish(err);
-      }
-    };
-
-    timeoutId = setTimeout(function() {
-      finish(new Error("Истекло время загрузки CSS-пакета: " + cssUrl));
-    }, 30000);
-    document.body.appendChild(frame);
-  });
-}
-
-// Выбирает строгий текстовый путь, а совместимый CSP-link разрешает только локальный file:// случай с закрытым origin Chromium.
-function readBg360CssPack(cssUrl) {
-  return readBg360CssPackFromTextDocument(cssUrl).catch(function(error) {
-    if (!error || error.code !== "VN360_CSS_TEXT_ACCESS" || window.location.protocol !== "file:") throw error;
-    return readBg360CssPackFromIsolatedStyle(cssUrl);
-  });
-}
-
-// Запускает одну загрузку CSS на URL и будит всех ожидающих; ошибка остаётся в кэше до F5 без небезопасного фолбэка.
-function ensureBg360CssPackLoaded(sourceUrl, quality, onReady) {
-  var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
-  if (!cssUrl) return "none";
-  var state = bg360CssPackState[cssUrl];
-  if (state && state.status === "loaded") return "ready";
-  if (state && state.status === "loading") {
-    if (typeof onReady === "function") state.waiters.push(onReady);
-    return "loading";
-  }
-  if (state && state.status === "error") return "none";
-
-  state = bg360CssPackState[cssUrl] = {
-    status: "loading",
-    waiters: typeof onReady === "function" ? [onReady] : [],
-    blob: null,
-    meta: null,
-    errorMessage: "",
-    refs: 0
-  };
-  readBg360CssPack(cssUrl).then(function(pack) {
-    var entry = bg360CssPackState[cssUrl];
-    if (!entry || entry !== state) return;
-    entry.status = "loaded";
-    entry.blob = pack.blob;
-    entry.meta = pack.meta;
-    entry.errorMessage = "";
-    var waiters = entry.waiters.slice();
-    entry.waiters.length = 0;
-    for (var i = 0; i < waiters.length; i++) {
-      try { waiters[i](true); } catch (e) {}
-    }
-    // Если экран уже сменился и ни один waiter не забрал Blob, не оставляем большую панораму в кэше.
-    setTimeout(function() {
-      var current = bg360CssPackState[cssUrl];
-      if (current === entry && current.status === "loaded" && current.refs === 0) {
-        current.blob = null;
-        current.meta = null;
-        delete bg360CssPackState[cssUrl];
-      }
-    }, 0);
-  }).catch(function(error) {
-    var entry = bg360CssPackState[cssUrl];
-    if (!entry || entry !== state) return;
-    entry.status = "error";
-    entry.blob = null;
-    entry.meta = null;
-    entry.errorMessage = error && error.message ? error.message : String(error || "Неизвестная ошибка CSS-пакета.");
-    writeRuntimeVerbose("[BG360] CSS-пакет недоступен", {
-      css: sanitizeDiagnosticResource(cssUrl),
-      reason: error && error.message ? error.message : String(error || "")
-    });
-    var waiters = entry.waiters.slice();
-    entry.waiters.length = 0;
-    for (var i = 0; i < waiters.length; i++) {
-      try { waiters[i](false); } catch (e) {}
-    }
-  });
-  return "loading";
-}
-
-// Создаёт отдельный Blob URL для одного декодирования и увеличивает счётчик активных потребителей CSS-пакета.
-function acquireBg360CssPackResource(sourceUrl, quality) {
-  var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
-  var state = cssUrl ? bg360CssPackState[cssUrl] : null;
-  if (!state || state.status !== "loaded" || !state.blob) return null;
-  var objectUrl;
-  try {
-    objectUrl = URL.createObjectURL(state.blob);
-  } catch (e) {
-    state.status = "error";
-    state.blob = null;
-    state.meta = null;
-    state.errorMessage = e && e.message ? e.message : "Не удалось создать Blob URL CSS-пакета.";
-    return null;
-  }
-  state.refs++;
-  return {
-    kind: "css",
-    src: objectUrl,
-    meta: state.meta,
-    expectedQuality: resolveBg360EffectiveQuality(quality),
-    cssUrl: cssUrl,
-    cssState: state,
-    released: false
-  };
-}
-
-// Освобождает Blob URL после декодирования; при повреждённой картинке помечает CSS-пакет ошибочным.
-function releaseBg360PackResource(resource, markCssError) {
-  if (!resource || resource.kind !== "css" || resource.released) return;
-  resource.released = true;
-  try { URL.revokeObjectURL(resource.src); } catch (e) {}
-  var state = resource.cssState;
-  if (!state) return;
-  state.refs = Math.max(0, Number(state.refs || 0) - 1);
-  if (markCssError) {
-    state.status = "error";
-    state.blob = null;
-    state.meta = null;
-    if (!state.errorMessage) state.errorMessage = "Браузер не смог декодировать изображение CSS-панорамы.";
-  }
-  if (state.refs === 0 && state.status !== "error") {
-    // Обнуляем Blob и в самом state: callback изображения может ещё жить внутри texture.image и не должен удерживать архив панорамы.
-    state.blob = null;
-    state.meta = null;
-    if (bg360CssPackState[resource.cssUrl] === state) delete bg360CssPackState[resource.cssUrl];
-  }
-}
-
-// Разрешает только CSS-ресурс; callback просит вызывающий код повторить выбор после асинхронной загрузки.
+// Возвращает готовый Blob URL либо состояние общей асинхронной загрузки.
 function resolveBg360PackResource(sourceUrl, quality, onReady) {
-  var cssState = ensureBg360CssPackLoaded(sourceUrl, quality, onReady);
-  if (cssState === "loading") return { status: "loading" };
-  if (cssState === "ready") {
-    var cssResource = acquireBg360CssPackResource(sourceUrl, quality);
-    if (cssResource) {
-      cssResource.status = "ready";
-      return cssResource;
-    }
-  }
-  return { status: "none" };
+  return panoramaPackageController.resolveResource(sourceUrl, quality, onReady);
 }
 
-// Сверяет режим и фактический размер любой декодированной CSS-картинки с проверенными метаданными пакета.
+// Освобождает выданный Blob URL и при необходимости запоминает ошибку декодирования.
+function releaseBg360PackResource(resource, markCssError) {
+  panoramaPackageController.releaseResource(resource, markCssError);
+}
+
+// Проверяет декодированное изображение по метаданным строгого CSS-пакета.
 function validateBg360DecodedImage(image, resource) {
-  if (!resource || resource.kind !== "css") return "";
-  var width = Number(image && (image.naturalWidth || image.videoWidth || image.width)) || 0;
-  var height = Number(image && (image.naturalHeight || image.videoHeight || image.height)) || 0;
-  var meta = resource.meta || {};
-  if (meta.mode !== resource.expectedQuality) {
-    return "Режим CSS-пакета " + meta.mode + " не совпадает с запрошенным качеством " + resource.expectedQuality + ".";
-  }
-  if (width !== Number(meta.width) || height !== Number(meta.height)) {
-    return "Фактический размер CSS-панорамы " + width + "x" + height + " не совпадает с метаданными " + meta.width + "x" + meta.height + ".";
-  }
-  return "";
+  return panoramaPackageController.validateDecodedImage(image, resource);
 }
 
-// Дополняет общую проверку декодированного изображения ограничением текущего WebGL-устройства.
+// Проверяет изображение и аппаратный предел WebGL текущего устройства.
 function validateBg360PackTexture(texture, resource) {
-  if (!resource || resource.kind !== "css") return "";
-  var image = texture && texture.image;
-  var decodedImageError = validateBg360DecodedImage(image, resource);
-  if (decodedImageError) return decodedImageError;
-  var width = Number(image && (image.naturalWidth || image.videoWidth || image.width)) || 0;
-  var height = Number(image && (image.naturalHeight || image.videoHeight || image.height)) || 0;
-  var maxTextureSize = Number(bg360Runtime.renderer && bg360Runtime.renderer.capabilities && bg360Runtime.renderer.capabilities.maxTextureSize) || 0;
-  if (maxTextureSize > 0 && (width > maxTextureSize || height > maxTextureSize)) {
-    return "Размер CSS-панорамы " + width + "x" + height + " превышает лимит WebGL " + maxTextureSize + " px.";
-  }
-  return "";
+  return panoramaPackageController.validateTexture(texture, resource);
+}
+
+// Передаёт результат runtime или графа в малый сессионный кэш проверки.
+function recordBg360PackageInspectionResultByResource(resource, sourceUrl, status, details) {
+  panoramaPackageController.recordInspectionResultByResource(resource, sourceUrl, status, details);
+}
+
+// Передаёт ошибку до создания ресурса в тот же сессионный кэш проверки.
+function recordBg360PackageInspectionResult(sourceUrl, quality, status, details) {
+  panoramaPackageController.recordInspectionResult(sourceUrl, quality, status, details, null);
+}
+
+// Регистрирует ссылки истории и возвращает мгновенный снимок фоновой проверки.
+function checkPanoramaPackageReferences(items) {
+  return panoramaPackageController.checkReferences(items);
+}
+
+// Повторно передаёт текущий прогресс UI после смены вкладки статистики.
+function updateBg360PackageInspectionProgress() {
+  panoramaPackageController.notifyInspectionProgress();
 }
 
 // Включает 360-рендер только из изолированного CSS-пакета либо из видео.
@@ -14849,357 +14329,6 @@ function collectPanoramaPackageReferences(story) {
   });
 }
 
-// Строит стабильный ключ по фактически выбранному normal/mobile CSS-файлу, а неверные пути изолирует отдельным ключом.
-function getBg360PackageInspectionKey(sourceUrl, quality) {
-  var cssUrl = getBg360PackCssUrl(sourceUrl, quality);
-  if (cssUrl) return normalizeAssetUrl(cssUrl);
-  return "invalid:" + String(sourceUrl || "") + "\u0000" + String(quality || "auto");
-}
-
-// Возвращает небольшую копию метаданных для статистики, не удерживая Blob или DOM-изображение.
-function copyBg360PackageInspectionMeta(meta) {
-  if (!meta || typeof meta !== "object") return null;
-  return {
-    schema: String(meta.schema || ""),
-    mode: String(meta.mode || ""),
-    type: String(meta.type || ""),
-    size: Number(meta.size) || 0,
-    width: Number(meta.width) || 0,
-    height: Number(meta.height) || 0,
-    quality: String(meta.quality || ""),
-    chunkCount: Number(meta.chunkCount) || 0,
-    encodedLength: Number(meta.encodedLength) || 0
-  };
-}
-
-// Определяет завершённые статусы: они повторно не ставятся в тяжёлую очередь в пределах текущей загрузки страницы.
-function isBg360PackageInspectionTerminal(status) {
-  return status === "loaded" || status === "verified" || status === "missing" || status === "invalid";
-}
-
-// Создаёт или находит сессионную запись проверки для фактического CSS-файла.
-function getOrCreateBg360PackageInspectionEntry(sourceUrl, quality, displayPath) {
-  var effectiveQuality = resolveBg360EffectiveQuality(quality);
-  var cssUrl = getBg360PackCssUrl(sourceUrl, effectiveQuality);
-  var key = getBg360PackageInspectionKey(sourceUrl, effectiveQuality);
-  var entry = bg360PackageInspectionState.entries[key];
-  if (!entry) {
-    entry = bg360PackageInspectionState.entries[key] = {
-      key: key,
-      path: displayPath || sourceUrl || "",
-      sourceUrl: sourceUrl || "",
-      cssUrl: cssUrl || "",
-      quality: effectiveQuality,
-      refs: [],
-      status: cssUrl ? "queued" : "invalid",
-      details: cssUrl ? "Queued for full CSS package validation." : "The path is not an allowed *-360.css panorama package.",
-      meta: null
-    };
-  }
-  if (displayPath) entry.path = displayPath;
-  if (sourceUrl) entry.sourceUrl = sourceUrl;
-  return entry;
-}
-
-// Объединяет места использования пакета без дублей, чтобы раздел статистики не повторял один файл.
-function mergeBg360PackageInspectionRefs(entry, refs) {
-  if (!entry || !Array.isArray(refs)) return;
-  for (var index = 0; index < refs.length; index++) {
-    var ref = String(refs[index] || "");
-    if (ref && entry.refs.indexOf(ref) === -1) entry.refs.push(ref);
-  }
-}
-
-// Применяет результат, не позволяя более слабой проверке затереть успешную WebGL-валидацию.
-function applyBg360PackageInspectionResult(entry, status, details, meta) {
-  if (!entry) return;
-  if (entry.status === "loaded" && status !== "loaded") return;
-  if (entry.status === "verified" && status !== "loaded" && status !== "verified") return;
-  entry.status = status;
-  entry.details = String(details || "");
-  if (meta) entry.meta = copyBg360PackageInspectionMeta(meta);
-  updateBg360PackageInspectionProgress();
-}
-
-// Сохраняет успех или ошибку реального runtime/графа в тот же малый кеш, которым пользуется текстовая статистика.
-function recordBg360PackageInspectionResultByResource(resource, sourceUrl, status, details) {
-  if (!resource || resource.kind !== "css") return;
-  var entry = getOrCreateBg360PackageInspectionEntry(sourceUrl || resource.cssUrl, resource.expectedQuality, sourceUrl || resource.cssUrl);
-  applyBg360PackageInspectionResult(entry, status, details, resource.meta);
-}
-
-// Возвращает прогресс только по пакетам текущей истории, исключая старые сессионные записи и дубли путей.
-function getBg360PackageInspectionProgress() {
-  var keys = bg360PackageInspectionState.activeKeys || [];
-  var completed = 0;
-  for (var index = 0; index < keys.length; index++) {
-    var entry = bg360PackageInspectionState.entries[keys[index]];
-    if (entry && isBg360PackageInspectionTerminal(entry.status)) completed++;
-  }
-  return { completed: completed, total: keys.length };
-}
-
-// Обновляет полоску после каждого пакета; завершённая очередь скрывает её после финального перерендера текста.
-function updateBg360PackageInspectionProgress() {
-  if (!elStatsLoadProgress || !elStatsLoadProgressBar || !elStatsLoadProgressLabel) return;
-  var progress = getBg360PackageInspectionProgress();
-  elStatsLoadProgressBar.max = Math.max(1, progress.total);
-  elStatsLoadProgressBar.value = progress.completed;
-  elStatsLoadProgressLabel.textContent = progress.completed + " / " + progress.total;
-  elStatsLoadProgress.classList.toggle(
-    "hidden",
-    currentStatsView !== "text" || progress.total === 0 || progress.completed >= progress.total
-  );
-}
-
-// Проверяет, занят ли интерфейс полноразмерным графом; фоновая очередь в этот момент не конкурирует с его изображениями.
-function isBg360PackageInspectionPausedForGraph() {
-  return Boolean(
-    showingGraph &&
-    elStatsPanel &&
-    !elStatsPanel.classList.contains("hidden")
-  );
-}
-
-// Даёт приоритет панораме текущей сцены, пока её CSS ещё загружается для WebGL.
-function isBg360RuntimePackageLoadPending() {
-  if (!bg360Runtime || bg360Runtime.isVideoSource || !isBg360PackCssPath(bg360Runtime.sourceSrc || "")) return false;
-  if (bg360Runtime.textureReadyLoadSeq === bg360Runtime.loadSeq) return false;
-  var cssUrl = getBg360PackCssUrl(bg360Runtime.sourceSrc, bg360Runtime.sourceQuality || "auto");
-  var state = cssUrl ? bg360CssPackState[cssUrl] : null;
-  return Boolean(state && state.status === "loading");
-}
-
-// На HTTP уточняет только 404/410; любые другие ответы не заменяют полную загрузку и строгую проверку CSS.
-function probeBg360PackageMissingByHttp(cssUrl) {
-  if (!window.location || (window.location.protocol !== "http:" && window.location.protocol !== "https:")) {
-    return Promise.resolve(null);
-  }
-  if (typeof window.fetch !== "function") return Promise.resolve(null);
-
-  var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
-  var options = { method: "HEAD", cache: "no-store", credentials: "same-origin", redirect: "error" };
-  if (controller) options.signal = controller.signal;
-
-  return new Promise(function(resolve) {
-    var settled = false;
-    var timeoutId = setTimeout(function() {
-      if (settled) return;
-      settled = true;
-      if (controller) controller.abort();
-      resolve(null);
-    }, 5000);
-    window.fetch(cssUrl, options).then(function(response) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      resolve(response.status === 404 || response.status === 410 ? response.status : null);
-    }).catch(function() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      resolve(null);
-    });
-  });
-}
-
-// Полностью загружает, строго разбирает и декодирует один CSS-пакет, после чего немедленно освобождает тяжёлые данные.
-function inspectBg360PackageEntry(entry) {
-  return probeBg360PackageMissingByHttp(entry.cssUrl).then(function(missingStatus) {
-    if (missingStatus) {
-      return { status: "missing", details: "The server returned HTTP " + missingStatus + ".", meta: null };
-    }
-
-    return new Promise(function(resolve) {
-      var settled = false;
-
-      function finish(result) {
-        if (settled) return;
-        settled = true;
-        resolve(result);
-      }
-
-      function acquireAndDecode() {
-        var resource = resolveBg360PackResource(entry.sourceUrl, entry.quality, function() {
-          acquireAndDecode();
-        });
-        if (!resource || resource.status === "loading") return;
-        if (resource.status !== "ready" || !resource.src) {
-          var failedState = entry.cssUrl ? bg360CssPackState[entry.cssUrl] : null;
-          var failureReason = failedState && failedState.errorMessage
-            ? failedState.errorMessage
-            : "The CSS panorama package could not be loaded.";
-          var failureStatus = /Не удалось загрузить CSS-пакет/i.test(failureReason) ? "missing" : "invalid";
-          finish({ status: failureStatus, details: failureReason, meta: null });
-          return;
-        }
-
-        var image = new Image();
-        var timeoutId = setTimeout(function() {
-          image.onload = null;
-          image.onerror = null;
-          releaseBg360PackResource(resource, true);
-          try { image.removeAttribute("src"); } catch (e) {}
-          finish({ status: "invalid", details: "The panorama image decoder timed out.", meta: resource.meta });
-        }, 30000);
-
-        image.onload = function() {
-          clearTimeout(timeoutId);
-          var validationError = validateBg360DecodedImage(image, resource);
-          image.onload = null;
-          image.onerror = null;
-          releaseBg360PackResource(resource, Boolean(validationError));
-          try { image.removeAttribute("src"); } catch (e) {}
-          finish({
-            status: validationError ? "invalid" : "verified",
-            details: validationError || "CSS package and image were fully validated and decoded.",
-            meta: resource.meta
-          });
-        };
-        image.onerror = function() {
-          clearTimeout(timeoutId);
-          image.onload = null;
-          image.onerror = null;
-          releaseBg360PackResource(resource, true);
-          try { image.removeAttribute("src"); } catch (e) {}
-          finish({ status: "invalid", details: "The browser could not decode the panorama image.", meta: resource.meta });
-        };
-        image.src = resource.src;
-      }
-
-      acquireAndDecode();
-    });
-  });
-}
-
-// Планирует один финальный перерендер открытой текстовой статистики после завершения всей фоновой очереди.
-function scheduleBg360StatsFinalRefresh() {
-  if (bg360PackageInspectionState.refreshScheduled) return;
-  bg360PackageInspectionState.refreshScheduled = true;
-  setTimeout(function() {
-    bg360PackageInspectionState.refreshScheduled = false;
-    updateBg360PackageInspectionProgress();
-    if (
-      currentStatsView === "text" &&
-      elStatsPanel &&
-      !elStatsPanel.classList.contains("hidden")
-    ) {
-      renderStats();
-    }
-  }, 50);
-}
-
-// Выбирает умеренный размер пула: телефон получает меньший пик декодирования, а настольный браузер — больше скорости.
-function getBg360PackageInspectionConcurrency() {
-  return isConfidentPhoneForUiBoost()
-    ? BG360_STATS_PHONE_CONCURRENCY
-    : BG360_STATS_DESKTOP_CONCURRENCY;
-}
-
-// Забирает следующую незавершённую запись и одновременно удаляет из очереди результаты, уже полученные графом или runtime.
-function takeNextBg360PackageInspectionEntry() {
-  while (bg360PackageInspectionState.queue.length) {
-    var candidateKey = bg360PackageInspectionState.queue.shift();
-    var candidate = bg360PackageInspectionState.entries[candidateKey];
-    if (candidate && !isBg360PackageInspectionTerminal(candidate.status)) return candidate;
-  }
-  return null;
-}
-
-// Запускает ограниченный пул тяжёлых проверок, уступая графу и загрузке текущей WebGL-панорамы между заданиями.
-function runBg360PackageInspectionQueue() {
-  if (bg360PackageInspectionState.timerId !== null) return;
-  if (bg360PackageInspectionState.activeCount >= getBg360PackageInspectionConcurrency()) return;
-  bg360PackageInspectionState.timerId = setTimeout(function runNextInspection() {
-    bg360PackageInspectionState.timerId = null;
-    if (isBg360PackageInspectionPausedForGraph() || isBg360RuntimePackageLoadPending()) {
-      bg360PackageInspectionState.timerId = setTimeout(runNextInspection, 150);
-      return;
-    }
-
-    var concurrency = getBg360PackageInspectionConcurrency();
-    var startedCount = 0;
-
-    // Каждый callback освобождает слот и повторно запускает насос, пока очередь не опустеет.
-    function startInspection(entry) {
-      bg360PackageInspectionState.activeCount++;
-      entry.status = "checking";
-      entry.details = "Full CSS package validation is running.";
-      updateBg360PackageInspectionProgress();
-      inspectBg360PackageEntry(entry).then(function(result) {
-        applyBg360PackageInspectionResult(entry, result.status, result.details, result.meta);
-      }).catch(function(error) {
-        applyBg360PackageInspectionResult(
-          entry,
-          "invalid",
-          error && error.message ? error.message : "The panorama check failed.",
-          null
-        );
-      }).then(function() {
-        bg360PackageInspectionState.activeCount = Math.max(0, bg360PackageInspectionState.activeCount - 1);
-        if (bg360PackageInspectionState.queue.length) {
-          runBg360PackageInspectionQueue();
-        } else if (bg360PackageInspectionState.activeCount === 0) {
-          scheduleBg360StatsFinalRefresh();
-        }
-      });
-    }
-
-    while (bg360PackageInspectionState.activeCount < concurrency) {
-      var entry = takeNextBg360PackageInspectionEntry();
-      if (!entry) break;
-      startedCount++;
-      startInspection(entry);
-    }
-
-    if (startedCount === 0 && bg360PackageInspectionState.activeCount === 0) {
-      updateBg360PackageInspectionProgress();
-      var completedProgress = getBg360PackageInspectionProgress();
-      if (completedProgress.total > 0 && completedProgress.completed >= completedProgress.total) {
-        scheduleBg360StatsFinalRefresh();
-      }
-    }
-  }, 40);
-}
-
-// Регистрирует пакеты текущей истории, запускает непрерываемую фоновую очередь и возвращает мгновенный снимок кеша.
-function checkPanoramaPackageReferences(items) {
-  var references = Array.isArray(items) ? items : [];
-  var activeKeys = [];
-  var activeKeyMap = Object.create(null);
-
-  for (var index = 0; index < references.length; index++) {
-    var item = references[index] || {};
-    var resolvedUrl = resolveRuntimeStoryAssetUrl(item.path || "", "panorama");
-    var entry = getOrCreateBg360PackageInspectionEntry(resolvedUrl || item.path || "", item.quality || "auto", item.path || "");
-    mergeBg360PackageInspectionRefs(entry, item.refs);
-    if (!activeKeyMap[entry.key]) {
-      activeKeyMap[entry.key] = true;
-      activeKeys.push(entry.key);
-    }
-    if (entry.status === "queued" && bg360PackageInspectionState.queue.indexOf(entry.key) === -1) {
-      bg360PackageInspectionState.queue.push(entry.key);
-    }
-  }
-
-  bg360PackageInspectionState.activeKeys = activeKeys;
-  updateBg360PackageInspectionProgress();
-  if (bg360PackageInspectionState.queue.length) runBg360PackageInspectionQueue();
-
-  return activeKeys.map(function(key) {
-    var entry = bg360PackageInspectionState.entries[key];
-    return {
-      path: entry.path,
-      cssUrl: entry.cssUrl,
-      quality: entry.quality,
-      refs: entry.refs.slice(),
-      status: entry.status,
-      details: entry.details,
-      meta: copyBg360PackageInspectionMeta(entry.meta)
-    };
-  });
-}
-
 // Проверяет обычные ресурсы и мгновенно присоединяет текущий снимок фоновой полной проверки CSS-панорам.
 function checkAssetsFiles() {
   return new Promise((resolve) => {
@@ -16925,18 +16054,13 @@ function hydrateBg360GraphThumbnails(root) {
       if (img && img.isConnected) hydrateSingleBg360Thumb(img);
     });
     if (!resource || resource.status !== "ready" || !resource.src) {
-      var selectedCssUrl = getBg360PackCssUrl(sourceUrl, quality);
-      var failedState = selectedCssUrl ? bg360CssPackState[selectedCssUrl] : null;
       if (!resource || resource.status !== "loading") {
-        var failedEntry = getOrCreateBg360PackageInspectionEntry(sourceUrl, quality, sourceUrl);
-        var failedReason = failedState && failedState.errorMessage
-          ? failedState.errorMessage
-          : "The CSS panorama package could not be loaded.";
-        applyBg360PackageInspectionResult(
-          failedEntry,
+        var failedReason = panoramaPackageController.getLoadError(sourceUrl, quality) || "The CSS panorama package could not be loaded.";
+        recordBg360PackageInspectionResult(
+          sourceUrl,
+          quality,
           /Не удалось загрузить CSS-пакет/i.test(failedReason) ? "missing" : "invalid",
-          failedReason,
-          null
+          failedReason
         );
         settleGraphImageLoad(progressToken, false);
       }

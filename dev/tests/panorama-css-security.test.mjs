@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
+const require = createRequire(import.meta.url);
 
 // Проверяет только файлы проекта, чтобы локальные неотслеживаемые материалы не ломали тесты разработчика.
 test('assets/360 не содержит отслеживаемых устаревших JS-панорам', function() {
@@ -113,18 +115,8 @@ function createCssPackSource(mimeType, declaredWidth, declaredHeight, bytes) {
 // Извлекает реальную защитную часть движка или редактора и запускает её отдельно от браузерного интерфейса.
 async function loadPanoramaRuntime(kind) {
   const isEngine = kind === 'engine';
-  const relativePath = isEngine ? 'engine/engine.js' : 'tools/scene360-editor.html';
+  const relativePath = isEngine ? 'engine/panorama-package-controller.js' : 'tools/scene360-editor.html';
   const source = await readFile(path.join(repositoryRoot, relativePath), 'utf8');
-  const startMarker = isEngine
-    ? 'var BG360_CSS_PACK_MAX_ENCODED_LENGTH'
-    : 'var PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH';
-  const endMarker = isEngine
-    ? 'function readBg360CssPack'
-    : 'function readPanoramaCssPack';
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start);
-  assert.ok(start >= 0 && end > start, `Не найден защитный блок ${relativePath}.`);
-
   let blobCreations = 0;
   class TestBlob {
     // Имитирует только размер Blob и считает, дошли ли недоверенные данные до этой стадии.
@@ -134,21 +126,48 @@ async function loadPanoramaRuntime(kind) {
       this.type = options && options.type ? options.type : '';
     }
   }
+
+  if (isEngine) {
+    const runtime = require(path.join(repositoryRoot, relativePath));
+    return {
+      source,
+      readDimensions: runtime.readImageDimensions,
+      validateDimensions: runtime.validateImageDimensions,
+      parseSource: runtime.createCssPropertyReader,
+      extractPack: function(computedStyle) {
+        return runtime.extractCssPackBlob(computedStyle, { atob, Blob: TestBlob, maxTextureSize: 32768 });
+      },
+      limits: {
+        encoded: runtime.CSS_PACK_MAX_ENCODED_LENGTH,
+        decoded: runtime.CSS_PACK_MAX_DECODED_SIZE,
+        chunks: runtime.CSS_PACK_MAX_CHUNKS,
+        chunk: runtime.CSS_PACK_MAX_CHUNK_LENGTH,
+        source: runtime.CSS_PACK_MAX_SOURCE_LENGTH,
+        width: runtime.CSS_IMAGE_MAX_WIDTH,
+        height: runtime.CSS_IMAGE_MAX_HEIGHT,
+        pixels: runtime.CSS_IMAGE_MAX_PIXELS
+      },
+      getBlobCreations: function() { return blobCreations; }
+    };
+  }
+
+  const startMarker = isEngine
+    ? 'var CSS_PACK_MAX_ENCODED_LENGTH'
+    : 'var PANORAMA_CSS_PACK_MAX_ENCODED_LENGTH';
+  const endMarker = isEngine
+    ? 'function readCssPack'
+    : 'function readPanoramaCssPack';
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  assert.ok(start >= 0 && end > start, `Не найден защитный блок ${relativePath}.`);
+
   const context = vm.createContext({
     atob,
     Blob: TestBlob,
     bg360Runtime: { renderer: { capabilities: { maxTextureSize: 32768 } } },
     renderer: { capabilities: { maxTextureSize: 32768 } }
   });
-  const exportsSource = isEngine
-    ? [
-        'this.readDimensions = readBg360CssImageDimensions;',
-        'this.validateDimensions = validateBg360CssImageDimensions;',
-        'this.parseSource = createBg360CssPropertyReader;',
-        'this.extractPack = extractBg360CssPackBlob;',
-        'this.limits = { encoded: BG360_CSS_PACK_MAX_ENCODED_LENGTH, decoded: BG360_CSS_PACK_MAX_DECODED_SIZE, chunks: BG360_CSS_PACK_MAX_CHUNKS, chunk: BG360_CSS_PACK_MAX_CHUNK_LENGTH, source: BG360_CSS_PACK_MAX_SOURCE_LENGTH, width: BG360_CSS_IMAGE_MAX_WIDTH, height: BG360_CSS_IMAGE_MAX_HEIGHT, pixels: BG360_CSS_IMAGE_MAX_PIXELS };'
-      ]
-    : [
+  const exportsSource = [
         'this.readDimensions = readPanoramaCssImageDimensions;',
         'this.validateDimensions = validatePanoramaCssImageDimensions;',
         'this.parseSource = createPanoramaCssPropertyReader;',
@@ -214,15 +233,28 @@ test('движок и редактор изолируют оба кроссбр�
   const engineSource = (await loadPanoramaRuntime('engine')).source;
   const editorSource = (await loadPanoramaRuntime('editor')).source;
   assert.match(engineSource, /frameDocument\.contentType !== "text\/css"/);
-  assert.match(engineSource, /createBg360CssPropertyReader\(cssSource\)/);
+  assert.match(engineSource, /createCssPropertyReader\(cssSource\)/);
   assert.match(editorSource, /frameDocument\.contentType !== "text\/css"/);
   assert.match(editorSource, /createPanoramaCssPropertyReader\(cssSource\)/);
-  const engineTextLoader = engineSource.slice(engineSource.indexOf('function readBg360CssPackFromTextDocument'), engineSource.indexOf('function createBg360CssStyleNonce'));
+  const engineTextLoader = engineSource.slice(engineSource.indexOf('function readCssPackFromTextDocument'), engineSource.indexOf('function createStyleNonce'));
   const editorTextLoader = editorSource.slice(editorSource.indexOf('function readPanoramaCssPackFromTextDocument'), editorSource.indexOf('function createPanoramaCssStyleNonce'));
   assert.doesNotMatch(engineTextLoader, /srcdoc/);
   assert.doesNotMatch(editorTextLoader, /srcdoc/);
-  assert.match(engineSource, /style-src 'nonce-[\s\S]+window\.location\.protocol !== "file:"/);
+  assert.match(engineSource, /style-src 'nonce-[\s\S]+protocol !== "file:"/);
   assert.match(editorSource, /style-src 'nonce-[\s\S]+window\.location\.protocol !== "file:"/);
+});
+
+// Фиксирует порядок bootstrap и отсутствие прежней реализации загрузчика в монолите.
+test('engine.js использует отдельный контроллер CSS-пакетов до запуска runtime', async function() {
+  const [indexSource, engineSource] = await Promise.all([
+    readFile(path.join(repositoryRoot, 'index.html'), 'utf8'),
+    readFile(path.join(repositoryRoot, 'engine/engine.js'), 'utf8')
+  ]);
+  const controllerIndex = indexSource.indexOf('engine/panorama-package-controller.js');
+  const engineIndex = indexSource.indexOf('engine/engine.js');
+  assert.ok(controllerIndex >= 0 && engineIndex > controllerIndex);
+  assert.match(engineSource, /VN_PANORAMA_PACKAGE_CONTROLLER\.createPanoramaPackageController/);
+  assert.doesNotMatch(engineSource, /function createBg360CssPropertyReader|var bg360CssPackState/);
 });
 
 // Проверяет все поддерживаемые заголовки без обращения к браузерному Image-декодеру.

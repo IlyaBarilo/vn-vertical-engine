@@ -419,6 +419,7 @@ project/
 │   ├── character-controller.js        показ, фокус, масштаб и lifecycle персонажей
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка
+│   ├── panorama-package-controller.js безопасная загрузка и проверка CSS-пакетов 360
 │   ├── game-host.js                   lifecycle iframe и сессий мини-игр
 │   ├── game-protocol.js               сообщения движка и мини-игр
 │   ├── resource-path-policy.js        правила безопасных путей авторских ресурсов
