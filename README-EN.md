@@ -301,6 +301,7 @@ project/
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── panorama-package-controller.js secure loading and inspection of 360 CSS packages
+│   ├── panorama-photo-viewer-controller.js viewing, paging, and zoom/pan for 360 photo marks
 │   ├── game-host.js                   mini-game iframe and session lifecycle
 │   ├── game-protocol.js               engine and mini-game messages
 │   ├── story-analysis.js              text, action, and resource statistics

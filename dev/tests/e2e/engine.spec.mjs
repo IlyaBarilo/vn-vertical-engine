@@ -172,6 +172,34 @@ function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   ].join('\n');
 }
 
+// Создаёт настоящий walk360 с photo-меткой, чтобы viewer открывался только через публичный сценарный поток.
+function createPhotoViewerStorySource(assetPath) {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Photo viewer E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    `sphere file=${assetPath} 360`,
+    '',
+    '[scene]',
+    'scene intro',
+    'bg sphere',
+    'bg360marks sphere (gallery, 0.5, 0.5, photo, assets/backgrounds/bg-campus-hall.jpg|assets/backgrounds/bg-campus-cafe.jpg)',
+    'walk360 sphere text="Откройте фото E2E" button="Закрыть обзор"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт историю с неиспользуемой CSS-панорамой и отсутствующим обычным изображением для раздельной статистики ресурсов.
 function createPanoramaStatisticsStorySource(panoramaPath, missingImagePath) {
   return [
@@ -793,6 +821,43 @@ test('character controller сохраняет позицию при смене, 
   await expect(character).toBeVisible();
   expect(await page.evaluate(function readCharacterControllerType() {
     return typeof window.VN_CHARACTER_CONTROLLER?.createCharacterController;
+  })).toBe('function');
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет реальный DOM photo-viewer: открытие метки, листание одного img и восстановление управления по Escape.
+test('photo-viewer controller открывает, листает и закрывает изображения 360-метки', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const panoramaPath = 'assets/360/photo-viewer-test-360.css';
+  await installRepositoryRoutes(page, {
+    storySource: createPhotoViewerStorySource(panoramaPath)
+  });
+  await page.route(`${e2eServerOrigin}/${panoramaPath}`, async function servePhotoViewerPanorama(route) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/css; charset=utf-8',
+      body: createScene360CssPackSource()
+    });
+  });
+  await page.goto('/');
+  await expect(page.locator('.walk360Title')).toHaveText('Откройте фото E2E');
+  await expect(page.locator('#bg360Layer')).toBeVisible();
+
+  const photoMark = page.locator('.bg360-mark.kind-photo');
+  await expect(photoMark).toBeVisible();
+  await photoMark.click();
+  await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
+  await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);
+
+  await page.locator('[data-bg360-photo-next]').click();
+  await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-cafe\.jpg$/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#bg360PhotoViewer')).toBeHidden();
+  await expect(photoMark).toBeVisible();
+  await photoMark.click();
+  await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
+  expect(await page.evaluate(function readPhotoViewerModuleType() {
+    return typeof window.VN_PANORAMA_PHOTO_VIEWER_CONTROLLER?.createPanoramaPhotoViewerController;
   })).toBe('function');
   expect(pageErrors).toEqual([]);
 });

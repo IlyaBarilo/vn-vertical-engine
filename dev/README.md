@@ -90,8 +90,8 @@ npm.cmd --prefix dev run test:assets
 npm.cmd --prefix dev run test:media
 ```
 
-Команды `bg360marks`, `walk360` и `goto360`, строгий CSS-парсер, lifecycle Blob URL
-и фоновая очередь контроллера панорамных пакетов:
+Команды `bg360marks`, `walk360` и `goto360`, строгий CSS-парсер, lifecycle Blob URL,
+фоновая очередь панорамных пакетов и контроллер просмотра фото из 360-меток:
 
 ```powershell
 npm.cmd --prefix dev run test:360
