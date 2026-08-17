@@ -47,6 +47,39 @@ function createAutosaveProjectStorySource(projectId, label) {
   return lines.join('\n');
 }
 
+// Создаёт обычный видеофон и сюжетное видео с отсутствующими файлами, чтобы стабильно проверить оба image fallback в браузерах.
+function createMediaControllerStorySource() {
+  return [
+    'window.STORY_TEXT = `',
+    '',
+    '[meta]',
+    'title = Media controllers E2E',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    'transitionMs = 0',
+    'blurBackground = true',
+    'engine.gameSandbox = strict',
+    '',
+    '[bg]',
+    'videoFallback file=assets/__e2e__/missing-bg.mp4 fallback=assets/backgrounds/bg-campus-hall.jpg volume=0.4',
+    '',
+    '[video]',
+    'storyFallback file=assets/__e2e__/missing-story.mp4 poster=assets/backgrounds/bg-campus-cafe.jpg volume=0.5',
+    '',
+    '[scene]',
+    'scene intro',
+    'bg videoFallback',
+    '"Фон после fallback"',
+    'video storyFallback fallbackDuration=10 skip=true',
+    '"После сюжетного видео"',
+    '`;',
+    ''
+  ].join('\n');
+}
+
 // Создаёт минимальную историю с 360-фоном, чтобы проверять CSS-only загрузку в настоящем runtime движка.
 function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   return [
@@ -584,6 +617,41 @@ test('движок запускает историю в браузере без 
   await expect(page).toHaveTitle('E2E-проверка движка');
   await expect(page.locator('#dialog')).toBeVisible();
   await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  expect(pageErrors).toEqual([]);
+});
+
+// Проверяет настоящий bootstrap трёх медиаконтроллеров, fallback видео и общий UI громкости в Chromium и Firefox.
+test('медиаконтроллеры сохраняют fallback и пропуск сюжетного видео', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page, '/', {
+    storySource: createMediaControllerStorySource(),
+    expectedText: 'Фон после fallback'
+  });
+
+  await expect(page.locator('#textBox')).toHaveText('Фон после fallback');
+  await expect(page.locator('#bgLayer')).toBeVisible();
+  await expect(page.locator('#bgLayer')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);
+
+  await page.locator('#btnMute').click();
+  await expect(page.locator('#btnMute .btn-icon')).toHaveText('🔊');
+
+  await page.locator('#dialog').click();
+  await expect(page.locator('#storyVideoOverlay')).toBeVisible();
+  await expect(page.locator('#storyVideoPoster')).toBeVisible();
+  await expect(page.locator('#storyVideoPoster')).toHaveAttribute('src', /bg-campus-cafe\.jpg$/);
+  await page.waitForTimeout(500);
+  await page.locator('#storyVideoOverlay').click({ position: { x: 20, y: 20 } });
+  await expect(page.locator('#textBox')).toHaveText('После сюжетного видео');
+  await expect(page.locator('#storyVideoOverlay')).toBeHidden();
+
+  const moduleTypes = await page.evaluate(function readMediaControllerTypes() {
+    return [
+      typeof window.VN_AUDIO_CONTROLLER?.createAudioController,
+      typeof window.VN_BACKGROUND_MEDIA_CONTROLLER?.createBackgroundMediaController,
+      typeof window.VN_STORY_VIDEO_CONTROLLER?.createStoryVideoController
+    ];
+  });
+  expect(moduleTypes).toEqual(['function', 'function', 'function']);
   expect(pageErrors).toEqual([]);
 });
 

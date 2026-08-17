@@ -414,6 +414,8 @@ project/
 │   ├── autosave-controller.js         lifecycle загрузки и записи автосохранений
 │   ├── autosave-payload.js            fingerprint и проверка формата сохранения
 │   ├── autosave-storage.js            ключи, хранилище и миграция автосохранений
+│   ├── audio-controller.js            BGM, SFX, громкость и ducking видео
+│   ├── background-media-controller.js обычные фоны, fallback и blur-video
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка
 │   ├── game-host.js                   lifecycle iframe и сессий мини-игр
@@ -421,6 +423,7 @@ project/
 │   ├── resource-path-policy.js        правила безопасных путей авторских ресурсов
 │   ├── story-analysis.js              подсчёт текста, действий и ресурсов
 │   ├── story-graph.js                 анализ переходов, достижимости и циклов
+│   ├── story-video-controller.js      lifecycle сюжетных видео и постеров
 │   ├── story-sandbox-loader.js         изолированная загрузка авторских JS-данных
 │   └── story-loader.js                загрузка и разбор сценария
 │

@@ -109,6 +109,8 @@ jobs:
           cp engine/autosave-controller.js "build/$APP_NAME/engine/"
           cp engine/autosave-payload.js "build/$APP_NAME/engine/"
           cp engine/autosave-storage.js "build/$APP_NAME/engine/"
+          cp engine/audio-controller.js "build/$APP_NAME/engine/"
+          cp engine/background-media-controller.js "build/$APP_NAME/engine/"
           cp engine/engine.css "build/$APP_NAME/engine/"
           cp engine/engine.js "build/$APP_NAME/engine/"
           cp engine/expression.js "build/$APP_NAME/engine/"
@@ -117,6 +119,7 @@ jobs:
           cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
           cp engine/story-analysis.js "build/$APP_NAME/engine/"
           cp engine/story-graph.js "build/$APP_NAME/engine/"
+          cp engine/story-video-controller.js "build/$APP_NAME/engine/"
           cp engine/story-sandbox-loader.js "build/$APP_NAME/engine/"
           cp engine/story-loader.js "build/$APP_NAME/engine/"
 
@@ -211,12 +214,15 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/autosave-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/autosave-payload.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/autosave-storage.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/audio-controller.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/background-media-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/engine.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/game-host.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/resource-path-policy.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-analysis.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-graph.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/story-video-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
@@ -229,12 +235,15 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/autosave-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/autosave-payload.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/autosave-storage.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/audio-controller.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/background-media-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/engine.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/game-host.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/resource-path-policy.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-analysis.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-graph.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/engine/story-video-controller.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/SECURITY.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/security/threat-model.md" build/update-zip-contents.txt

@@ -1,5 +1,5 @@
 /* engine.js
-   Минимальный VN-движок: офлайн, без fetch, без модулей, максимум совместимости.
+   Офлайн VN-движок: классические скрипты без ES-модулей и сборщика для максимальной совместимости.
 */
 (function () {
   "use strict";
@@ -1184,8 +1184,6 @@ var elGraphLoadProgressLabel = document.getElementById("graphLoadProgressLabel")
 var elBlurBgLayer = document.getElementById("blurBgLayer");
 var elBlurBgImage = document.getElementById("blurBgImage");
 var elBlurBgVideo = document.getElementById("blurBgVideo");
-/** Счётчик вызовов syncBlurBackgroundVideo: отменяет устаревшие обработчики при быстрой смене сцен. */
-var blurBgVideoSyncSeq = 0;
 
 [elBg, elBgVideo, elStoryVideo, elStoryVideoPoster, elChar, elBlurBgImage, elBlurBgVideo].forEach(function (el) {
   if (!el) return;
@@ -2590,33 +2588,110 @@ function handleBackgroundScrollPointerCancel(e) {
 // Флаг для отслеживания первого диалога
 var isFirstDialog = true;
 
-// ---------- Аудио ----------
-// Один канал для фоновой музыки и отдельный для эффектов.
-var audio = {
-  bgm: new Audio(),
-  sfx: new Audio(),
-  muted: true,
-  masterVolume: 0.2,
-  // Громкость фонового видео как доля от master (0..1). По умолчанию 0 = без звука.
-  currentBgVideoVolume: 0,
-  // Громкость сюжетного видео отделена от фонового видео и сбрасывается после каждой вставки.
-  currentStoryVideoVolume: 0,
-  // Множитель приглушения BGM (ducking): 1 = без приглушения.
-  bgmDuckingMultiplier: 1,
-  bgmDuckingTimer: null,
-  // для плавного затухания (если понадобится)
-  fadeTimer: null
-};
-// Глобальные дефолты ducking объявляем рядом с аудио-состоянием,
-// чтобы они были инициализированы до любых вызовов setBackground().
-var DEFAULT_BGM_DUCKING_MULTIPLIER = 0.0; // 0% громкости BGM во время фонового видео
-var DEFAULT_BGM_DUCKING_ATTACK_MS = 250;  // скорость приглушения
-var DEFAULT_BGM_DUCKING_RELEASE_MS = 450; // скорость возврата громкости
-
 var failedAssets = {
   audio: Object.create(null),
   images: Object.create(null)
 };
+
+// ---------- Аудио ----------
+// Возвращает настройки истории при старте и рестарте, не связывая модуль с глобальным STORY.
+function getAudioControllerDefaults() {
+  return STORY && STORY.audioSettings ? STORY.audioSettings : null;
+}
+
+// Проверяет аудиопуть через общую runtime-политику с фиксированным видом ресурса.
+function resolveAudioControllerAssetUrl(src) {
+  return resolveRuntimeStoryAssetUrl(src, "audio");
+}
+
+// Открывает подробные аудиосообщения только для явно включённой debug-категории.
+function isAudioControllerDebugEnabled() {
+  return isExplicitDebugCategoryEnabled("audio");
+}
+
+// Сообщает контроллеру о сюжетном видео через состояние координатора, нужное для общего ducking.
+function isStoryVideoActiveForAudio() {
+  return !!(state && state.inVideo);
+}
+
+// Один lifecycle-контроллер владеет BGM/SFX, UI громкости и звуком обычных видеоэлементов.
+var audioController = window.VN_AUDIO_CONTROLLER.createAudioController({
+  AudioConstructor: window.Audio,
+  bgVideo: elBgVideo,
+  storyVideo: elStoryVideo,
+  muteButton: btnMute,
+  volumeSlider: sliderVolume,
+  failedAudio: failedAssets.audio,
+  getDefaults: getAudioControllerDefaults,
+  resolveAudioUrl: resolveAudioControllerAssetUrl,
+  normalizeUrl: normalizeAssetUrl,
+  sanitizeResource: sanitizeDiagnosticResource,
+  isAudioDebugEnabled: isAudioControllerDebugEnabled,
+  isStoryVideoActive: isStoryVideoActiveForAudio,
+  writeVerbose: writeRuntimeVerbose,
+  warn: console.warn.bind(console),
+  clamp: clamp,
+  lerp: lerp,
+  endsWith: endsWith
+});
+var audio = audioController.state;
+var DEFAULT_BGM_DUCKING_RELEASE_MS = window.VN_AUDIO_CONTROLLER.DEFAULT_BGM_DUCKING_RELEASE_MS;
+
+// Возвращает текущую настройку blurBackground без передачи STORY в медиамодуль.
+function isBackgroundMediaBlurEnabled() {
+  return !!(STORY && STORY.meta && STORY.meta.blurBackground);
+}
+
+// Маршрутизирует только 360-запрос к существующей панорамной подсистеме.
+function showBackgroundMediaPanorama(src, fallbackSrc, scrollOptions) {
+  setBackground360(src, fallbackSrc, scrollOptions);
+}
+
+// Сохраняет громкость обычного видеофона в общем аудиосостоянии.
+function setBackgroundMediaVideoVolume(volume) {
+  audio.currentBgVideoVolume = volume;
+}
+
+// Возвращает BGM к обычной громкости после исчезновения слышимого видеофона.
+function releaseBackgroundMediaDucking(reason) {
+  audioController.setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, reason);
+}
+
+// Контроллер владеет обычными background image/video, fallback и остановленным blur-video дубликатом.
+var backgroundMediaController = window.VN_BACKGROUND_MEDIA_CONTROLLER.createBackgroundMediaController({
+  image: elBg,
+  video: elBgVideo,
+  container: elNovelWindow,
+  blurLayer: elBlurBgLayer,
+  blurImage: elBlurBgImage,
+  blurVideo: elBlurBgVideo,
+  failedImages: failedAssets.images,
+  normalizeScrollOptions: normalizeBackgroundScrollOptions,
+  resolveAssetUrl: resolveRuntimeStoryAssetUrl,
+  normalizeUrl: normalizeAssetUrl,
+  sanitizeResource: sanitizeDiagnosticResource,
+  isVideoPath: isVideoAssetPath,
+  areAllImageCandidatesFailed: areAllImageCandidatesFailed,
+  assignRasterImage: assignRasterImageToElement,
+  isBlurEnabled: isBackgroundMediaBlurEnabled,
+  findVideoFallbackImage: findBlurFallbackImageForBgVideoUrl,
+  disablePanorama: disableBg360Renderer,
+  showPanorama: showBackgroundMediaPanorama,
+  hidePanoramaHold: hideBg360HoldLayer,
+  setScrollOptions: setBackgroundScrollOptions,
+  disableScroll: disableBackgroundScroll,
+  updateScrollAvailability: updateBackgroundScrollAvailability,
+  flushAutosaveScrollRestore: flushAutosaveBgScrollRestorePending,
+  hideKeptStoryVideo: hideKeptStoryVideoAfterBgReady,
+  setBackgroundVideoVolume: setBackgroundMediaVideoVolume,
+  releaseBackgroundDucking: releaseBackgroundMediaDucking,
+  setDuckingForActiveVideos: setBgmDuckingForActiveVideos,
+  applyAudioSettings: applyAudioSettings,
+  visualTrace: visualTrace,
+  writeVerbose: writeRuntimeVerbose,
+  warn: console.warn.bind(console),
+  clamp: clamp
+});
 
 function normalizeAssetUrl(url) {
   if (!url) return "";
@@ -3781,48 +3856,8 @@ function getGraphImageSrc(src) {
   return escapeMermaidLabelText(pick);
 }
 
-// Чтобы музыка не включалась слишком громко при старте
-audio.bgm.loop = true;
-
-audio.bgm.addEventListener('play', function () {
-  writeRuntimeVerbose('[AUDIO EVENT] bgm play');
-  logAudioState('event: play');
-});
-
-audio.bgm.addEventListener('pause', function () {
-  writeRuntimeVerbose('[AUDIO EVENT] bgm pause');
-  logAudioState('event: pause');
-});
-
-audio.bgm.addEventListener('ended', function () {
-  writeRuntimeVerbose('[AUDIO EVENT] bgm ended');
-  logAudioState('event: ended');
-});
-
-audio.bgm.addEventListener('error', function () {
-  var badSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
-
-  writeRuntimeVerbose('[AUDIO EVENT] bgm error', audio.bgm.error && audio.bgm.error.code, sanitizeDiagnosticResource(badSrc));
-  logAudioState('event: error');
-
-  if (badSrc) {
-    failedAssets.audio[badSrc] = true;
-  }
-
-  try {
-    audio.bgm.pause();
-    audio.bgm.removeAttribute('src');
-    audio.bgm.load();
-  } catch (e) {}
-});
-
-audio.bgm.addEventListener('canplay', function () {
-  writeRuntimeVerbose('[AUDIO EVENT] bgm canplay');
-  logAudioState('event: canplay');
-});
-
-
-setAudioFromStoryDefaults();
+// Контроллер подключает media/UI-обработчики только после полной подготовки STORY и DOM.
+audioController.start();
 profiler.mark('Audio is set up');
 
 applyUiScale();
@@ -3843,6 +3878,9 @@ window.addEventListener("pagehide", function (event) {
   if (!event || event.persisted !== true) {
     autosaveController.dispose();
     gameHost.dispose();
+    storyVideoController.dispose();
+    backgroundMediaController.dispose();
+    audioController.dispose();
   }
 });
 document.addEventListener("visibilitychange", function () {
@@ -3917,45 +3955,6 @@ elDialog.addEventListener("keydown", function (e) {
 
 btnRestart.addEventListener("click", function () {
   restart({ clearAutosave: true });
-});
-
-btnMute.addEventListener("click", function () {
-  var wasMuted = audio.muted;
-
-  writeRuntimeVerbose('[AUDIO] btnMute click before toggle');
-  logAudioState('btnMute before toggle');
-
-  audio.muted = !audio.muted;
-
-  applyAudioSettings();
-  updateMuteIcon();
-
-  writeRuntimeVerbose('[AUDIO] btnMute click after toggle');
-  logAudioState('btnMute after toggle');
-
-  if (wasMuted && !audio.muted) {
-    resumeBgmIfNeeded('btnMute unmute');
-    // После явного анмута пользователем пробуем запустить и фоновое видео со звуком.
-    resumeBackgroundVideoIfNeeded('btnMute unmute');
-  }
-});
-
-sliderVolume.addEventListener("input", function () {
-  var v = parseInt(sliderVolume.value, 10);
-  if (isNaN(v)) v = 20;
-
-  writeRuntimeVerbose('[AUDIO] slider input raw value =', sliderVolume.value);
-
-  audio.masterVolume = clamp(v / 100, 0, 1);
-  applyAudioSettings();
-
-  logAudioState('slider after apply');
-
-  if (!audio.muted && audio.masterVolume > 0) {
-    resumeBgmIfNeeded('slider input');
-    // Слайдер громкости — тоже пользовательское действие: используем его для возобновления видео-аудио.
-    resumeBackgroundVideoIfNeeded('slider input');
-  }
 });
 
 btnCloseGame.addEventListener("pointerup", function (e) {
@@ -12265,14 +12264,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
     }
     disableBackgroundScroll();
     if (elBg) elBg.classList.add("hidden");
-    if (elBgVideo) {
-      try { elBgVideo.pause(); } catch (e) {}
-      elBgVideo.onloadeddata = null;
-      elBgVideo.onerror = null;
-      elBgVideo.removeAttribute("src");
-      elBgVideo.load();
-      elBgVideo.classList.add("hidden");
-    }
+    backgroundMediaController.clearBackgroundVideo();
     // 360-фон пока считается визуальным слоем без отдельного аудио-канала.
     setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
     audio.currentBgVideoVolume = 0;
@@ -12340,14 +12332,7 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       updateBg360CursorClasses();
       disableBackgroundScroll();
       if (elBg) elBg.classList.add("hidden");
-      if (elBgVideo) {
-        try { elBgVideo.pause(); } catch (e) {}
-        elBgVideo.onloadeddata = null;
-        elBgVideo.onerror = null;
-        elBgVideo.removeAttribute("src");
-        elBgVideo.load();
-        elBgVideo.classList.add("hidden");
-      }
+      backgroundMediaController.clearBackgroundVideo();
       setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, "bg360 shown");
       audio.currentBgVideoVolume = 0;
       clearBg360MediaResources();
@@ -12587,211 +12572,8 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
 
 // Переключает фоновое медиа и при необходимости включает горизонтальный скролл wide-изображения или видео.
 function setBackground(src, fallbackSrc, videoVolume, scrollOptions) {
-  var normalizedScrollOptions = normalizeBackgroundScrollOptions(scrollOptions);
-  var use360 = normalizedScrollOptions.is360 === true;
-  if (!src) {
-    visualTrace("setBackground:empty-src", { fallbackSrc: fallbackSrc || "" });
-    disableBg360Renderer();
-    disableBackgroundScroll();
-    // Если фоновое видео больше не задано, возвращаем BGM к обычной громкости.
-    setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'setBackground empty src');
-    // Без фонового видео громкость его канала всегда 0.
-    audio.currentBgVideoVolume = 0;
-    if (fallbackSrc) {
-      setBackground(fallbackSrc, "", null, normalizedScrollOptions);
-    }
-    return;
-  }
-  
-  var sourceKind = use360 ? "panorama" : "background";
-  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, sourceKind);
-  var normalizedFallbackSrc = fallbackSrc ? resolveRuntimeStoryAssetUrl(fallbackSrc, "image") : "";
-  if (!normalizedSrc) {
-    disableBg360Renderer();
-    disableBackgroundScroll();
-    return;
-  }
-  var isVideo = isVideoAssetPath(normalizedSrc);
-
-  if (use360) {
-    writeRuntimeVerbose("[BG360 HOLD] setBackground route -> 360");
-    setBackground360(normalizedSrc, normalizedFallbackSrc, normalizedScrollOptions);
-    return;
-  }
-
-  disableBg360Renderer();
-  writeRuntimeVerbose("[BG360 HOLD] setBackground route -> non-360, hide hold");
-  hideBg360HoldLayer();
-  visualTrace("setBackground:start", {
-    src: normalizedSrc,
-    fallbackSrc: normalizedFallbackSrc,
-    isVideo: isVideo,
-    videoVolume: videoVolume
-  });
-
-  // Кэш кандидатов относится только к изображениям; видео проверяется и обрабатывается своей веткой ниже.
-  if (!isVideo && areAllImageCandidatesFailed(src)) {
-    if (!failedAssets.images[normalizeAssetUrl(src) + "_logged"]) {
-      console.warn('[IMG] skip failed background src:', sanitizeDiagnosticResource(src));
-      failedAssets.images[normalizeAssetUrl(src) + "_logged"] = true;
-    }
-    disableBackgroundScroll();
-    if (isVideo && normalizedFallbackSrc) {
-      console.warn('[VIDEO] primary marked as failed, using fallback:', sanitizeDiagnosticResource(normalizedFallbackSrc));
-      visualTrace("bgVideo:already-failed:fallback", {
-        src: normalizedSrc,
-        fallbackSrc: normalizedFallbackSrc
-      });
-      hideKeptStoryVideoAfterBgReady("bg video already failed");
-      setBackground(normalizedFallbackSrc, "", null, normalizedScrollOptions);
-    }
-    return;
-  }
-
-  if (isVideo) {
-    setBackgroundScrollOptions(normalizedScrollOptions, elBgVideo, elNovelWindow);
-    if (elBgVideo) {
-      elBgVideo.onerror = null;
-      elBgVideo.onloadeddata = null;
-      // Если volume не задан в [bg], по умолчанию не озвучиваем фоновое видео.
-      var resolvedVideoVolume = (typeof videoVolume === "number") ? clamp(videoVolume, 0, 1) : 0;
-      visualTrace("bgVideo:set", {
-        src: normalizedSrc,
-        fallbackSrc: normalizedFallbackSrc,
-        volume: resolvedVideoVolume
-      });
-      audio.currentBgVideoVolume = resolvedVideoVolume;
-      elBgVideo.onerror = function() {
-        var badVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || normalizedSrc);
-        console.warn('[VIDEO] background load error:', sanitizeDiagnosticResource(badVideoSrc));
-        visualTrace("bgVideo:error", {
-          src: badVideoSrc,
-          fallbackSrc: normalizedFallbackSrc
-        });
-        // Ошибка видео: сразу отпускаем ducking, чтобы BGM не оставался приглушённым.
-        setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'bg video load error');
-
-        if (badVideoSrc) {
-          failedAssets.images[badVideoSrc] = true;
-        }
-
-        if (normalizedFallbackSrc) {
-          console.warn('[VIDEO] fallback image used:', sanitizeDiagnosticResource(normalizedFallbackSrc));
-          visualTrace("bgVideo:error:fallback-image", {
-            fallbackSrc: normalizedFallbackSrc
-          });
-          hideKeptStoryVideoAfterBgReady("bg video fallback image");
-          setBackground(normalizedFallbackSrc, "", null, normalizedScrollOptions);
-          return;
-        }
-
-        try {
-          elBgVideo.pause();
-        } catch (e) {}
-        elBgVideo.removeAttribute('src');
-        elBgVideo.load();
-        elBgVideo.classList.add("hidden");
-        disableBackgroundScroll();
-        visualTrace("bgVideo:error:hidden", { src: badVideoSrc });
-        hideKeptStoryVideoAfterBgReady("bg video load error");
-      };
-      elBgVideo.onloadeddata = function() {
-        var currentVideoSrc = normalizeAssetUrl(elBgVideo.currentSrc || elBgVideo.src || "");
-        if (currentVideoSrc !== normalizedSrc) return;
-        visualTrace("bgVideo:loadeddata", { src: currentVideoSrc });
-        // Переключаемся на видео только после успешной загрузки первого кадра.
-        if (elBg) {
-          elBg.classList.add("hidden");
-          visualTrace("bgImage:hidden-before-bgVideo", { nextVideoSrc: currentVideoSrc });
-        }
-        elBgVideo.classList.remove("hidden");
-        visualTrace("bgVideo:shown", { src: currentVideoSrc });
-        hideKeptStoryVideoAfterBgReady("bg video loaded");
-        syncBlurBackgroundVideo(elBgVideo, normalizedFallbackSrc);
-        updateBackgroundScrollAvailability();
-        flushAutosaveBgScrollRestorePending();
-        // Когда видео реально показано в фоне, пересчитываем ducking с учетом его громкости.
-        // Немое фоновое видео не должно приглушать музыку.
-        setBgmDuckingForActiveVideos('bg video shown');
-      };
-      elBgVideo.src = normalizedSrc;
-      elBgVideo.addEventListener(
-        "loadedmetadata",
-        function () {
-          flushAutosaveBgScrollRestorePending();
-        },
-        { once: true }
-      );
-      visualTrace("bgVideo:src-set", { src: normalizedSrc });
-      elBgVideo.loop = true;
-      elBgVideo.playsInline = true;
-      // Синхронизируем звук bg-video с общими аудио-настройками движка.
-      applyAudioSettings();
-      var playPromise = elBgVideo.play();
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(function (e) {
-          console.warn('[VIDEO] background autoplay blocked or failed:', sanitizeDiagnosticResource(normalizedSrc), e && e.message ? e.message : e);
-          visualTrace("bgVideo:play-failed", { src: normalizedSrc, error: e && e.name ? e.name : String(e) });
-        });
-      }
-    }
-
-    if (typeof updateBlurBackground === 'function') {
-      // Пока видео грузится, для blur используем fallback (если задан).
-      if (normalizedFallbackSrc) {
-        updateBlurBackground(normalizedFallbackSrc);
-      }
-    }
-    return;
-  }
-
-  if (elBgVideo) {
-    // Переходим с видео на изображение/другой слой: возвращаем BGM к нормальному уровню.
-    setBgmDuckingTarget(1, DEFAULT_BGM_DUCKING_RELEASE_MS, 'bg image shown');
-    audio.currentBgVideoVolume = 0;
-    try {
-      elBgVideo.pause();
-    } catch (e) {}
-    elBgVideo.onloadeddata = null;
-    elBgVideo.onerror = null;
-    elBgVideo.removeAttribute('src');
-    elBgVideo.load();
-    elBgVideo.classList.add("hidden");
-    visualTrace("bgVideo:hidden-before-bgImage", { imageSrc: normalizedSrc });
-  }
-
-  if (elBg) {
-    elBg.classList.remove("hidden");
-    elBg.onerror = null;
-    elBg.onload = null;
-    setBackgroundScrollOptions(normalizedScrollOptions, elBg, elNovelWindow);
-
-    visualTrace("bgImage:set", { src: src });
-    assignRasterImageToElement(elBg, src, {
-      onLoad: function(loadedUrl) {
-        visualTrace("bgImage:load", { src: loadedUrl });
-        updateBackgroundScrollAvailability();
-        flushAutosaveBgScrollRestorePending();
-      },
-      onAllFailed: function() {
-        console.warn('[IMG] background load error:', sanitizeDiagnosticResource(src));
-        visualTrace("bgImage:error", { src: src });
-        disableBackgroundScroll();
-        elBg.removeAttribute('src');
-        elBg.src = "";
-      }
-    });
-    updateBackgroundScrollAvailability();
-    visualTrace("bgImage:src-set", { src: src });
-  }
-
-  // Обновляем размытый фон тем же изображением
-  if (typeof updateBlurBackground === 'function') {
-    updateBlurBackground(src);
-  }
-  
-  // Убираем принудительное применение стилей через JS
-  // CSS должен работать сам через переменные
+  // engine.js определяет момент смены фона, а модуль владеет обычными media, fallback, blur и их handlers.
+  backgroundMediaController.setBackground(src, fallbackSrc, videoVolume, scrollOptions);
 }
 
 function setCharacter(src, pos, charId, done, focusOptions) {
@@ -13372,121 +13154,134 @@ function hideChoices() {
 //                   STORY VIDEO
 // =========================================================
 
-var STORY_VIDEO_DEFAULT_FALLBACK_DURATION = 5;
-var STORY_VIDEO_SEEK_TIMEOUT_MS = 2500;
-var STORY_VIDEO_SKIP_GUARD_MS = 450;
-var storyVideoRuntime = {
-  action: null,
-  done: false,
-  fallback: false,
-  skipAllowed: true,
-  skipEnabledAt: 0,
-  keepUntilBgVideoReady: false,
-  seekTimer: null,
-  stopTimer: null,
-  fallbackTimer: null
-};
-
-function clearStoryVideoTimers() {
-  // Все варианты выхода чистят таймеры одинаково, чтобы старые события не продвинули новое видео.
-  if (storyVideoRuntime.seekTimer) {
-    clearTimeout(storyVideoRuntime.seekTimer);
-    storyVideoRuntime.seekTimer = null;
-  }
-  if (storyVideoRuntime.stopTimer) {
-    clearTimeout(storyVideoRuntime.stopTimer);
-    storyVideoRuntime.stopTimer = null;
-  }
-  if (storyVideoRuntime.fallbackTimer) {
-    clearTimeout(storyVideoRuntime.fallbackTimer);
-    storyVideoRuntime.fallbackTimer = null;
-  }
+// Применяет сценарную громкость ролика через общий аудиоконтроллер.
+function setStoryVideoControllerVolume(volume) {
+  audio.currentStoryVideoVolume = volume;
+  audioController.applySettings();
 }
 
-function resetStoryVideoMediaHandlers() {
-  // Обработчики очищаются перед повторным использованием одного video-элемента.
-  if (!elStoryVideo) return;
-  elStoryVideo.onloadedmetadata = null;
-  elStoryVideo.onloadeddata = null;
-  elStoryVideo.onseeked = null;
-  elStoryVideo.ontimeupdate = null;
-  elStoryVideo.onended = null;
-  elStoryVideo.onerror = null;
+// Пересчитывает ducking после изменения слышимости сюжетного видео.
+function updateStoryVideoControllerDucking(reason) {
+  audioController.setDuckingForActiveVideos(reason);
 }
 
-function normalizeStoryVideoFit(fit) {
-  var value = String(fit || "cover").toLowerCase();
-  return value === "contain" ? "contain" : "cover";
+// Передаёт модулю повторную проверку путей видео и постеров общей политикой ресурсов.
+function resolveStoryVideoControllerAssetUrl(src, kind) {
+  return resolveRuntimeStoryAssetUrl(src, kind);
 }
 
-function applyStoryVideoFit(fit) {
-  // Один и тот же fit применяется к видео и постеру, чтобы fallback не менял композицию.
-  var objectFit = normalizeStoryVideoFit(fit);
-  if (elStoryVideo) elStoryVideo.style.objectFit = objectFit;
-  if (elStoryVideoPoster) elStoryVideoPoster.style.objectFit = objectFit;
+// Настраивает общий scroll/focus-механизм для выбранного слоя ролика или постера.
+function setStoryVideoControllerScrollOptions(action, targetEl) {
+  setStoryVideoScrollOptions(
+    mergeMediaFocusOptions(action.scroll, action.focusX, action.scale, action.focusY),
+    targetEl
+  );
 }
 
-function setStoryVideoSkipHint(text, visible) {
-  if (!elStoryVideoSkipHint) return;
-  // Подстановка переменных в skipText делает подсказку синхронной с состоянием сценарных vars.
-  elStoryVideoSkipHint.textContent = renderTextVars(String(text || t("videoSkipHint") || "Click to skip"));
-  elStoryVideoSkipHint.classList.toggle("hidden", !visible);
+// Проверяет, принадлежит ли активный scroll переданному слою сюжетного видео.
+function isStoryVideoControllerScrollTarget(targetEl) {
+  return backgroundScroll.owner === "storyVideo" && backgroundScroll.target === targetEl;
 }
 
-function showStoryVideoPoster(posterSrc, fit) {
-  // Постер используется и во время подготовки ролика, и как fallback-картинка.
-  if (!elStoryVideoPoster) return;
-  applyStoryVideoFit(fit);
-  elStoryVideoPoster.onload = null;
-  if (posterSrc) {
-    elStoryVideoPoster.onload = function () {
-      if (backgroundScroll.owner === "storyVideo" && backgroundScroll.target === elStoryVideoPoster) {
-        updateBackgroundScrollAvailability();
-      }
-    };
-    elStoryVideoPoster.src = posterSrc;
-    elStoryVideoPoster.classList.remove("hidden");
-    switchStoryVideoScrollTarget(elStoryVideoPoster);
-    if (typeof updateBlurBackground === "function") updateBlurBackground(posterSrc);
-  } else {
-    elStoryVideoPoster.removeAttribute("src");
-    elStoryVideoPoster.classList.add("hidden");
-  }
+// Сообщает модулю, что pointerup должен завершить текущее перетаскивание ролика.
+function isStoryVideoControllerScrollDragging() {
+  return backgroundScroll.owner === "storyVideo" && backgroundScroll.dragging;
 }
+
+// Завершает drag через существующий общий обработчик, сохраняя suppressClick-защиту.
+function finishStoryVideoControllerScrollPointer(event) {
+  handleBackgroundScrollPointerUp(event);
+}
+
+// Однократно потребляет suppressClick после drag, чтобы pointerup не пропустил ролик.
+function consumeStoryVideoControllerSuppressedClick() {
+  if (!backgroundScroll.suppressClick) return false;
+  backgroundScroll.suppressClick = false;
+  return true;
+}
+
+// Возвращает фактическое runtime-состояние, используемое keyboard и overlay-обработчиками модуля.
+function isStoryVideoControllerActive() {
+  return !!state.inVideo;
+}
+
+// Продолжает сцену, если команда video не имеет обязательного DOM или src.
+function handleStoryVideoControllerUnavailable() {
+  console.warn("[VIDEO] story video skipped: missing DOM or src", state.sceneId, state.actionIndex - 1);
+  state.inVideo = false;
+  state.nextLocked = false;
+  runCurrent();
+}
+
+// Завершает координаторную часть video-команды после очистки media и таймеров внутри модуля.
+function handleStoryVideoControllerFinish(reason) {
+  state.inVideo = false;
+  state.waitingNext = false;
+  state.nextLocked = false;
+  audioController.setDuckingForActiveVideos("story video finished: " + (reason || "done"));
+
+  autosaveDebugLog("finishStoryVideo:before_runCurrent", {
+    reason: reason || "done",
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex
+  });
+
+  // Продвигаем очередь синхронно, чтобы pagehide не сохранил промежуточное заблокированное состояние.
+  runCurrent();
+
+  autosaveDebugLog("finishStoryVideo:after_runCurrent", {
+    sceneId: state.sceneId,
+    actionIndex: state.actionIndex,
+    waitingNext: state.waitingNext,
+    nextLocked: state.nextLocked,
+    elTextLen: elText ? String(elText.textContent || "").length : -1
+  });
+
+  autosaveController.flush();
+  lastNextTime = 0;
+}
+
+// Контроллер владеет DOM-слоями, fallback, таймерами и глобальными событиями сюжетного видео.
+var storyVideoController = window.VN_STORY_VIDEO_CONTROLLER.createStoryVideoController({
+  overlay: elStoryVideoOverlay,
+  video: elStoryVideo,
+  poster: elStoryVideoPoster,
+  fallbackText: elStoryVideoFallbackText,
+  skipHint: elStoryVideoSkipHint,
+  eventTarget: document,
+  resolveAssetUrl: resolveStoryVideoControllerAssetUrl,
+  normalizeUrl: normalizeAssetUrl,
+  sanitizeResource: sanitizeDiagnosticResource,
+  translate: t,
+  renderText: renderTextVars,
+  setStoryVideoVolume: setStoryVideoControllerVolume,
+  updateAudioDucking: updateStoryVideoControllerDucking,
+  setScrollOptions: setStoryVideoControllerScrollOptions,
+  switchScrollTarget: switchStoryVideoScrollTarget,
+  restoreBackgroundScroll: restoreBackgroundScrollAfterStoryVideo,
+  updateScrollAvailability: updateBackgroundScrollAvailability,
+  isScrollTarget: isStoryVideoControllerScrollTarget,
+  isScrollDragging: isStoryVideoControllerScrollDragging,
+  finishScrollPointer: finishStoryVideoControllerScrollPointer,
+  consumeSuppressedClick: consumeStoryVideoControllerSuppressedClick,
+  swallowEvent: swallowEvent,
+  updateBlurBackground: updateBlurBackground,
+  syncBlurVideo: syncBlurBackgroundVideo,
+  shouldKeepUntilBackgroundVideo: nextActionIsBackgroundVideo,
+  isStoryVideoActive: isStoryVideoControllerActive,
+  onUnavailable: handleStoryVideoControllerUnavailable,
+  onFinish: handleStoryVideoControllerFinish,
+  visualTrace: visualTrace,
+  writeVerbose: writeRuntimeVerbose,
+  warn: console.warn.bind(console),
+  clamp: clamp
+});
+var storyVideoRuntime = storyVideoController.state;
+storyVideoController.startLifecycle();
 
 function cleanupStoryVideoVisualOnly() {
-  visualTrace("storyVideo:cleanup:start", {});
-  storyVideoRuntime.keepUntilBgVideoReady = false;
-  // Визуальная очистка отделена от finishStoryVideo(), чтобы рестарт не продолжал сцену.
-  clearStoryVideoTimers();
-  resetStoryVideoMediaHandlers();
-
-  if (elStoryVideo) {
-    try {
-      elStoryVideo.pause();
-    } catch (e) {}
-    elStoryVideo.removeAttribute("src");
-    elStoryVideo.load();
-    elStoryVideo.classList.add("hidden");
-  }
-
-  if (elStoryVideoPoster) {
-    elStoryVideoPoster.onload = null;
-    elStoryVideoPoster.removeAttribute("src");
-    elStoryVideoPoster.classList.add("hidden");
-  }
-
-  if (elStoryVideoFallbackText) {
-    elStoryVideoFallbackText.classList.add("hidden");
-  }
-
-  setStoryVideoSkipHint("", false);
-  if (elStoryVideoOverlay) elStoryVideoOverlay.classList.add("hidden");
-  restoreBackgroundScrollAfterStoryVideo();
-
-  audio.currentStoryVideoVolume = 0;
-  applyAudioSettings();
-  visualTrace("storyVideo:cleanup:end", {});
+  // Restart и смена режима очищают модуль без автоматического продолжения сцены.
+  storyVideoController.cleanupVisualOnly();
 }
 
 function isTransparentActionBeforeBackground(action) {
@@ -13533,225 +13328,13 @@ function nextActionIsBackgroundVideo() {
 }
 
 function hideKeptStoryVideoAfterBgReady(reason) {
-  // Новый видео-фон уже готов, поэтому можно убрать слой сюжетного видео без вспышки старой картинки.
-  if (!storyVideoRuntime.keepUntilBgVideoReady) return;
-  visualTrace("storyVideo:kept-layer-hide", { reason: reason || "bg ready" });
-  cleanupStoryVideoVisualOnly();
-  writeRuntimeVerbose("[VIDEO] kept story video layer hidden:", reason || "bg ready");
-}
-
-function finishStoryVideo(reason) {
-  // Сюжетное видео автоматически продолжает список команд после ended, stop, skip или fallback-таймаута.
-  if (storyVideoRuntime.done) return;
-  storyVideoRuntime.done = true;
-
-  var keepUntilBgVideoReady = nextActionIsBackgroundVideo();
-  visualTrace("storyVideo:finish", {
-    reason: reason || "done",
-    keepUntilBgVideoReady: keepUntilBgVideoReady
-  });
-  if (keepUntilBgVideoReady) {
-    clearStoryVideoTimers();
-    resetStoryVideoMediaHandlers();
-    storyVideoRuntime.keepUntilBgVideoReady = true;
-    visualTrace("storyVideo:keep-until-bg-video", { reason: reason || "done" });
-    setStoryVideoSkipHint("", false);
-    if (elStoryVideoFallbackText) elStoryVideoFallbackText.classList.add("hidden");
-    if (elStoryVideo) {
-      try {
-        elStoryVideo.pause();
-      } catch (e) {}
-    }
-    audio.currentStoryVideoVolume = 0;
-    applyAudioSettings();
-  } else {
-    cleanupStoryVideoVisualOnly();
-  }
-  state.inVideo = false;
-  state.waitingNext = false;
-  state.nextLocked = false;
-  setBgmDuckingForActiveVideos("story video finished: " + (reason || "done"));
-
-  autosaveDebugLog("finishStoryVideo:before_runCurrent", {
-    reason: reason || "done",
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex
-  });
-
-  // Синхронно, как после closeGame: иначе pagehide между тиками сохраняет неконсистентный next/waiting.
-  runCurrent();
-
-  autosaveDebugLog("finishStoryVideo:after_runCurrent", {
-    sceneId: state.sceneId,
-    actionIndex: state.actionIndex,
-    waitingNext: state.waitingNext,
-    nextLocked: state.nextLocked,
-    elTextLen: elText ? String(elText.textContent || "").length : -1
-  });
-
-  autosaveController.flush();
-  lastNextTime = 0;
-}
-
-// Показывает только проверенный локальный постер, если сюжетное видео недоступно или заблокировано политикой.
-function showStoryVideoFallback(action, reason) {
-  // Аварийный показ всегда ограничен по времени и пропускается, даже если исходное видео нельзя пропустить.
-  if (storyVideoRuntime.done) return;
-  clearStoryVideoTimers();
-  resetStoryVideoMediaHandlers();
-
-  var fallbackDuration = Math.max(
-    0.1,
-    Number(action && action.fallbackDuration !== undefined ? action.fallbackDuration : STORY_VIDEO_DEFAULT_FALLBACK_DURATION)
-  );
-  var posterSrc = action && action.poster ? resolveRuntimeStoryAssetUrl(action.poster, "image") : "";
-  var skipText = (action && action.skipText) || t("videoSkipHint") || "Click to skip";
-  visualTrace("storyVideo:fallback", {
-    reason: reason || "fallback",
-    posterSrc: posterSrc,
-    fallbackDuration: fallbackDuration
-  });
-
-  storyVideoRuntime.fallback = true;
-  storyVideoRuntime.skipAllowed = true;
-  storyVideoRuntime.skipEnabledAt = Date.now();
-  audio.currentStoryVideoVolume = 0;
-  applyAudioSettings();
-  setBgmDuckingForActiveVideos("story video fallback: " + (reason || "fallback"));
-
-  if (elStoryVideo) {
-    try {
-      elStoryVideo.pause();
-    } catch (e) {}
-    elStoryVideo.classList.add("hidden");
-  }
-
-  if (elStoryVideoOverlay) elStoryVideoOverlay.classList.remove("hidden");
-  showStoryVideoPoster(posterSrc, action && action.fit);
-
-  if (elStoryVideoFallbackText) {
-    elStoryVideoFallbackText.textContent = posterSrc ? "" : (t("videoUnavailable") || "Video unavailable");
-    elStoryVideoFallbackText.classList.toggle("hidden", !!posterSrc);
-  }
-
-  setStoryVideoSkipHint(skipText, true);
-  storyVideoRuntime.fallbackTimer = setTimeout(function () {
-    finishStoryVideo("fallback timeout");
-  }, fallbackDuration * 1000);
-}
-
-function startStoryVideoPlayback(action) {
-  // Проигрывание начинается только после metadata/seek, иначе фрагменты start были бы ненадежны.
-  if (!elStoryVideo || storyVideoRuntime.done) return;
-
-  var volume = clamp(typeof action.volume === "number" ? action.volume : 0, 0, 1);
-  var stopAt = typeof action.stop === "number" ? action.stop : null;
-
-  storyVideoRuntime.fallback = false;
-  audio.currentStoryVideoVolume = volume;
-  applyAudioSettings();
-  if (volume > 0) setBgmDuckingForActiveVideos("story video shown");
-
-  if (elStoryVideoPoster) elStoryVideoPoster.classList.add("hidden");
-  if (elStoryVideoFallbackText) elStoryVideoFallbackText.classList.add("hidden");
-  elStoryVideo.classList.remove("hidden");
-  switchStoryVideoScrollTarget(elStoryVideo);
-  updateBackgroundScrollAvailability();
-  visualTrace("storyVideo:playback-start", {
-    src: normalizeAssetUrl(elStoryVideo.currentSrc || elStoryVideo.src || ""),
-    currentTime: Number(elStoryVideo.currentTime.toFixed(3)),
-    stopAt: stopAt,
-    volume: volume
-  });
-
-  if (stopAt !== null) {
-    var msLeft = Math.max(0, (stopAt - elStoryVideo.currentTime) * 1000);
-    storyVideoRuntime.stopTimer = setTimeout(function () {
-      finishStoryVideo("stop reached");
-    }, msLeft + 80);
-  }
-
-  elStoryVideo.ontimeupdate = function () {
-    if (stopAt !== null && elStoryVideo.currentTime >= stopAt) {
-      finishStoryVideo("stop reached");
-    }
-  };
-
-  var playPromise = elStoryVideo.play();
-  if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.then(function () {
-      visualTrace("storyVideo:play-resolved", {
-        src: normalizeAssetUrl(elStoryVideo.currentSrc || elStoryVideo.src || "")
-      });
-    }).catch(function (err) {
-      console.warn("[VIDEO] story video play failed:", err);
-      visualTrace("storyVideo:play-failed", { error: err && err.name ? err.name : String(err) });
-      showStoryVideoFallback(action, "play failed");
-    });
-  }
-}
-
-function prepareStoryVideoSeek(action) {
-  // Браузеры разрешают seek только после metadata; таймаут переводит зависший seek в poster-fallback.
-  if (!elStoryVideo || storyVideoRuntime.done) return;
-
-  var startAt = typeof action.start === "number" ? action.start : 0;
-  var duration = elStoryVideo.duration;
-  visualTrace("storyVideo:metadata", {
-    startAt: startAt,
-    stop: typeof action.stop === "number" ? action.stop : null,
-    duration: isFinite(duration) ? Number(duration.toFixed(3)) : null
-  });
-
-  if (startAt > 0 && isFinite(duration) && startAt >= duration) {
-    showStoryVideoFallback(action, "start beyond duration");
-    return;
-  }
-
-  if (startAt <= 0) {
-    startStoryVideoPlayback(action);
-    return;
-  }
-
-  storyVideoRuntime.seekTimer = setTimeout(function () {
-    visualTrace("storyVideo:seek-timeout", { startAt: startAt });
-    showStoryVideoFallback(action, "seek timeout");
-  }, STORY_VIDEO_SEEK_TIMEOUT_MS);
-
-  elStoryVideo.onseeked = function () {
-    if (storyVideoRuntime.seekTimer) {
-      clearTimeout(storyVideoRuntime.seekTimer);
-      storyVideoRuntime.seekTimer = null;
-    }
-    visualTrace("storyVideo:seeked", {
-      currentTime: Number(elStoryVideo.currentTime.toFixed(3))
-    });
-    startStoryVideoPlayback(action);
-  };
-
-  try {
-    visualTrace("storyVideo:seek-start", { startAt: startAt });
-    elStoryVideo.currentTime = startAt;
-  } catch (e) {
-    console.warn("[VIDEO] story video seek failed:", e);
-    visualTrace("storyVideo:seek-failed", { error: e && e.name ? e.name : String(e) });
-    showStoryVideoFallback(action, "seek failed");
-  }
+  // Новый видеофон сообщает контроллеру, что удержанный финальный кадр больше не нужен.
+  storyVideoController.hideKeptAfterBackgroundReady(reason);
 }
 
 // Запускает сюжетное видео после повторной runtime-проверки видео и постера внутри assets.
 function startStoryVideo(action) {
-  // Команда video показывает полноэкранную вставку; при scroll разрешает двигать ролик/постер по горизонтали.
-  if (!action || !action.src || !elStoryVideoOverlay || !elStoryVideo) {
-    console.warn("[VIDEO] story video skipped: missing DOM or src", state.sceneId, state.actionIndex - 1);
-    state.inVideo = false;
-    state.nextLocked = false;
-    runCurrent();
-    return;
-  }
-
-  cleanupStoryVideoVisualOnly();
-
+  // Координатор фиксирует checkpoint до запуска media, чтобы F5 повторял текущую video-команду.
   var videoStepIdx = state.actionIndex - 1;
   if (videoStepIdx >= 0) {
     var scVid = state.sceneMap[state.sceneId];
@@ -13774,114 +13357,13 @@ function startStoryVideo(action) {
   }
 
   state.inVideo = true;
-  storyVideoRuntime.action = action;
-  storyVideoRuntime.done = false;
-  storyVideoRuntime.fallback = false;
-  storyVideoRuntime.skipAllowed = action.skippable !== false;
-  storyVideoRuntime.skipEnabledAt = Date.now() + STORY_VIDEO_SKIP_GUARD_MS;
-
-  var src = resolveRuntimeStoryAssetUrl(action.src, "video");
-  var posterSrc = action.poster ? resolveRuntimeStoryAssetUrl(action.poster, "image") : "";
-  if (!src) {
-    showStoryVideoFallback({ poster: action.poster || "", fallbackDuration: action.fallbackDuration, skipText: action.skipText }, "unsafe_source");
-    return;
-  }
-  var fit = normalizeStoryVideoFit(action.fit);
-  var skipText = action.skipText || t("videoSkipHint") || "Click to skip";
-  visualTrace("storyVideo:start", {
-    src: src,
-    posterSrc: posterSrc,
-    fit: fit,
-    skippable: storyVideoRuntime.skipAllowed,
-    skipEnabledAt: storyVideoRuntime.skipEnabledAt
-  });
-
-  applyStoryVideoFit(fit);
-  elStoryVideoOverlay.classList.remove("hidden");
-  setStoryVideoScrollOptions(
-    mergeMediaFocusOptions(action.scroll, action.focusX, action.scale, action.focusY),
-    posterSrc ? elStoryVideoPoster : elStoryVideo
-  );
-  showStoryVideoPoster(posterSrc, fit);
-  setStoryVideoSkipHint(skipText, storyVideoRuntime.skipAllowed);
-
-  resetStoryVideoMediaHandlers();
-  elStoryVideo.loop = false;
-  elStoryVideo.playsInline = true;
-  elStoryVideo.preload = "auto";
-  elStoryVideo.classList.add("hidden");
-
-  elStoryVideo.onerror = function () {
-    console.warn("[VIDEO] story video load error:", sanitizeDiagnosticResource(src));
-    visualTrace("storyVideo:error", { src: src });
-    showStoryVideoFallback(action, "load error");
-  };
-  elStoryVideo.onended = function () {
-    visualTrace("storyVideo:ended", {
-      currentTime: Number(elStoryVideo.currentTime.toFixed(3))
-    });
-    finishStoryVideo("ended");
-  };
-  elStoryVideo.onloadeddata = function () {
-    visualTrace("storyVideo:loadeddata", {
-      currentTime: Number(elStoryVideo.currentTime.toFixed(3)),
-      readyState: elStoryVideo.readyState
-    });
-    if (typeof syncBlurBackgroundVideo === "function") {
-      syncBlurBackgroundVideo(elStoryVideo, posterSrc);
-    }
-    if (backgroundScroll.owner === "storyVideo" && backgroundScroll.target === elStoryVideo) {
-      updateBackgroundScrollAvailability();
-    }
-  };
-  elStoryVideo.onloadedmetadata = function () {
-    prepareStoryVideoSeek(action);
-  };
-
-  audio.currentStoryVideoVolume = 0;
-  applyAudioSettings();
-  elStoryVideo.src = src;
-  visualTrace("storyVideo:src-set", { src: src });
-  elStoryVideo.load();
+  storyVideoController.start(action);
 }
 
 function handleStoryVideoSkip(e) {
-  if (!state.inVideo) return;
-  if (backgroundScroll.owner === "storyVideo" && backgroundScroll.dragging && e && e.type === "pointerup") {
-    handleBackgroundScrollPointerUp(e);
-  }
-  if (backgroundScroll.suppressClick) {
-    backgroundScroll.suppressClick = false;
-    swallowEvent(e);
-    return;
-  }
-  if (Date.now() < (storyVideoRuntime.skipEnabledAt || 0)) {
-    visualTrace("storyVideo:skip-guard", {
-      now: Date.now(),
-      skipEnabledAt: storyVideoRuntime.skipEnabledAt
-    });
-    swallowEvent(e);
-    return;
-  }
-  if (!storyVideoRuntime.skipAllowed && !storyVideoRuntime.fallback) return;
-  swallowEvent(e);
-  visualTrace("storyVideo:skip", { fallback: storyVideoRuntime.fallback });
-  finishStoryVideo("skip");
+  // Поля stage используют тот же guard/suppressClick-путь, что overlay и клавиатура контроллера.
+  storyVideoController.handleSkip(e);
 }
-
-if (elStoryVideoOverlay) {
-  ["pointerup", "click", "touchend"].forEach(function (type) {
-    elStoryVideoOverlay.addEventListener(type, handleStoryVideoSkip, true);
-  });
-}
-
-document.addEventListener("keydown", function (e) {
-  if (!state.inVideo) return;
-  var key = e.key || "";
-  if (key === "Escape" || key === "Enter" || key === " ") {
-    handleStoryVideoSkip(e);
-  }
-}, true);
 
 // =========================================================
 //                   URL-ЗАПУСК НОВЕЛЛЫ
@@ -14290,374 +13772,53 @@ function closeGame(resultData) {
 // =========================================================
 
 function setAudioFromStoryDefaults() {
-
-  if (STORY.audioSettings) {
-
-    if (typeof STORY.audioSettings.masterVolume === "number") {
-      audio.masterVolume = clamp(STORY.audioSettings.masterVolume, 0, 1);
-    }
-
-    if (typeof STORY.audioSettings.muted === "boolean") {
-      audio.muted = STORY.audioSettings.muted;
-    }
-
-  }
-
-  // установить положение слайдера
-  sliderVolume.value = Math.round(audio.masterVolume * 100);
-
-  // применить громкость
-  applyAudioSettings();
-
-  // обновить кнопку
-  updateMuteIcon();
-}
-
-function updateMuteIcon() {
-  let icon = btnMute.querySelector('.btn-icon');
-
-  if (!icon) {
-    btnMute.innerHTML = "<span class='btn-icon'></span>";
-    icon = btnMute.querySelector('.btn-icon');
-  }
-
-  icon.textContent = audio.muted ? "🔇" : "🔊";
+  // Координатор передаёт перезапуск настроек контроллеру, который владеет UI и каналами.
+  audioController.setFromDefaults();
 }
 
 function applyAudioSettings() {
-  // общий volume применяется к обоим каналам
-  var v = audio.muted ? 0 : audio.masterVolume;
-
-  // ВАЖНО: индивидуальная громкость треков умножается на master
-  // Поэтому тут ставим базово master, а конкретную громкость задаём в playBgm/playSfx.
-  // Но чтобы не усложнять, мы держим "currentBgmVolume" отдельно.
-  // Ducking применяется только к BGM и плавно меняется отдельной функцией.
-  audio.bgm.volume = clamp((audio.currentBgmVolume != null ? audio.currentBgmVolume : 0.7) * v * (audio.bgmDuckingMultiplier != null ? audio.bgmDuckingMultiplier : 1), 0, 1);
-  audio.sfx.volume = clamp((audio.currentSfxVolume != null ? audio.currentSfxVolume : 1) * v, 0, 1);
-  // Фоновое видео имеет собственный множитель volume (из [bg]) относительно master.
-  if (elBgVideo) {
-    var videoMultiplier = clamp((audio.currentBgVideoVolume != null ? audio.currentBgVideoVolume : 0), 0, 1);
-    var effectiveVideoVolume = clamp(v * videoMultiplier, 0, 1);
-    elBgVideo.muted = audio.muted || effectiveVideoVolume <= 0;
-    elBgVideo.volume = effectiveVideoVolume;
-  }
-
-  if (elStoryVideo) {
-    // Сюжетное видео имеет громкость команды, но все равно подчиняется master/mute.
-    var storyVideoMultiplier = clamp((audio.currentStoryVideoVolume != null ? audio.currentStoryVideoVolume : 0), 0, 1);
-    var effectiveStoryVideoVolume = clamp(v * storyVideoMultiplier, 0, 1);
-    elStoryVideo.muted = audio.muted || effectiveStoryVideoVolume <= 0;
-    elStoryVideo.volume = effectiveStoryVideoVolume;
-  }
-
-  logAudioState('applyAudioSettings');
+  // Все вычисления master/mute/ducking выполняются внутри единого аудиоконтроллера.
+  audioController.applySettings();
 }
 
 // ---------- BGM ducking ----------
-// Константы ducking вынесены в начало аудио-блока, чтобы не попасть в TDZ при раннем вызове bg.
-// Плавно переводит множитель ducking к целевому значению.
+// Маршрутизирует визуальные переходы к владельцу таймера и громкости BGM.
 function setBgmDuckingTarget(targetMultiplier, fadeMs, reason) {
-  var target = clamp(typeof targetMultiplier === "number" ? targetMultiplier : 1, 0, 1);
-  var duration = Math.max(0, Math.floor(typeof fadeMs === "number" ? fadeMs : 0));
-
-  if (audio.bgmDuckingTimer) {
-    clearInterval(audio.bgmDuckingTimer);
-    audio.bgmDuckingTimer = null;
-  }
-
-  var start = clamp(typeof audio.bgmDuckingMultiplier === "number" ? audio.bgmDuckingMultiplier : 1, 0, 1);
-  if (duration === 0 || Math.abs(start - target) < 0.0001) {
-    audio.bgmDuckingMultiplier = target;
-    applyAudioSettings();
-    writeRuntimeVerbose('[AUDIO] ducking set immediately', { reason: reason, target: target });
-    return;
-  }
-
-  var steps = Math.max(1, Math.floor(duration / 25));
-  var stepTime = Math.max(20, Math.floor(duration / steps));
-  var i = 0;
-
-  audio.bgmDuckingTimer = setInterval(function () {
-    i++;
-    var t = i / steps;
-    audio.bgmDuckingMultiplier = lerp(start, target, t);
-    applyAudioSettings();
-
-    if (i >= steps) {
-      clearInterval(audio.bgmDuckingTimer);
-      audio.bgmDuckingTimer = null;
-      audio.bgmDuckingMultiplier = target;
-      applyAudioSettings();
-      writeRuntimeVerbose('[AUDIO] ducking transition completed', { reason: reason, target: target });
-    }
-  }, stepTime);
-}
-
-// ---------- Помощники ducking для активных видео ----------
-function isAudibleBackgroundVideoActive() {
-  // Ducking фонового видео активен, пока видимый видео-фон имеет ненулевую громкость.
-  return !!(
-    elBgVideo &&
-    !elBgVideo.classList.contains("hidden") &&
-    (audio.currentBgVideoVolume || 0) > 0 &&
-    (elBgVideo.currentSrc || elBgVideo.src)
-  );
+  // Оставляет переходы панорам и фонов координатором, а таймер ducking — владельцу аудиоресурсов.
+  audioController.setBgmDuckingTarget(targetMultiplier, fadeMs, reason);
 }
 
 function setBgmDuckingForActiveVideos(reason) {
-  // Сюжетные и фоновые видео делят ducking-канал, поэтому отпускаем BGM только когда нет звучащих видео.
-  var hasAudibleStoryVideo = !!(state.inVideo && (audio.currentStoryVideoVolume || 0) > 0);
-  var shouldDuck = hasAudibleStoryVideo || isAudibleBackgroundVideoActive();
-  setBgmDuckingTarget(
-    shouldDuck ? DEFAULT_BGM_DUCKING_MULTIPLIER : 1,
-    shouldDuck ? DEFAULT_BGM_DUCKING_ATTACK_MS : DEFAULT_BGM_DUCKING_RELEASE_MS,
-    reason
-  );
+  // Контроллер сам объединяет слышимость сюжетного и фонового видео в один ducking-канал.
+  audioController.setDuckingForActiveVideos(reason);
 }
 
 // Возобновляет фоновое видео после жеста пользователя, если звук интерфейса уже включен.
 function resumeBackgroundVideoIfNeeded(reason) {
-  if (!elBgVideo) return;
-  if (!elBgVideo.src) return;
-  if (elBgVideo.classList.contains("hidden")) return;
-  if (audio.muted || audio.masterVolume <= 0) return;
-
-  applyAudioSettings();
-
-  try {
-    var p = elBgVideo.play();
-    if (p && typeof p.then === "function") {
-      p.then(function () {
-        writeRuntimeVerbose('[VIDEO] background play() success, reason =', reason);
-      }).catch(function (err) {
-        writeRuntimeVerbose('[VIDEO] background play() blocked/failed, reason =', reason, err);
-      });
-    }
-  } catch (e) {
-    writeRuntimeVerbose('[VIDEO] background play() exception, reason =', reason, e);
-  }
-}
-
-function logAudioState(label) {
-  if (!isExplicitDebugCategoryEnabled("audio")) return;
-  console.log('[AUDIO STATE]', label, {
-    muted: audio.muted,
-    masterVolume: audio.masterVolume,
-    currentBgmVolume: audio.currentBgmVolume,
-    bgmVolume: audio.bgm ? audio.bgm.volume : null,
-    bgmSrc: audio.bgm ? sanitizeDiagnosticResource(audio.bgm.src) : null,
-    bgmPaused: audio.bgm ? audio.bgm.paused : null,
-    bgmEnded: audio.bgm ? audio.bgm.ended : null,
-    bgmCurrentTime: audio.bgm ? audio.bgm.currentTime : null,
-    bgmReadyState: audio.bgm ? audio.bgm.readyState : null,
-    bgmNetworkState: audio.bgm ? audio.bgm.networkState : null
-  });
+  // Пользовательский жест маршрутизируется владельцу настроек и media-элемента.
+  audioController.resumeBackgroundVideoIfNeeded(reason);
 }
 
 function resumeBgmIfNeeded(reason) {
-  logAudioState('before resumeBgmIfNeeded: ' + reason);
-
-  if (!audio || !audio.bgm) {
-    writeRuntimeVerbose('[AUDIO] resume skipped: no audio.bgm');
-    return;
-  }
-  if (audio.muted) {
-    writeRuntimeVerbose('[AUDIO] resume skipped: muted');
-    return;
-  }
-  if (!audio.bgm.src) {
-    writeRuntimeVerbose('[AUDIO] resume skipped: no src');
-    return;
-  }
-
-  var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
-  if (currentSrc && failedAssets.audio[currentSrc]) {
-    writeRuntimeVerbose('[AUDIO] resume skipped: failed src', sanitizeDiagnosticResource(currentSrc));
-    return;
-  }
-
-  try {
-    var p = audio.bgm.play();
-    writeRuntimeVerbose('[AUDIO] resume play() called, reason =', reason);
-
-    if (p && typeof p.then === "function") {
-      p.then(function () {
-        writeRuntimeVerbose('[AUDIO] resume play() success, reason =', reason);
-        logAudioState('after resume success: ' + reason);
-      }).catch(function (err) {
-        writeRuntimeVerbose('[AUDIO] resume play() blocked/failed, reason =', reason, err);
-        logAudioState('after resume fail: ' + reason);
-      });
-    }
-  } catch (e) {
-    writeRuntimeVerbose('[AUDIO] resume play() exception, reason =', reason, e);
-  }
+  // Повторный запуск BGM выполняется контроллером с проверкой mute, src и списка ошибок.
+  audioController.resumeBgmIfNeeded(reason);
 }
-
-const DEFAULT_BGM_VOLUME = 0.2;
 
 // Воспроизводит BGM только после проверки аудиофайла общей политикой локальных ресурсов.
 function playBgm(src, loop, vol, fadeMs) {
-  if (isExplicitDebugCategoryEnabled("audio")) {
-    console.log('[AUDIO] playBgm called', {
-      src: sanitizeDiagnosticResource(src),
-      loop: loop,
-      vol: vol,
-      fadeMs: fadeMs
-    });
-  }
-  logAudioState('playBgm start');
-
-  if (!src) return;
-
-  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, "audio");
-  if (!normalizedSrc) return;
-
-  var currentSrc = normalizeAssetUrl(audio.bgm.currentSrc || audio.bgm.src || "");
-
-  if (failedAssets.audio[normalizedSrc] || failedAssets.audio[currentSrc]) { 
-    console.warn('[AUDIO] skip failed bgm src:', sanitizeDiagnosticResource(normalizedSrc));
-    return;
-  }
-
-  audio.bgm.loop = loop !== false; // по умолчанию true
-  audio.currentBgmVolume = clamp((typeof vol === "number" ? vol : DEFAULT_BGM_VOLUME), 0, 1);
-  writeRuntimeVerbose('[AUDIO] playBgm currentBgmVolume set to', audio.currentBgmVolume);
-
-  // Если тот же трек — просто обновим громкость/loop
-  if (audio.bgm.src && endsWith(audio.bgm.src, normalizedSrc)) {
-    writeRuntimeVerbose('[AUDIO] playBgm same track detected');
-    applyAudioSettings();
-
-
-    // Если это тот же трек, но он по какой-то причине не играет,
-    // пробуем возобновить воспроизведение.
-    if (!audio.muted && audio.bgm.paused) {
-      resumeBgmIfNeeded('playBgm same track');
-    }
-
-    return;
-  }
-
-  // Плавная смена (по желанию)
-  if (fadeMs && fadeMs > 0 && !audio.muted) {
-    crossfadeToBgm(normalizedSrc, fadeMs);
-    return;
-  }
-
-  // Быстрая смена
-  try {
-    audio.bgm.pause();
-    audio.bgm.src = normalizedSrc;
-    audio.bgm.currentTime = 0;
-    applyAudioSettings();
-    // В некоторых окружениях автозапуск может быть заблокирован до первого клика.
-    // Но на интерактивном экране обычно пользователь кликает — после клика заведётся.
-    var p = audio.bgm.play();
-    writeRuntimeVerbose('[AUDIO] playBgm quick play() called');
-
-    if (p && typeof p.then === "function") {
-      p.then(function () {
-        writeRuntimeVerbose('[AUDIO] playBgm quick play() success');
-        logAudioState('playBgm quick success');
-      }).catch(function (err) {
-        writeRuntimeVerbose('[AUDIO] playBgm quick play() blocked/failed', err);
-        logAudioState('playBgm quick fail');
-      });
-    }
-
-  } catch (e) {
-    // игнор
-  }
+  // Команда сценария передаётся модулю вместе с уже внедрённой политикой разрешённых путей.
+  audioController.playBgm(src, loop, vol, fadeMs);
 }
 
 function stopBgmImmediate() {
-  try {
-    audio.bgm.pause();
-    audio.bgm.src = "";
-    audio.bgm.currentTime = 0;
-  } catch (e) {}
-}
-
-function crossfadeToBgm(newSrc, fadeMs) {
-  // Простой кроссфейд без WebAudio:
-  // 1) приглушаем текущую BGM до 0
-  // 2) переключаем src и поднимаем громкость
-  clearInterval(audio.fadeTimer);
-
-  var steps = 20;
-  var stepTime = Math.max(20, Math.floor(fadeMs / steps));
-
-  var master = audio.muted ? 0 : audio.masterVolume;
-  var target = clamp(audio.currentBgmVolume * master, 0, 1);
-  var i = 0;
-
-  // текущая громкость
-  var startVol = audio.bgm.volume;
-
-  audio.fadeTimer = setInterval(function () {
-    i++;
-    var t = i / steps;
-    audio.bgm.volume = lerp(startVol, 0, t);
-
-    if (i >= steps) {
-      clearInterval(audio.fadeTimer);
-      audio.fadeTimer = null;
-
-      // смена трека
-      try {
-        audio.bgm.pause();
-        audio.bgm.src = newSrc;
-        audio.bgm.currentTime = 0;
-        audio.bgm.play().catch(function () {});
-      } catch (e) {}
-
-      // поднимаем громкость до target
-      fadeInBgm(target, fadeMs);
-    }
-  }, stepTime);
-}
-
-function fadeInBgm(targetVol, fadeMs) {
-  clearInterval(audio.fadeTimer);
-
-  var steps = 20;
-  var stepTime = Math.max(20, Math.floor(fadeMs / steps));
-  var i = 0;
-
-  audio.bgm.volume = 0;
-
-  audio.fadeTimer = setInterval(function () {
-    i++;
-    var t = i / steps;
-    audio.bgm.volume = lerp(0, targetVol, t);
-
-    if (i >= steps) {
-      clearInterval(audio.fadeTimer);
-      audio.fadeTimer = null;
-      audio.bgm.volume = targetVol;
-    }
-  }, stepTime);
+  // Немедленная очистка канала остаётся координаторной командой без прямого управления Audio.
+  audioController.stopBgmImmediate();
 }
 
 // Воспроизводит звуковой эффект только из разрешённого аудиофайла внутри assets.
 function playSfx(src, vol) {
-  if (!src) return;
-
-  var normalizedSrc = resolveRuntimeStoryAssetUrl(src, "audio");
-  if (!normalizedSrc) return;
-
-  audio.currentSfxVolume = clamp(vol, 0, 1);
-
-  try {
-    audio.sfx.pause();
-    audio.sfx.src = normalizedSrc;
-    audio.sfx.currentTime = 0;
-    applyAudioSettings();
-    audio.sfx.play().catch(function () {});
-  } catch (e) {
-    // игнор
-  }
+  // Эффект использует отдельный канал контроллера и общую политику ресурсов.
+  audioController.playSfx(src, vol);
 }
 
 // =========================================================
@@ -20098,62 +19259,14 @@ function applySpacingSettings() {
 
 // Управление размытым фоном
 
-/** Сбрасывает второй видеоэлемент blur-слоя: без воспроизведения, чтобы не держать лишний декодинг. */
-function hideBlurBackgroundVideo() {
-  if (!elBlurBgVideo) return;
-  elBlurBgVideo.onerror = null;
-  try {
-    elBlurBgVideo.pause();
-  } catch (e) {}
-  elBlurBgVideo.removeAttribute("src");
-  try {
-    elBlurBgVideo.load();
-  } catch (e2) {}
-  elBlurBgVideo.classList.add("hidden");
-}
-
 /** Переносит object-position и масштаб с основного ролика на blur-дубликат (совпадает с pan/zoom wide-bg). */
 function copyBgVideoObjectPositionToBlur(sourceVideo, blurVideo) {
-  if (!sourceVideo || !blurVideo || !sourceVideo.style) return;
-  var op = sourceVideo.style.objectPosition;
-  if (op) blurVideo.style.objectPosition = op;
-  else blurVideo.style.objectPosition = "";
-  var tf = sourceVideo.style.transform;
-  if (tf) blurVideo.style.transform = tf;
-  else blurVideo.style.transform = "";
-  var tfo = sourceVideo.style.transformOrigin;
-  if (tfo) blurVideo.style.transformOrigin = tfo;
-  else blurVideo.style.transformOrigin = "";
+  backgroundMediaController.copyVideoPositionToBlur(sourceVideo, blurVideo);
 }
 
 function updateBlurBackground(src) {
-  if (!elBlurBgLayer || !elBlurBgImage) {
-    console.warn('[Engine] Элементы размытого фона не найдены');
-    return;
-  }
-
-  if (!STORY.meta || !STORY.meta.blurBackground) {
-    elBlurBgLayer.classList.add("hidden");
-    hideBlurBackgroundVideo();
-    return;
-  }
-
-  if (src && src !== "") {
-    hideBlurBackgroundVideo();
-    elBlurBgImage.classList.remove("hidden");
-    assignRasterImageToElement(elBlurBgImage, src, {});
-    elBlurBgLayer.classList.remove("hidden");
-    // applySpacingSettings мог выставить display:none — без явного block слой остаётся невидимым.
-    elBlurBgLayer.style.display = "block";
-
-    // Принудительно применяем стили
-    elBlurBgImage.style.objectFit = 'cover';
-    elBlurBgImage.style.width = '100%';
-    elBlurBgImage.style.height = '100%';
-  } else {
-    elBlurBgLayer.classList.add("hidden");
-    hideBlurBackgroundVideo();
-  }
+  // Обычный и панорамный координаторы используют единый blur API без доступа к его media-обработчикам.
+  backgroundMediaController.updateBlurBackground(src);
 }
 
 /**
@@ -20161,142 +19274,15 @@ function updateBlurBackground(src) {
  * Обходит canvas и data URL — в localStorage не кладётся тяжёлый blurSnapshotSrc.
  */
 function syncBlurBackgroundVideo(videoEl, fallbackSrc) {
-  if (!elBlurBgLayer || !elBlurBgImage) return;
-  if (!STORY.meta || !STORY.meta.blurBackground) return;
-
-  var fallbackTrim = typeof fallbackSrc === "string" ? fallbackSrc.trim() : "";
-  var vidNormForFb = videoEl ? normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "") : "";
-  var imageFallback = fallbackTrim || findBlurFallbackImageForBgVideoUrl(vidNormForFb);
-
-  function applyImageFallback() {
-    hideBlurBackgroundVideo();
-    if (imageFallback) updateBlurBackground(imageFallback);
-    else elBlurBgLayer.classList.add("hidden");
-  }
-
-  if (!elBlurBgVideo) {
-    if (imageFallback) updateBlurBackground(imageFallback);
-    return;
-  }
-
-  var seq = ++blurBgVideoSyncSeq;
-
-  if (!videoEl) {
-    applyImageFallback();
-    return;
-  }
-
-  var targetNorm = normalizeAssetUrl(videoEl.currentSrc || videoEl.src || "");
-  visualTrace("blurVideoSync:start", {
-    fallbackSrc: imageFallback,
-    videoSrc: targetNorm
-  });
-
-  if (!targetNorm) {
-    visualTrace("blurVideoSync:no-src", {});
-    applyImageFallback();
-    return;
-  }
-
-  elBlurBgImage.removeAttribute("src");
-  elBlurBgImage.classList.add("hidden");
-  elBlurBgVideo.classList.remove("hidden");
-
-  elBlurBgVideo.muted = true;
-  elBlurBgVideo.defaultMuted = true;
-  elBlurBgVideo.loop = false;
-  elBlurBgVideo.autoplay = false;
-  if ("playsInline" in elBlurBgVideo) elBlurBgVideo.playsInline = true;
-  elBlurBgVideo.setAttribute("playsinline", "");
-  elBlurBgVideo.preload = "auto";
-
-  function finalizeBlurVideoFrame() {
-    if (seq !== blurBgVideoSyncSeq) return;
-    try {
-      elBlurBgVideo.pause();
-      elBlurBgVideo.currentTime = 0;
-    } catch (e) {}
-    copyBgVideoObjectPositionToBlur(videoEl, elBlurBgVideo);
-    elBlurBgVideo.style.objectFit = "cover";
-    elBlurBgVideo.style.width = "100%";
-    elBlurBgVideo.style.height = "100%";
-    elBlurBgLayer.classList.remove("hidden");
-    elBlurBgLayer.style.display = "block";
-    visualTrace("blurVideoSync:ready", {
-      videoWidth: elBlurBgVideo.videoWidth,
-      videoHeight: elBlurBgVideo.videoHeight
-    });
-  }
-
-  elBlurBgVideo.onerror = function () {
-    if (seq !== blurBgVideoSyncSeq) return;
-    visualTrace("blurVideoSync:error", { videoSrc: targetNorm });
-    hideBlurBackgroundVideo();
-    if (imageFallback) updateBlurBackground(imageFallback);
-    else elBlurBgLayer.classList.add("hidden");
-  };
-
-  var sameSrc =
-    normalizeAssetUrl(elBlurBgVideo.currentSrc || elBlurBgVideo.src || "") === targetNorm &&
-    !!(elBlurBgVideo.currentSrc || elBlurBgVideo.src);
-
-  if (sameSrc && elBlurBgVideo.readyState >= 2) {
-    finalizeBlurVideoFrame();
-    return;
-  }
-
-  elBlurBgVideo.addEventListener(
-    "loadeddata",
-    function () {
-      if (seq !== blurBgVideoSyncSeq) return;
-      finalizeBlurVideoFrame();
-    },
-    { once: true }
-  );
-
-  var rawAssign = videoEl.currentSrc || videoEl.src || "";
-  elBlurBgVideo.src = rawAssign;
-  try {
-    elBlurBgVideo.load();
-  } catch (e3) {}
-
-  setTimeout(function () {
-    if (seq !== blurBgVideoSyncSeq) return;
-    if (!elBlurBgVideo.videoWidth && imageFallback) {
-      visualTrace("blurVideoSync:timeout-fallback", { videoSrc: targetNorm });
-      applyImageFallback();
-    }
-  }, 600);
+  // Второй video и поколение асинхронной синхронизации полностью принадлежат background-media controller.
+  backgroundMediaController.syncBlurVideo(videoEl, fallbackSrc);
 }
 
 // После автосейва runCurrent снова вызывает setBackground с тем же роликом — loadeddata может не прийти,
 // и blur-дубликат может отстать. Несколько попыток + подписка на loadeddata подтягивают синхронизацию.
 function scheduleBlurRefreshFromBgVideo(fallbackSrc) {
-  if (!STORY.meta || !STORY.meta.blurBackground) return;
-  var fb = typeof fallbackSrc === "string" ? fallbackSrc : "";
-
-  function tick() {
-    if (!elBgVideo || elBgVideo.classList.contains("hidden")) return;
-    var vsrc = elBgVideo.currentSrc || elBgVideo.src || "";
-    if (!vsrc) return;
-    syncBlurBackgroundVideo(elBgVideo, fb);
-  }
-
-  if (elBgVideo) {
-    elBgVideo.addEventListener(
-      "loadeddata",
-      function () {
-        tick();
-      },
-      { once: true }
-    );
-  }
-
-  tick();
-  setTimeout(tick, 0);
-  setTimeout(tick, 60);
-  setTimeout(tick, 200);
-  setTimeout(tick, 600);
+  // Retry-таймеры сохраняются внутри модуля и гарантированно снимаются при dispose.
+  backgroundMediaController.scheduleBlurRefreshFromVideo(fallbackSrc);
 }
 
 

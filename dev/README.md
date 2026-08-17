@@ -84,6 +84,12 @@ npm.cmd --prefix dev run test:variables
 npm.cmd --prefix dev run test:assets
 ```
 
+Обычное аудио, сюжетное видео, фоновые image/video и их lifecycle:
+
+```powershell
+npm.cmd --prefix dev run test:media
+```
+
 Команды `bg360marks`, `walk360` и `goto360`:
 
 ```powershell

@@ -295,12 +295,15 @@ project/
 │   ├── autosave-controller.js         autosave loading and writing lifecycle
 │   ├── autosave-payload.js            save fingerprint and format validation
 │   ├── autosave-storage.js            autosave keys, storage, and migration
+│   ├── audio-controller.js            BGM, SFX, volume, and video ducking
+│   ├── background-media-controller.js regular backgrounds, fallback, and blur video
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic
 │   ├── game-host.js                   mini-game iframe and session lifecycle
 │   ├── game-protocol.js               engine and mini-game messages
 │   ├── story-analysis.js              text, action, and resource statistics
 │   ├── story-graph.js                 transitions, reachability, and cycle analysis
+│   ├── story-video-controller.js      story video and poster lifecycle
 │   ├── story-sandbox-loader.js         isolated author JS data loader
 │   └── story-loader.js                story loading and parsing
 │

@@ -10,6 +10,7 @@
     "test:branching": "node --test tests/branching.test.mjs",
     "test:variables": "node --test tests/variables.test.mjs tests/expression-runtime.test.mjs",
     "test:assets": "node --test tests/assets.test.mjs tests/media-options.test.mjs",
+    "test:media": "node --test tests/media-options.test.mjs tests/audio-controller.test.mjs tests/story-video-controller.test.mjs tests/background-media-controller.test.mjs",
     "test:360": "node --test tests/story360-commands.test.mjs tests/panorama-css-security.test.mjs",
     "test:stats": "node --test tests/loader-stats.test.mjs tests/story-analysis.test.mjs tests/story-graph.test.mjs",
     "test:autosave": "node --test tests/autosave-storage.test.mjs tests/autosave-payload.test.mjs tests/autosave-controller.test.mjs",
