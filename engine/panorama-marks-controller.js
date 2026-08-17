@@ -47,9 +47,9 @@
       return isFinite(number) ? number : fallback;
     }
 
-    // Возвращает computed style через внедрённый браузерный API или пустой безопасный объект в unit-тестах.
+    // Возвращает computed style через внедрённый API, сохраняя обязательный браузерный receiver Window.
     function readComputedStyle(element) {
-      if (typeof options.getComputedStyle === "function") return options.getComputedStyle(element);
+      if (typeof options.getComputedStyle === "function") return options.getComputedStyle.call(window, element);
       if (window && typeof window.getComputedStyle === "function") return window.getComputedStyle(element);
       return { getPropertyValue: function getEmptyPanoramaMarksCssValue() { return ""; } };
     }
@@ -454,11 +454,12 @@
       }
     }
     
-    // Читает числовую CSS-настройку без единиц; используется для FOV, который не является CSS-длиной.
+    // Читает числовую CSS-настройку без единиц; пустое значение не превращает в 0, а заменяет безопасным fallback.
     function getBg360CssNumber(varName, fallbackValue) {
       try {
-        var raw = readBg360CssCustomPropertyValue(varName);
-        var value = Number(String(raw || "").trim());
+        var raw = String(readBg360CssCustomPropertyValue(varName) || "").trim();
+        if (!raw) return fallbackValue;
+        var value = Number(raw);
         return isFinite(value) ? value : fallbackValue;
       } catch (err) {
         return fallbackValue;

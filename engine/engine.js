@@ -1956,7 +1956,7 @@ var panoramaMarksController = window.VN_PANORAMA_MARKS_CONTROLLER.createPanorama
   panoramaRuntime: bg360Runtime,
   clamp: clamp,
   normalizeFov: normalizeMediaFov,
-  getComputedStyle: getComputedStyle,
+  getComputedStyle: window.getComputedStyle.bind(window),
   assignImage: assignRasterImageToElement,
   isPhotoMark: isPanoramaMarksPhotoMark,
   normalizePhotoImages: normalizePanoramaMarksPhotoImages,

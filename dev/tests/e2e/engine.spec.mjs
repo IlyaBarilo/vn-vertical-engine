@@ -172,7 +172,7 @@ function createBg360RuntimeStorySource(assetPath, quality = 'normal') {
   ].join('\n');
 }
 
-// Создаёт настоящий walk360 с photo-меткой, чтобы viewer открывался только через публичный сценарный поток.
+// Создаёт настоящий walk360 с WebGL-направлением, scene- и photo-метками для общего публичного сценарного потока.
 function createPhotoViewerStorySource(assetPath) {
   return [
     'window.STORY_TEXT = `',
@@ -193,7 +193,7 @@ function createPhotoViewerStorySource(assetPath) {
     '[scene]',
     'scene intro',
     'bg sphere',
-    'bg360marks sphere (exit, 0.5, 0.5, walk, next) (gallery, 0.5, 0.45, photo, assets/backgrounds/bg-campus-hall.jpg|assets/backgrounds/bg-campus-cafe.jpg)',
+    'bg360marks sphere (route, 0.56, 0.5, walk, ) (exit, 0.5, 0.5, walk, next) (gallery, 0.5, 0.45, photo, assets/backgrounds/bg-campus-hall.jpg|assets/backgrounds/bg-campus-cafe.jpg)',
     'walk360 sphere text="Откройте фото E2E" button="Закрыть обзор"',
     '',
     'scene next',
@@ -848,8 +848,56 @@ test('контроллеры 360-меток открывают фото и вы�
 
   const photoMark = page.locator('.bg360-mark.kind-photo');
   const sceneMark = page.locator('.bg360-mark.kind-scene-target');
+  const compass = page.locator('.bg360-compass');
   await expect(photoMark).toBeVisible();
   await expect(sceneMark).toBeVisible();
+  await expect(compass).toBeVisible();
+  // Проверяет реальные CSS-параметры через публичный API контроллера без доступа к закрытому runtime engine.js.
+  const navigationVisualState = await page.evaluate(function inspectPanoramaNavigationVisualState() {
+    const marksLayer = document.createElement('div');
+    marksLayer.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:600px;';
+    document.body.appendChild(marksLayer);
+    const runtime = {
+      active: true,
+      scene: new window.THREE.Scene(),
+      camera: new window.THREE.PerspectiveCamera(70, 4 / 3, 1, 1100)
+    };
+    const controller = window.VN_PANORAMA_MARKS_CONTROLLER.createPanoramaMarksController({
+      window,
+      document,
+      marksLayer,
+      novelWindow: marksLayer,
+      panoramaRuntime: runtime,
+      getComputedStyle: window.getComputedStyle
+    });
+    controller.state.marks = [{ id: 'route', kind: 'walk', x: 0.56, y: 0.5 }];
+    controller.syncOriginCover();
+    controller.syncNavArrows();
+
+    const children = runtime.navArrowsGroup?.children || [];
+    const routeRibbon = children.find(function(child) {
+      return child?.userData?.bg360Billboard?.kind === 'ribbon';
+    });
+    const nadirRibbon = children.find(function(child) {
+      return child?.userData?.bg360Billboard?.kind === 'nadirViewRibbon';
+    });
+    const signatureParts = String(runtime.originCoverSignature || '').split('|');
+    const state = {
+      ribbonHalfWidth: routeRibbon?.userData?.bg360Billboard?.halfW ?? null,
+      ribbonOpacity: routeRibbon?.material?.opacity ?? null,
+      nadirTailLength: nadirRibbon?.userData?.bg360Billboard?.tailLen ?? null,
+      originCoverIsLarge: Number(signatureParts[2]) > 0.2
+    };
+    controller.dispose();
+    marksLayer.remove();
+    return state;
+  });
+  expect(navigationVisualState).toEqual({
+    ribbonHalfWidth: 24,
+    ribbonOpacity: 0.25,
+    nadirTailLength: 100,
+    originCoverIsLarge: true
+  });
   await photoMark.click();
   await expect(page.locator('#bg360PhotoViewer')).toBeVisible();
   await expect(page.locator('#bg360PhotoImg')).toHaveAttribute('src', /bg-campus-hall\.jpg$/);

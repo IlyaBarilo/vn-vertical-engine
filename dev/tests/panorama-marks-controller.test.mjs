@@ -295,6 +295,7 @@ test('runtime подключает panorama marks controller до engine.js', as
 
   assert.ok(indexSource.indexOf('engine/panorama-marks-controller.js') < indexSource.indexOf('engine/engine.js'));
   assert.ok(engineSource.includes('VN_PANORAMA_MARKS_CONTROLLER.createPanoramaMarksController'));
+  assert.ok(engineSource.includes('getComputedStyle: window.getComputedStyle.bind(window)'));
   assert.ok(engineSource.includes('var bg360MarksRuntime = panoramaMarksController.state'));
   assert.ok(engineSource.includes('panoramaMarksController.render()'));
   assert.ok(engineSource.includes('panoramaMarksController.pickArrowMarkId(clientX, clientY)'));
