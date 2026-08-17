@@ -559,9 +559,11 @@ project/
 
 После изменения парсера или логики проверок выполните `node --test`: основной
 набор доступен Codex и локально без установки npm-пакетов. ESLint запускается
-командой `npm --prefix dev run lint`, а браузерные проверки реального интерфейса,
-`localStorage` и iframe — командой `npm --prefix dev run test:e2e` после установки
-зависимостей. GitHub Actions выполняет все три контура. Автотесты проверяют код
+командой `npm --prefix dev run lint`, а JSDoc-контракты выбранных JavaScript-модулей —
+командой `npm --prefix dev run test:typecheck`. TypeScript работает с `noEmit` и не
+заменяет исходные `.js`. Браузерные проверки реального интерфейса, `localStorage`
+и iframe запускаются командой `npm --prefix dev run test:e2e` после установки
+зависимостей. GitHub Actions выполняет все эти контуры. Автотесты проверяют код
 движка и не заменяют статистику и графы конкретной новеллы. Подробнее:
 [dev/README.md](dev/README.md).
 

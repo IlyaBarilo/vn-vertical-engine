@@ -8,9 +8,15 @@
   if (typeof module === "object" && module && module.exports) module.exports = api;
   if (root) root.VNResourcePathPolicy = api;
   // VM-тесты используют отдельный объект window; браузерный globalThis и window совпадают.
-  if (root && root.window && root.window !== root) root.window.VNResourcePathPolicy = api;
+  if (root && root.window && root.window !== root) /** @type {any} */ (root.window).VNResourcePathPolicy = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function() {
   "use strict";
+
+  /**
+   * Результат проверки хранит только безопасный относительный путь и при успешном разрешении URL.
+   * @typedef {{ok: boolean, code: string, message: string, path: string, extension: string, url?: string}} ResourcePathResult
+   */
+  /** @typedef {{image: readonly string[], audio: readonly string[], video: readonly string[], game: readonly string[], [kind: string]: readonly string[]}} ExtensionMap */
 
   var MAX_PATH_LENGTH = 1024;
   var MAX_PATH_SEGMENTS = 64;
@@ -18,6 +24,7 @@
   var DIRECTORY_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
   var FILE_SEGMENT_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
   var PANORAMA_CSS_RE = /-360(?:-[a-z0-9_-]+)?\.css$/i;
+  /** @type {Readonly<ExtensionMap>} */
   var EXTENSIONS = Object.freeze({
     image: Object.freeze([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"]),
     audio: Object.freeze([".mp3", ".wav", ".ogg", ".m4a", ".aac"]),
@@ -25,19 +32,33 @@
     game: Object.freeze([".html"])
   });
 
-  // Возвращает единообразный результат отказа без раскрытия абсолютного пути устройства.
+  /**
+   * Возвращает единообразный результат отказа без раскрытия абсолютного пути устройства.
+   * @param {string} code Машиночитаемая причина отказа.
+   * @param {string} message Безопасное сообщение для пользователя.
+   * @returns {ResourcePathResult}
+   */
   function invalid(code, message) {
     return { ok: false, code: code, message: message, path: "", extension: "" };
   }
 
-  // Возвращает расширение канонического пути вместе с точкой в нижнем регистре.
+  /**
+   * Возвращает расширение канонического пути вместе с точкой в нижнем регистре.
+   * @param {unknown} path Проверяемое значение пути.
+   * @returns {string}
+   */
   function getExtension(path) {
     var fileName = String(path || "").split("/").pop() || "";
     var dotIndex = fileName.lastIndexOf(".");
     return dotIndex > 0 ? fileName.slice(dotIndex).toLowerCase() : "";
   }
 
-  // Проверяет соответствие расширения назначению ресурса, не полагаясь на MIME сервера.
+  /**
+   * Проверяет соответствие расширения назначению ресурса, не полагаясь на MIME сервера.
+   * @param {string} path Канонический относительный путь.
+   * @param {string} kind Назначение ресурса.
+   * @returns {boolean}
+   */
   function isExtensionAllowed(path, kind) {
     var extension = getExtension(path);
     if (kind === "panorama") {
@@ -46,7 +67,8 @@
     if (kind === "background") {
       return EXTENSIONS.image.indexOf(extension) !== -1 || EXTENSIONS.video.indexOf(extension) !== -1;
     }
-    if (EXTENSIONS[kind]) return EXTENSIONS[kind].indexOf(extension) !== -1;
+    var allowedExtensions = EXTENSIONS[kind];
+    if (allowedExtensions) return allowedExtensions.indexOf(extension) !== -1;
     return (
       EXTENSIONS.image.indexOf(extension) !== -1 ||
       EXTENSIONS.audio.indexOf(extension) !== -1 ||
@@ -56,7 +78,12 @@
     );
   }
 
-  // Проверяет исходную строку до URL-нормализации, чтобы кодировки и разделители не скрывали выход из assets/.
+  /**
+   * Проверяет исходную строку до URL-нормализации, чтобы кодировки и разделители не скрывали выход из assets/.
+   * @param {unknown} pathValue Исходное значение пути.
+   * @param {unknown} kind Назначение ресурса.
+   * @returns {ResourcePathResult}
+   */
   function validate(pathValue, kind) {
     if (typeof pathValue !== "string") return invalid("TYPE", "путь должен быть строкой");
 
@@ -94,7 +121,13 @@
     return { ok: true, code: "", message: "", path: path, extension: getExtension(path) };
   }
 
-  // Разрешает уже проверенный путь относительно каталога index.html и повторно подтверждает границу проекта.
+  /**
+   * Разрешает уже проверенный путь относительно каталога index.html и повторно подтверждает границу проекта.
+   * @param {unknown} pathValue Исходное значение пути.
+   * @param {unknown} baseHref Адрес index.html.
+   * @param {unknown} kind Назначение ресурса.
+   * @returns {ResourcePathResult}
+   */
   function resolve(pathValue, baseHref, kind) {
     var validation = validate(pathValue, kind);
     if (!validation.ok) return validation;

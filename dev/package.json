@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "lint": "cd .. && eslint \"engine/*.js\" \"story-example.js\" \"dev/scripts/**/*.mjs\" \"dev/tests/**/*.mjs\" \"dev/playwright.config.mjs\" \"eslint.config.mjs\"",
+    "test:typecheck": "tsc -p tsconfig.checkjs.json",
     "test": "node --test",
     "test:parser": "node --test tests/parser.test.mjs tests/meta.test.mjs tests/diagnostics.test.mjs tests/transitions.test.mjs tests/branching.test.mjs tests/variables.test.mjs tests/assets.test.mjs tests/media-options.test.mjs tests/scene-actions.test.mjs tests/story360-commands.test.mjs tests/loader-stats.test.mjs",
     "test:meta": "node --test tests/meta.test.mjs tests/diagnostics.test.mjs",
@@ -32,7 +33,8 @@
   "devDependencies": {
     "@playwright/test": "1.62.1",
     "eslint": "10.8.1",
-    "globals": "17.11.0"
+    "globals": "17.11.0",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.13"

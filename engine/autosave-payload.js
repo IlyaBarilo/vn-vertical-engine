@@ -14,9 +14,19 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAutosavePayloadModule() {
   "use strict";
 
+  /** @typedef {{hashUnsigned: number, hashHex: string, textLength: number}} TextFingerprint */
+  /** @typedef {{waitingNext: boolean, nextLocked: boolean}} InteractionFlags */
+  /** @typedef {{valid: boolean, reason: string, fingerprintSkipped: boolean}} PayloadValidationResult */
+  /** @typedef {{v?: unknown, projectId?: unknown, novelId?: unknown, bgScroll?: unknown, hashHex?: unknown, textLength?: unknown, sceneId?: unknown, actionIndex?: string | number}} AutosavePayload */
+  /** @typedef {{projectId?: unknown, novelId?: unknown, allowMissingProjectId?: boolean, requiredFingerprint?: TextFingerprint | null, currentFingerprint?: TextFingerprint | null, loadsafe?: boolean, getSceneActionCount?: (sceneId: unknown) => number}} PayloadValidationOptions */
+
   var PAYLOAD_VERSION = 3;
 
-  // Вычисляет прежний компактный fingerprint без изменения формата существующих сохранений.
+  /**
+   * Вычисляет прежний компактный fingerprint без изменения формата существующих сохранений.
+   * @param {unknown} sourceText Исходный текст сценария.
+   * @returns {TextFingerprint}
+   */
   function computeTextFingerprint(sourceText) {
     var text = typeof sourceText === "string" ? sourceText : "";
     var length = text.length;
@@ -32,7 +42,11 @@
     };
   }
 
-  // Восстанавливает fingerprint текста до projectId, удаляя только его строку в [meta] и сохраняя исходные EOL.
+  /**
+   * Восстанавливает fingerprint текста до projectId, удаляя только его строку в [meta] и сохраняя исходные EOL.
+   * @param {unknown} sourceText Исходный текст сценария.
+   * @returns {TextFingerprint | null}
+   */
   function computeLegacyProjectFingerprint(sourceText) {
     var text = typeof sourceText === "string" ? sourceText : "";
     var chunks = text.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g) || [];
@@ -46,7 +60,7 @@
       var body = chunk.replace(/(?:\r\n|\n|\r)$/, "");
       var trimmed = body.trim();
       var sectionMatch = trimmed.match(/^\[([^\]]+)\]\s*(?:#.*)?$/);
-      if (sectionMatch) insideMeta = sectionMatch[1].trim().toLowerCase() === "meta";
+      if (sectionMatch) insideMeta = /** @type {string} */ (sectionMatch[1]).trim().toLowerCase() === "meta";
 
       if (insideMeta && /^projectId\s*[:=]/.test(trimmed)) {
         removedProjectId = true;
@@ -58,7 +72,14 @@
     return removedProjectId ? computeTextFingerprint(result) : null;
   }
 
-  // Не сохраняет мёртвую блокировку nextLocked без waitingNext посередине незавершённой сцены.
+  /**
+   * Не сохраняет мёртвую блокировку nextLocked без waitingNext посередине незавершённой сцены.
+   * @param {number} sceneActionCount Число действий сцены.
+   * @param {number} runtimeActionIndex Текущий индекс runtime.
+   * @param {unknown} waitingNext Ожидание перехода к следующему действию.
+   * @param {unknown} nextLocked Блокировка перехода.
+   * @returns {InteractionFlags}
+   */
   function normalizeInteractionFlags(sceneActionCount, runtimeActionIndex, waitingNext, nextLocked) {
     var normalizedWaitingNext = !!waitingNext;
     var normalizedNextLocked = !!nextLocked;
@@ -76,18 +97,30 @@
     return { waitingNext: normalizedWaitingNext, nextLocked: normalizedNextLocked };
   }
 
-  // Возвращает единый структурированный результат отказа, чтобы движок мог диагностировать причину без дублирования правил.
+  /**
+   * Возвращает единый структурированный результат отказа, чтобы движок мог диагностировать причину без дублирования правил.
+   * @param {string} reason Машиночитаемая причина отказа.
+   * @param {boolean} fingerprintSkipped Была ли проверка fingerprint отключена политикой загрузки.
+   * @returns {PayloadValidationResult}
+   */
   function rejectPayload(reason, fingerprintSkipped) {
     return { valid: false, reason: reason, fingerprintSkipped: !!fingerprintSkipped };
   }
 
-  // Проверяет версию, принадлежность, fingerprint, сцену и индекс без доступа к глобальному состоянию runtime.
+  /**
+   * Проверяет версию, принадлежность, fingerprint, сцену и индекс без доступа к глобальному состоянию runtime.
+   * @param {unknown} data Недоверенный payload из хранилища.
+   * @param {PayloadValidationOptions | null | undefined} validationOptions Контекст активной истории.
+   * @returns {PayloadValidationResult}
+   */
   function validatePayload(data, validationOptions) {
+    /** @type {PayloadValidationOptions} */
     var options = validationOptions || {};
-    if (!data || data.v !== PAYLOAD_VERSION) return rejectPayload("version", false);
+    var payload = /** @type {AutosavePayload | null | undefined} */ (data);
+    if (!payload || payload.v !== PAYLOAD_VERSION) return rejectPayload("version", false);
 
     var activeProjectId = String(options.projectId || "");
-    var payloadProjectId = String(data.projectId || "");
+    var payloadProjectId = String(payload.projectId || "");
     if (activeProjectId) {
       if (options.allowMissingProjectId) {
         if (payloadProjectId) return rejectPayload("project", false);
@@ -99,15 +132,15 @@
     }
 
     var activeNovelId = String(options.novelId || "");
-    if (activeNovelId && String(data.novelId || "") !== activeNovelId) {
+    if (activeNovelId && String(payload.novelId || "") !== activeNovelId) {
       return rejectPayload("novel", false);
     }
-    if (!activeNovelId && data.novelId) return rejectPayload("novel", false);
+    if (!activeNovelId && payload.novelId) return rejectPayload("novel", false);
 
     if (
-      data.bgScroll &&
-      typeof data.bgScroll === "object" &&
-      Object.prototype.hasOwnProperty.call(data.bgScroll, "focus")
+      payload.bgScroll &&
+      typeof payload.bgScroll === "object" &&
+      Object.prototype.hasOwnProperty.call(payload.bgScroll, "focus")
     ) {
       return rejectPayload("legacy-bg-scroll-focus", false);
     }
@@ -116,22 +149,22 @@
     var shouldCheckFingerprint = !!options.requiredFingerprint || options.loadsafe !== false;
     if (shouldCheckFingerprint) {
       if (!fingerprint) return rejectPayload("fingerprint-context", false);
-      if (String(data.hashHex || "") !== String(fingerprint.hashHex || "")) {
+      if (String(payload.hashHex || "") !== String(fingerprint.hashHex || "")) {
         return rejectPayload("fingerprint", false);
       }
-      if (Number(data.textLength) !== Number(fingerprint.textLength)) {
+      if (Number(payload.textLength) !== Number(fingerprint.textLength)) {
         return rejectPayload("fingerprint", false);
       }
     }
 
-    if (!data.sceneId || typeof options.getSceneActionCount !== "function") {
+    if (!payload.sceneId || typeof options.getSceneActionCount !== "function") {
       return rejectPayload("scene", !shouldCheckFingerprint);
     }
-    var actionCount = options.getSceneActionCount(data.sceneId);
+    var actionCount = options.getSceneActionCount(payload.sceneId);
     if (!Number.isInteger(actionCount) || actionCount < 0) {
       return rejectPayload("scene", !shouldCheckFingerprint);
     }
-    var actionIndex = parseInt(data.actionIndex, 10);
+    var actionIndex = parseInt(/** @type {string} */ (payload.actionIndex), 10);
     if (!isFinite(actionIndex) || actionIndex < 0 || actionIndex > actionCount) {
       return rejectPayload("action-index", !shouldCheckFingerprint);
     }

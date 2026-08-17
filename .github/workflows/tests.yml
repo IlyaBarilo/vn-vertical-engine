@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   quality:
-    name: ESLint quality gate
+    name: Static analysis quality gate
     runs-on: ubuntu-latest
 
     steps:
@@ -37,6 +37,10 @@ jobs:
 
       - name: Run ESLint quality gate
         run: npm run lint
+        working-directory: dev
+
+      - name: Check annotated JavaScript contracts
+        run: npm run test:typecheck
         working-directory: dev
 
   test:
