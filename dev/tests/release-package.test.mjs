@@ -306,6 +306,10 @@ test('релизный workflow проверяет фактический сос
 
   assert.ok(candidateSource.includes('unzip -tq "${APP_NAME}-${VERSION}.zip"'));
   assert.ok(candidateSource.includes('unzip -tq "${APP_NAME}-${VERSION}-update.zip"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/autosave-controller.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/autosave-controller.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/autosave-payload.js" build/full-zip-contents.txt'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/autosave-payload.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/autosave-storage.js" build/full-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/autosave-storage.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt'));

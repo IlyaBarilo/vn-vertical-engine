@@ -292,6 +292,8 @@ project/
 ├── story360.js                        optional 360° space map
 │
 ├── engine/
+│   ├── autosave-controller.js         autosave loading and writing lifecycle
+│   ├── autosave-payload.js            save fingerprint and format validation
 │   ├── autosave-storage.js            autosave keys, storage, and migration
 │   ├── engine.css                     interface styles
 │   ├── engine.js                      main engine logic

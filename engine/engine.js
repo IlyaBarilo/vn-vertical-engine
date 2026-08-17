@@ -3838,13 +3838,12 @@ window.addEventListener("pagehide", function (event) {
     waitingNext: state && state.waitingNext,
     nextLocked: state && state.nextLocked
   });
-  if (vnAutosaveTimer) {
-    clearTimeout(vnAutosaveTimer);
-    vnAutosaveTimer = null;
+  autosaveController.flushPending();
+  // При реальном уходе очищаем долгоживущие контроллеры; bfcache сохраняет их для возврата на страницу.
+  if (!event || event.persisted !== true) {
+    autosaveController.dispose();
+    gameHost.dispose();
   }
-  flushAutosaveToStorageSync();
-  // При реальном уходе очищаем message-listener и iframe; bfcache сохраняет живой host для возврата на страницу.
-  if (!event || event.persisted !== true) gameHost.dispose();
 });
 document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "hidden") {
@@ -3852,11 +3851,7 @@ document.addEventListener("visibilitychange", function () {
       sceneId: state && state.sceneId,
       actionIndex: state && state.actionIndex
     });
-    if (vnAutosaveTimer) {
-      clearTimeout(vnAutosaveTimer);
-      vnAutosaveTimer = null;
-    }
-    flushAutosaveToStorageSync();
+    autosaveController.flushPending();
   }
 });
 window.addEventListener("beforeunload", function () {
@@ -3864,11 +3859,7 @@ window.addEventListener("beforeunload", function () {
     sceneId: state && state.sceneId,
     actionIndex: state && state.actionIndex
   });
-  if (vnAutosaveTimer) {
-    clearTimeout(vnAutosaveTimer);
-    vnAutosaveTimer = null;
-  }
-  flushAutosaveToStorageSync();
+  autosaveController.flushPending();
 });
 
 // ---------- Подготовка сцен ----------
@@ -4044,9 +4035,7 @@ startLicensedEngine();
 // плюс сразу при pagehide, входе в game/video и после продолжения сюжета из игры/сюжетного видео.
 // Версия поднята после смены модели позиционирования персонажей:
 // старые autosave-слоты могли восстановить прежний pos/focus и снова сдвинуть персонажа.
-var VN_AUTOSAVE_PAYLOAD_VERSION = 3;
-var VN_AUTOSAVE_DEBOUNCE_MS = 2000;
-var vnAutosaveTimer = null;
+var VN_AUTOSAVE_PAYLOAD_VERSION = window.VN_AUTOSAVE_PAYLOAD.PAYLOAD_VERSION;
 var vnAutosaveBgScrollRestorePending = null;
 var vnAutosaveStory360RestorePending = null;
 // Активная 360-команда нужна автосейву, чтобы отличать обычный шаг сцены от временного шага из menu/if.
@@ -4054,14 +4043,6 @@ var vnAutosaveActive360Action = null;
 // Последний успешно показанный фон/видео для восстановления «унаследованного» визуала
 // в сценах, где нет собственного bg (например, menu/text после перехода).
 var vnAutosaveLastVisualSnapshot = null;
-
-// Снимает отложенную запись, чтобы после ручного сброса старый таймер не вернул прежний слот.
-function cancelPendingAutosaveTimer(reason) {
-  if (!vnAutosaveTimer) return;
-  clearTimeout(vnAutosaveTimer);
-  vnAutosaveTimer = null;
-  autosaveDebugLog("debounce:cancelled", { reason: reason || "" });
-}
 
 // Сравнение URL фона после нормализации (расхождение только origin при смене способа открытия страницы).
 function urlsMatchForAutosaveRestore(hrefA, hrefB) {
@@ -4118,6 +4099,59 @@ var autosaveStorage = window.VN_AUTOSAVE_STORAGE.createAutosaveStorage({
   getNovelId: getActiveNovelSaveId
 });
 
+// Возвращает контроллеру только безопасные поля текущего состояния для технической диагностики записи.
+function getAutosaveRuntimeState() {
+  return {
+    sceneId: state && state.sceneId,
+    actionIndex: state && state.actionIndex,
+    waitingNext: state && state.waitingNext,
+    nextLocked: state && state.nextLocked,
+    inGame: state && state.inGame,
+    inVideo: state && state.inVideo
+  };
+}
+
+// Сбрасывает временное восстановление 360 до загрузки или удаления другого слота.
+function resetAutosaveRestoreState() {
+  vnAutosaveStory360RestorePending = null;
+}
+
+// Сохраняет прежний канал предупреждений автосохранения без прямой зависимости контроллера от console.
+function reportAutosaveControllerWarning(message, error) {
+  console.warn(message, error);
+}
+
+// Записывает fingerprint и координаты отклонённого payload, не передавая детали истории в общий модуль.
+function reportInvalidAutosavePayload(data) {
+  var fpNow = computeStoryTextFingerprint();
+  autosaveDebugLog("restore:validate_failed", {
+    sceneId: data && data.sceneId,
+    actionIndex: data && data.actionIndex,
+    v: data && data.v,
+    slotHashHex: data && data.hashHex,
+    slotTextLength: data && data.textLength,
+    currentHashHex: fpNow.hashHex,
+    currentTextLength: fpNow.textLength
+  });
+}
+
+// Создаёт единый lifecycle автосохранения, оставляя снимки и применение интерфейса callback-ами движка.
+var autosaveController = window.VN_AUTOSAVE_CONTROLLER.createAutosaveController({
+  storage: autosaveStorage,
+  isEnabled: isAutosaveRuntimeEnabled,
+  isStorageBlocked: isStoryUrlAutosaveStorageBlocked,
+  buildPayload: buildAutosavePayload,
+  validatePayload: validateAutosavePayload,
+  applyPayload: applyAutosavePayload,
+  createLegacyMigration: createLegacyAutosaveMigration,
+  getRuntimeState: getAutosaveRuntimeState,
+  onDebug: autosaveDebugLog,
+  onWarning: reportAutosaveControllerWarning,
+  onBeforeClear: resetAutosaveRestoreState,
+  onBeforeLoad: resetAutosaveRestoreState,
+  onInvalidPayload: reportInvalidAutosavePayload
+});
+
 // Запрещает любые операции с localStorage для nosave, scene-режима и ошибочного novel-параметра.
 function isStoryUrlAutosaveStorageBlocked() {
   if (!storyUrlLaunch) return false;
@@ -4132,6 +4166,11 @@ function isStoryAutosaveEnabled() {
   if (isStoryUrlAutosaveStorageBlocked()) return false;
   if (!STORY || !STORY.meta) return true;
   return STORY.meta.autosave !== false;
+}
+
+// Запрещает lifecycle-операции контроллера до появления истории, сохраняя прежнее поведение flush и debounce.
+function isAutosaveRuntimeEnabled() {
+  return !!STORY && isStoryAutosaveEnabled();
 }
 
 // Возвращает строгий режим проверки автосейва: engine.loadsafe=false разрешает dev-загрузку после изменения текста истории.
@@ -4161,43 +4200,9 @@ function fixAutosaveDeadlockInteractionFlags() {
   }
 }
 
-/** То же правило для сериализации: не записываем в слот блокировку без ожидания клика при незаконченной сцене. */
-function normalizeVNInteractionFlagsForPersist(scene, runtimeActionIndex, waitingNext, nextLocked) {
-  var wn = !!waitingNext;
-  var nl = !!nextLocked;
-  if (
-    scene &&
-    Array.isArray(scene.actions) &&
-    typeof runtimeActionIndex === "number" &&
-    runtimeActionIndex >= 0 &&
-    runtimeActionIndex < scene.actions.length &&
-    !wn &&
-    nl
-  ) {
-    nl = false;
-  }
-  return { waitingNext: wn, nextLocked: nl };
-}
-
-// Вычисляет прежний компактный fingerprint для переданного текста без изменения формата существующих payload.
-function computeStoryTextFingerprintFromText(sourceText) {
-  var text = typeof sourceText === "string" ? sourceText : "";
-  var len = text.length;
-  var hash = 5381;
-  for (var i = 0; i < len; i++) {
-    hash = ((hash << 5) + hash) + text.charCodeAt(i);
-    hash = hash | 0;
-  }
-  return {
-    hashUnsigned: hash >>> 0,
-    hashHex: (hash >>> 0).toString(16),
-    textLength: len
-  };
-}
-
 // Возвращает fingerprint фактически загруженного текста сценария.
 function computeStoryTextFingerprint() {
-  return computeStoryTextFingerprintFromText(
+  return window.VN_AUTOSAVE_PAYLOAD.computeTextFingerprint(
     typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : ""
   );
 }
@@ -4208,27 +4213,7 @@ function computeStoryTextFingerprint() {
  */
 function computeLegacyStoryFingerprintForProjectMigration() {
   var text = typeof window.STORY_TEXT === "string" ? window.STORY_TEXT : "";
-  var chunks = text.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g) || [];
-  var result = "";
-  var insideMeta = false;
-  var removedProjectId = false;
-
-  for (var i = 0; i < chunks.length; i++) {
-    var chunk = chunks[i];
-    if (!chunk) continue;
-    var body = chunk.replace(/(?:\r\n|\n|\r)$/, "");
-    var trimmed = body.trim();
-    var sectionMatch = trimmed.match(/^\[([^\]]+)\]\s*(?:#.*)?$/);
-    if (sectionMatch) insideMeta = sectionMatch[1].trim().toLowerCase() === "meta";
-
-    if (insideMeta && /^projectId\s*[:=]/.test(trimmed)) {
-      removedProjectId = true;
-      continue;
-    }
-    result += chunk;
-  }
-
-  return removedProjectId ? computeStoryTextFingerprintFromText(result) : null;
+  return window.VN_AUTOSAVE_PAYLOAD.computeLegacyProjectFingerprint(text);
 }
 
 function captureBackgroundSnapshotForAutosave() {
@@ -4654,8 +4639,8 @@ function buildAutosavePayload(opts) {
     persistActionIndex = clamp(persistActionIndex, 0, scene.actions.length);
   }
 
-  var flagsForDisk = normalizeVNInteractionFlagsForPersist(
-    scene,
+  var flagsForDisk = window.VN_AUTOSAVE_PAYLOAD.normalizeInteractionFlags(
+    scene.actions.length,
     state.actionIndex,
     state.waitingNext,
     state.nextLocked
@@ -4706,54 +4691,40 @@ function buildAutosavePayload(opts) {
  */
 function validateAutosavePayload(data, validationOptions) {
   var options = validationOptions || {};
-  if (!data || data.v !== VN_AUTOSAVE_PAYLOAD_VERSION) return false;
-  var activeProjectSaveId = getActiveProjectSaveId();
-  var payloadProjectSaveId = String(data.projectId || "");
-  if (activeProjectSaveId) {
-    if (options.allowMissingProjectId) {
-      if (payloadProjectSaveId) return false;
-    } else if (payloadProjectSaveId !== activeProjectSaveId) {
-      return false;
-    }
-  } else if (payloadProjectSaveId) {
-    return false;
-  }
-  var activeNovelSaveId = getActiveNovelSaveId();
-  if (activeNovelSaveId && String(data.novelId || "") !== activeNovelSaveId) return false;
-  if (!activeNovelSaveId && data.novelId) return false;
-  // Слоты, сохранённые до переименования focus → focusX в bgScroll, отклоняем (сброс через tryApplyAutosave).
-  if (
-    data.bgScroll &&
-    typeof data.bgScroll === "object" &&
-    Object.prototype.hasOwnProperty.call(data.bgScroll, "focus")
-  ) {
+  var validationResult = window.VN_AUTOSAVE_PAYLOAD.validatePayload(data, {
+    projectId: getActiveProjectSaveId(),
+    novelId: getActiveNovelSaveId(),
+    allowMissingProjectId: !!options.allowMissingProjectId,
+    requiredFingerprint: options.requiredFingerprint || null,
+    currentFingerprint: computeStoryTextFingerprint(),
+    loadsafe: isStoryLoadsafeEnabled(),
+    getSceneActionCount: getAutosaveSceneActionCount
+  });
+
+  if (validationResult.reason === "legacy-bg-scroll-focus") {
     autosaveDebugLog("restore:reject_legacy_bgScroll_focus", {});
-    return false;
   }
-  if (options.requiredFingerprint || isStoryLoadsafeEnabled()) {
-    var fp = options.requiredFingerprint || computeStoryTextFingerprint();
-    if (String(data.hashHex || "") !== fp.hashHex) return false;
-    if (Number(data.textLength) !== fp.textLength) return false;
-  } else {
+  if (validationResult.fingerprintSkipped) {
     // В dev-режиме engine.loadsafe=false пропускает только проверку fingerprint, но не структуру слота.
     autosaveDebugLog("restore:loadsafe_disabled_skip_fingerprint", {
       slotHashHex: data.hashHex || "",
       slotTextLength: data.textLength || 0
     });
   }
-  if (!data.sceneId) return false;
-  var scene = state.sceneMap[data.sceneId];
-  if (!scene || !Array.isArray(scene.actions)) return false;
-  var idx = parseInt(data.actionIndex, 10);
-  if (!isFinite(idx) || idx < 0 || idx > scene.actions.length) return false;
-  return true;
+  return validationResult.valid;
+}
+
+// Возвращает длину только известной сцены, не передавая чистому payload-модулю всю runtime-карту.
+function getAutosaveSceneActionCount(sceneId) {
+  var scene = state && state.sceneMap ? state.sceneMap[sceneId] : null;
+  return scene && Array.isArray(scene.actions) ? scene.actions.length : -1;
 }
 
 /**
- * Один раз копирует подходящий legacy-слот в пространство projectId.
- * Чужой, повреждённый или неоднозначный слот не изменяется и не удаляется.
+ * Готовит правила проверки и преобразования legacy-слота для общего autosave-контроллера.
+ * Чужой, повреждённый или неоднозначный payload отклоняется до записи projectId-слота.
  */
-function copyLegacyAutosaveToProjectSlot() {
+function createLegacyAutosaveMigration() {
   var projectSaveId = getActiveProjectSaveId();
   if (!projectSaveId) return null;
 
@@ -4777,119 +4748,10 @@ function copyLegacyAutosaveToProjectSlot() {
     return legacyData;
   }
 
-  var migrationResult = autosaveStorage.migrateLegacy({
+  return {
     validate: validateLegacyPayloadForMigration,
     transform: transformLegacyPayloadForProject
-  });
-
-  if (migrationResult.status === "read-error" || migrationResult.status === "context-error") {
-    var readError = migrationResult.error;
-    autosaveDebugLog(
-      "migration:legacy_read_failed",
-      String(readError && readError.message ? readError.message : readError)
-    );
-    return null;
-  }
-  if (migrationResult.status === "parse-error") {
-    autosaveDebugLog("migration:legacy_parse_failed", {});
-    return null;
-  }
-  if (migrationResult.status === "rejected" || migrationResult.status === "validation-error") {
-    autosaveDebugLog("migration:legacy_rejected", {
-      legacyStorageKey: migrationResult.legacyKey,
-      targetStorageKey: migrationResult.targetKey
-    });
-    return null;
-  }
-  if (migrationResult.status === "write-error" || migrationResult.status === "transform-error") {
-    console.warn("[AUTOSAVE] migration write failed:", migrationResult.error);
-    return null;
-  }
-  if (migrationResult.status !== "migrated") return null;
-
-  autosaveDebugLog("migration:completed", {
-    legacyStorageKey: migrationResult.legacyKey,
-    targetStorageKey: migrationResult.targetKey
-  });
-  return migrationResult.raw;
-}
-
-/**
- * Немедленно пишет автосейв в выбранный стандартный или novel-слот.
- * Если передан готовый payload (например точка входа в game/video), записывает его как есть.
- */
-function flushAutosaveToStorageSync(prebuiltPayload) {
-  if (!STORY || !isStoryAutosaveEnabled()) {
-    autosaveDebugLog("flush:skip", { reason: "no_story_or_disabled" });
-    return;
-  }
-  try {
-    var usesPrebuilt =
-      arguments.length >= 1 && prebuiltPayload !== undefined && prebuiltPayload !== null;
-    var payload = usesPrebuilt ? prebuiltPayload : buildAutosavePayload();
-    if (!payload) {
-      autosaveDebugLog("flush:no_payload", {
-        usesPrebuilt: usesPrebuilt,
-        inGame: state.inGame,
-        inVideo: state.inVideo,
-        sceneId: state.sceneId,
-        actionIndex: state.actionIndex
-      });
-      return;
-    }
-    var writeResult = autosaveStorage.writeCurrent(JSON.stringify(payload));
-    if (!writeResult.ok) throw writeResult.error;
-    autosaveDebugLog("flush:written", {
-      storageKey: writeResult.key,
-      usesPrebuilt: usesPrebuilt,
-      sceneId: payload.sceneId,
-      actionIndex: payload.actionIndex,
-      waitingNext: payload.waitingNext,
-      nextLocked: payload.nextLocked
-    });
-  } catch (err) {
-    console.warn("[AUTOSAVE] flush failed:", err);
-    autosaveDebugLog("flush:error", String(err && err.message ? err.message : err));
-  }
-}
-
-// Очищает только активный слот; в scene/nosave-режиме намеренно не удаляет никаких данных.
-function clearAutosaveStorage() {
-  cancelPendingAutosaveTimer("clear_storage");
-  vnAutosaveStory360RestorePending = null;
-  // Режимы scene/nosave не должны удалять даже существующий стандартный или novel-слот.
-  if (isStoryUrlAutosaveStorageBlocked()) {
-    autosaveDebugLog("clear:skip", { reason: "url_storage_blocked" });
-    return;
-  }
-  try {
-    var removeResult = autosaveStorage.removeCurrent();
-    if (!removeResult.ok) throw removeResult.error;
-    autosaveDebugLog("clear:removed", { storageKey: removeResult.key });
-  } catch (err) {
-    console.warn("[AUTOSAVE] clear failed:", err);
-    autosaveDebugLog("clear:error", String(err && err.message ? err.message : err));
-  }
-}
-
-/**
- * Откладывает запись автосейва: снимок всегда берётся из актуального state при срабатывании таймера,
- * чтобы не дергать localStorage на каждом шаге, но не терять прогресс при паузе > 2 с.
- */
-function scheduleAutosave() {
-  if (!STORY || !isStoryAutosaveEnabled()) return;
-  cancelPendingAutosaveTimer("reschedule");
-  vnAutosaveTimer = setTimeout(function () {
-    vnAutosaveTimer = null;
-    autosaveDebugLog("debounce:fired", {
-      sceneId: state.sceneId,
-      actionIndex: state.actionIndex,
-      waitingNext: state.waitingNext,
-      nextLocked: state.nextLocked
-    });
-    flushAutosaveToStorageSync();
-  }, VN_AUTOSAVE_DEBOUNCE_MS);
-  autosaveDebugLog("debounce:scheduled", { ms: VN_AUTOSAVE_DEBOUNCE_MS });
+  };
 }
 
 // Достаёт focusX из снимка bgScroll автосейва (только актуальный формат).
@@ -5042,46 +4904,14 @@ function rewindAutosaveIndexIfPastColdSceneEnd(savedWaitingNext) {
   autosaveDebugLog("restore:rewind_to_if_block", { savedIndex: idx, coldLen: len, ifIdx: ifIdx });
 }
 
-// Загружает активный projectId/novel-слот и при необходимости безопасно копирует подходящий legacy-слот.
-function tryApplyAutosave() {
+// Применяет уже разобранный и проверенный контроллером payload к состоянию, медиа и интерфейсу истории.
+function applyAutosavePayload(data, raw) {
   function isUsableAutosaveBgSrc(src) {
     var normalized = normalizeAssetUrl(src || "");
     if (!normalized) return false;
     var currentPage = normalizeAssetUrl((window && window.location && window.location.href) ? window.location.href : "");
     if (currentPage && urlsMatchForAutosaveRestore(normalized, currentPage)) return false;
     return true;
-  }
-
-  if (!STORY || !isStoryAutosaveEnabled()) return false;
-  vnAutosaveStory360RestorePending = null;
-  var readResult = autosaveStorage.readCurrent();
-  if (!readResult.ok) return false;
-  var raw = readResult.raw;
-  if (!raw) raw = copyLegacyAutosaveToProjectSlot();
-  if (!raw) return false;
-
-  var data = null;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    autosaveDebugLog("restore:parse_failed", String(err && err.message ? err.message : err));
-    clearAutosaveStorage();
-    return false;
-  }
-
-  if (!validateAutosavePayload(data)) {
-    var fpNow = computeStoryTextFingerprint();
-    autosaveDebugLog("restore:validate_failed", {
-      sceneId: data && data.sceneId,
-      actionIndex: data && data.actionIndex,
-      v: data && data.v,
-      slotHashHex: data && data.hashHex,
-      slotTextLength: data && data.textLength,
-      currentHashHex: fpNow.hashHex,
-      currentTextLength: fpNow.textLength
-    });
-    clearAutosaveStorage();
-    return false;
   }
 
   var restoreScene = state.sceneMap[data.sceneId];
@@ -5106,7 +4936,6 @@ function tryApplyAutosave() {
       sceneId: data.sceneId,
       actionIndex: data.actionIndex
     });
-    clearAutosaveStorage();
     return false;
   }
 
@@ -5375,7 +5204,7 @@ function restart() {
   storyUrlLaunchSceneId = resolvedStoryUrlLaunch.sceneId;
 
   if (shouldWriteCleanAutosaveAfterReset) {
-    clearAutosaveStorage();
+    autosaveController.clear();
   }
 
   setStandaloneGameModeEnabled(false);
@@ -5404,7 +5233,7 @@ function restart() {
     !shouldRunStandaloneGame &&
     !restartOptions.clearAutosave &&
     isStoryAutosaveEnabled() &&
-    tryApplyAutosave()
+    autosaveController.loadAndApply()
   ) {
     return;
   }
@@ -5495,7 +5324,7 @@ function restart() {
 
   if (shouldWriteCleanAutosaveAfterReset) {
     // После ручного сброса сразу заменяем старый слот стартовым состоянием, а не ждём debounce/pagehide.
-    flushAutosaveToStorageSync();
+    autosaveController.flush();
   }
 }
 
@@ -5589,7 +5418,7 @@ function runCurrent() {
     
   }
   } finally {
-    scheduleAutosave();
+    autosaveController.schedule();
   }
 }
 
@@ -13760,7 +13589,7 @@ function finishStoryVideo(reason) {
     elTextLen: elText ? String(elText.textContent || "").length : -1
   });
 
-  flushAutosaveToStorageSync();
+  autosaveController.flush();
   lastNextTime = 0;
 }
 
@@ -13931,7 +13760,7 @@ function startStoryVideo(action) {
       var vidCheckpoint = buildAutosavePayload({ persistActionIndex: videoStepIdx });
       if (vidCheckpoint) {
         autosaveDebugLog("checkpoint:video_written", { persistActionIndex: videoStepIdx });
-        flushAutosaveToStorageSync(vidCheckpoint);
+        autosaveController.flush(vidCheckpoint);
       } else {
         autosaveDebugLog("checkpoint:video_skipped", { reason: "build_null", videoStepIdx: videoStepIdx });
       }
@@ -14326,7 +14155,7 @@ function openGame(action) {
       var checkpoint = buildAutosavePayload({ persistActionIndex: gameStepIdx });
       if (checkpoint) {
         autosaveDebugLog("checkpoint:game_written", { persistActionIndex: gameStepIdx });
-        flushAutosaveToStorageSync(checkpoint);
+        autosaveController.flush(checkpoint);
       } else {
         autosaveDebugLog("checkpoint:game_skipped", { reason: "build_null", gameStepIdx: gameStepIdx });
       }
@@ -14451,7 +14280,7 @@ function closeGame(resultData) {
     elTextLen: elText ? String(elText.textContent || "").length : -1
   });
 
-  flushAutosaveToStorageSync();
+  autosaveController.flush();
   // Закрытие модалки по кнопке задаёт lastNextTime — снимаем охладитель, чтобы первый клик по диалогу прошёл.
   lastNextTime = 0;
 }

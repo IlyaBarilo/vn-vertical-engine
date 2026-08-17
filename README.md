@@ -411,6 +411,8 @@ project/
 ├── story360.js                        необязательная карта 360°-пространства
 │
 ├── engine/
+│   ├── autosave-controller.js         lifecycle загрузки и записи автосохранений
+│   ├── autosave-payload.js            fingerprint и проверка формата сохранения
 │   ├── autosave-storage.js            ключи, хранилище и миграция автосохранений
 │   ├── engine.css                     стили интерфейса
 │   ├── engine.js                      основная логика движка

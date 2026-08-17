@@ -674,6 +674,8 @@ test(`распакованный полный ZIP запускает движо�
     const releaseRoot = await findReleaseRoot(extractionRoot);
     await Promise.all([
       access(path.join(releaseRoot, 'index.html')),
+      access(path.join(releaseRoot, 'engine', 'autosave-controller.js')),
+      access(path.join(releaseRoot, 'engine', 'autosave-payload.js')),
       access(path.join(releaseRoot, 'engine', 'autosave-storage.js')),
       access(path.join(releaseRoot, 'engine', 'engine.css')),
       access(path.join(releaseRoot, 'engine', 'engine.js')),
