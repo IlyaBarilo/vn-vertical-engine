@@ -368,6 +368,10 @@ Both release archives include `release-manifest.json` with the engine version,
 source Git commit, supported format versions, and SHA-256 values of the runtime
 files. This identifies the exact contents of an extracted engine version.
 
+The ℹ️ information panel shows the engine version. The text statistics
+additionally show the current Story DSL, STORY360, Panorama CSS, and mini-game
+protocol versions, the project ID, and the effective `debug`/`release` mode.
+
 ## Documentation
 
 - [First Steps in English](FIRST-STEPS-EN.md)

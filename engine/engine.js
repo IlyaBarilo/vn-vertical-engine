@@ -9675,11 +9675,29 @@ function toggleStatsPanel() {
   else hideStatsPanel();
 }
 
-// Формирует содержимое окна настроек: версия сборки и текущий статус лицензии.
+// Формирует краткую версию движка и по запросу добавляет технические форматы и метаданные только для статистики.
+function formatRuntimeCompatibilityInfo(includeFormatVersions) {
+  var lines = ["Engine: " + window.APP_VERSION];
+
+  if (includeFormatVersions) {
+    var meta = window.STORY && window.STORY.meta ? window.STORY.meta : {};
+    var projectId = String(meta.projectId || "").trim() || "(not set)";
+    lines.push("Story DSL: " + window.VN_STORY_DSL_VERSION);
+    lines.push("STORY360: " + window.VNStorySandboxLoader.STORY360_FORMAT_VERSION);
+    lines.push("Panorama CSS: " + window.VN_PANORAMA_PACKAGE_CONTROLLER.CSS_PACK_FORMAT_VERSION);
+    lines.push("Game protocol: " + window.VN_GAME_PROTOCOL.GAME_PROTOCOL_VERSION);
+    lines.push("Project ID: " + projectId);
+    lines.push("Runtime mode: " + getStoryMode());
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+// Формирует содержимое окна информации: совместимость runtime, лицензия и контакты проекта.
 function renderSettingsPanel() {
   if (!elSettingsBody) return;
   var text = "";
-  text += "Software version: " + window.APP_VERSION + "\n\n";
+  text += formatRuntimeCompatibilityInfo(false) + "\n";
   text += formatLicenseStatsText();
   text += "\n";
   text += "Site of project: https://github.com/IlyaBarilo/vn-vertical-engine\n\n";
@@ -10818,7 +10836,7 @@ function renderStats() {
 
 
 
-      text += `Software version: ${window.APP_VERSION}\n`; // Важно использовать кавычки `` чтобы применялись вставки ${}. В "" не применяются вставки
+      text += formatRuntimeCompatibilityInfo(true);
       text += formatLicenseStatsText() + "\n";
       text += formatStatsSummaryCheck(summaryChecks);
 

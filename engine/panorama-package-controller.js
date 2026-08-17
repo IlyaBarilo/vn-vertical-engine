@@ -14,6 +14,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createPanoramaPackageControllerModule() {
   "use strict";
 
+  // Числовая версия соответствует строковой схеме vn360-css-pack-v1 и используется в диагностике совместимости.
+  var CSS_PACK_FORMAT_VERSION = 1;
+
   // Лимиты совпадают с редактором и конвертером: они отсекают вредные пакеты, сохраняя большие панорамы будущих камер.
   var CSS_PACK_MAX_ENCODED_LENGTH = 128 * 1024 * 1024;
   var CSS_PACK_MAX_DECODED_SIZE = 96 * 1024 * 1024;
@@ -239,7 +242,9 @@
     if (!atobFn || !BlobConstructor) throw new Error("Браузер не поддерживает декодирование CSS-пакета.");
 
     var schema = readCssQuotedValue(computedStyle, "--vn360-schema");
-    if (schema !== "vn360-css-pack-v1") throw new Error("Неподдерживаемая версия CSS-пакета 360.");
+    if (schema !== "vn360-css-pack-v" + CSS_PACK_FORMAT_VERSION) {
+      throw new Error("Неподдерживаемая версия CSS-пакета 360.");
+    }
     var mode = readCssQuotedValue(computedStyle, "--vn360-mode");
     if (mode !== "normal" && mode !== "mobile") throw new Error("Некорректный режим CSS-пакета 360.");
     var mimeType = readCssQuotedValue(computedStyle, "--vn360-mime").toLowerCase();
@@ -1146,6 +1151,7 @@
   }
 
   return {
+    CSS_PACK_FORMAT_VERSION: CSS_PACK_FORMAT_VERSION,
     CSS_PACK_MAX_ENCODED_LENGTH: CSS_PACK_MAX_ENCODED_LENGTH,
     CSS_PACK_MAX_DECODED_SIZE: CSS_PACK_MAX_DECODED_SIZE,
     CSS_PACK_MAX_CHUNKS: CSS_PACK_MAX_CHUNKS,

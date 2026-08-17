@@ -715,6 +715,38 @@ test('движок запускает историю в браузере без 
   expect(pageErrors).toEqual([]);
 });
 
+// Проверяет компактное окно информации и полный набор технических версий только в статистике.
+test('информация и статистика разделяют пользовательские и технические сведения', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+
+  await openStory(page);
+  await page.locator('#btnSettings').click();
+  await expect(page.locator('#settingsPanel')).toBeVisible();
+
+  const debugInfo = await page.locator('#settingsBody').inputValue();
+  expect(debugInfo).toContain('Engine: 0.0.0.0dev');
+  expect(debugInfo).not.toContain('Story DSL:');
+  expect(debugInfo).not.toContain('STORY360:');
+  expect(debugInfo).not.toContain('Panorama CSS:');
+  expect(debugInfo).not.toContain('Game protocol:');
+  expect(debugInfo).not.toContain('Project ID:');
+  expect(debugInfo).not.toContain('Runtime mode:');
+
+  await page.locator('#btnCloseSettings').click();
+  await expect(page.locator('#settingsPanel')).toBeHidden();
+  await page.locator('#btnStats').click();
+  await expect(page.locator('#statsPanel')).toBeVisible();
+  await expect(page.locator('#statsBody')).toHaveValue(/Engine: 0\.0\.0\.0dev[\s\S]*Runtime mode: debug/);
+  const statsInfo = await page.locator('#statsBody').inputValue();
+  expect(statsInfo).toContain('Story DSL: 1');
+  expect(statsInfo).toContain('STORY360: 1');
+  expect(statsInfo).toContain('Panorama CSS: 1');
+  expect(statsInfo).toContain('Game protocol: 2');
+  expect(statsInfo).toContain('Project ID: e2e-story');
+  expect(statsInfo).toContain('Runtime mode: debug');
+  expect(pageErrors).toEqual([]);
+});
+
 // Проверяет настоящий bootstrap трёх медиаконтроллеров, fallback видео и общий UI громкости в Chromium и Firefox.
 test('медиаконтроллеры сохраняют fallback и пропуск сюжетного видео', async function({ page }) {
   const pageErrors = collectPageErrors(page);

@@ -140,5 +140,9 @@ test('версии форматов release-manifest соответствуют 
     RELEASE_FORMAT_VERSIONS.gameProtocol,
     extractRuntimeVersion(gameProtocolSource, /GAME_PROTOCOL_VERSION\s*=\s*(\d+)/, 'игрового протокола')
   );
-  assert.ok(panoramaSource.includes(`vn360-css-pack-v${RELEASE_FORMAT_VERSIONS.panoramaCss}`));
+  assert.equal(
+    RELEASE_FORMAT_VERSIONS.panoramaCss,
+    extractRuntimeVersion(panoramaSource, /CSS_PACK_FORMAT_VERSION\s*=\s*(\d+)/, 'Panorama CSS')
+  );
+  assert.ok(panoramaSource.includes('"vn360-css-pack-v" + CSS_PACK_FORMAT_VERSION'));
 });
