@@ -316,6 +316,7 @@ project/
 ├── lib/                               bundled third-party libraries
 ├── docs/
 │   ├── specs/                         story and mini-game specifications
+│   ├── security/                      threat model and security boundaries
 │   ├── demo/images/                   interface screenshots
 │   ├── 360/                           panorama examples
 │   ├── games/                         mini-game screenshots
@@ -334,6 +335,7 @@ project/
 ├── FIRST-STEPS.md                     Russian starting guide
 ├── README.md                          primary Russian overview
 ├── README-EN.md                       shortened English overview
+├── SECURITY.md                        private reporting and security policy
 ├── LICENSE
 ├── COMMERCIAL-USE.md
 └── NOTICE.md
@@ -354,6 +356,8 @@ The current reference story remains available as
 - [Первые шаги на русском](FIRST-STEPS.md)
 - [Story specification (Russian)](docs/specs/spec-story.md)
 - [HTML mini-game specification (Russian)](docs/specs/spec-game.md)
+- [Security policy](SECURITY.md)
+- [Threat model (Russian)](docs/security/threat-model.md)
 - [Engine automated tests (Russian)](dev/README.md)
 - [Third-party notices](NOTICE.md)
 - [Commercial use](COMMERCIAL-USE.md)
@@ -383,6 +387,11 @@ The forms explain what context to provide. For a possible bug, include the
 engine version, device, browser, launch method, and minimal reproduction steps.
 Do not publish passwords, keys, `license-key.js`, or private project materials.
 Issues are intentionally disabled.
+
+Do not disclose a possible vulnerability in Discussions. Follow
+[SECURITY.md](SECURITY.md) and use the private
+[Report a vulnerability](https://github.com/IlyaBarilo/vn-vertical-engine/security/advisories/new)
+form.
 
 ## Engine tests
 

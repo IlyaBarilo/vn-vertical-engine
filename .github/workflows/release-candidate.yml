@@ -84,6 +84,7 @@ jobs:
           mkdir -p "build/$APP_NAME/tools"
           mkdir -p "build/$APP_NAME/docs"
           mkdir -p "build/$APP_NAME/docs/examples"
+          mkdir -p "build/$APP_NAME/docs/security"
           mkdir -p "build/$APP_NAME/docs/specs"
 
           # Копируем основные файлы проекта
@@ -92,6 +93,7 @@ jobs:
           cp story-example.js "build/$APP_NAME/"
           cp README.md "build/$APP_NAME/"
           cp README-EN.md "build/$APP_NAME/"
+          cp SECURITY.md "build/$APP_NAME/"
           cp LICENSE "build/$APP_NAME/"
           cp COMMERCIAL-USE.md "build/$APP_NAME/"
           cp NOTICE.md "build/$APP_NAME/"
@@ -115,6 +117,7 @@ jobs:
           cp story-example.js "build/$APP_NAME/docs/examples/"
           cp docs/specs/spec-story.md "build/$APP_NAME/docs/specs/"
           cp docs/specs/spec-game.md "build/$APP_NAME/docs/specs/"
+          cp docs/security/threat-model.md "build/$APP_NAME/docs/security/"
           cp docs/student-project-review.md "build/$APP_NAME/docs/"
           cp docs/360-first-steps.md "build/$APP_NAME/docs/"
           [ -d docs/360 ] && cp -a docs/360 "build/$APP_NAME/docs/"
@@ -203,6 +206,8 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/expression.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/resource-path-policy.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/student-project-review.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/360-first-steps.md" build/full-zip-contents.txt
@@ -213,6 +218,8 @@ jobs:
           grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/resource-path-policy.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/SECURITY.md" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/docs/security/threat-model.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/examples/story-example.js" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/tools/student-project-auditor.html" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/student-project-review.md" build/update-zip-contents.txt

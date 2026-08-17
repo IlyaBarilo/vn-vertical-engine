@@ -442,6 +442,8 @@ project/
 │   ├── specs/
 │   │   ├── spec-story.md              спецификация сценария
 │   │   └── spec-game.md               контракт HTML-мини-игр
+│   ├── security/
+│   │   └── threat-model.md             модель угроз и границы защиты
 │   ├── demo/images/                   снимки интерфейса
 │   ├── 360/                           примеры панорам
 │   ├── games/                         снимки мини-игр
@@ -464,6 +466,7 @@ project/
 ├── FIRST-STEPS-EN.md                  первые шаги на английском
 ├── README.md                          основное описание на русском
 ├── README-EN.md                       сокращённое описание на английском
+├── SECURITY.md                        приватные отчёты и политика безопасности
 ├── LICENSE                            PolyForm Noncommercial 1.0.0
 ├── COMMERCIAL-USE.md                  порядок коммерческого разрешения
 └── NOTICE.md                          лицензии сторонних компонентов
@@ -501,6 +504,8 @@ project/
 - [Спецификация сценария](docs/specs/spec-story.md)
 - [Спецификация HTML-мини-игр](docs/specs/spec-game.md)
 - [Проверка студенческих проектов](docs/student-project-review.md)
+- [Политика безопасности](SECURITY.md)
+- [Модель угроз](docs/security/threat-model.md)
 - [Автоматические тесты движка](dev/README.md)
 - [Уведомления о сторонних библиотеках](NOTICE.md)
 - [Коммерческое использование](COMMERCIAL-USE.md)
@@ -531,6 +536,10 @@ project/
 движка, устройство, браузер, способ запуска и минимальные шаги воспроизведения.
 Не публикуйте ключи, пароли, `license-key.js` и закрытые пользовательские
 материалы. Раздел Issues намеренно не используется.
+
+Возможную уязвимость не публикуйте в Discussions. Используйте приватную форму
+[Report a vulnerability](https://github.com/IlyaBarilo/vn-vertical-engine/security/advisories/new)
+по правилам [SECURITY.md](SECURITY.md).
 
 ## Автоматические тесты движка
 

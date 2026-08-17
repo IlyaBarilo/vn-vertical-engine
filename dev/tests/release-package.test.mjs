@@ -26,6 +26,12 @@ const requiredReleaseGuides = [
   'docs/360-first-steps.md'
 ];
 
+// Перечисляет документы безопасности, которые должны сопровождать runtime в обоих пользовательских архивах.
+const requiredSecurityDocuments = [
+  { path: 'SECURITY.md', destination: '"build/$APP_NAME/"' },
+  { path: 'docs/security/threat-model.md', destination: '"build/$APP_NAME/docs/security/"' }
+];
+
 // Читает отслеживаемый файл относительно корня репозитория для проверки состава runtime и релиза.
 function readRepositoryFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
@@ -135,6 +141,22 @@ test('релизная сборка включает руководства, н�
     await access(path.join(repositoryRoot, relativePath));
     assert.ok(readmeSource.includes('(' + relativePath + ')'), 'README.md не ссылается на ' + relativePath);
     assertRequiredReleaseCopy(candidateSource, relativePath, '"build/$APP_NAME/docs/"');
+  }
+});
+
+// Не позволяет README ссылаться на политику или модель угроз, отсутствующую в автономном релизном ZIP.
+test('релизная сборка включает документы безопасности', async function() {
+  const [candidateSource, readmeSource, englishReadmeSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
+    readRepositoryFile('README.md'),
+    readRepositoryFile('README-EN.md')
+  ]);
+
+  for (const document of requiredSecurityDocuments) {
+    await access(path.join(repositoryRoot, document.path));
+    assert.ok(readmeSource.includes('(' + document.path + ')'), 'README.md не ссылается на ' + document.path);
+    assert.ok(englishReadmeSource.includes('(' + document.path + ')'), 'README-EN.md не ссылается на ' + document.path);
+    assertRequiredReleaseCopy(candidateSource, document.path, document.destination);
   }
 });
 
@@ -288,6 +310,10 @@ test('релизный workflow проверяет фактический сос
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/expression.js" build/update-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/engine/story-sandbox-loader.js" build/update-zip-contents.txt'));
+  assert.ok(candidateSource.includes('${APP_NAME}/SECURITY.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/SECURITY.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}/docs/security/threat-model.md'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/docs/security/threat-model.md'));
   assert.ok(candidateSource.includes('${APP_NAME}/tools/panorama-cleaner.html'));
   assert.ok(candidateSource.includes('${APP_NAME}-update/tools/panorama-cleaner.html'));
   assert.ok(candidateSource.includes('${APP_NAME}/tools/student-project-auditor.html'));

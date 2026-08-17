@@ -7,6 +7,9 @@ import vm from 'node:vm';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
 
+// Имитирует доступный API настоящего Worker; bootstrap обязан скрыть эту функцию до запуска fixture.
+function exposedWorkerApi() {}
+
 // Читает runtime-файл относительно корня репозитория для статической проверки границы sandbox.
 function readRuntimeFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
@@ -21,13 +24,28 @@ function extractWorkerBootstrap(source) {
   return source.slice(start, end);
 }
 
-// Выполняет bootstrap в отдельном VM-контексте и перехватывает данные до имитации structured clone.
+// Выполняет bootstrap среди доступных Worker API и перехватывает данные до имитации structured clone.
 async function runWorkerFixture(userSource, kind = 'story360') {
   const loaderSource = await readRuntimeFile('engine/story-sandbox-loader.js');
   const listeners = new Map();
   const messages = [];
   const sandbox = {};
   const context = vm.createContext(sandbox);
+
+  [
+    'fetch',
+    'XMLHttpRequest',
+    'WebSocket',
+    'EventSource',
+    'WebTransport',
+    'Worker',
+    'SharedWorker',
+    'BroadcastChannel'
+  ].forEach(function(apiName) {
+    sandbox[apiName] = exposedWorkerApi;
+  });
+  sandbox.indexedDB = { open: exposedWorkerApi };
+  sandbox.caches = { open: exposedWorkerApi };
 
   sandbox.self = sandbox;
   sandbox.addEventListener = function addEventListener(type, listener) {
@@ -36,7 +54,8 @@ async function runWorkerFixture(userSource, kind = 'story360') {
   sandbox.removeEventListener = function removeEventListener(type, listener) {
     if (listeners.get(type) === listener) listeners.delete(type);
   };
-  sandbox.importScripts = function importScripts() {
+  sandbox.importScripts = function importScripts(source) {
+    if (source !== 'fixture-story.js') return;
     vm.runInContext(userSource, context, { filename: 'fixture-story.js' });
   };
 
@@ -83,6 +102,53 @@ test('story sandbox работает в Worker и общается через п
   assert.ok(source.includes('worker.terminate()'));
   assert.ok(source.includes('var STORY360_FORMAT_VERSION = 1'));
   assert.ok(source.includes('STORY360_FORMAT_VERSION: STORY360_FORMAT_VERSION'));
+});
+
+// Доказывает поведением, что пользовательский файл не видит побочные API Worker и не подключает второй скрипт.
+test('story sandbox блокирует сеть, хранилища и вложенные Worker до запуска сценария', async function() {
+  const blockedApiNames = [
+    'fetch',
+    'XMLHttpRequest',
+    'WebSocket',
+    'EventSource',
+    'WebTransport',
+    'Worker',
+    'SharedWorker',
+    'BroadcastChannel',
+    'indexedDB',
+    'caches'
+  ];
+  const messages = await runWorkerFixture(`
+    var apiTypes = Object.create(null);
+    ${blockedApiNames.map(function(apiName) {
+      return `apiTypes.${apiName} = typeof ${apiName};`;
+    }).join('\n    ')}
+    var nestedImportBlocked = false;
+    try {
+      importScripts("nested.js");
+    } catch (error) {
+      nestedImportBlocked = /запрещено/.test(String(error && error.message));
+    }
+    window.STORY360 = {
+      version: 1,
+      spaces: {
+        room: {
+          apiTypes: apiTypes,
+          importScriptsType: typeof importScripts,
+          nestedImportBlocked: nestedImportBlocked
+        }
+      }
+    };
+  `);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].status, 'loaded');
+  const room = messages[0].value.spaces.room;
+  blockedApiNames.forEach(function(apiName) {
+    assert.equal(room.apiTypes[apiName], 'undefined', apiName + ' остался доступен сценарию');
+  });
+  assert.equal(room.importScriptsType, 'function');
+  assert.equal(room.nestedImportBlocked, true);
 });
 
 // Проверяет, что исходный объект валидируется в Worker и в канал попадает уже безопасная копия.

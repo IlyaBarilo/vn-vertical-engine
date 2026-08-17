@@ -73,3 +73,43 @@ test('Mermaid работает в strict и проходит отдельную 
   assert.doesNotMatch(engineSource, /mermaidGraph\.innerHTML\s*=\s*result/);
   assert.doesNotMatch(engineSource, /result\.bindFunctions\(/);
 });
+
+// Закрепляет приватный канал отчётов и честное описание границ Worker, iframe, checksum и доверенного ключа.
+test('политика безопасности и модель угроз соответствуют runtime-контрактам', async function() {
+  const [securitySource, threatModelSource, readmeSource, englishReadmeSource] = await Promise.all([
+    readProjectFile('SECURITY.md'),
+    readProjectFile('docs/security/threat-model.md'),
+    readProjectFile('README.md'),
+    readProjectFile('README-EN.md')
+  ]);
+  const privateReportUrl = 'https://github.com/IlyaBarilo/vn-vertical-engine/security/advisories/new';
+
+  assert.ok(securitySource.includes(privateReportUrl));
+  assert.ok(readmeSource.includes(privateReportUrl));
+  assert.ok(englishReadmeSource.includes(privateReportUrl));
+  assert.match(securitySource, /Последний опубликованный непререлизный GitHub Release \| Поддерживается/);
+  assert.ok(securitySource.includes('[модели угроз](docs/security/threat-model.md)'));
+  assert.ok(securitySource.includes('Это не цифровая подпись'));
+  assert.ok(securitySource.includes('`license-key.js` выполняется в основном окне'));
+
+  [
+    'fetch',
+    'XMLHttpRequest',
+    'WebSocket',
+    'EventSource',
+    'WebTransport',
+    'Worker',
+    'SharedWorker',
+    'BroadcastChannel',
+    'indexedDB',
+    'caches',
+    'importScripts'
+  ].forEach(function(apiName) {
+    assert.match(threatModelSource, new RegExp('\\b' + apiName + '\\b'));
+  });
+  assert.ok(threatModelSource.includes('sandbox="allow-scripts"'));
+  assert.ok(threatModelSource.includes("`connect-src 'none'`"));
+  assert.ok(threatModelSource.includes('`event.source`'));
+  assert.ok(threatModelSource.includes('`sessionId`'));
+  assert.ok(threatModelSource.includes('не доказывает подлинность'));
+});
