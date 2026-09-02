@@ -34,7 +34,7 @@
     "xr-spatial-tracking 'none'"
   ].join("; ");
 
-  // Устанавливает неизменяемые ограничения iframe перед каждой навигацией к локальной мини-игре.
+  // Устанавливает неизменяемые ограничения iframe перед каждым явным запуском локальной мини-игры.
   function applyGameFrameSecurity(frame) {
     if (!frame || typeof frame.setAttribute !== "function") return;
     frame.setAttribute("sandbox", "allow-scripts");
@@ -145,7 +145,7 @@
       };
     }
 
-    // Открывает проверенный локальный URL, настраивает iframe до навигации и отправляет gameInit после load.
+    // Каждый запуск получает новый iframe: запоздалый load старого about:blank не может выдать init или закрыть новую игру.
     function open(launch) {
       launch = launch || {};
       var frameKind = String(launch.frameKind || "");
@@ -158,26 +158,42 @@
         if (frameKinds[frameIndex] !== frameKind) closeFrame(frameKinds[frameIndex]);
       }
 
+      var previousFrame = config.frame;
+      var gameFrame = previousFrame.cloneNode(false);
+      gameFrame.removeAttribute("src");
+      gameFrame.removeAttribute("srcdoc");
+      config.frame = gameFrame;
       var session = createSession(launch.gameId, frameKind);
       var openedLaunch = {
         frameKind: frameKind,
-        frame: config.frame,
+        frame: gameFrame,
         gameId: String(launch.gameId),
         params: launch.params && typeof launch.params === "object" ? launch.params : {},
+        loadHandled: false,
         session: session
       };
       activeLaunch = openedLaunch;
 
       try {
         applyGameFrameSecurity(config.frame);
+        // Геометрия модалки должна быть готова до вставки iframe: игры вычисляют масштаб уже в своём стартовом скрипте.
         if (config.modal.classList && typeof config.modal.classList.remove === "function") {
           config.modal.classList.remove("hidden");
         }
         if (typeof config.onOpen === "function") config.onOpen(launch);
-
-        // Привязывает сессию к фактическому contentWindow и не позволяет старому load отправить новый gameInit.
+        if (typeof previousFrame.getBoundingClientRect === "function") previousFrame.getBoundingClientRect();
+        // WindowProxy сохраняется при навигации, поэтому одного сравнения contentWindow недостаточно для повторного load.
         config.frame.onload = function handleGameFrameLoad() {
-          if (!activeLaunch || activeLaunch !== openedLaunch || session.resultAccepted) return;
+          if (!activeLaunch || activeLaunch !== openedLaunch) return;
+          if (openedLaunch.loadHandled) {
+            // Сначала отзываем сессию и очищаем iframe, затем разрешаем координатору восстановить UI.
+            closeFrame(frameKind);
+            reportWarning("[GAME] Игра остановлена: повторная навигация iframe запрещена.", frameKind);
+            if (typeof options.onNavigationBlocked === "function") options.onNavigationBlocked(openedLaunch);
+            return;
+          }
+          openedLaunch.loadHandled = true;
+          if (session.resultAccepted) return;
 
           var gameWindow = config.frame.contentWindow;
           if (!gameWindow || typeof gameWindow.postMessage !== "function") return;
@@ -194,7 +210,11 @@
           }
         };
 
-        config.frame.src = String(launch.src);
+        // Назначаем URL и обработчик до вставки: новый iframe не проходит промежуточную загрузку about:blank.
+        gameFrame.src = String(launch.src);
+        previousFrame.onload = null;
+        previousFrame.replaceWith(gameFrame);
+        if (typeof options.onFrameReplaced === "function") options.onFrameReplaced(frameKind, gameFrame);
         return session;
       } catch (error) {
         closeFrame(frameKind);

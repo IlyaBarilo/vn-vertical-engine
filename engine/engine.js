@@ -181,6 +181,7 @@ const UI_I18N = {
     game: "Game",
     closeGame: "Close Game",
     restartGame: "Restart Game",
+    gameNavigationBlocked: "The game was stopped after an unexpected navigation or reload. Use the restart button to try again.",
     hintContinue: "Click to continue",
     statsTitle: "Script Statistics",
     fullGraphButton: "📊 Full Graph",
@@ -230,6 +231,7 @@ const UI_I18N = {
     game: "Игра",
     closeGame: "Закрыть игру",
     restartGame: "Перезапустить",
+    gameNavigationBlocked: "Игра остановлена после самостоятельного перехода или перезагрузки. Для повторного запуска нажмите кнопку перезапуска.",
     hintContinue: "Нажмите, чтобы продолжить",
     statsTitle: "Статистика сценария",
     fullGraphButton: "📊 Граф полный",
@@ -1120,6 +1122,28 @@ function reportGameHostPostMessageError(error, launch) {
   console.error("[GAME] failed to send " + label, error && error.message ? error.message : error);
 }
 
+// Возвращает сюжет и каталог из остановленной игры; URL-запуск остаётся на сообщении до ручного перезапуска.
+function handleGameHostNavigationBlocked(launch) {
+  if (!state.currentGame || state.currentGame.session !== launch.session) return;
+  if (state.currentGame.mode === "url") {
+    state.currentGame = null;
+    state.inGame = false;
+    state.waitingNext = false;
+    state.nextLocked = true;
+    setStandaloneGameModeEnabled(false);
+    showError(t("gameNavigationBlocked"));
+    return;
+  }
+  // Для сюжета и статистики остановка соответствует существующему ручному закрытию с результатом 0.
+  closeGame({ manualClose: true, result: 0 });
+}
+
+// Обновляет ссылки клавиатурных обработчиков после замены iframe перед новым запуском.
+function handleGameFrameReplaced(frameKind, frame) {
+  if (frameKind === "stats") elStatsGameFrame = frame;
+  else if (frameKind === "story") elGameFrame = frame;
+}
+
 // Создаёт единственный host для сюжетной, статистической и URL-игры с общей активной сессией.
 var gameHost = window.VN_GAME_HOST.createGameHost({
   eventTarget: window,
@@ -1141,6 +1165,8 @@ var gameHost = window.VN_GAME_HOST.createGameHost({
   onResult: handleGameResultMessage,
   onWarning: reportGameHostWarning,
   onInitSent: reportGameHostInitSent,
+  onNavigationBlocked: handleGameHostNavigationBlocked,
+  onFrameReplaced: handleGameFrameReplaced,
   onPostMessageError: reportGameHostPostMessageError
 });
 

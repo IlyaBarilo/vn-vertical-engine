@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { clickFrameButton } from './helpers/frame-input.mjs';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../../index.html', import.meta.url)));
 const fixtureRoot = path.dirname(fileURLToPath(new URL('./fixtures/story-fixture.js', import.meta.url)));
@@ -1979,6 +1980,95 @@ test('URL-запуск мини-игры перезапускает iframe че�
   expect(secondSessionId).not.toBe(firstSessionId);
   expect(pageErrors).toEqual([]);
 });
+
+// Разрешённый CSP адрес всё равно не получает старую сессию после самостоятельного перехода игры.
+test('защита игры: навигация закрывает сюжетную игру и сохраняет следующий запуск', async function({ page }) {
+  const errors = collectPageErrors(page);
+  await openStory(page);
+  await chooseRoute(page, 'Левая ветка');
+  await advanceDialog(page);
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.locator('body').evaluate(function navigateGame() { location.href = 'game.html?next-document'; });
+  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#gameFrame')).toHaveAttribute('src', 'about:blank');
+  await expect(page.locator('#textBox')).toHaveText('Игра завершена: 0');
+  await page.locator('#btnRestart').click();
+  await chooseRoute(page, 'Левая ветка');
+  await advanceDialog(page);
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await clickFrameButton(page, '#gameFrame', '#finishGame');
+  await expect(page.locator('#textBox')).toHaveText('Игра завершена: 7');
+  expect(errors).toEqual([]);
+});
+
+// После завершения URL-игры её reload останавливается с понятным экраном и ручным повтором через движок.
+test('защита игры: URL-режим останавливает reload после результата', async function({ page }) {
+  const errors = collectPageErrors(page);
+  await installRepositoryRoutes(page);
+  await page.goto('/?game=testGame');
+  const game = page.frameLocator('#gameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  const sessionId = await game.locator('#sessionId').textContent();
+  await clickFrameButton(page, '#gameFrame', '#finishGame');
+  await game.locator('body').evaluate(function reloadGame() { location.reload(); });
+  await expect(page.locator('#gameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toContainText('Игра остановлена после самостоятельного перехода');
+  await expect(page.locator('#stage')).not.toHaveClass(/url-game-mode/);
+  await page.locator('#btnRestart').click();
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await expect(game.locator('#sessionId')).not.toHaveText(sessionId);
+  await expect(page.locator('#stage')).toHaveClass(/url-game-mode/);
+  expect(errors).toEqual([]);
+});
+
+// Остановка игры каталога не продвигает сюжет и не мешает следующему запуску из статистики.
+test('защита игры: статистика восстанавливается после навигации', async function({ page }) {
+  const errors = collectPageErrors(page);
+  await openStory(page);
+  await page.locator('#btnStats').click();
+  await page.locator('#btnShowGames').click();
+  const card = page.locator('#gamesGrid .gameCatalogCard').filter({ hasText: 'Синтетическая мини-игра' });
+  await card.getByRole('button', { name: '3', exact: true }).click();
+  const game = page.frameLocator('#statsGameFrame');
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.locator('body').evaluate(function reloadGame() { location.reload(); });
+  await expect(page.locator('#statsGameModal')).toHaveClass(/hidden/);
+  await expect(page.locator('#textBox')).toHaveText('Первый экран E2E');
+  await card.getByRole('button', { name: '1', exact: true }).click();
+  await expect(game.locator('#status')).toHaveText('gameInit получен');
+  await game.getByRole('button', { name: 'Завершить игру' }).click();
+  await expect(page.locator('#gamesStatus')).toContainText('сложность 1, результат 7');
+  expect(errors).toEqual([]);
+});
+
+// Тестер отзывает сессию URL и srcdoc, но оставляет явную повторную загрузку выбранного файла.
+for (const localFile of [false, true]) {
+  test(`защита игры: тестер блокирует навигацию ${localFile ? 'srcdoc' : 'URL'}`, async function({ page }) {
+    const errors = collectPageErrors(page);
+    await installRepositoryRoutes(page);
+    await page.goto('/tools/game-tester.html');
+    await page.locator('#gameId').fill('testGame');
+    await page.locator('#gameUrl').fill('/assets/__e2e__/game.html');
+    await page.locator('#workspaceTabInput').click();
+    if (localFile) await page.locator('#gameFile').setInputFiles(path.join(fixtureRoot, 'game.html'));
+    else await page.locator('#loadGameBtn').click();
+    const game = page.frameLocator('#gameFrame');
+    await expect(game.locator('#status')).toHaveText('gameInit получен');
+    await game.locator('body').evaluate(function navigateGame(url) { location.href = url; }, `${e2eServerOrigin}/assets/__e2e__/game.html?next-document`);
+    await expect(page.locator('#status')).toContainText('самостоятельная навигация или перезагрузка запрещены');
+    await expect(page.locator('#gameFrame')).toHaveAttribute('src', 'about:blank');
+    await expect(page.locator('#messageLog [data-message-type="gameInit"]')).toHaveCount(1);
+    await page.locator('#sendInitBtn').click();
+    await expect(page.locator('#status')).toContainText('после самостоятельной навигации gameInit запрещён');
+    await expect(page.locator('#messageLog [data-message-type="gameInit"]')).toHaveCount(1);
+    await page.locator('#loadGameBtn').click();
+    await expect(game.locator('#status')).toHaveText('gameInit получен');
+    await clickFrameButton(page, '#gameFrame', '#finishGame');
+    await expect(page.locator('#messageLog')).toContainText('[принят]');
+    expect(errors).toEqual([]);
+  });
+}
 
 // Прежний результат v2 с правильной сессией продолжает игру, но предупреждает разработчика о миграции до версии 1.0.
 test('результат мини-игры без protocolVersion принимается с предупреждением', async function({ page }) {

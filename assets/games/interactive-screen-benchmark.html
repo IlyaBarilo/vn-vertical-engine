@@ -798,11 +798,12 @@ function resize(){
   refreshCardTextLayout();
 }
 
+// Собирает инструкции до передачи в адаптивную карточку, чтобы первый запуск и повтор не прерывались исключением.
 function showIntro(){
   overlay.classList.remove('hidden'); summaryLayer.classList.add('hidden'); stageControls.classList.add('hidden');
   intro.title.textContent='ДИАГНОСТИКА ИНТЕРАКТИВНОГО ЭКРАНА';
   intro.subtitle.textContent='Мини-игра проверяет тач-ввод, FPS, multitouch и пригодность экрана для других игр.';
-  intro.body.innerHTML = [
+  const fullIntroText = [
     'Этап 1 — быстрые касания по движущейся цели: видно отклик, FPS и регистрацию нажатия.',
     'Этап 2 — две зоны нажатий: у каждой свой счётчик серии, лучший результат и график нажатий за секунду.',
     'Этап 3 — два круга нужно нажать и тянуть по экрану. Проверяется реальное одновременное управление двумя объектами.',

@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <!-- Ограничивает документы iframe: игры и CSS-пакеты остаются локальными либо на origin новеллы. -->
+  <meta http-equiv="Content-Security-Policy" content="frame-src 'self' file: blob: data:" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VN Engine (Offline)</title>
 

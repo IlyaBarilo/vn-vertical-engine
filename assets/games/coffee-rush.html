@@ -757,7 +757,12 @@
         els.timeValue.textContent = String(remaining);
       }
 
+      // В новом iframe Chrome иногда сначала сообщает нулевой viewport; ждём кадр с размерами, сохраняя прежний масштаб.
       function updateUiScale() {
+        if (window.innerWidth <= 0 || window.innerHeight <= 0) {
+          requestAnimationFrame(updateUiScale);
+          return;
+        }
         const baseW = 810;
         const baseH = 1440;
 

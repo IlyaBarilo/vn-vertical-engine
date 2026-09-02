@@ -32,7 +32,11 @@ function createFrame() {
     messages,
     onload: null,
     src: 'about:blank',
-    setAttribute(name, value) { attributes[name] = value; }
+    setAttribute(name, value) { attributes[name] = value; },
+    removeAttribute(name) { delete attributes[name]; },
+    // Клонирование сохраняет атрибуты, но создаёт отдельное окно без старых обработчиков.
+    cloneNode() { const frame = createFrame(); Object.assign(frame.attributes, attributes); return frame; },
+    replaceWith(frame) { this.replacedBy = frame; }
   };
 }
 
@@ -63,6 +67,7 @@ function createHostFixture() {
   const warnings = [];
   const openedKinds = [];
   const closedKinds = [];
+  const blockedLaunches = [];
 
   // Сохраняет только уже проверенные модулем результаты вместе с активной сессией.
   function captureAcceptedResult(event, launch) {
@@ -74,6 +79,13 @@ function createHostFixture() {
     warnings.push({ message, frameKind });
   }
 
+  // Проверяет, что координатор получает остановленный запуск уже после отзыва сессии.
+  function captureNavigationBlocked(launch) {
+    assert.equal(launch.session.expectedSource, null);
+    assert.equal(host.getActiveSession(), null);
+    blockedLaunches.push(launch);
+  }
+
   // Отмечает подготовку UI конкретного вида запуска.
   function markStoryOpen() { openedKinds.push('story'); }
   function markStatsOpen() { openedKinds.push('stats'); }
@@ -82,28 +94,31 @@ function createHostFixture() {
   function markStoryClose() { closedKinds.push('story'); }
   function markStatsClose() { closedKinds.push('stats'); }
 
+  const frames = {
+    story: { frame: storyFrame, modal: storyModal, onOpen: markStoryOpen, onClose: markStoryClose },
+    stats: { frame: statsFrame, modal: statsModal, onOpen: markStatsOpen, onClose: markStatsClose }
+  };
   const host = gameHostModule.createGameHost({
     eventTarget,
     protocol: gameProtocol,
-    frames: {
-      story: { frame: storyFrame, modal: storyModal, onOpen: markStoryOpen, onClose: markStoryClose },
-      stats: { frame: statsFrame, modal: statsModal, onOpen: markStatsOpen, onClose: markStatsClose }
-    },
+    frames,
     onResult: captureAcceptedResult,
-    onWarning: captureWarning
+    onWarning: captureWarning,
+    onNavigationBlocked: captureNavigationBlocked
   });
 
   return {
     host,
     eventTarget,
-    storyFrame,
-    statsFrame,
+    get storyFrame() { return frames.story.frame; },
+    get statsFrame() { return frames.stats.frame; },
     storyModal,
     statsModal,
     acceptedResults,
     warnings,
     openedKinds,
-    closedKinds
+    closedKinds,
+    blockedLaunches
   };
 }
 
@@ -206,6 +221,52 @@ test('game host очищает iframe и переключается между �
   assert.ok(statsSession);
   assert.equal(fixture.statsModal.classList.contains('hidden'), false);
   assert.equal(fixture.statsFrame.src, 'assets/games/stats.html');
+});
+
+// Повторная загрузка не получает параметры и теряет право завершить игру, а явный новый запуск остаётся доступен.
+test('game host отзывает сессию при навигации и не переносит её в следующий документ', function() {
+  const fixture = createHostFixture();
+  const session = fixture.host.open({ frameKind: 'story', gameId: 'puzzle', src: 'assets/games/puzzle.html' });
+  const originalFrame = fixture.storyFrame;
+  const oldLoad = fixture.storyFrame.onload;
+  oldLoad();
+  oldLoad();
+  oldLoad();
+
+  assert.equal(fixture.storyFrame.messages.length, 1);
+  assert.equal(fixture.blockedLaunches.length, 1);
+  assert.equal(fixture.storyFrame.src, 'about:blank');
+  assert.equal(fixture.storyModal.classList.contains('hidden'), true);
+  assert.match(fixture.warnings[0].message, /повторная навигация/);
+  fixture.eventTarget.dispatch('message', { source: fixture.storyFrame.contentWindow, data: {
+    type: 'gameResult', protocolVersion: 2, gameId: session.gameId, sessionId: session.sessionId, result: 777
+  } });
+  assert.equal(fixture.acceptedResults.length, 0);
+
+  const nextSession = fixture.host.open({ frameKind: 'story', gameId: 'puzzle', src: 'assets/games/puzzle.html' });
+  oldLoad();
+  fixture.storyFrame.onload();
+  assert.notEqual(nextSession.sessionId, session.sessionId);
+  assert.equal(fixture.host.getActiveSession(), nextSession);
+  assert.notEqual(fixture.storyFrame, originalFrame);
+  assert.notEqual(fixture.storyFrame.contentWindow, originalFrame.contentWindow);
+  assert.equal(fixture.storyFrame.messages.length, 1);
+  assert.equal(originalFrame.messages.length, 1);
+});
+
+// URL-игра остаётся видимой после результата, но это не разрешает ей заменить свой документ.
+test('game host запрещает навигацию даже после принятого результата URL-игры', function() {
+  const fixture = createHostFixture();
+  const session = fixture.host.open({ frameKind: 'story', gameId: 'puzzle', mode: 'url', src: 'assets/games/puzzle.html' });
+  fixture.storyFrame.onload();
+  fixture.eventTarget.dispatch('message', { source: fixture.storyFrame.contentWindow, data: {
+    type: 'gameResult', protocolVersion: 2, gameId: session.gameId, sessionId: session.sessionId, result: 7
+  } });
+  fixture.storyFrame.onload();
+  assert.equal(fixture.acceptedResults.length, 1);
+  assert.equal(fixture.blockedLaunches.length, 1);
+  assert.equal(fixture.storyFrame.messages.length, 1);
+  assert.equal(fixture.host.getActiveSession(), null);
 });
 
 // Dispose удаляет глобальный listener, сбрасывает оба iframe и становится безопасным при повторном вызове.

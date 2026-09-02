@@ -1066,6 +1066,9 @@
 
     let lastGameResult = null;
     let activeGameSession = null;
+    let gameFrameState = 'idle';
+    let gameLoadGeneration = 0;
+    let gameAutoInitTimer = 0;
 
 
 
@@ -3408,10 +3411,28 @@
       return payload;
     }
 
-    // Сбрасывает результат и активную сессию перед каждой новой загрузкой iframe.
+    // Разрешает один load только для явно выбранной пользователем загрузки и отменяет устаревший авто-init.
     function resetGameProtocolState(){
       lastGameResult = null;
       activeGameSession = null;
+      gameFrameState = 'loading';
+      gameLoadGeneration += 1;
+      clearTimeout(gameAutoInitTimer);
+    }
+
+    // Отзывает сеанс при навигации самой игры и не позволяет кнопке gameInit довериться новому документу.
+    function blockUnexpectedGameNavigation(){
+      lastGameResult = null;
+      activeGameSession = null;
+      gameFrameState = 'blocked';
+      gameLoadGeneration += 1;
+      clearTimeout(gameAutoInitTimer);
+      els.gameFrame.removeAttribute('srcdoc');
+      els.gameFrame.src = 'about:blank';
+      resetInputDiag();
+      resetVisualAnalysis('Игра остановлена после самостоятельной навигации.');
+      logMessage('system', { type: 'gameNavigationBlocked' });
+      setStatus('Игра остановлена: самостоятельная навигация или перезагрузка запрещены. Загрузите игру заново кнопкой тестера.', 'err');
     }
 
     // Проверяет версию, идентификаторы, числовой result и одноразовость ответа активной игры.
@@ -3446,7 +3467,21 @@
       return { accepted: true, resultValue };
     }
 
-    // Загружает игру по пути с правами выбранного режима и очищает предыдущую сессию.
+    // Новый iframe отделяет события старого документа от явной загрузки; URL/srcdoc назначаются до вставки в DOM.
+    function replaceGameFrame(source, asSrcdoc){
+      const previousFrame = els.gameFrame;
+      const nextFrame = previousFrame.cloneNode(false);
+      nextFrame.removeAttribute('src');
+      nextFrame.removeAttribute('srcdoc');
+      nextFrame.addEventListener('load', handleGameFrameLoad);
+      if (asSrcdoc) nextFrame.srcdoc = source;
+      else nextFrame.src = source;
+      previousFrame.removeEventListener('load', handleGameFrameLoad);
+      els.gameFrame = nextFrame;
+      previousFrame.replaceWith(nextFrame);
+    }
+
+    // Явно загружает игру по пути в строгом sandbox и очищает предыдущую сессию.
     function loadGame(){
       const url = els.gameUrl.value.trim();
       if (!url){
@@ -3461,8 +3496,7 @@
       inputDiag.expected = false;
       inputDiag.fallback = true;
 
-      els.gameFrame.removeAttribute('srcdoc');
-      els.gameFrame.src = url;
+      replaceGameFrame(url, false);
 
       logMessage('system', { type: 'loadGame', url, diagnostic: false });
       setStatus('Обычная загрузка по пути без сервера может работать нестабильно. Для диагностики используйте локальный файл.', 'warn');
@@ -3496,9 +3530,7 @@
           inputDiag.expected = true;
           inputDiag.fallback = false;
 
-          els.gameFrame.src = 'about:blank';
-          els.gameFrame.removeAttribute('src');
-          els.gameFrame.srcdoc = buildInstrumentedSrcdoc(html);
+          replaceGameFrame(buildInstrumentedSrcdoc(html), true);
 
           logMessage('system', {
             type: 'loadGameDiag',
@@ -3526,8 +3558,12 @@
 
 
 
-    // Начинает новую тестовую сессию и отправляет игре защищённый gameInit текущей версии.
+    // Ручной повтор gameInit допустим только для документа, загруженного кнопкой тестера без последующей навигации.
     function sendInit(){
+      if (gameFrameState !== 'ready'){
+        setStatus('Сначала загрузите игру кнопкой тестера; после самостоятельной навигации gameInit запрещён.', 'err');
+        return;
+      }
       if (!els.gameFrame.contentWindow){
         setStatus('iframe ещё не готов.', 'warn');
         return;
@@ -3560,6 +3596,7 @@
     // Принимает сообщения только от игрового iframe и отдельно проверяет каждый gameResult.
     window.addEventListener('message', (event) => {
       if (event.source !== els.gameFrame.contentWindow) return;
+      if (gameFrameState === 'idle' || gameFrameState === 'blocked') return;
 
       const data = event.data;
 
@@ -3590,11 +3627,21 @@
       logMessage('← frame', data, event.origin ? '(' + event.origin + ')' : '');
     });
 
-    els.gameFrame.addEventListener('load', () => {
+    // Только первый load явной загрузки получает init; дальнейшие load блокируются даже после принятого результата.
+    function handleGameFrameLoad(event){
+      if (event.currentTarget !== els.gameFrame) return;
+      if (gameFrameState === 'idle' || gameFrameState === 'blocked') return;
+      if (gameFrameState === 'ready'){
+        blockUnexpectedGameNavigation();
+        return;
+      }
+      gameFrameState = 'ready';
+      const generation = gameLoadGeneration;
       logMessage('system', { type: 'iframeLoaded', src: els.gameFrame.src || 'srcdoc' });
       setStatus('Игра загружена в iframe. Отправка gameInit…', 'ok');
 
-      setTimeout(() => {
+      gameAutoInitTimer = setTimeout(() => {
+        if (generation !== gameLoadGeneration || gameFrameState !== 'ready') return;
         try {
           sendInit();
         } catch (error) {
@@ -3603,12 +3650,14 @@
       }, 0);
 
       setTimeout(() => {
+        if (generation !== gameLoadGeneration || gameFrameState !== 'ready') return;
         if (inputDiag.expected && !inputDiag.ready){
           setDiagRisk('Игра загрузилась, но диагностика не ответила.', 'warn');
           setDiagNote('Для этого режима используйте именно локальный HTML-файл игры в один файл.');
         }
       }, 700);
-    });
+    }
+    els.gameFrame.addEventListener('load', handleGameFrameLoad);
 
     [els.gameId, els.difficulty].forEach((el) => {
       el.addEventListener('input', syncPayloadWithControls);
