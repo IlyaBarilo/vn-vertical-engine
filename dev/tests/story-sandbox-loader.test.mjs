@@ -15,9 +15,9 @@ function readRuntimeFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
 }
 
-// Извлекает bootstrap из runtime-файла, чтобы тестировать ту же функцию, которая сериализуется в настоящий Worker.
+// Извлекает фабрику валидаторов и bootstrap, которые вместе сериализуются в настоящий Worker.
 function extractWorkerBootstrap(source) {
-  const start = source.indexOf('  function workerBootstrap() {');
+  const start = source.indexOf('  function createStoryDataValidators() {');
   const end = source.indexOf('  // Выполняет один пользовательский файл', start);
 
   assert.ok(start >= 0 && end > start, 'Не удалось извлечь workerBootstrap из загрузчика.');
@@ -84,8 +84,8 @@ async function runWorkerFixture(userSource, kind = 'story360', options = {}) {
   return messages;
 }
 
-// Закрепляет новый порядок bootstrap: пользовательские файлы не должны снова попасть в основной document как script.
-test('index.html получает story.js и story360.js только через sandbox-загрузчик', async function() {
+// Прямое подключение выбрано явно для file://; прежний Worker API остаётся доступен для возврата изоляции.
+test('index.html явно выбирает direct и сохраняет возможность Worker-загрузки', async function() {
   const source = await readRuntimeFile('index.html');
   const sandboxLoaderPosition = source.indexOf('<script src="engine/story-sandbox-loader.js"></script>');
   const inlineBootstrapPosition = source.indexOf('<script>', sandboxLoaderPosition);
@@ -95,6 +95,9 @@ test('index.html получает story.js и story360.js только чере�
   assert.equal(source.includes('{ src: "story360.js", optional: true }'), false);
   assert.ok(source.includes('loader.loadStoryText(STORY_SCRIPT)'));
   assert.ok(source.includes('loader.loadStory360(STORY360_SCRIPT)'));
+  assert.ok(source.includes('var STORY_SCRIPT_LOAD_MODE = "direct";'));
+  assert.ok(source.includes('? "loadStoryTextDirect" : "loadStoryText"'));
+  assert.ok(source.includes('? "loadStory360Direct" : "loadStory360"'));
 });
 
 // Закрепляет отдельный поток, приватный канал и блокировку побочных API до выполнения пользовательского файла.

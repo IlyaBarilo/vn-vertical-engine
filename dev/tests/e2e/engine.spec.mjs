@@ -577,6 +577,10 @@ async function handleEngineHttpRequest(request, response) {
 
   try {
     let body = await readFile(filePath);
+    // Сохранённая изоляция проверяется явным выбором режима в копии index, без ослабления direct-контракта по умолчанию.
+    if (routeOptions.storyLoadMode === 'worker' && normalizedPath === '/index.html') {
+      body = Buffer.from(body.toString('utf8').replace('var STORY_SCRIPT_LOAD_MODE = "direct";', 'var STORY_SCRIPT_LOAD_MODE = "worker";'), 'utf8');
+    }
     if (routeOptions.exposeLicenseVerifier && normalizedPath === '/engine/engine.js') {
       body = Buffer.from(exposeLicenseVerifierToE2e(body.toString('utf8')), 'utf8');
     }
@@ -1043,6 +1047,7 @@ test('story.js выполняется в sandbox и передаёт наруж�
   ].join('\n');
 
   await openStory(page, '/', {
+    storyLoadMode: 'worker',
     storySource: maliciousSource,
     expectedText: 'Начало sandbox'
   });
@@ -1131,7 +1136,7 @@ test('story360.js выполняется отдельно и передаёт п
     '};'
   ].join('\n');
 
-  await openStory(page, '/', { story360Source });
+  await openStory(page, '/', { storyLoadMode: 'worker', story360Source });
 
   const securityState = await page.evaluate(function readStory360SandboxSecurityState() {
     return {
@@ -1174,7 +1179,7 @@ test('небезопасный story360.js отключается без ост�
 });
 
 // Проверяет главный автономный контракт: без story.js и story360.js пример запускается напрямую через file://.
-test('sandbox-загрузчик сохраняет fallback на story-example.js через file://', async function({ page }) {
+test('bootstrap сохраняет fallback на story-example.js через file://', async function({ page }) {
   // Рабочий авторский story.js является допустимым локальным файлом и делает сценарий «файл отсутствует» невоспроизводимым.
   test.skip(existsSync(path.join(repositoryRoot, 'story.js')), 'В рабочей копии присутствует пользовательский story.js.');
   const indexUrl = pathToFileURL(path.join(repositoryRoot, 'index.html')).href;

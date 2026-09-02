@@ -1,5 +1,5 @@
 // story-sandbox-loader.js
-// Изолированно выполняет авторские story.js и story360.js в Worker и возвращает странице только данные.
+// Загружает авторские JS обычным script или в сохранённом Worker-режиме с общей проверкой данных.
 
 (function() {
   "use strict";
@@ -7,8 +7,8 @@
   var SANDBOX_LOAD_TIMEOUT_MS = 10000;
   var STORY360_FORMAT_VERSION = 1;
 
-  // Этот bootstrap работает только внутри отдельного Worker и держит MessagePort в недоступном скрипту замыкании.
-  function workerBootstrap() {
+  // Создаёт одинаковые валидаторы для страницы и Worker; встроенные функции сохраняются до запуска сценария.
+  function createStoryDataValidators() {
     "use strict";
 
     var STORY_TEXT_MAX_LENGTH = 8 * 1024 * 1024;
@@ -16,10 +16,8 @@
     var STORY360_MAX_ENTRIES = 250000;
     var STORY360_MAX_STRING_LENGTH = 4 * 1024 * 1024;
     var STORY360_MAX_TOTAL_STRING_LENGTH = 16 * 1024 * 1024;
-    var initialized = false;
     var SafeArray = Array;
     var SafeError = Error;
-    var SafeString = String;
     var SafeWeakSet = WeakSet;
     var safeArrayIsArray = Array.isArray;
     var safeNumberIsFinite = Number.isFinite;
@@ -36,7 +34,7 @@
     unsafeObjectKeys.prototype = true;
     unsafeObjectKeys.constructor = true;
 
-    // Проверяет STORY_TEXT внутри Worker, чтобы слишком длинная строка не попала в structured clone.
+    // Ограничивает строку сценария до передачи парсеру, а в Worker — ещё и до structured clone.
     function validateStoryText(value) {
       if (typeof value !== "string") {
         throw new SafeError("Файл загружен, но не создал строку window.STORY_TEXT.");
@@ -149,6 +147,22 @@
       }
       return copied;
     }
+
+    return { validateStoryText: validateStoryText, validateStory360: validateStory360 };
+  }
+
+  // Этот bootstrap работает только внутри отдельного Worker и держит MessagePort в недоступном скрипту замыкании.
+  function workerBootstrap() {
+    "use strict";
+
+    var validators = createStoryDataValidators();
+    var validateStoryText = validators.validateStoryText;
+    var validateStory360 = validators.validateStory360;
+    var initialized = false;
+    var SafeError = Error;
+    var SafeString = String;
+    var safeObjectCreate = Object.create;
+    var safeObjectDefineProperty = Object.defineProperty;
 
     // Подменяет Worker API до запуска файла и аварийно прекращает sandbox, если блокировку нельзя гарантировать.
     function blockWorkerGlobal(name, replacement) {
@@ -316,7 +330,7 @@
 
       try {
         absoluteSource = new URL(source, window.location.href).href;
-        var workerSource = "(" + workerBootstrap.toString() + ")();";
+        var workerSource = createStoryDataValidators.toString() + "\n(" + workerBootstrap.toString() + ")();";
         workerUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
         worker = new Worker(workerUrl, { name: "vnv-" + kind + "-sandbox" });
         channel = new MessageChannel();
@@ -424,9 +438,86 @@
     });
   }
 
+  var pageValidators = createStoryDataValidators();
+
+  // Подключает доверенный авторский JS в страницу для file://; это совместимость, а не изоляция выполнения.
+  function loadPageScript(source, kind) {
+    return new Promise(function(resolve) {
+      var script = document.createElement("script");
+      var exportName = kind === "story" ? "STORY_TEXT" : "STORY360";
+      var runtimeError = "";
+      var settled = false;
+      var timeoutId = null;
+
+      // Очищает временный script и обработчики; не оставляет частично созданные данные после ошибки.
+      function finish(status, value, message) {
+        if (settled) return;
+        settled = true;
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        window.removeEventListener("error", rememberScriptError);
+        script.onload = null;
+        script.onerror = null;
+        script.remove();
+        window[exportName] = status === "loaded" ? value : undefined;
+        resolve({ status: status, source: source, value: value, message: message || "" });
+      }
+
+      // onload вызывается даже после синтаксической/runtime-ошибки; такую загрузку нельзя принять или заменить демо.
+      function rememberScriptError(event) {
+        if (!event || event.target !== window) return;
+        if (event.filename && event.filename !== script.src) return;
+        runtimeError = event.message || "Ошибка выполнения пользовательского скрипта.";
+      }
+
+      window[exportName] = undefined;
+      script.src = source;
+      script.async = false;
+      window.addEventListener("error", rememberScriptError);
+
+      // Проверяет экспорт только после выполнения всего файла, включая ошибку после присваивания данных.
+      script.onload = function acceptPageScript() {
+        if (runtimeError) {
+          finish("invalid", undefined, runtimeError);
+          return;
+        }
+        try {
+          var value = kind === "story"
+            ? pageValidators.validateStoryText(window[exportName])
+            : pageValidators.validateStory360(window[exportName], STORY360_FORMAT_VERSION);
+          finish("loaded", value);
+        } catch (error) {
+          finish("invalid", undefined, error && error.message ? String(error.message) : "Некорректные данные сценария.");
+        }
+      };
+
+      // Ошибка получения ресурса разрешает fallback; браузер не различает здесь отсутствие файла и отказ доступа.
+      script.onerror = function rejectPageScript() {
+        finish("missing", undefined, "Не удалось загрузить JS-файл сценария.");
+      };
+
+      // Таймаут ограничивает ожидание загрузки, но не способен остановить JS, уже выполняющийся в главном потоке.
+      timeoutId = setTimeout(function reportPageScriptTimeout() {
+        finish("timeout", undefined, "Истекло время ожидания JS-файла сценария.");
+      }, SANDBOX_LOAD_TIMEOUT_MS);
+      document.body.appendChild(script);
+    });
+  }
+
+  // Возвращает проверенный текст из обычного script с прежним контрактом window.STORY_TEXT.
+  function loadStoryTextDirect(source) {
+    return loadPageScript(source, "story");
+  }
+
+  // Возвращает ограниченную JSON-подобную копию карты после обычного выполнения story360.js.
+  function loadStory360Direct(source) {
+    return loadPageScript(source, "story360");
+  }
+
   window.VNStorySandboxLoader = Object.freeze({
     STORY360_FORMAT_VERSION: STORY360_FORMAT_VERSION,
     loadStoryText: loadStoryText,
-    loadStory360: loadStory360
+    loadStory360: loadStory360,
+    loadStoryTextDirect: loadStoryTextDirect,
+    loadStory360Direct: loadStory360Direct
   });
 })();
