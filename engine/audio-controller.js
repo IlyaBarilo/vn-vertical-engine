@@ -422,15 +422,25 @@
       }
     }
 
-    // Немедленно останавливает BGM и очищает его источник без запуска следующего трека.
+    // Немедленно останавливает BGM и сбрасывает канал без пустого URI и запуска следующего трека.
     function stopBgmImmediate() {
       try {
-        bgm.pause();
+        if (typeof bgm.pause === "function") bgm.pause();
       } catch (error) {
         // Ошибка pause не должна мешать очистке источника канала.
       }
       try {
-        bgm.src = "";
+        // Удаление атрибута не запускает загрузку пустого URI, вызывающую MediaError в Firefox.
+        if (typeof bgm.removeAttribute === "function") bgm.removeAttribute("src");
+      } catch (error) {
+        // Ошибка DOM-очистки не должна мешать сбросу состояния Media API.
+      }
+      try {
+        if (typeof bgm.load === "function") bgm.load();
+      } catch (error) {
+        // Ошибка переинициализации не должна мешать сбросу позиции канала.
+      }
+      try {
         bgm.currentTime = 0;
       } catch (error) {
         // Очистка повреждённого media-элемента выполняется best-effort.

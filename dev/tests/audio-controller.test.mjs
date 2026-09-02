@@ -160,6 +160,57 @@ test('BGM проходит ресурсную политику и не пере�
   assert.equal(fixture.bgm.loop, false);
 });
 
+// Остановка удаляет источник и сбрасывает канал даже при повторном вызове без нового трека.
+test('stopBgmImmediate сбрасывает активный и уже пустой канал через Media API', function() {
+  const fixture = createFixture();
+  fixture.bgm.src = 'file:///project/assets/theme.ogg';
+  fixture.bgm.currentSrc = fixture.bgm.src;
+  fixture.bgm.currentTime = 12;
+  fixture.bgm.paused = false;
+
+  fixture.controller.stopBgmImmediate();
+  fixture.controller.stopBgmImmediate();
+
+  assert.equal(fixture.bgm.paused, true);
+  assert.equal(fixture.bgm.src, '');
+  assert.equal(fixture.bgm.currentSrc, '');
+  assert.equal(fixture.bgm.currentTime, 0);
+  assert.equal(fixture.bgm.loadCalls, 2);
+  assert.equal(fixture.bgm.playCalls, 0);
+});
+
+// Отказ отдельного API не должен прерывать остальные этапы немедленной остановки.
+test('stopBgmImmediate продолжает сброс после исключений Media API', function() {
+  for (const failingMethod of ['pause', 'removeAttribute', 'load']) {
+    const fixture = createFixture();
+    const calls = [];
+    fixture.bgm.currentTime = 12;
+    for (const method of ['pause', 'removeAttribute', 'load']) {
+      // Имитирует независимый отказ одного этапа и сохраняет порядок остальных вызовов.
+      fixture.bgm[method] = function recordStopStep() {
+        calls.push(method);
+        if (method === failingMethod) throw new Error('Media API failure');
+      };
+    }
+    // Исключения браузера не должны выходить в сценарный runtime.
+    assert.doesNotThrow(function stopFaultedChannel() { fixture.controller.stopBgmImmediate(); });
+    assert.deepEqual(calls, ['pause', 'removeAttribute', 'load']);
+    assert.equal(fixture.bgm.currentTime, 0);
+  }
+});
+
+// Подготовленные каналы могут не реализовывать все DOM-методы; доступные этапы всё равно выполняются.
+test('stopBgmImmediate допускает неполный Media API', function() {
+  const fixture = createFixture();
+  fixture.bgm.pause = undefined;
+  fixture.bgm.removeAttribute = undefined;
+  fixture.bgm.load = undefined;
+  fixture.bgm.currentTime = 12;
+  // Отсутствующие методы не препятствуют сбросу позиции канала.
+  assert.doesNotThrow(function stopPartialChannel() { fixture.controller.stopBgmImmediate(); });
+  assert.equal(fixture.bgm.currentTime, 0);
+});
+
 // Помечает ошибочный BGM и исключает его из дальнейшего автоматического возобновления.
 test('ошибка BGM очищает канал и сохраняет failed-cache', function() {
   const fixture = createFixture();

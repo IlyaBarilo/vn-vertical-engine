@@ -501,7 +501,7 @@
       });
     }
 
-    // Создаёт непредсказуемый nonce для единственного локального link совместимого file:// пути Chromium.
+    // Создаёт непредсказуемый nonce для единственного локального link совместимого file:// пути.
     function createStyleNonce() {
       if (!windowRef || !windowRef.crypto || typeof windowRef.crypto.getRandomValues !== "function") {
         throw new Error("Браузер не поддерживает безопасный генератор для загрузки CSS-пакета.");
@@ -527,7 +527,11 @@
         var timeoutId = null;
         var styleNonce = createStyleNonce();
         var frame = trackFrame(documentRef.createElement("iframe"));
-        frame.hidden = true;
+        // Firefox не вычисляет custom properties внутри display:none iframe; сохраняем layout вне экрана.
+        frame.style.cssText =
+          "position:fixed;left:-10000px;top:0;width:1px;height:1px;" +
+          "visibility:hidden;pointer-events:none;border:0";
+        frame.tabIndex = -1;
         frame.setAttribute("aria-hidden", "true");
         frame.setAttribute("sandbox", "allow-same-origin");
         frame.setAttribute("referrerpolicy", "no-referrer");
@@ -580,7 +584,7 @@
       });
     }
 
-    // Выбирает строгий текстовый путь; CSP-link разрешён лишь для локального file:// с закрытым origin Chromium.
+    // Выбирает строгий текстовый путь; CSP-link разрешён лишь при запрете текстового доступа к локальному file://.
     function readCssPack(cssUrl) {
       if (typeof options.readCssPack === "function") return options.readCssPack(cssUrl, extractPack);
       return readCssPackFromTextDocument(cssUrl).catch(function(error) {

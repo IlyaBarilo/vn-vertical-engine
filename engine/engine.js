@@ -8024,7 +8024,13 @@ function setBackground360(src, fallbackSrc, scrollOptions) {
       if (deferSwapUntilTexture) {
         bg360Runtime.goto360ParallelZoomActive = true;
       }
-      console.warn("[BG360] CSS-пакет панорамы недоступен:", sanitizeDiagnosticResource(selectedPackCssUrl || normalizedSrc));
+      // Сохранённая причина отличает отсутствие файла от запрета чтения и ошибки содержимого CSS.
+      console.warn(
+        "[BG360] CSS-пакет панорамы недоступен:",
+        sanitizeDiagnosticResource(selectedPackCssUrl || normalizedSrc),
+        panoramaPackageController.getLoadError(normalizedSrc, bg360Quality) ||
+          "Не удалось получить ресурс CSS-панорамы."
+      );
       return;
     }
   }
