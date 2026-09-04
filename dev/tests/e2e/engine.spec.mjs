@@ -1680,6 +1680,76 @@ test('автосохранение восстанавливает прогрес
   expect(pageErrors).toEqual([]);
 });
 
+for (const storageCase of [
+  { name: 'autosave=false', enabled: false, url: '/' },
+  { name: 'autosave=false и nosave=false', enabled: false, url: '/?nosave=false' },
+  { name: 'autosave=false в novel', enabled: false, url: '/?novel=intro&nosave=false' },
+  { name: 'nosave=true', enabled: true, url: '/?nosave=true' }
+]) {
+  // Проверяет отсутствие даже чтения свойства localStorage при старте, переходе, перезапуске и завершении страницы.
+  test(`${storageCase.name} полностью отключает обращения к localStorage`, async function({ page }) {
+    const pageErrors = collectPageErrors(page);
+    const storedEntries = {
+      vn_engine_autosave_v1: '{legacy:preserve}',
+      'vn_engine_autosave_v1:project:storage-disabled': '{project:preserve}',
+      'vn_engine_autosave_v1:project:storage-disabled:novel:intro': '{novel:preserve}',
+      unrelated: 'preserve'
+    };
+
+    // Подготавливает старые слоты до запуска приложения и считает получение Storage, включая безрезультатное удаление.
+    await page.addInitScript(function installStorageAccessCounter(entries) {
+      if (window.top !== window) return;
+      const storage = window.localStorage;
+      for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+      let accessCount = 0;
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        // Возвращает настоящий Storage, чтобы ошибочный доступ был виден и не скрывался обработкой исключений.
+        get() {
+          accessCount += 1;
+          return storage;
+        }
+      });
+      // Читает состояние через исходную ссылку, не добавляя обращения самого теста в счётчик приложения.
+      window.__vnE2eReadStorageAudit = function readStorageAudit() {
+        const currentEntries = {};
+        for (let index = 0; index < storage.length; index++) {
+          const key = storage.key(index);
+          currentEntries[key] = storage.getItem(key);
+        }
+        return { accessCount, entries: currentEntries };
+      };
+    }, storedEntries);
+
+    const storySource = createAutosaveProjectStorySource('storage-disabled', 'без сохранения')
+      .replace('autosave = true', `autosave = ${storageCase.enabled}`);
+    await openStory(page, storageCase.url, { storySource, expectedText: 'Начало без сохранения' });
+    await advanceDialog(page);
+    await expect(page.locator('#textBox')).toHaveText('Прогресс без сохранения');
+    // Перекрывает обычные две секунды debounce, чтобы ошибочно запланированная запись успела проявиться.
+    await page.waitForTimeout(2200);
+    await page.locator('#btnRestart').click();
+    await expect(page.locator('#textBox')).toHaveText('Начало без сохранения');
+
+    // Проверяет финальные flush-обработчики до выгрузки, пока счётчик и слоты ещё доступны для проверки.
+    const afterRestart = await page.evaluate(function finishStorageDisabledPage() {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('beforeunload'));
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+      return window.__vnE2eReadStorageAudit();
+    });
+    expect(afterRestart).toEqual({ accessCount: 0, entries: storedEntries });
+
+    await page.reload();
+    await expect(page.locator('#textBox')).toHaveText('Начало без сохранения');
+    // Повторный запуск также не читает прежние, намеренно повреждённые сохранения и не пытается их очистить.
+    expect(await page.evaluate(function readReloadedStorageAudit() {
+      return window.__vnE2eReadStorageAudit();
+    })).toEqual({ accessCount: 0, entries: storedEntries });
+    expect(pageErrors).toEqual([]);
+  });
+}
+
 // Подтверждает, что две папки одного origin используют разные projectId-слоты и перезапуск не трогает соседний проект.
 test('projectId разделяет автосохранения новелл одного домена', async function({ page }) {
   const pageErrors = collectPageErrors(page);

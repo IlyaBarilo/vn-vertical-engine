@@ -184,6 +184,32 @@ test('немедленная запись принимает готовый payl
   assert.equal(writtenEntries[1].detail.usesPrebuilt, false);
 });
 
+// Запрет автора отменяет ожидающую запись и исключает любые обращения к адаптеру, включая удаление при перезапуске.
+test('отключённое автосохранение не обращается к Storage', function() {
+  const fixture = createControllerFixture();
+  const savedRaw = '{"existing":"preserve"}';
+  fixture.storage.currentRaw = savedRaw;
+  fixture.controller.schedule();
+  fixture.state.enabled = false;
+
+  for (const method of ['readCurrent', 'writeCurrent', 'removeCurrent', 'migrateLegacy']) {
+    // Любое обращение к хранилищу запрещено, даже если операция не меняет содержимое слота.
+    fixture.storage[method] = function rejectStorageOperation() {
+      assert.fail(`Отключённое автосохранение вызвало ${method}`);
+    };
+  }
+
+  assert.equal(fixture.controller.flushPending(), false);
+  assert.equal(fixture.controller.schedule(), false);
+  assert.equal(fixture.controller.flush({ v: 3, sceneId: 'start', actionIndex: 2 }), false);
+  assert.equal(fixture.controller.loadAndApply(), false);
+  assert.equal(fixture.controller.clear(), false);
+  fixture.timers.runPending();
+  assert.equal(fixture.timers.callbacks.size, 0);
+  assert.equal(fixture.storage.currentRaw, savedRaw);
+  assert.deepEqual(fixture.warnings, []);
+});
+
 // Не удаляет слот в заблокированном URL-режиме, но очищает связанное временное состояние координатора.
 test('очистка соблюдает запрет Storage для scene и nosave', function() {
   const fixture = createControllerFixture();

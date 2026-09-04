@@ -139,7 +139,7 @@
       return flush();
     }
 
-    // Удаляет только активный слот с учётом URL-запрета и сбрасывает связанное состояние координатора.
+    // Сбрасывает временное состояние; удаляет слот только при включённом автосохранении и отсутствии URL-запрета.
     function clear() {
       if (disposed) {
         debug("clear:skip", { reason: "disposed" });
@@ -147,6 +147,12 @@
       }
       cancelPending("clear_storage", true);
       if (typeof options.onBeforeClear === "function") options.onBeforeClear();
+
+      // Запрет автора распространяется и на перезапуск: прежнее сохранение остаётся нетронутым.
+      if (!isEnabled()) {
+        debug("clear:skip", { reason: "no_story_or_disabled" });
+        return false;
+      }
 
       if (isStorageBlocked()) {
         debug("clear:skip", { reason: "url_storage_blocked" });
