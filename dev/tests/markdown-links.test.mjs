@@ -24,14 +24,73 @@ function listTrackedFiles(repositoryRoot) {
   });
 }
 
-// Извлекает назначения обычных Markdown-ссылок, не включая изображения.
+// Маскирует встроенный код одного абзаца; незакрытые и экранированные кавычки остаются текстом.
+function maskInlineCode(text) {
+  const parts = [];
+  const openingPattern = /\\[\s\S]|`+/g;
+  let copiedUntil = 0;
+  let opening;
+
+  while ((opening = openingPattern.exec(text)) !== null) {
+    if (opening[0].startsWith('\\')) continue;
+    const closingPattern = /`+/g;
+    closingPattern.lastIndex = openingPattern.lastIndex;
+    let closing;
+
+    while ((closing = closingPattern.exec(text)) !== null) {
+      // Внутри кода кавычки другой длины и обратная косая черта не закрывают фрагмент.
+      if (closing[0].length !== opening[0].length) continue;
+      const end = closingPattern.lastIndex;
+      parts.push(text.slice(copiedUntil, opening.index));
+      parts.push(text.slice(opening.index, end).replace(/[^\r\n]/g, ' '));
+      copiedUntil = end;
+      openingPattern.lastIndex = end;
+      break;
+    }
+  }
+
+  return parts.join('') + text.slice(copiedUntil);
+}
+
+// Скрывает ограждённые блоки и встроенный код, сохраняя позиции символов и границы абзацев.
+function maskMarkdownCode(markdownText) {
+  const lines = [];
+  let fence = null;
+
+  for (const line of markdownText.split(/(?<=\n)/)) {
+    const content = line.replace(/\r?\n$/, '');
+    if (fence) {
+      const closing = /^ {0,3}(`{3,}|~{3,})[\t ]*$/.exec(content);
+      if (closing && closing[1][0] === fence[0] && closing[1].length >= fence.length) {
+        fence = null;
+      }
+      lines.push(line.replace(/[^\r\n]/g, ' '));
+      continue;
+    }
+
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(content);
+    // Обратные кавычки в описании языка не допускают открытия ограждённого блока.
+    if (opening && (opening[1][0] === '~' || !opening[2].includes('`'))) {
+      fence = opening[1];
+      lines.push(line.replace(/[^\r\n]/g, ' '));
+    } else {
+      lines.push(line);
+    }
+  }
+
+  // Пустая строка завершает абзац: кавычки из разных абзацев не должны скрывать ссылки.
+  return lines.join('').split(/(\r?\n[\t ]*\r?\n)/).map(maskInlineCode).join('');
+}
+
+// Извлекает назначения обычных Markdown-ссылок, не включая изображения и примеры кода.
 function extractMarkdownLinks(markdownText) {
+  const visibleText = maskMarkdownCode(markdownText);
   const links = [];
   const linkPattern = /\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)/g;
   let match;
 
-  while ((match = linkPattern.exec(markdownText)) !== null) {
-    if (match.index > 0 && markdownText.charAt(match.index - 1) === '!') continue;
+  while ((match = linkPattern.exec(visibleText)) !== null) {
+    if (match.index > 0 && visibleText.charAt(match.index - 1) === '!') continue;
     links.push(match[1]);
   }
 
@@ -94,6 +153,70 @@ function workspaceTargetExistsWithExactCase(repositoryRoot, targetPath) {
 
   return true;
 }
+
+// Воспроизводит ложное срабатывание на JavaScript, сохраняя ссылки по обе стороны примера.
+test('извлечение ссылок пропускает JavaScript во встроенном коде', function() {
+  const markdown = "[До](before.md) `self['loc' + 'ation']['re' + 'place'](...)` [После](after.md)";
+  assert.deepEqual(extractMarkdownLinks(markdown), ['before.md', 'after.md']);
+});
+
+// Проверяет точную длину разделителей и перенос строки внутри одного фрагмента кода.
+test('встроенный код поддерживает несколько обратных кавычек и перенос строки', function() {
+  const markdown = '``[Пример](fake.md) `текст`\n[Другой](fake2.md)`` [Ссылка](real.md)';
+  assert.deepEqual(extractMarkdownLinks(markdown), ['real.md']);
+});
+
+// Незакрытые и экранированные разделители не должны скрывать настоящие ссылки.
+test('обычные обратные кавычки не отключают проверку ссылок', function() {
+  const examples = [
+    '`[Ссылка](real.md)',
+    '\\`[Ссылка](real.md)\\`',
+    '`начало\n\n[Ссылка](real.md) конец`',
+    '``[Ссылка](real.md)`'
+  ];
+  for (const markdown of examples) {
+    assert.deepEqual(extractMarkdownLinks(markdown), ['real.md'], markdown);
+  }
+});
+
+// Закрывающая ограда должна иметь тот же символ и не быть короче открывающей.
+test('ссылки внутри ограждённых блоков кода не проверяются', function() {
+  for (const newline of ['\n', '\r\n']) {
+    const markdown = [
+      '[До](before.md)',
+      '   ````js',
+      '[Пример](fake.md)',
+      '```',
+      '[Короткая ограда](fake2.md)',
+      '~~~~',
+      '[Другой символ](fake3.md)',
+      '`````',
+      '[После](after.md)',
+      '~~~text',
+      '[Пример](fake4.md)',
+      '~~~~',
+      '[Конец](end.md)'
+    ].join(newline);
+    assert.deepEqual(extractMarkdownLinks(markdown), ['before.md', 'after.md', 'end.md']);
+  }
+});
+
+// Незакрытый блок остаётся кодом до конца документа, но не затрагивает предыдущие ссылки.
+test('незакрытая ограда скрывает только оставшийся блок кода', function() {
+  const markdown = '[До](real.md)\n```js\n[Пример](fake.md)';
+  assert.deepEqual(extractMarkdownLinks(markdown), ['real.md']);
+});
+
+// Маскирование кода в подписи не должно терять назначения ссылок или включать изображения.
+test('настоящие ссылки сохраняют назначения и проверку отсутствующих файлов', function() {
+  const markdown = '[`Код`](real.md) [Документ](<with spaces.md> "Описание") ' +
+    '![Картинка](image.png) `[Пример](fake.md)` [Нет файла](missing.md)';
+  const links = extractMarkdownLinks(markdown);
+  assert.deepEqual(links, ['real.md', '<with spaces.md>', 'missing.md']);
+  const resolved = resolveLocalLink('docs/README.md', links[2]);
+  assert.deepEqual(resolved, { path: 'docs/missing.md' });
+  assert.equal(trackedTargetExists(resolved.path, new Set(['docs/real.md'])), false);
+});
 
 // Обходит документацию как пользователь и ловит отсутствующие относительные ссылки до публикации.
 test('относительные ссылки в отслеживаемой Markdown-документации существуют', function() {
