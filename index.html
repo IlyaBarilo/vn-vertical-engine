@@ -102,13 +102,22 @@
     <div id="settingsPanel" class="statsPanel hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <div class="statsCard settingsCard">
         <div class="statsHeader">
-          <div id="settingsTitle" class="statsTitle settingsTitle">Информация о программе</div>
+          <div id="settingsTitle" class="statsTitle settingsTitle">Информация</div>
           <div class="statsHeaderActions">
             <button id="btnCloseSettings" class="btn" type="button" aria-label="Закрыть информацию">✕</button>
           </div>
         </div>
+        <!-- Вкладки нужны только при наличии авторского описания; сведения о движке доступны всегда. -->
+        <div id="settingsTabs" class="settingsTabs hidden" role="tablist" aria-label="Разделы информации">
+          <button id="btnInfoProject" class="btn settingsTab" type="button" role="tab" aria-controls="aboutBody" aria-selected="false" tabindex="-1">О проекте</button>
+          <button id="btnInfoEngine" class="btn settingsTab" type="button" role="tab" aria-controls="engineInfoPanel" aria-selected="true" tabindex="0">О движке</button>
+        </div>
         <div class="statsViewContainer">
-          <textarea id="settingsBody" class="statsBody settingsBody" readonly></textarea>
+          <div id="engineInfoPanel" class="engineInfoPanel" role="tabpanel" aria-labelledby="btnInfoEngine">
+            <textarea id="settingsBody" class="statsBody settingsBody" aria-label="О движке" readonly></textarea>
+          </div>
+          <!-- Авторский текст выводится отдельно от сведений о движке; ссылки создаёт безопасный рендерер. -->
+          <div id="aboutBody" class="statsBody aboutBody hidden" role="tabpanel" aria-labelledby="btnInfoProject" tabindex="0"></div>
         </div>
       </div>
     </div>
@@ -162,8 +171,8 @@
               <!-- Volume -->
               <input id="volume" class="slider" type="range" min="0" max="100" value="20" aria-label="Volume" />
 
-              <!-- НОВОЕ: статистика/настройки -->
-              <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация о программе"><span class="btn-icon">ℹ️</span></button>
+              <!-- Одна кнопка открывает сведения о проекте и движке; авторский раздел включается через meta. -->
+              <button id="btnSettings" class="btn icon-btn" type="button" aria-label="Информация" aria-haspopup="dialog" aria-controls="settingsPanel"><span class="btn-icon" aria-hidden="true">ℹ️</span></button>
               <button id="btnStats" class="btn icon-btn" type="button" aria-label="Stats"><span class="btn-icon">📊</span></button>
 
               <!-- Restart -->

@@ -1127,6 +1127,9 @@ body {
 
 .topbar-right {
   display: flex;
+  /* Группа и её переносимые строки остаются у правого края при любом числе кнопок. */
+  margin-left: auto;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--topbar-control-gap);
   flex-wrap: wrap;
@@ -1572,6 +1575,81 @@ body {
 /* Поле настроек в модалке делаем не редактируемым и со стандартным курсором. */
 .settingsBody {
   cursor: default;
+}
+
+/* Короткие вкладки занимают место только в открытом окне информации. */
+.settingsTabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem var(--modal-padding);
+  border-bottom: var(--ui-border-width) solid rgba(255,255,255,0.12);
+}
+
+.settingsTab {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  font-size: max(12px, 0.9rem);
+  line-height: 1.25;
+  padding: 0.45rem 0.7rem;
+}
+
+.settingsTab[aria-selected="true"] {
+  background: rgba(142,214,255,0.18);
+  border-color: #8ed6ff;
+}
+
+.settingsTab:focus-visible {
+  outline: 2px solid #8ed6ff;
+  outline-offset: 2px;
+}
+
+/* Оболочка сохраняет семантику вкладки, а само поле движка остаётся доступным для чтения. */
+.engineInfoPanel {
+  position: absolute;
+  inset: 0;
+}
+
+.aboutTitle {
+  margin: 0 0 1em;
+  font-size: 1.15em;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+/* Сведения автора читаются как обычный документ; длинные адреса не расширяют окно. */
+.aboutBody {
+  font-family: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  cursor: text;
+}
+
+/* Контакты можно выделить и скопировать, несмотря на общий запрет выделения в сцене. */
+.aboutBody,
+.aboutBody * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.aboutBody a {
+  color: #8ed6ff;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.aboutBody a:focus-visible,
+.aboutBody:focus-visible {
+  outline: 2px solid #8ed6ff;
+  outline-offset: -2px;
+}
+
+/* Произвольный заголовок автора переносится, оставляя место кнопке закрытия. */
+.settingsTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* небольшая “табличная” разметка строк */

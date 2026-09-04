@@ -173,7 +173,11 @@ const UI_I18N = {
   en: {
     mute: "Mute",
     volume: "Volume",
-    settings: "About app",
+    settings: "Information",
+    about: "About this project",
+    aboutTab: "About project",
+    engineTab: "About engine",
+    infoTabs: "Information sections",
     stats: "Stats",
     restart: "Restart story",
     next: "Next",
@@ -190,8 +194,8 @@ const UI_I18N = {
     fullGraphButtonTitle: "Show full graph",
     resourcesGraphButtonTitle: "Compact resources graph: start scene only, same full asset blocks as the main graph",
     textButtonTitle: "Show text statistics",
-    settingsTitle: "About app",
-    closeSettings: "Close app info",
+    settingsTitle: "Information",
+    closeSettings: "Close information",
     closeStats: "Close stats",
     zoomOut: "Zoom Out",
     zoomIn: "Zoom In",
@@ -223,7 +227,11 @@ const UI_I18N = {
   ru: {
     mute: "Звук",
     volume: "Громкость",
-    settings: "Информация о программе",
+    settings: "Информация",
+    about: "О проекте",
+    aboutTab: "О проекте",
+    engineTab: "О движке",
+    infoTabs: "Разделы информации",
     stats: "Статистика",
     restart: "Перезапустить историю",
     next: "Далее",
@@ -240,7 +248,7 @@ const UI_I18N = {
     fullGraphButtonTitle: "Показать полный граф",
     resourcesGraphButtonTitle: "Компактный граф ресурсов: на схеме только стартовая сцена, блоки ассетов — полные, как на основном графе",
     textButtonTitle: "Показать текстовую статистику",
-    settingsTitle: "Информация о программе",
+    settingsTitle: "Информация",
     closeSettings: "Закрыть информацию",
     closeStats: "Закрыть статистику",
     zoomOut: "Уменьшить",
@@ -288,6 +296,7 @@ function t(key) {
   return (UI_I18N[lang] && UI_I18N[lang][key]) || UI_I18N.en[key] || key;
 }
 
+// Обновляет язык стандартных элементов и вкладок информации, сохраняя выбранный раздел.
 function applyUiLanguage() {
   var html = document.documentElement;
   if (html) {
@@ -343,6 +352,7 @@ function applyUiLanguage() {
   if (statsTitle) statsTitle.textContent = t("statsTitle");
   var settingsTitle = document.querySelector(".settingsTitle");
   if (settingsTitle) settingsTitle.textContent = t("settingsTitle");
+  syncSettingsPanelTabs();
 
   var btnShowFullGraph = document.getElementById("btnShowFullGraph");
   if (btnShowFullGraph) {
@@ -1202,6 +1212,10 @@ function swallowEvent(e) {
 });
 
 var btnSettings = document.getElementById("btnSettings");
+var elAboutBody = document.getElementById("aboutBody");
+var elEngineInfoPanel = document.getElementById("engineInfoPanel");
+var btnInfoProject = document.getElementById("btnInfoProject");
+var btnInfoEngine = document.getElementById("btnInfoEngine");
 var btnStats = document.getElementById("btnStats");
 var elSettingsPanel = document.getElementById("settingsPanel");
 var btnCloseSettings = document.getElementById("btnCloseSettings");
@@ -1217,6 +1231,8 @@ var elGraphLoadProgressBar = document.getElementById("graphLoadProgressBar");
 var elGraphLoadProgressText = document.getElementById("graphLoadProgressText");
 var elGraphLoadProgressLabel = document.getElementById("graphLoadProgressLabel");
 var settingsPanelReturnFocus = null;
+// Вкладки используют одну оболочку и один источник возврата фокуса.
+var settingsPanelView = "app";
 var statsPanelReturnFocus = null;
 
 // Переводит фокус без прокрутки и безопасно поддерживает браузеры со старой сигнатурой focus().
@@ -1278,6 +1294,22 @@ if (btnSettings) {
     toggleSettingsPanel();
   });
 }
+
+if (btnInfoProject) {
+  // Меняет только содержимое открытого окна, не затрагивая состояние новеллы.
+  btnInfoProject.addEventListener("click", function () {
+    selectSettingsTab("about");
+  });
+}
+
+if (btnInfoEngine) {
+  // Сведения о движке доступны независимо от настроек авторского текста.
+  btnInfoEngine.addEventListener("click", function () {
+    selectSettingsTab("app");
+  });
+}
+
+document.addEventListener("keydown", handleSettingsPanelKeydown, true);
 
 if (btnStats) {
   btnStats.addEventListener("click", function () {
@@ -9805,9 +9837,150 @@ function formatRuntimeCompatibilityInfo(includeFormatVersions) {
   return lines.join("\n") + "\n";
 }
 
-// Формирует содержимое окна информации: совместимость runtime, лицензия и контакты проекта.
+// Читает только meta: параметры URL не включают авторскую вкладку и не подменяют её содержимое.
+function getStoryAboutInfo() {
+  var meta = window.STORY && window.STORY.meta ? window.STORY.meta : {};
+  var text = String(meta.aboutText || "");
+  return {
+    enabled: meta.aboutEnabled === true && !!text.replace(/\[br\]/g, "").trim(),
+    title: String(meta.aboutTitle || "").trim() || t("about"),
+    text: text
+  };
+}
+
+// Скрывает переключатель без авторского текста, обновляет подписи и оставляет в Tab-порядке только выбранную вкладку.
+function syncSettingsPanelTabs() {
+  var info = getStoryAboutInfo();
+  if (!info.enabled) settingsPanelView = "app";
+  var tabs = document.getElementById("settingsTabs");
+  if (tabs) {
+    tabs.classList.toggle("hidden", !info.enabled);
+    tabs.setAttribute("aria-label", t("infoTabs"));
+  }
+  var buttons = [document.getElementById("btnInfoProject"), document.getElementById("btnInfoEngine")];
+  for (var i = 0; i < buttons.length; i++) {
+    if (!buttons[i]) continue;
+    var selected = (i === 0) === (settingsPanelView === "about");
+    buttons[i].textContent = t(i === 0 ? "aboutTab" : "engineTab");
+    buttons[i].setAttribute("aria-selected", String(selected));
+    buttons[i].tabIndex = selected ? 0 : -1;
+  }
+  var engineBody = document.getElementById("settingsBody");
+  if (engineBody) engineBody.setAttribute("aria-label", t("engineTab"));
+  return info;
+}
+
+// Переключает раздел без повторного открытия окна и перезаписи элемента возврата фокуса.
+function selectSettingsTab(view) {
+  if (view === "about" && !getStoryAboutInfo().enabled) return;
+  settingsPanelView = view === "about" ? "about" : "app";
+  renderSettingsPanel();
+}
+
+// Разрешает только явные веб-адреса и почту; остальные назначения остаются обычным текстом.
+function getSafeAboutHref(value) {
+  if (!/^(https?:\/\/|mailto:)/i.test(value) || /[\s\u0000-\u001f\u007f\\]/.test(value)) return null;
+  try {
+    var url = new URL(value);
+    if (url.protocol === "mailto:") return url.pathname ? url.href : null;
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password) return null;
+    return url.href;
+  } catch (error) {
+    // Ошибка адреса не мешает прочитать остальной текст окна.
+    return null;
+  }
+}
+
+// Обрабатывает [br] и [подпись](URL) только в aboutText; HTML всегда остаётся текстом.
+function renderAboutText(container, text) {
+  if (!container) return;
+  var fragment = document.createDocumentFragment();
+  var pattern = /\[br\]|\[([^\[\]\r\n]+)\]\(([^()\s]+)\)/g;
+  var offset = 0;
+  var match;
+  while ((match = pattern.exec(text)) !== null) {
+    fragment.appendChild(document.createTextNode(text.slice(offset, match.index)));
+    if (match[0] === "[br]") {
+      fragment.appendChild(document.createElement("br"));
+    } else {
+      var href = getSafeAboutHref(match[2]);
+      if (href) {
+        var link = document.createElement("a");
+        link.textContent = match[1];
+        link.href = href;
+        if (/^https?:/i.test(href)) {
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+        }
+        fragment.appendChild(link);
+      } else {
+        fragment.appendChild(document.createTextNode(match[0]));
+      }
+    }
+    offset = pattern.lastIndex;
+  }
+  fragment.appendChild(document.createTextNode(text.slice(offset)));
+  container.replaceChildren(fragment);
+  container.scrollTop = 0;
+}
+
+// Escape закрывает окно, Tab удерживает фокус внутри раздела; стрелки и Home/End переключают вкладки.
+function handleSettingsPanelKeydown(event) {
+  if (!elSettingsPanel || elSettingsPanel.classList.contains("hidden")) return;
+  var hasProject = getStoryAboutInfo().enabled;
+  var onTab = event.target === btnInfoProject || event.target === btnInfoEngine;
+  if (hasProject && onTab && ["ArrowLeft", "ArrowRight", "Home", "End"].indexOf(event.key) !== -1) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    var view = event.key === "Home" ? "about" : event.key === "End" ? "app" : settingsPanelView === "about" ? "app" : "about";
+    selectSettingsTab(view);
+    focusUiElement(view === "about" ? btnInfoProject : btnInfoEngine);
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    hideSettingsPanel();
+  } else if (event.key === "Tab") {
+    var controls = [btnCloseSettings];
+    if (hasProject) controls.push(settingsPanelView === "about" ? btnInfoProject : btnInfoEngine);
+    if (settingsPanelView === "about") {
+      controls.push(elAboutBody);
+      controls = controls.concat(Array.from(elAboutBody.querySelectorAll("a[href]")));
+    } else {
+      controls.push(elSettingsBody);
+    }
+    var index = controls.indexOf(document.activeElement);
+    var nextIndex = index < 0 ? (event.shiftKey ? controls.length - 1 : 0) : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    focusUiElement(controls[nextIndex]);
+    // Длинный документ прокручивается к выбранной ссылке, чтобы клавиатурный фокус оставался видимым.
+    if (controls[nextIndex].tagName === "A") {
+      controls[nextIndex].scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+}
+
+// Выводит выбранную вкладку; произвольный заголовок автора остаётся внутри текста, а подписи вкладок всегда короткие.
 function renderSettingsPanel() {
   if (!elSettingsBody) return;
+  var info = syncSettingsPanelTabs();
+  var showAbout = settingsPanelView === "about";
+  elSettingsBody.classList.toggle("hidden", showAbout);
+  if (elEngineInfoPanel) elEngineInfoPanel.classList.toggle("hidden", showAbout);
+  if (elAboutBody) elAboutBody.classList.toggle("hidden", !showAbout);
+  var title = document.getElementById("settingsTitle");
+  if (title) title.textContent = t("settingsTitle");
+  if (btnCloseSettings) btnCloseSettings.setAttribute("aria-label", t("closeSettings"));
+  if (showAbout) {
+    renderAboutText(elAboutBody, info.text);
+    var heading = document.createElement("h2");
+    heading.className = "aboutTitle";
+    heading.textContent = info.title;
+    elAboutBody.prepend(heading);
+    return;
+  }
   var text = "";
   text += formatRuntimeCompatibilityInfo(false) + "\n";
   text += formatLicenseStatsText();
@@ -9817,15 +9990,17 @@ function renderSettingsPanel() {
   elSettingsBody.value = text;
 }
 
+// Единая кнопка открывает информацию или закрывает уже открытое окно.
 function toggleSettingsPanel() {
   if (!elSettingsPanel) return;
   if (elSettingsPanel.classList.contains("hidden")) showSettingsPanel();
   else hideSettingsPanel();
 }
 
-// Открывает информацию, запоминает источник и переводит фокус на доступную кнопку закрытия.
+// При каждом открытии начинает с проекта, если он включён; иначе показывает движок без переключателя вкладок.
 function showSettingsPanel() {
   if (!elSettingsPanel) return;
+  settingsPanelView = getStoryAboutInfo().enabled ? "about" : "app";
   settingsPanelReturnFocus = getCurrentUiFocusTarget(btnSettings);
   if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) {
     // Окно статистики скрывается без setStatsView, поэтому отдельно отменяем отложенный рендер графа.

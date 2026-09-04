@@ -30,6 +30,9 @@ test('парсер сохраняет значения meta по умолчан�
   assert.equal(result.story.meta.window, 'vertical');
   assert.equal(result.story.meta.blurBackground, true);
   assert.equal(result.story.meta.bg360Quality, 'normal');
+  assert.equal(result.story.meta.aboutEnabled, false);
+  assert.equal(result.story.meta.aboutTitle, '');
+  assert.equal(result.story.meta.aboutText, '');
   assert.equal(result.story.meta.engine.loadsafe, true);
   assert.equal(result.story.meta.engine.optimized, 'false');
   assert.equal(result.story.meta.engine.gameSandbox, 'strict');
@@ -85,6 +88,50 @@ test('парсер преобразует полный набор meta-пара�
   assert.equal(result.story.meta.transition, 'white');
   assert.equal(result.story.meta.transitionMs, 250);
   assert.equal(result.story.vars.mode, 'release');
+});
+
+// Сохраняет текст, маркеры и якоря ссылок без влияния на реплики и следующие секции.
+test('about meta сохраняет переносы и ссылки только как авторский текст', async function() {
+  const content = 'Тестовый проект #1[br][br][Документация](https://example.org/docs?lang=ru#visitors)';
+  const story = createMetaStory([
+    'startScene = intro',
+    'aboutText = "' + content + '" # комментарий вне кавычек',
+    "aboutTitle: 'О проекте #1' # комментарий",
+    'aboutEnabled = TRUE'
+  ]).replace('"Текст"', '"Реплика[br]без нового переноса"');
+  const result = await runStoryLoader(story);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.story.meta.aboutEnabled, true);
+  assert.equal(result.story.meta.aboutTitle, 'О проекте #1');
+  assert.equal(result.story.meta.aboutText, content);
+  assert.equal(result.story.scenes[0].actions[0].text, 'Реплика[br]без нового переноса');
+});
+
+// Отсутствие содержимого скрывает необязательную вкладку, но не блокирует запуск новеллы.
+test('about meta допускает отключённое и пустое окно', async function() {
+  for (const enabled of ['false', '0', 'true', '1']) {
+    const result = await runStoryLoader(createMetaStory([
+      'startScene = intro',
+      'aboutEnabled = ' + enabled,
+      'aboutText = "[br] [br]"'
+    ]));
+    assert.equal(result.errors.length, 0);
+    assert.ok(result.story);
+    assert.equal(result.story.meta.aboutEnabled, enabled === 'true' || enabled === '1');
+  }
+});
+
+// Ошибка в переключателе диагностируется явно вместо случайного включения кнопки.
+test('about meta проверяет значение переключателя', async function() {
+  const result = await runStoryLoader(createMetaStory([
+    'startScene = intro',
+    'aboutEnabled = sometimes'
+  ]));
+  assert.equal(result.story, null);
+  assert.ok(result.errors.some(function(error) {
+    return error.message.includes('The "aboutEnabled" value must be true or false.');
+  }));
 });
 
 // Проверяет безопасный формат постоянного id, который используется в имени localStorage-слота.

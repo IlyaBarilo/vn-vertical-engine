@@ -18,6 +18,11 @@ engine.gameSandbox=strict # Все игры изолированы; режим l
 # bottomSpacing=800     # отступ снизу в пикселях (поднимает интерфейс вверх)
 transition = fade       # fade, black, white, instant или none
 transitionMs = 180
+# Необязательная вкладка с вымышленными данными: перед публикацией замените текст и ссылки своими.
+# Либо скройте авторскую вкладку через aboutEnabled=false или удалите параметры aboutEnabled, aboutTitle и aboutText.
+aboutEnabled = true
+aboutTitle = "О демо-проекте"
+aboutText = "Учебный проект «Пример»[br][br]Сценарий: Автор примера.[br]Иллюстрации: Команда проекта.[br][br]Спасибо за прохождение![br][Email](mailto:info@example.org)[br][Сайт проекта](https://example.org/)[br][Документация проекта](https://example.org/docs)"
 
 [bg]
 # Формат описания для фона:

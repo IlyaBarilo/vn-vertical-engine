@@ -276,6 +276,10 @@
         window: 'vertical',
         blurBackground: true,
         bg360Quality: 'normal',
+        // Авторская вкладка выключена в старых историях; заголовок по умолчанию выбирает язык интерфейса.
+        aboutEnabled: false,
+        aboutTitle: '',
+        aboutText: '',
         // engine.loadsafe по умолчанию включён: автосейв принимается только для той же версии текста истории.
         engine: {
           loadsafe: true,
@@ -444,6 +448,11 @@
     }
     
     normalizeAssetsAfterParse(story);
+
+    // Пустая авторская вкладка не мешает запуску истории: предупреждение не попадает в блокирующие PARSE_ERRORS.
+    if (story.meta.aboutEnabled && !story.meta.aboutText.replace(/\[br\]/g, '').trim()) {
+      console.warn('[Loader] aboutEnabled=true, но aboutText пуст: вкладка «О проекте» скрыта.');
+    }
     
     window.STORY_LANG = (story.meta && story.meta.lang ? story.meta.lang : 'en');
 
@@ -1561,12 +1570,14 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
   }
 
 
-  // Разбирает общие meta и системное пространство engine.*, включая обязательный строгий sandbox игр.
+  // Разбирает meta; в авторских информационных строках сохраняет # внутри кавычек и URL.
   function parseMetaLine(lineNumber, line, story) {
     var originalLine = line;
 
-    // Удаляем комментарий после #
-    line = line.split('#')[0].trim();
+    // Расширенный разбор комментариев ограничен новыми строковыми полями и не меняет старую грамматику.
+    line = /^(aboutTitle|aboutText)\s*[:=]/.test(line)
+      ? stripAssetInlineComment(line)
+      : line.split('#')[0].trim();
     if (!line) return;
 
     // Поддерживаем и key: value, и key=value
@@ -1583,6 +1594,21 @@ function parseVideoAction(lineNumber, line, cleanLine, story, currentScene) {
     var value = line.slice(separatorIndex + 1).trim();
 
     if (!key) return;
+
+    if (key === 'aboutTitle' || key === 'aboutText') {
+      story.meta[key] = unwrapOptionalMetaQuotes(value);
+      return;
+    }
+
+    if (key === 'aboutEnabled') {
+      var aboutEnabledValue = value.toLowerCase();
+      if (!/^(true|false|1|0)$/.test(aboutEnabledValue)) {
+        addParseError(lineNumber, originalLine, 'The "aboutEnabled" value must be true or false.', false);
+        return;
+      }
+      story.meta.aboutEnabled = aboutEnabledValue === 'true' || aboutEnabledValue === '1';
+      return;
+    }
 
     // Пространство engine.* зарезервировано под параметры движка, а не под пользовательские meta-поля.
     if (key === 'engine') {

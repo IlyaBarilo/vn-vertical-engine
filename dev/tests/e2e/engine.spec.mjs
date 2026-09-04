@@ -48,6 +48,25 @@ function createAutosaveProjectStorySource(projectId, label) {
   return lines.join('\n');
 }
 
+// Создаёт информационное окно с вымышленными реквизитами; вся настройка остаётся одной строкой meta.
+function createAboutStorySource(metaLines = []) {
+  const storyText = [
+    '[meta]',
+    'title = Тестовый проект',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'autosave = false',
+    'transition = none',
+    ...metaLines,
+    '[scene]',
+    'scene intro',
+    '"Реплика[br]без переноса"',
+    '"Продолжение"'
+  ].join('\n');
+  return 'window.STORY_TEXT = ' + JSON.stringify(storyText) + ';';
+}
+
 // Создаёт обычный видеофон и сюжетное видео с отсутствующими файлами, чтобы стабильно проверить оба image fallback в браузерах.
 function createMediaControllerStorySource() {
   return [
@@ -727,14 +746,14 @@ test('accessibility: диалог, выборы и служебные панел
 
   await expect(page.locator('#btnMute')).toHaveAttribute('aria-label', 'Звук');
   await expect(page.locator('#volume')).toHaveAttribute('aria-label', 'Громкость');
-  await expect(page.locator('#btnSettings')).toHaveAttribute('aria-label', 'Информация о программе');
+  await expect(page.locator('#btnSettings')).toHaveAttribute('aria-label', 'Информация');
   await expect(page.locator('#btnStats')).toHaveAttribute('aria-label', 'Статистика');
   await expect(page.locator('#btnRestart')).toHaveAttribute('aria-label', 'Перезапустить историю');
 
   const settingsButton = page.locator('#btnSettings');
   await settingsButton.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog', { name: 'Информация о программе' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Информация' })).toBeVisible();
   await expect(page.locator('#btnCloseSettings')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#settingsPanel')).toBeHidden();
@@ -765,6 +784,188 @@ test('accessibility: диалог, выборы и служебные панел
   await page.keyboard.press('Space');
   await expect(page.locator('#textBox')).toHaveText('Финал: right, результат: 0');
   expect(pageErrors).toEqual([]);
+});
+
+for (const mode of ['debug', 'release']) {
+  // Проверяет авторское окно, ссылки, клавиатуру и неизменность реплик в обоих режимах движка.
+  test('О проекте: текст, вкладки и возврат к истории в ' + mode, async function({ page, context }, testInfo) {
+    const pageErrors = collectPageErrors(page);
+    const english = mode === 'release';
+    const infoTitle = english ? 'Information' : 'Информация';
+    const projectTabTitle = english ? 'About project' : 'О проекте';
+    const engineTabTitle = english ? 'About engine' : 'О движке';
+    let documentRequests = 0;
+    // Внешний документ остаётся синтетическим: тест не обращается к внешнему сайту.
+    await context.route('https://example.org/**', async function fulfillExampleDocument(route) {
+      if (route.request().isNavigationRequest()) documentRequests++;
+      await route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<title>Тестовая документация</title><p>Тестовый документ</p>' });
+    });
+    // Окно и автосохранение при запрете автора не должны обращаться к браузерному хранилищу.
+    await page.addInitScript(function prohibitAboutStorageAccess() {
+      window.__aboutStorageTouches = 0;
+      Object.defineProperty(window, 'localStorage', {
+        // Счётчик выявляет даже обращение, исключение из которого движок перехватил.
+        get: function failAboutStorageAccess() {
+          window.__aboutStorageTouches++;
+          throw new Error('Обращение к localStorage запрещено в этом тесте');
+        }
+      });
+    });
+    const content = 'Тестовая организация[br]Адрес: Тестовый город, ул. Примерная, д. 1[br][br][Почта](mailto:info@example.org)[br][Документация проекта](https://example.org/docs?lang=ru#visitors)';
+    await openStory(page, '/?aboutEnabled=false', {
+      storySource: createAboutStorySource([
+        'mode = ' + mode,
+        'lang = ' + (english ? 'en' : 'ru'),
+        'aboutEnabled = true',
+        'aboutTitle = "О проекте #1"',
+        'aboutText = "' + content + '" # комментарий'
+      ]),
+      expectedText: 'Реплика[br]без переноса'
+    });
+    const button = page.locator('#btnSettings');
+    const panel = page.getByRole('dialog', { name: infoTitle, exact: true });
+    const projectTab = page.getByRole('tab', { name: projectTabTitle, exact: true });
+    const engineTab = page.getByRole('tab', { name: engineTabTitle, exact: true });
+    const body = page.locator('#aboutBody');
+    // Два режима покрывают телефон и компьютер без отдельного набора тестов расположения.
+    await page.setViewportSize(mode === 'debug' ? { width: 320, height: 568 } : { width: 1280, height: 800 });
+    await expect(button).toHaveAttribute('aria-label', infoTitle);
+    await expect(button).toHaveAttribute('title', infoTitle);
+    await expect(page.locator('#btnAbout')).toHaveCount(0);
+    await expect(button).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('.topbar a')).toHaveCount(0);
+    // Измеряет правый край последней кнопки относительно внутреннего края панели.
+    const alignment = await page.locator('.topbar').evaluate(function measureTopbarAlignment(element) {
+      const bar = element.getBoundingClientRect();
+      const lastButton = element.querySelector('#btnRestart').getBoundingClientRect();
+      return Math.abs(bar.right - parseFloat(getComputedStyle(element).paddingRight) - lastButton.right);
+    });
+    expect(alignment).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath('about-toolbar.png') });
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(panel).toBeVisible();
+    await expect(projectTab).toHaveAttribute('aria-selected', 'true');
+    await expect(engineTab).toHaveAttribute('aria-selected', 'false');
+    await expect(body.getByRole('heading', { name: 'О проекте #1', exact: true })).toBeVisible();
+    await expect(page.locator('#btnCloseSettings')).toBeFocused();
+    await expect(page.locator('#settingsBody')).toBeHidden();
+    // В content четыре маркера: один после названия, два перед почтой и один перед документацией.
+    await expect(body.locator('br')).toHaveCount(4);
+    await expect(body.getByRole('link', { name: 'Почта' })).toHaveAttribute('href', 'mailto:info@example.org');
+    const documentLink = body.getByRole('link', { name: 'Документация проекта', exact: true });
+    await expect(documentLink).toHaveAttribute('href', 'https://example.org/docs?lang=ru#visitors');
+    await expect(documentLink).toHaveAttribute('target', '_blank');
+    await expect(documentLink).toHaveAttribute('rel', 'noopener noreferrer');
+    await page.screenshot({ path: testInfo.outputPath('about-document.png') });
+    expect(documentRequests).toBe(0);
+    await page.keyboard.press('Shift+Tab');
+    await expect(documentLink).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#btnCloseSettings')).toBeFocused();
+
+    const popupPromise = page.waitForEvent('popup');
+    await documentLink.click();
+    const popup = await popupPromise;
+    await expect(popup).toHaveTitle('Тестовая документация');
+    await popup.close();
+    expect(documentRequests).toBe(1);
+    await expect(page.locator('#textBox')).toHaveText('Реплика[br]без переноса');
+    await expect(panel).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await expect(button).toBeFocused();
+
+    await button.click();
+    await expect(projectTab).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Tab');
+    await expect(projectTab).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(engineTab).toBeFocused();
+    await expect(engineTab).toHaveAttribute('aria-selected', 'true');
+    await expect(projectTab).toHaveAttribute('tabindex', '-1');
+    await expect(body).toBeHidden();
+    await expect(page.locator('#engineInfoPanel')).toBeVisible();
+    await expect(page.locator('#settingsBody')).toHaveValue(/Engine:/);
+    await page.screenshot({ path: testInfo.outputPath('info-engine.png') });
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#settingsBody')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#btnCloseSettings')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Home');
+    await expect(projectTab).toBeFocused();
+    await expect(body).toBeVisible();
+    await page.keyboard.press('End');
+    await expect(engineTab).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(projectTab).toBeFocused();
+    await engineTab.click();
+    await expect(body).toBeHidden();
+    await expect(page.locator('#textBox')).toHaveText('Реплика[br]без переноса');
+    await page.keyboard.press('Escape');
+    await expect(button).toBeFocused();
+    await button.click();
+    await expect(projectTab).toHaveAttribute('aria-selected', 'true');
+    await page.locator('#btnCloseSettings').click();
+    await advanceDialog(page);
+    await expect(page.locator('#textBox')).toHaveText('Продолжение');
+    // Читает только счётчик перехвата, не обращаясь к самому хранилищу.
+    expect(await page.evaluate(function readAboutStorageTouches() { return window.__aboutStorageTouches; })).toBe(0);
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+// Доказывает, что произвольная разметка и опасные URL не превращаются в исполняемые элементы.
+test('О проекте: безопасный текст и прокрутка длинного документа', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  const unsafeText = '<img src=x onerror=alert(1)>[br][JS](javascript:alert%281%29)[br][Data](data:text/html,test)[br][File](file:///tmp/test)[br][Relative](docs.html)[br][Credentials](https://user:secret@example.org/)[br]';
+  const longText = unsafeText + ('Тестовая строка ' + 'x'.repeat(140) + '[br]').repeat(50) + '[Конец](https://example.org/docs)';
+  await openStory(page, '/', {
+    storySource: createAboutStorySource(['aboutEnabled=true', 'aboutText="' + longText + '"']),
+    expectedText: 'Реплика[br]без переноса'
+  });
+  await page.locator('#btnSettings').click();
+  const body = page.locator('#aboutBody');
+  await expect(page.getByRole('dialog', { name: 'Информация', exact: true })).toBeVisible();
+  await expect(body.getByRole('heading', { name: 'О проекте', exact: true })).toBeVisible();
+  await expect(body.locator('img,script,iframe')).toHaveCount(0);
+  await expect(body.locator('a')).toHaveCount(1);
+  await expect(body).toContainText('<img src=x onerror=alert(1)>');
+  await expect(body).toContainText('[JS](javascript:alert%281%29)');
+  // Содержимое должно прокручиваться по вертикали и помещаться в ширину мобильного окна.
+  const layout = await body.evaluate(function measureAboutBody(element) {
+    return { width: element.clientWidth, scrollWidth: element.scrollWidth, height: element.clientHeight, scrollHeight: element.scrollHeight };
+  });
+  expect(layout.scrollHeight).toBeGreaterThan(layout.height);
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1);
+  await page.keyboard.press('Shift+Tab');
+  await expect(body.getByRole('link', { name: 'Конец' })).toBeFocused();
+  await expect(body.getByRole('link', { name: 'Конец' })).toBeInViewport();
+  await page.locator('#btnCloseSettings').click();
+  await expect(page.locator('#btnSettings')).toBeFocused();
+  expect(pageErrors).toEqual([]);
+});
+
+// Без авторского текста единая кнопка открывает сведения о движке без вкладок; URL не включает раздел за автора.
+test('О проекте: без описания показывается движок без вкладок', async function({ page }) {
+  for (const metaLines of [[], ['aboutEnabled=false', 'aboutText="Тест"'], ['aboutEnabled=true'], ['aboutEnabled=true', 'aboutText="[br] [br]"']]) {
+    await openStory(page, '/?aboutEnabled=true', {
+      storySource: createAboutStorySource(metaLines),
+      expectedText: 'Реплика[br]без переноса'
+    });
+    await expect(page.locator('#btnSettings')).toBeVisible();
+    await expect(page.locator('#btnAbout')).toHaveCount(0);
+    await page.locator('#btnSettings').click();
+    await expect(page.locator('#settingsPanel')).toBeVisible();
+    await expect(page.locator('#settingsTabs')).toBeHidden();
+    await expect(page.locator('#aboutBody')).toBeHidden();
+    await expect(page.locator('#settingsBody')).toHaveValue(/Engine:/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#btnSettings')).toBeFocused();
+    await advanceDialog(page);
+    await expect(page.locator('#textBox')).toHaveText('Продолжение');
+  }
 });
 
 // Проверяет клавиатурное закрытие сюжетной игры и возврат в диалог после очистки iframe.
