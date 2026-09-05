@@ -27,9 +27,12 @@ export default defineConfig({
       name: 'firefox',
       use: {
         browserName: 'firefox',
-        firefoxUserPrefs: useFirefoxSoftwareWebGl ? {
-          'webgl.forbid-software': false
-        } : undefined
+        // Firefox prefs относятся к запуску браузера; непосредственно в use Playwright их не применяет.
+        launchOptions: {
+          firefoxUserPrefs: useFirefoxSoftwareWebGl ? {
+            'webgl.forbid-software': false
+          } : undefined
+        }
       }
     }
   ],

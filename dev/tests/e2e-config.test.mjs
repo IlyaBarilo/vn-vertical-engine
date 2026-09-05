@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.dirname(fileURLToPath(new URL('../../index.html', import.meta.url)));
@@ -15,6 +16,36 @@ function readRepositoryFile(relativePath) {
 function accessRepositoryFile(relativePath) {
   return access(path.join(repositoryRoot, relativePath));
 }
+
+// Исполняет реальную конфигурацию с нейтральным defineConfig, чтобы Node CI не требовал установки Playwright.
+async function readEvaluatedConfig(softwareWebGl) {
+  const source = await readRepositoryFile('dev/playwright.config.mjs');
+  const context = vm.createContext({
+    process: { env: { VN_E2E_FIREFOX_SOFTWARE_WEBGL: softwareWebGl } },
+    // defineConfig сохраняет заданные поля; проверяем вычисление env и вложенность параметров запуска.
+    defineConfig(config) { return config; }
+  });
+  const executableSource = source
+    .replace(/^import \{ defineConfig \} from '@playwright\/test';\r?\n/m, '')
+    .replace('export default defineConfig(', 'globalThis.config = defineConfig(');
+  new vm.Script(executableSource, { filename: 'dev/playwright.config.mjs' }).runInContext(context, { timeout: 1000 });
+  return JSON.parse(JSON.stringify(context.config));
+}
+
+// Не позволяет корректному имени Firefox pref скрыть неверный уровень use, на котором браузер его игнорирует.
+test('Firefox получает программный WebGL через launchOptions только при явном флаге', async function() {
+  for (const flag of ['1', '0', undefined]) {
+    const config = await readEvaluatedConfig(flag);
+    // Находит проект Firefox для проверки реально вычисленного профиля запуска.
+    const firefox = config.projects.find(function findFirefox(project) { return project.name === 'firefox'; });
+    // Выбирает Chromium, чтобы Firefox-флаг не затрагивал настройки другого браузера.
+    const chromium = config.projects.find(function findChromium(project) { return project.name === 'chromium'; });
+    assert.equal(Object.hasOwn(firefox.use, 'firefoxUserPrefs'), false);
+    assert.deepEqual(firefox.use.launchOptions.firefoxUserPrefs,
+      flag === '1' ? { 'webgl.forbid-software': false } : undefined);
+    assert.deepEqual(chromium.use, { browserName: 'chromium' });
+  }
+});
 
 // Проверяет наличие конфигурации, синтетических fixtures и отдельных npm-команд Playwright.
 test('браузерный E2E-набор полностью описан в репозитории', async function() {

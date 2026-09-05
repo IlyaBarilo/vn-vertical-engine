@@ -1869,6 +1869,9 @@ writeRuntimeVerbose('[SCALE] UI_VISUAL_REFERENCE_HEIGHT initialized:', UI_VISUAL
 writeRuntimeVerbose('[SCALE] UI_VISUAL_MIN_HEIGHT initialized:', UI_VISUAL_MIN_HEIGHT);
 
 // ---------- Состояние движка ----------
+// Ограничивает один синхронный проход; реплика, меню или асинхронное ожидание начинают новый бюджет.
+var MAX_SYNCHRONOUS_ACTIONS = 10000;
+var AUTOMATIC_ACTION_TRACE_LENGTH = 8;
 var state = {
   // Текущая сцена
   sceneId: STORY.meta && STORY.meta.start ? STORY.meta.start : null,
@@ -1889,6 +1892,8 @@ var state = {
   inVideo: false,
   lastNextAt: 0,
   nextLocked: false,
+  // Защитная остановка сохраняется до restart, чтобы закрытие модалки не запустило ошибочный цикл снова.
+  executionHalted: false,
   // Очередь временных действий (например, тело выбранного пункта menu), которые
   // исполняются сразу и не мутируют исходный массив scene.actions.
   pendingActions: []
@@ -4572,6 +4577,8 @@ function applyAutosaveBgmSnapshot(bgmSnap) {
  */
 function buildAutosavePayload(opts) {
   opts = opts || {};
+  // Ошибочный автоматический проход не должен перезаписывать последний рабочий checkpoint.
+  if (state.executionHalted) return null;
   if (!STORY || !isStoryAutosaveEnabled()) {
     autosaveDebugLog("buildPayload:null", { reason: "no_story_or_disabled" });
     return null;
@@ -5193,7 +5200,9 @@ function restoreBgFromScenePrefixForAutosave(sceneId, actionIndex) {
   return true;
 }
 
+// Сбрасывает защитную остановку и временные ветки перед восстановлением слота или новым запуском истории.
 function restart() {
+  state.executionHalted = false;
   vnAutosaveBgScrollRestorePending = null;
   vnAutosaveStory360RestorePending = null;
   visualTransitionController.cancel();
@@ -5335,7 +5344,11 @@ function restart() {
   }
 }
 
+// Исполняет действия до ожидания, ограничивая синхронные циклы и сохраняя короткую цепочку для диагностики.
 function runCurrent() {
+  if (state.executionHalted) return;
+  var automaticActionCount = 0;
+  var recentActions = [];
   try {
   writeRuntimeDebug('[VN DEBUG] Исполнение сцены', state.sceneId, 'с индекса', state.actionIndex);
 
@@ -5374,6 +5387,20 @@ function runCurrent() {
     }
 
 
+    // Проверяем до извлечения следующего шага: достигнутое ожидание и конец сцены остаются допустимыми.
+    if (automaticActionCount >= MAX_SYNCHRONOUS_ACTIONS) {
+      state.executionHalted = true;
+      state.waitingNext = false;
+      state.nextLocked = true;
+      showError(
+        "Превышен лимит " + MAX_SYNCHRONOUS_ACTIONS + " автоматических действий без ожидания. " +
+        "Возможен цикл переходов. Последние шаги: " + recentActions.join(" → ") +
+        ". Исправьте сценарий и обновите страницу либо перезапустите историю."
+      );
+      return;
+    }
+    automaticActionCount++;
+
     var actionIndexBeforeInc = state.actionIndex;
     var action = null;
     // Флаг нужен автосейву: временные действия из menu/if не имеют собственного индекса в scene.actions.
@@ -5395,6 +5422,9 @@ function runCurrent() {
       }
     }
     if (!action || !action.type) continue;
+
+    recentActions.push(state.sceneId + ":" + (actionFromPending ? "ветка" : actionIndexBeforeInc + 1) + " " + action.type);
+    if (recentActions.length > AUTOMATIC_ACTION_TRACE_LENGTH) recentActions.shift();
 
     writeRuntimeDebug('[VN DEBUG] Действие', {
       sceneId: state.sceneId,
@@ -5425,7 +5455,7 @@ function runCurrent() {
     
   }
   } finally {
-    autosaveController.schedule();
+    if (!state.executionHalted) autosaveController.schedule();
   }
 }
 
@@ -7370,6 +7400,7 @@ function buildSceneMap() {
   }
 }
 
+// Передаёт управление сцене с её первого действия, отбрасывая продолжение всех прежних menu/if, включая самопереход.
 function gotoScene(sceneId) {
   if (!sceneId) return;
 
@@ -7382,6 +7413,7 @@ function gotoScene(sceneId) {
   state.sceneId = sceneId;
   currentSceneId = sceneId;
   state.actionIndex = 0;
+  state.pendingActions = [];
   state.waitingNext = false;
   state.nextLocked = false;  // ← ВАЖНО!
   
@@ -10042,7 +10074,8 @@ function showStatsPanel() {
 
 // Аккуратно восстанавливает поток новеллы после закрытия статистики, если UI оставил движок в подвешенном состоянии.
 function tryResumeNovelAfterStatsClose(reason) {
-  if (!state) return;
+  // Закрытие диагностического окна не снимает защитную остановку ошибочного сценария.
+  if (!state || state.executionHalted) return;
   if (state.inGame || state.inVideo) return;
   if (elSettingsPanel && !elSettingsPanel.classList.contains("hidden")) return;
   if (elStatsPanel && !elStatsPanel.classList.contains("hidden")) return;

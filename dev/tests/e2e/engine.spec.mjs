@@ -22,6 +22,27 @@ const tinyPanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAA
 let activeRouteOptions = {};
 let e2eHttpServer = null;
 
+// Создаёт сценарий для проверки очереди и лимита исполнения без загрузки медиа или пользовательских файлов.
+function createControlFlowStory(actions, autosave = false) {
+  return 'window.STORY_TEXT = ' + JSON.stringify([
+    '[meta]',
+    'title = Проверка исполнения',
+    'projectId = control-flow-e2e',
+    'lang = ru',
+    'startScene = intro',
+    'mode = release',
+    'transition = none',
+    'autosave = ' + autosave,
+    '[var]',
+    'leaked = 0',
+    'visits = 0',
+    'rounds = 0',
+    '[scene]',
+    'scene intro',
+    ...actions
+  ].join('\n')) + ';';
+}
+
 // Создаёт короткую историю для проверки projectId, миграции и независимости localStorage-слотов.
 function createAutosaveProjectStorySource(projectId, label) {
   const lines = [
@@ -704,6 +725,95 @@ async function chooseRoute(page, routeLabel) {
   await expect(choices).toBeVisible();
   await choices.getByRole('button', { name: routeLabel }).click();
 }
+
+const pendingTransitionCases = [
+  { name: 'вложенный if', actions: ['if true', 'if true', 'goto destination', 'end', 'set leaked = 1', '"Старая ветка"', 'end'] },
+  { name: 'короткий if внутри блока', actions: ['if true', 'if true -> destination', 'set leaked = 1', '"Старая ветка"', 'end'] },
+  { name: 'if внутри choice', choice: true, actions: ['menu', 'choice "Перейти"', 'if true', 'goto destination', 'end', 'set leaked = 1', '"Старое меню"', 'end'] },
+  { name: 'короткое меню внутри if', choice: true, actions: ['if true', 'menu', '"Перейти" -> destination', 'set leaked = 1', '"Старая ветка"', 'end'] },
+  { name: 'переход на ту же сцену', visits: 2, actions: ['set visits = visits + 1', 'if visits < 2', 'goto intro', 'set leaked = 1', '"Старая итерация"', 'end', 'goto destination'] }
+];
+
+for (const scenario of pendingTransitionCases) {
+  // Проверяет видимый результат и побочные эффекты после перехода, включая оставшееся внешнее продолжение.
+  test('исполнитель: переход очищает очередь — ' + scenario.name, async function({ page }) {
+    const pageErrors = collectPageErrors(page);
+    await installRepositoryRoutes(page, { storySource: createControlFlowStory([
+      ...scenario.actions,
+      'scene destination',
+      '"Цель: {leaked}, посещений: {visits}"',
+      '"Продолжение целевой сцены"'
+    ]) });
+    await page.goto('/');
+    if (scenario.choice) await page.locator('#choices').getByRole('button', { name: 'Перейти' }).click();
+    await expect(page.locator('#textBox')).toHaveText('Цель: 0, посещений: ' + (scenario.visits || 0));
+    await advanceDialog(page);
+    await expect(page.locator('#textBox')).toHaveText('Продолжение целевой сцены');
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+for (const cycle of [
+  { name: 'самопереход', actions: ['goto loop'] },
+  { name: 'взаимные переходы', actions: ['goto second', 'scene second', 'goto loop'] }
+]) {
+  // Зависание должно стать устойчивой ошибкой с рабочим UI, прежним сохранением и возможностью перезапуска.
+  test('исполнитель: ограничивает автоматический цикл — ' + cycle.name, async function({ page }) {
+    const pageErrors = collectPageErrors(page);
+    const storageKey = 'vn_engine_autosave_v1:project:control-flow-e2e';
+    await openStory(page, '/', {
+      storySource: createControlFlowStory(['"До цикла"', 'goto loop', 'scene loop', ...cycle.actions], true),
+      expectedText: 'До цикла'
+    });
+    // Синхронный lifecycle-checkpoint позволяет проверить сохранение без ожидания debounce.
+    const checkpoint = await page.evaluate(function saveCheckpoint(key) {
+      window.dispatchEvent(new Event('beforeunload'));
+      return localStorage.getItem(key);
+    }, storageKey);
+    expect(checkpoint).not.toBeNull();
+
+    await advanceDialog(page);
+    const errorText = page.locator('#textBox');
+    await expect(errorText).toContainText('Превышен лимит 10000 автоматических действий');
+    await expect(errorText).toContainText('loop:1 goto');
+    const haltedText = await errorText.textContent();
+    await page.locator('#btnSettings').click();
+    await expect(page.locator('#settingsPanel')).toBeVisible();
+    await page.locator('#btnCloseSettings').click();
+    await advanceDialog(page);
+    await expect(errorText).toHaveText(haltedText);
+    // Имитирует уход со страницы: lifecycle-запись также обязана сохранить прежний checkpoint.
+    const savedAfterError = await page.evaluate(function flushAfterHalt(key) {
+      window.dispatchEvent(new Event('beforeunload'));
+      return localStorage.getItem(key);
+    }, storageKey);
+    expect(savedAfterError).toBe(checkpoint);
+
+    await page.locator('#btnRestart').click();
+    await expect(errorText).toHaveText('До цикла');
+    await advanceDialog(page);
+    await expect(errorText).toContainText('Превышен лимит 10000 автоматических действий');
+    await page.reload();
+    await expect(errorText).toHaveText('До цикла');
+    expect(pageErrors).toEqual([]);
+  });
+}
+
+// Допустимый цикл с переменной завершает длинный проход, а реплика обновляет бюджет следующего прохода.
+test('исполнитель: конечная цепочка и ожидание реплики сохраняют обычные циклы', async function({ page }) {
+  const pageErrors = collectPageErrors(page);
+  await openStory(page, '/', {
+    storySource: createControlFlowStory([
+      'set visits = 0', 'set rounds = rounds + 1', 'goto count',
+      'scene count', 'set visits = visits + 1', 'if visits < 3000 -> count',
+      '"Раунд {rounds}: {visits}"', 'goto intro'
+    ]),
+    expectedText: 'Раунд 1: 3000'
+  });
+  await advanceDialog(page);
+  await expect(page.locator('#textBox')).toHaveText('Раунд 2: 3000');
+  expect(pageErrors).toEqual([]);
+});
 
 // Открывает настоящий тестер и загружает в него синтетическую игру в обязательном строгом sandbox.
 async function openGameTester(page, gamePath) {
