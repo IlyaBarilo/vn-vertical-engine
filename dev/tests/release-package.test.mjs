@@ -91,12 +91,26 @@ function collectRequiredStaticScripts(indexSource) {
   return requiredScripts;
 }
 
+// Извлекает значки страницы, которые должны работать в репозитории и в автономном релизе.
+function collectRequiredIcons(indexSource) {
+  const requiredIcons = [];
+  const iconPattern = /<link\s+[^>]*rel="icon"[^>]*href="([^"]+)"[^>]*>/g;
+  let match;
+
+  while ((match = iconPattern.exec(indexSource)) !== null) {
+    requiredIcons.push(match[1]);
+  }
+
+  return requiredIcons;
+}
+
 // Проверяет существование обязательных runtime-файлов без чтения story.js и каталогов с ассетами.
 test('обязательные runtime-файлы из index.html существуют', async function() {
   const indexSource = await readRepositoryFile('index.html');
   const requiredPaths = [
     'index.html',
     'engine/engine.css',
+    ...collectRequiredIcons(indexSource),
     ...collectRequiredStaticScripts(indexSource),
     ...collectRequiredEngineScripts(indexSource)
   ];
@@ -115,6 +129,7 @@ test('релизная сборка включает обязательные ru
   const requiredPaths = [
     'index.html',
     'engine/engine.css',
+    ...collectRequiredIcons(indexSource),
     ...collectRequiredStaticScripts(indexSource),
     ...collectRequiredEngineScripts(indexSource)
   ];
