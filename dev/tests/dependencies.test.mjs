@@ -100,3 +100,38 @@ test('версии bundled-библиотек подтверждены файл�
     assert.ok(noticeSource.includes(library.version), 'NOTICE не содержит версию ' + library.version);
   }
 });
+
+// Проверяет полные тексты лицензий для компонентов, чьи условия нельзя заменить общей записью о родительской библиотеке.
+test('полные лицензии jsrsasign и встроенного DOMPurify входят в поставку', async function() {
+  const manifest = await readDependencyManifest();
+  const noticeSource = await readFile(noticePath, 'utf8');
+  const jsrsasign = manifest.libraries.find(function(library) {
+    return library.name === 'jsrsasign';
+  });
+  const mermaid = manifest.libraries.find(function(library) {
+    return library.name === 'mermaid';
+  });
+  const domPurify = mermaid && mermaid.embeddedComponents.find(function(component) {
+    return component.name === 'DOMPurify';
+  });
+
+  assert.equal(jsrsasign.licenseFile, 'lib/licenses/jsrsasign-11.1.3-LICENSE.txt');
+  assert.equal(domPurify.version, '3.3.1');
+  assert.equal(domPurify.license, 'Apache-2.0 OR MPL-2.0');
+  assert.equal(domPurify.licenseFile, 'lib/licenses/dompurify-3.3.1-LICENSE.txt');
+
+  const [jsrsasignLicense, domPurifyLicense, mermaidSource] = await Promise.all([
+    readFile(path.join(repositoryRoot, jsrsasign.licenseFile), 'utf8'),
+    readFile(path.join(repositoryRoot, domPurify.licenseFile), 'utf8'),
+    readFile(path.join(repositoryRoot, mermaid.file), 'utf8')
+  ]);
+  assert.ok(noticeSource.includes(jsrsasign.licenseFile));
+  assert.ok(noticeSource.includes(domPurify.licenseFile));
+  assert.ok(jsrsasignLicense.includes("The 'jsrsasign'(RSA-Sign JavaScript Library) License"));
+  assert.ok(jsrsasignLicense.includes('RSA and ECC in JavaScript'));
+  assert.ok(jsrsasignLicense.includes('CryptoJS'));
+  assert.ok(jsrsasignLicense.includes('Bitcoin JS'));
+  assert.ok(mermaidSource.includes('DOMPurify 3.3.1'));
+  assert.ok(domPurifyLicense.includes('Apache License'));
+  assert.ok(domPurifyLicense.includes('Mozilla Public License, version 2.0'));
+});

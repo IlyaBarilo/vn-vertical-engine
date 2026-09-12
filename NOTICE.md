@@ -10,6 +10,10 @@ Commercial use outside the cases permitted by that license is described in
 The licenses of the third-party components listed below remain unchanged and
 apply separately from the license of this project's original materials.
 
+Complete upstream license texts that are not reproduced in this notice are
+included in the `lib/licenses/` directory and are distributed with release
+archives together with the corresponding libraries.
+
 ## Mermaid
 
 This project uses [Mermaid](https://mermaid.js.org/) — a tool for generating diagrams and charts from text descriptions.
@@ -43,18 +47,34 @@ SOFTWARE.
 The `mermaid.min.js` file is included in the repository without modifications and is located in the `lib/` directory.
 Mermaid version: 11.13.0.
 
+### DOMPurify Included in Mermaid
+
+The bundled `lib/mermaid.min.js` file includes
+[DOMPurify](https://github.com/cure53/DOMPurify), which Mermaid uses to sanitize
+generated markup. DOMPurify is not loaded as a separate runtime file.
+
+DOMPurify version: 3.3.1.
+
+DOMPurify is available under either the Apache License 2.0 or the Mozilla
+Public License 2.0. Its complete upstream license file, containing both license
+texts and the copyright notice, is included at
+[`lib/licenses/dompurify-3.3.1-LICENSE.txt`](lib/licenses/dompurify-3.3.1-LICENSE.txt).
+The corresponding upstream source is available from the
+[DOMPurify 3.3.1 license page](https://github.com/cure53/DOMPurify/blob/3.3.1/LICENSE).
+
 ## jsrsasign
 
 This project uses [jsrsasign](https://kjur.github.io/jsrsasign/) — a JavaScript cryptography library used here for offline license signature verification.
 
 ### License
 
-The MIT License (MIT)
-
-Copyright (c) 2010-2023 Kenji Urushima
-
-The full license notice is included in `lib/jsrsasign-all-min.js` and is available from the project license page:
-https://kjur.github.io/jsrsasign/license/
+jsrsasign is available under the MIT License. Its complete upstream
+`LICENSE.txt` is included at
+[`lib/licenses/jsrsasign-11.1.3-LICENSE.txt`](lib/licenses/jsrsasign-11.1.3-LICENSE.txt).
+That file also preserves the notices and license terms for the RSA and ECC code
+by Tom Wu, CryptoJS, and Bitcoin JS included by jsrsasign. The corresponding
+upstream source is available from the
+[jsrsasign 11.1.3 license page](https://github.com/kjur/jsrsasign/blob/11.1.3/LICENSE.txt).
 
 ### Use in This Project
 

@@ -44,6 +44,12 @@ const requiredSecurityDocuments = [
   { path: 'docs/security/threat-model.md', destination: '"build/$APP_NAME/docs/security/"' }
 ];
 
+// Перечисляет полные тексты лицензий, которые должны сопровождать библиотеки в каждом пользовательском архиве.
+const requiredThirdPartyLicenseFiles = [
+  'lib/licenses/jsrsasign-11.1.3-LICENSE.txt',
+  'lib/licenses/dompurify-3.3.1-LICENSE.txt'
+];
+
 // Читает отслеживаемый файл относительно корня репозитория для проверки состава runtime и релиза.
 function readRepositoryFile(relativePath) {
   return readFile(path.join(repositoryRoot, relativePath), 'utf8');
@@ -184,6 +190,22 @@ test('релизная сборка включает документы безо
     assert.ok(readmeSource.includes('(' + document.path + ')'), 'README.md не ссылается на ' + document.path);
     assert.ok(englishReadmeSource.includes('(' + document.path + ')'), 'README-EN.md не ссылается на ' + document.path);
     assertRequiredReleaseCopy(candidateSource, document.path, document.destination);
+  }
+});
+
+// Не позволяет релизной упаковке отделить сторонние библиотеки от обязательных лицензионных текстов.
+test('релизная сборка включает полные сторонние лицензии', async function() {
+  const [candidateSource, noticeSource] = await Promise.all([
+    readRepositoryFile('.github/workflows/release-candidate.yml'),
+    readRepositoryFile('NOTICE.md')
+  ]);
+
+  for (const relativePath of requiredThirdPartyLicenseFiles) {
+    await access(path.join(repositoryRoot, relativePath));
+    assert.ok(noticeSource.includes(relativePath), 'NOTICE.md не ссылается на ' + relativePath);
+    assertRequiredReleaseCopy(candidateSource, relativePath, '"build/$APP_NAME/lib/licenses/"');
+    assert.ok(candidateSource.includes('${APP_NAME}/' + relativePath));
+    assert.ok(candidateSource.includes('${APP_NAME}-update/' + relativePath));
   }
 });
 

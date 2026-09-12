@@ -150,6 +150,9 @@ jobs:
           cp lib/mermaid.min.js "build/$APP_NAME/lib/"
           cp lib/jsrsasign-all-min.js "build/$APP_NAME/lib/"
           cp lib/three.min.js "build/$APP_NAME/lib/"
+          mkdir -p "build/$APP_NAME/lib/licenses"
+          cp lib/licenses/jsrsasign-11.1.3-LICENSE.txt "build/$APP_NAME/lib/licenses/"
+          cp lib/licenses/dompurify-3.3.1-LICENSE.txt "build/$APP_NAME/lib/licenses/"
           # [ -f lib/mermaid-editor.html ] && cp lib/mermaid-editor.html "build/$APP_NAME/lib/"
 
           # Копируем разрешённые форматы ассетов, сохраняя вложенные каталоги.
@@ -259,6 +262,8 @@ jobs:
           grep -Fxq "${APP_NAME}/docs/student-project-review.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/360-first-steps.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/panorama-cleaner.html" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/lib/licenses/jsrsasign-11.1.3-LICENSE.txt" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/lib/licenses/dompurify-3.3.1-LICENSE.txt" build/full-zip-contents.txt
 
           # Update-архив сохраняет runtime, документацию и инструменты, но не заменяет данные автора.
           grep -Fxq "${APP_NAME}-update/release-manifest.json" build/update-zip-contents.txt
@@ -289,6 +294,8 @@ jobs:
           grep -Fxq "${APP_NAME}-update/docs/student-project-review.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/docs/360-first-steps.md" build/update-zip-contents.txt
           grep -Fxq "${APP_NAME}-update/tools/panorama-cleaner.html" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/lib/licenses/jsrsasign-11.1.3-LICENSE.txt" build/update-zip-contents.txt
+          grep -Fxq "${APP_NAME}-update/lib/licenses/dompurify-3.3.1-LICENSE.txt" build/update-zip-contents.txt
 
           # Developer-файлы и рабочий user.js не должны попадать в официальные ZIP.
           if grep -Eq "^${APP_NAME}/(dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$|user\\.js$)" build/full-zip-contents.txt; then
