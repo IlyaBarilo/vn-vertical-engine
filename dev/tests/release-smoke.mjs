@@ -14,6 +14,10 @@ const optionalScriptPaths = new Set(['/license-key.js', '/story360.js', '/user.j
 const fileSmokePanoramaRelativePath = 'assets/360/__release-smoke__/file-smoke-360.css';
 const fileSmokePanoramaDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const supportedSmokeBrowsers = new Set(['chromium', 'firefox', 'msedge']);
+// Холодный Firefox на Windows runner может запускать runtime дольше десяти секунд даже при исправной сборке.
+const httpRuntimeReadyTimeoutMs = 30_000;
+// Общий лимит учитывает распаковку ZIP и отдельные ожидания HTTP- и file://-этапов.
+const releaseSmokeTimeoutMs = 150_000;
 
 /**
  * Разбирает путь к ZIP и браузер, отклоняя неизвестные параметры до распаковки большого архива.
@@ -452,7 +456,7 @@ async function runBrowserSmoke(releaseRoot, baseUrl, archivePath, browserName) {
     await page.waitForFunction(function hasFirstStoryLine() {
       const textBox = document.querySelector('#textBox');
       return Boolean(textBox && textBox.textContent.trim() === 'Первый экран E2E');
-    }, undefined, { timeout: 10_000 });
+    }, undefined, { timeout: httpRuntimeReadyTimeoutMs });
 
     assert.equal(await page.title(), 'E2E-проверка движка');
     assert.equal(await page.locator('#dialog').isVisible(), true, 'Диалог движка не отображается.');
@@ -655,7 +659,7 @@ const smokeOptions = parseSmokeOptions(process.argv.slice(2));
 const archiveArgument = smokeOptions.archiveArgument;
 
 // Проверяет полный ZIP после распаковки отдельно через диагностический HTTP-контур и настоящий автономный file://.
-test(`распакованный полный ZIP запускает движок и CSS-панорамы через HTTP и file:// в ${smokeOptions.browserName}`, { timeout: 90_000 }, async function() {
+test(`распакованный полный ZIP запускает движок и CSS-панорамы через HTTP и file:// в ${smokeOptions.browserName}`, { timeout: releaseSmokeTimeoutMs }, async function() {
   assert.ok(
     archiveArgument,
     'Укажите путь к полному ZIP: npm run test:release:smoke -- ../имя-архива.zip --browser=chromium'
