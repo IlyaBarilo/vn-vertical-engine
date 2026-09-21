@@ -62,8 +62,8 @@ before adapting the example; it is not a ready-made compliance solution.
   360° scenes, mini-games, and tools.
 - `vn-vertical-engine-latest-update.zip` updates an existing project without
   replacing `assets/`, `story.js`, `user.js`, or the root `story-example.js`
-  and `user-example.js`. It also omits `engine/icons/`, preserving icons chosen
-  by the project author. Current reference examples are included in `docs/examples/`.
+  and `user-example.js`. It also omits the root `favicon.png`, preserving the
+  favicon chosen by the project author. Current reference examples are included in `docs/examples/`.
 
 See [First Steps](FIRST-STEPS-EN.md) for the recommended workflow.
 
@@ -371,9 +371,9 @@ project/
 from a clean copy or untracked by Git; the demo falls back to
 `story-example.js`.
 
-The update ZIP excludes `assets/`, `engine/icons/`, `story.js`, `user.js`, and
+The update ZIP excludes `assets/`, `favicon.png`, `story.js`, `user.js`, and
 the root `story-example.js` and `user-example.js`, preserving author-owned
-content and icons. The current reference story remains available as
+content and the favicon. The current reference story remains available as
 `docs/examples/story-example.js`; the extension example is in `docs/examples/user-example.js`.
 
 Both release archives include `release-manifest.json` with the engine version,

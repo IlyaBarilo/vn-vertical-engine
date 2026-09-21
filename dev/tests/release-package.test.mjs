@@ -38,14 +38,16 @@ test('релиз включает пример user.js и не заменяет 
   assert.equal(candidateSource.includes('cp user.js '), false);
 });
 
-// Закрепляет штатные значки в полном архиве и сохраняет пользовательские значки при установке update поверх проекта.
-test('update-архив не заменяет значки проекта', async function() {
+// Закрепляет корневой favicon в полном архиве и сохраняет пользовательский файл при установке update поверх проекта.
+test('update-архив не заменяет favicon проекта', async function() {
   const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
 
-  assert.ok(candidateSource.includes('rm -rf "${APP_NAME}-update/engine/icons"'));
-  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/icons/app-icon-512.png"'));
-  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/icons/favicon-64.png"'));
-  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|engine/icons/|story\\\\.js$'));
+  await access(path.join(repositoryRoot, 'favicon.png'));
+  assertRequiredReleaseCopy(candidateSource, 'favicon.png', '"build/$APP_NAME/"');
+  assert.ok(candidateSource.includes('rm -f "${APP_NAME}-update/favicon.png"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/favicon.png"'));
+  assert.equal(candidateSource.includes('app-icon-512.png'), false);
+  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|favicon\\\\.png$|story\\\\.js$'));
 });
 
 // Перечисляет документы безопасности, которые должны сопровождать runtime в обоих пользовательских архивах.
@@ -369,7 +371,7 @@ test('релизная сборка создаёт и проверяет release
   const versionPosition = candidateSource.indexOf('- name: Inject version into engine/engine.js');
   const manifestPosition = candidateSource.indexOf('- name: Create and verify release manifest');
   const archivePosition = candidateSource.indexOf('- name: Create ZIP archives');
-  const removeUpdateIconsPosition = candidateSource.indexOf('rm -rf "${APP_NAME}-update/engine/icons"');
+  const removeUpdateFaviconPosition = candidateSource.indexOf('rm -f "${APP_NAME}-update/favicon.png"');
   const updateManifestPosition = candidateSource.indexOf('release-manifest.mjs create --root "build/${APP_NAME}-update"');
   const updateArchivePosition = candidateSource.indexOf('zip -r "../${APP_NAME}-${VERSION}-update.zip"');
 
@@ -390,7 +392,7 @@ test('релизная сборка создаёт и проверяет release
   assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/${APP_NAME}-update"'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/release-manifest.json"'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/release-manifest.json"'));
-  assert.ok(removeUpdateIconsPosition >= 0 && updateManifestPosition > removeUpdateIconsPosition);
+  assert.ok(removeUpdateFaviconPosition >= 0 && updateManifestPosition > removeUpdateFaviconPosition);
   assert.ok(updateArchivePosition > updateManifestPosition);
 });
 
@@ -446,7 +448,7 @@ test('релизный workflow проверяет фактический сос
   assert.ok(candidateSource.includes('${APP_NAME}-update/docs/360-first-steps.md'));
   assert.ok(candidateSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
   assert.ok(candidateSource.includes('${APP_NAME}/(dev/|tests/'));
-  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|engine/icons/|story\\\\.js$|story-example\\\\.js$|dev/'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|favicon\\\\.png$|story\\\\.js$|story-example\\\\.js$|dev/'));
   // Сохраняем прежние исключения и проверяем новые авторские файлы; список больше не заканчивается на TESTING.md.
   assert.ok(candidateSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$|user\\\\.js$'));
   assert.ok(candidateSource.includes('user\\\\.js$|user-example\\\\.js$)'));

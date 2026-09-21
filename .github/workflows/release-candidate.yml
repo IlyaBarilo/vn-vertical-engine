@@ -81,7 +81,6 @@ jobs:
           mkdir -p "build/$APP_NAME/assets/video"
           mkdir -p "build/$APP_NAME/lib"
           mkdir -p "build/$APP_NAME/engine"
-          mkdir -p "build/$APP_NAME/engine/icons"
           mkdir -p "build/$APP_NAME/tools"
           mkdir -p "build/$APP_NAME/docs"
           mkdir -p "build/$APP_NAME/docs/examples"
@@ -99,6 +98,7 @@ jobs:
           cp LICENSE "build/$APP_NAME/"
           cp COMMERCIAL-USE.md "build/$APP_NAME/"
           cp NOTICE.md "build/$APP_NAME/"
+          cp favicon.png "build/$APP_NAME/"
           cp tools/student-project-auditor.html "build/$APP_NAME/tools/"
           cp tools/game-tester.html "build/$APP_NAME/tools/"
           cp tools/media-focus-editor.html "build/$APP_NAME/tools/"
@@ -122,8 +122,6 @@ jobs:
           cp engine/expression.js "build/$APP_NAME/engine/"
           cp engine/game-host.js "build/$APP_NAME/engine/"
           cp engine/game-protocol.js "build/$APP_NAME/engine/"
-          cp engine/icons/app-icon-512.png "build/$APP_NAME/engine/icons/"
-          cp engine/icons/favicon-64.png "build/$APP_NAME/engine/icons/"
           cp engine/resource-path-policy.js "build/$APP_NAME/engine/"
           cp engine/story-analysis.js "build/$APP_NAME/engine/"
           cp engine/story-graph.js "build/$APP_NAME/engine/"
@@ -197,11 +195,11 @@ jobs:
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
-          # Update-архив не содержит пользовательские assets, значки, файлы истории и расширения.
-          # Справочный пример остаётся только в docs/examples, а существующие значки проекта не заменяются.
+          # Update-архив не содержит пользовательские assets, favicon, файлы истории и расширения.
+          # Справочный пример остаётся только в docs/examples, а favicon проекта не заменяется.
           cp -r "$APP_NAME" "${APP_NAME}-update"
           rm -rf "${APP_NAME}-update/assets"
-          rm -rf "${APP_NAME}-update/engine/icons"
+          rm -f "${APP_NAME}-update/favicon.png"
           rm -f "${APP_NAME}-update/story.js"
           rm -f "${APP_NAME}-update/story-example.js"
           rm -f "${APP_NAME}-update/user.js"
@@ -264,8 +262,7 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/story-video-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/visual-transition-controller.js" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/icons/app-icon-512.png" build/full-zip-contents.txt
-          grep -Fxq "${APP_NAME}/engine/icons/favicon-64.png" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/favicon.png" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
@@ -316,8 +313,8 @@ jobs:
             echo "Полный архив содержит запрещённый панорамный JS-пакет."
             exit 1
           fi
-          if grep -Eq "^${APP_NAME}-update/(assets/|engine/icons/|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$|user\\.js$|user-example\\.js$)" build/update-zip-contents.txt; then
-            echo "Update-архив содержит пользовательские данные, значки или developer-файлы."
+          if grep -Eq "^${APP_NAME}-update/(assets/|favicon\\.png$|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$|user\\.js$|user-example\\.js$)" build/update-zip-contents.txt; then
+            echo "Update-архив содержит пользовательские данные, favicon или developer-файлы."
             exit 1
           fi
 
