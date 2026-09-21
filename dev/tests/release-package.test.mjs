@@ -38,6 +38,16 @@ test('релиз включает пример user.js и не заменяет 
   assert.equal(candidateSource.includes('cp user.js '), false);
 });
 
+// Закрепляет штатные значки в полном архиве и сохраняет пользовательские значки при установке update поверх проекта.
+test('update-архив не заменяет значки проекта', async function() {
+  const candidateSource = await readRepositoryFile('.github/workflows/release-candidate.yml');
+
+  assert.ok(candidateSource.includes('rm -rf "${APP_NAME}-update/engine/icons"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/icons/app-icon-512.png"'));
+  assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/engine/icons/favicon-64.png"'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|engine/icons/|story\\\\.js$'));
+});
+
 // Перечисляет документы безопасности, которые должны сопровождать runtime в обоих пользовательских архивах.
 const requiredSecurityDocuments = [
   { path: 'SECURITY.md', destination: '"build/$APP_NAME/"' },
@@ -349,7 +359,7 @@ test('релизный workflow создаёт и проверяет SHA-256 а�
   assert.ok(candidateSource.includes('${{ github.event.repository.name }}-latest-update.zip.sha256'));
 });
 
-// Закрепляет создание манифеста после подстановки версии и до упаковки одинакового runtime в ZIP и Pages.
+// Закрепляет создание манифестов после подстановки версии и до упаковки соответствующего runtime.
 test('релизная сборка создаёт и проверяет release-manifest', async function() {
   const [candidateSource, packageSource] = await Promise.all([
     readRepositoryFile('.github/workflows/release-candidate.yml'),
@@ -359,6 +369,9 @@ test('релизная сборка создаёт и проверяет release
   const versionPosition = candidateSource.indexOf('- name: Inject version into engine/engine.js');
   const manifestPosition = candidateSource.indexOf('- name: Create and verify release manifest');
   const archivePosition = candidateSource.indexOf('- name: Create ZIP archives');
+  const removeUpdateIconsPosition = candidateSource.indexOf('rm -rf "${APP_NAME}-update/engine/icons"');
+  const updateManifestPosition = candidateSource.indexOf('release-manifest.mjs create --root "build/${APP_NAME}-update"');
+  const updateArchivePosition = candidateSource.indexOf('zip -r "../${APP_NAME}-${VERSION}-update.zip"');
 
   assert.ok(packageData.scripts['test:release'].includes('tests/release-manifest.test.mjs'));
   await Promise.all([
@@ -374,8 +387,11 @@ test('релизная сборка создаёт и проверяет release
   assert.ok(candidateSource.includes('cp "build/$APP_NAME/release-manifest.json" "build/site/release-manifest.json"'));
   assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/$APP_NAME"'));
   assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/site"'));
+  assert.ok(candidateSource.includes('release-manifest.mjs verify --root "build/${APP_NAME}-update"'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}/release-manifest.json"'));
   assert.ok(candidateSource.includes('grep -Fxq "${APP_NAME}-update/release-manifest.json"'));
+  assert.ok(removeUpdateIconsPosition >= 0 && updateManifestPosition > removeUpdateIconsPosition);
+  assert.ok(updateArchivePosition > updateManifestPosition);
 });
 
 // Проверяет наличие проверки целостности и ключевых различий полного и update-архивов.
@@ -430,7 +446,7 @@ test('релизный workflow проверяет фактический сос
   assert.ok(candidateSource.includes('${APP_NAME}-update/docs/360-first-steps.md'));
   assert.ok(candidateSource.includes('Полный архив содержит запрещённый панорамный JS-пакет.'));
   assert.ok(candidateSource.includes('${APP_NAME}/(dev/|tests/'));
-  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|story\\\\.js$|story-example\\\\.js$|dev/'));
+  assert.ok(candidateSource.includes('${APP_NAME}-update/(assets/|engine/icons/|story\\\\.js$|story-example\\\\.js$|dev/'));
   // Сохраняем прежние исключения и проверяем новые авторские файлы; список больше не заканчивается на TESTING.md.
   assert.ok(candidateSource.includes('node_modules/|playwright-report/|test-results/|package(-lock)?\\\\.json$|playwright\\\\.config\\\\.mjs$|docs/TESTING\\\\.md$|user\\\\.js$'));
   assert.ok(candidateSource.includes('user\\\\.js$|user-example\\\\.js$)'));

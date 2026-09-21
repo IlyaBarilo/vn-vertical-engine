@@ -197,14 +197,22 @@ jobs:
           cd build
           zip -r "../${APP_NAME}-${VERSION}.zip" "$APP_NAME"
 
-          # Update-архив не содержит пользовательские assets, файлы истории и расширения.
-          # Справочный пример остаётся только в docs/examples, чтобы не перезаписать рабочий файл пользователя.
+          # Update-архив не содержит пользовательские assets, значки, файлы истории и расширения.
+          # Справочный пример остаётся только в docs/examples, а существующие значки проекта не заменяются.
           cp -r "$APP_NAME" "${APP_NAME}-update"
           rm -rf "${APP_NAME}-update/assets"
+          rm -rf "${APP_NAME}-update/engine/icons"
           rm -f "${APP_NAME}-update/story.js"
           rm -f "${APP_NAME}-update/story-example.js"
           rm -f "${APP_NAME}-update/user.js"
           rm -f "${APP_NAME}-update/user-example.js"
+          cd ..
+
+          # Update получает собственный манифест после исключения изменяемых автором файлов.
+          node dev/scripts/release-manifest.mjs create --root "build/${APP_NAME}-update" --version "$VERSION" --commit "${{ github.sha }}" --node-tests "${{ inputs.run_node_tests }}" --windows-smoke "${{ inputs.run_windows_smoke }}"
+          node dev/scripts/release-manifest.mjs verify --root "build/${APP_NAME}-update" --version "$VERSION" --commit "${{ github.sha }}" --node-tests "${{ inputs.run_node_tests }}" --windows-smoke "${{ inputs.run_windows_smoke }}"
+
+          cd build
           zip -r "../${APP_NAME}-${VERSION}-update.zip" "${APP_NAME}-update"
           cd ..
 
@@ -256,6 +264,8 @@ jobs:
           grep -Fxq "${APP_NAME}/engine/story-video-controller.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/story-sandbox-loader.js" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/engine/visual-transition-controller.js" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/icons/app-icon-512.png" build/full-zip-contents.txt
+          grep -Fxq "${APP_NAME}/engine/icons/favicon-64.png" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/SECURITY.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/docs/security/threat-model.md" build/full-zip-contents.txt
           grep -Fxq "${APP_NAME}/tools/student-project-auditor.html" build/full-zip-contents.txt
@@ -306,8 +316,8 @@ jobs:
             echo "Полный архив содержит запрещённый панорамный JS-пакет."
             exit 1
           fi
-          if grep -Eq "^${APP_NAME}-update/(assets/|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$|user\\.js$|user-example\\.js$)" build/update-zip-contents.txt; then
-            echo "Update-архив содержит пользовательские данные или developer-файлы."
+          if grep -Eq "^${APP_NAME}-update/(assets/|engine/icons/|story\\.js$|story-example\\.js$|dev/|tests/|node_modules/|playwright-report/|test-results/|package(-lock)?\\.json$|playwright\\.config\\.mjs$|docs/TESTING\\.md$|user\\.js$|user-example\\.js$)" build/update-zip-contents.txt; then
+            echo "Update-архив содержит пользовательские данные, значки или developer-файлы."
             exit 1
           fi
 

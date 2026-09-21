@@ -69,7 +69,7 @@ async function collectDirectoryFiles(releaseRoot, currentDirectory, result) {
 }
 
 /**
- * Возвращает полный сортированный набор runtime-файлов, общий для full, update и Pages.
+ * Возвращает полный сортированный набор runtime-файлов для переданного full, update или Pages-каталога.
  */
 export async function collectReleaseRuntimePaths(releaseRoot) {
   const resolvedRoot = path.resolve(releaseRoot);
