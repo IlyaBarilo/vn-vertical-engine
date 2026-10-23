@@ -44,7 +44,8 @@ game coffeeRush difficulty=3 result=resultCoffee
 - `gameId` — идентификатор игры
 - `difficulty` — уровень сложности
 - `result` — имя переменной, в которую движок запишет итог игры
-- любые другие поля могут быть переданы в игру как дополнительные параметры
+- дополнительные параметры передаются за исключением `result` и служебных
+  `type`, `gameId`, `protocolVersion`, `sessionId`: последние задаёт движок
 
 ### Регистрация игры в проекте
 
@@ -317,10 +318,29 @@ parent.postMessage({
 
 ---
 
+### Требования к типу и шкале результата
+
+Новая игра обязана отправлять поле `result` типа number с конечным значением:
+`typeof result === 'number' && Number.isFinite(result)`. `NaN`, бесконечность,
+строка, boolean, массив и `null` не являются корректным результатом новой игры.
+
+Для бинарной шкалы `0` означает неуспех, `1` — успех. Для очков, времени или
+другой расширенной шкалы явно определите единицы, диапазон и порог успеха.
+Значение `1` в такой шкале может быть одним очком и не обязано означать победу.
+Итоговый экран и условия сценария должны использовать одну договорённость:
+например, при цели 10 очков условие успеха — `if score >= 10`, а не `score == 1`.
+
+Поведение принимающей стороны для совместимости не разрешает новой игре
+нарушать контракт. Runtime преобразует старые значения через `Number(...)`,
+а отсутствующий или неконечный результат заменяет нулём. Тестер также
+преобразует значение перед проверкой и может принять строку, boolean,
+`null` или массив. Поэтому успешный приём сообщения тестером подтверждает
+проверки сессии и преобразованного числа, но не исходный тип `result`.
+
 ## 🏁 Финальный статус игры
 
-- если `result = 1`, финальный экран должен явно показывать успех
-- если `result = 0`, финальный экран не должен визуально выглядеть как победа
+- при бинарной шкале `result = 1` финальный экран должен явно показывать успех
+- при бинарной шкале `result = 0` финальный экран не должен визуально выглядеть как победа
 - промежуточные оценки допустимы, но не должны подменять итоговый success/fail
 - если игра использует явный порог (`targetScore`, `targetTime` и т.п.), итоговый статус должен определяться именно этим порогом
 - текст, цвет, иконки и общий визуальный тон финального экрана не должны противоречить значению `result`
@@ -653,10 +673,36 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
   }
 
   #gameRoot {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 810px;
+    height: 1440px;
+    transform: translate(-50%, -50%) scale(var(--scale));
     touch-action: none;
+    font: 32px/1.4 sans-serif;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .panel {
+    padding: 32px;
+    border-radius: 24px;
+    background: #fff;
+    color: #222;
+  }
+
+  .button {
+    font: inherit;
+    min-height: 96px;
+    padding: 20px 32px;
+    border: 2px solid currentColor;
+    border-radius: 16px;
   }
 
   canvas {
@@ -689,7 +735,7 @@ scale = min(viewportWidth / 810, viewportHeight / 1440)
 </head>
 <body>
 <div id="gameRoot">
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="gameCanvas" width="810" height="1440"></canvas>
 
   <div id="uiRoot">
     <div id="startOverlay" class="overlay" data-ui="true">
@@ -712,6 +758,7 @@ let resultSent = false;
 let gameStarted = false;
 let initReceived = false;
 let activeGameInit = null;
+const acceptedSessions = new Set();
 let mouseActive = false;
 
 const BASE_W = 810;
@@ -724,11 +771,13 @@ const finishOverlay = document.getElementById('finishOverlay');
 const startButton = document.getElementById('startButton');
 const finishButton = document.getElementById('finishButton');
 
+// Масштабирует весь базовый макет, сохраняя пропорции и области ввода.
 function applyScale() {
   const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
   document.documentElement.style.setProperty('--scale', scale.toFixed(5));
 }
 
+// Отделяет интерфейс от игровых действий по цели события и её родителям.
 function isUiTarget(target) {
   return !!(
     target &&
@@ -736,17 +785,45 @@ function isUiTarget(target) {
   );
 }
 
+// Скрывает экраны перед переключением состояния.
 function hideAllOverlays() {
   startOverlay.classList.add('hidden');
   finishOverlay.classList.add('hidden');
 }
 
+// Возвращает документ в начальное состояние новой сессии без перезагрузки.
+function resetSession() {
+  if (pointerCaptureTarget && activePointerId !== null) {
+    tryReleasePointer({ target: pointerCaptureTarget, pointerId: activePointerId });
+  }
+  mouseActive = false;
+  resultSent = false;
+  gameStarted = false;
+  gameRoot.style.pointerEvents = 'auto';
+  uiRoot.style.pointerEvents = 'auto';
+  startButton.disabled = false;
+  finishButton.disabled = false;
+  delete finishButton.dataset.result;
+  hideAllOverlays();
+  startOverlay.classList.remove('hidden');
+  // Добавленная механика здесь отменяет свои таймеры/анимации и сбрасывает счёт.
+}
+
+// Переводит экранные координаты в единые координаты базового макета 810×1440.
+function toGamePoint(x, y) {
+  const rect = gameRoot.getBoundingClientRect();
+  return { x: (x - rect.left) * BASE_W / rect.width,
+           y: (y - rect.top) * BASE_H / rect.height };
+}
+
+// Начинает попытку, пока результат текущей сессии не зафиксирован.
 function startGame() {
   if (resultSent) return;
   hideAllOverlays();
   gameStarted = true;
 }
 
+// Показывает локальный итог попытки без отправки результата движку.
 function showFinish(result) {
   if (resultSent) return;
   gameStarted = false;
@@ -755,11 +832,15 @@ function showFinish(result) {
   finishOverlay.classList.remove('hidden');
 }
 
+// Отключает указатель и клавиатурную активацию кнопок после результата.
 function blockAllInteraction() {
   gameRoot.style.pointerEvents = 'none';
   uiRoot.style.pointerEvents = 'none';
+  startButton.disabled = true;
+  finishButton.disabled = true;
 }
 
+// Единожды фиксирует итог текущей сессии и блокирует дальнейший ввод.
 function finishGame(result) {
   if (resultSent) return;
   resultSent = true;
@@ -782,6 +863,7 @@ function finishGame(result) {
   parent.postMessage(resultMessage, "*");
 }
 
+// Начинает игровой ввод вне UI и переводит координаты в базовый макет.
 function onGameInputStart(event, x, y) {
   if (!gameStarted || resultSent) return;
   if (isUiTarget(event.target)) return;
@@ -790,17 +872,21 @@ function onGameInputStart(event, x, y) {
   // для drag/hold-механик можно сохранить управление через Pointer Capture
   tryCapturePointer(event);
 
-  // игровая логика начала ввода
+  const point = toGamePoint(x, y);
+  // Игровая логика начала ввода использует point.x и point.y.
 }
 
+// Обрабатывает движение вне UI в координатах базового макета.
 function onGameInputMove(event, x, y) {
   if (!gameStarted || resultSent) return;
   if (isUiTarget(event.target)) return;
   if (event.cancelable) event.preventDefault();
 
-  // игровая логика движения
+  const point = toGamePoint(x, y);
+  // Игровая логика движения использует point.x и point.y.
 }
 
+// Завершает или отменяет ввод и освобождает захват указателя.
 function onGameInputEnd(event) {
   if (resultSent) return;
   if (event.cancelable) event.preventDefault();
@@ -810,7 +896,9 @@ function onGameInputEnd(event) {
   // игровая логика завершения ввода
 }
 
+// Изолирует события UI; действие кнопки выполняется через click до фиксации результата.
 function bindUiButton(button, handler) {
+  // Не даёт событиям кнопки попасть в игровую механику.
   const stop = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -828,7 +916,9 @@ function bindUiButton(button, handler) {
 const HAS_POINTER_EVENTS = 'PointerEvent' in window;
 
 let activePointerId = null;
+let pointerCaptureTarget = null;
 
+// Сохраняет доставку pointer-событий при удержании или перетаскивании.
 function tryCapturePointer(event) {
   if (!HAS_POINTER_EVENTS) return;
   if (!event || event.pointerId == null) return;
@@ -837,9 +927,11 @@ function tryCapturePointer(event) {
   try {
     event.target.setPointerCapture(event.pointerId);
     activePointerId = event.pointerId;
+    pointerCaptureTarget = event.target;
   } catch (_) {}
 }
 
+// Освобождает захват указателя и очищает связанные ссылки.
 function tryReleasePointer(event) {
   if (!HAS_POINTER_EVENTS) return;
   if (!event || event.pointerId == null) return;
@@ -853,9 +945,11 @@ function tryReleasePointer(event) {
 
   if (activePointerId === event.pointerId) {
     activePointerId = null;
+    pointerCaptureTarget = null;
   }
 }
 
+// Выбирает Pointer Events или fallback для сред без их поддержки.
 function bindInput() {
   if (HAS_POINTER_EVENTS) {
     gameRoot.addEventListener('pointerdown', (event) => {
@@ -877,7 +971,7 @@ function bindInput() {
     return;
   }
 
-  // Mouse fallback
+  // Резервный ввод мышью при отсутствии Pointer Events.
   gameRoot.addEventListener('mousedown', (event) => {
     mouseActive = true;
     onGameInputStart(event, event.clientX, event.clientY);
@@ -894,7 +988,7 @@ function bindInput() {
     onGameInputEnd(event);
   }, { passive: false });
 
-  // Touch fallback
+  // Резервный сенсорный ввод при отсутствии Pointer Events.
   gameRoot.addEventListener('touchstart', (event) => {
     if (isUiTarget(event.target)) {
       event.preventDefault();
@@ -926,16 +1020,24 @@ function bindInput() {
   }, { passive: false });
 }
 
+// Принимает только родительский init; использованная пара id не сбрасывает прогресс или итог.
 window.addEventListener('message', (event) => {
-  if (!event.data || event.data.type !== 'gameInit') return;
-  if (Number(event.data.protocolVersion) !== 2) return;
+  if (event.source !== parent) return;
+  const data = event.data;
+  if (!data || data.type !== 'gameInit' || Number(data.protocolVersion) !== 2) return;
+  if (typeof data.gameId !== 'string' || !data.gameId.trim()) return;
+  if (typeof data.sessionId !== 'string' || !data.sessionId.trim()) return;
+  const key = JSON.stringify([data.gameId, data.sessionId]);
+  if (acceptedSessions.has(key)) return;
 
+  acceptedSessions.add(key);
   initReceived = true;
-  activeGameInit = event.data;
-  difficulty = Number(event.data.difficulty ?? 3) || 3;
+  activeGameInit = { ...data };
+  difficulty = Number(data.difficulty ?? 3) || 3;
+  resetSession();
   applyScale();
 
-  // инициализация игры после gameInit
+  // Здесь применяются параметры механики новой сессии.
 });
 
 setTimeout(() => {
@@ -966,6 +1068,30 @@ bindInput();
 ```
 
 ---
+
+### Сессия и повторная инициализация каркаса
+
+Внутренняя попытка до результата остаётся частью одной сессии. Повтор уже
+принятого `gameInit` с той же парой `gameId`/`sessionId` ничего не сбрасывает,
+включая состояние после отправки результата. Новый идентификатор от родителя
+начинает чистую сессию в текущем документе: сбрасываются результат, ввод,
+оверлеи и состояние механики. Старый init уже использованной сессии игнорируется.
+При обычном запуске движок создаёт новый документ; повторный init в том же
+документе нужен для ручного тестирования.
+
+Каркас использует логические координаты 810×1440 и масштабирует весь
+`gameRoot` через CSS transform: вместе с ним изменяются шрифты, кнопки,
+игровые объекты и области нажатия. `toGamePoint()` переводит экранный ввод
+обратно в логические координаты. При добавлении canvas-рисования задайте его
+внутренний размер 810×1440 и рисуйте в той же системе координат; для повышенной
+чёткости можно отдельно учитывать плотность пикселей, сохраняя логические размеры.
+Поля по краям окна допустимы: макет сохраняет пропорции и полностью помещается
+в доступную область.
+
+Это технический каркас: конкретная механика добавляется в отмеченные места.
+При генерации готовой игры механика должна быть реализована. Её таймеры,
+анимации, аудио и удержания, если они создаются, нужно остановить при завершении
+и перед новой сессией; отложенные callback старой сессии не должны менять новую.
 
 ## ✅ Минимальный чек-лист совместимости
 
