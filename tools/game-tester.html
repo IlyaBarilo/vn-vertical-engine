@@ -774,7 +774,7 @@
               </label>
               <label>
                 Difficulty
-                <input id="difficulty" type="number" min="0" step="1" value="3" />
+                <input id="difficulty" type="number" min="1" max="5" step="1" value="3" />
               </label>
             </div>
             <div class="trust-warning">
@@ -3193,6 +3193,13 @@
       return Number.isFinite(n) ? n : fallback;
     }
 
+    // Принимает стандартную сложность 1..5; неверное значение заменяет обычным уровнем 3.
+    function normalizeDifficulty(value) {
+      const numeric = typeof value === 'number' || typeof value === 'string'
+        ? Number(value) : NaN;
+      return Number.isInteger(numeric) && numeric >= 1 && numeric <= 5 ? numeric : 3;
+    }
+
     function setStatus(text, mode=''){
       els.status.textContent = text;
       els.status.className = 'status' + (mode ? ' ' + mode : '');
@@ -3267,6 +3274,7 @@
       els.messageLog.prepend(entry);
     }
 
+    // Синхронизирует JSON с полями; неверная сложность в новом запуске заменяется на 3.
     function syncPayloadWithControls(){
       let payload = {};
       try { payload = JSON.parse(els.payloadEditor.value || '{}'); }
@@ -3274,7 +3282,7 @@
 
       payload.type = 'gameInit';
       payload.gameId = els.gameId.value.trim() || 'game';
-      payload.difficulty = num(els.difficulty.value, 3);
+      payload.difficulty = normalizeDifficulty(els.difficulty.value);
 
       els.payloadEditor.value = JSON.stringify(payload, null, 2);
     }
@@ -3388,7 +3396,7 @@
       }
     }
 
-    // Формирует gameInit текущей версии и не позволяет JSON-редактору подменить служебные поля сессии.
+    // Формирует gameInit с нормализованной сложностью и защищёнными служебными полями.
     function buildPayload(sessionId){
       syncPayloadWithControls();
 
@@ -3407,7 +3415,7 @@
       payload.gameId = els.gameId.value.trim() || payload.gameId || 'game';
       payload.protocolVersion = GAME_PROTOCOL_VERSION;
       payload.sessionId = sessionId;
-      payload.difficulty = num(els.difficulty.value, 3);
+      payload.difficulty = normalizeDifficulty(els.difficulty.value);
       return payload;
     }
 
@@ -3435,7 +3443,7 @@
       setStatus('Игра остановлена: самостоятельная навигация или перезагрузка запрещены. Загрузите игру заново кнопкой тестера.', 'err');
     }
 
-    // Проверяет версию, идентификаторы, числовой result и одноразовость ответа активной игры.
+    // Проверяет сессию и исходный конечный number без приведения типов; отказ не фиксирует результат.
     function validateGameResult(event, data){
       const session = activeGameSession;
       if (!session) return { accepted: false, reason: 'нет активной сессии gameInit' };
@@ -3460,9 +3468,9 @@
         return { accepted: false, reason: 'версия протокола игры не совпадает с тестером' };
       }
 
-      const resultValue = Number(Object.prototype.hasOwnProperty.call(data, 'result') ? data.result : 0);
-      if (!Number.isFinite(resultValue)){
-        return { accepted: false, reason: 'result должен быть конечным числом' };
+      const resultValue = data.result;
+      if (typeof resultValue !== 'number' || !Number.isFinite(resultValue)){
+        return { accepted: false, reason: 'поле result должно содержать конечное число; получен другой тип, отсутствующее или неконечное значение' };
       }
       return { accepted: true, resultValue };
     }

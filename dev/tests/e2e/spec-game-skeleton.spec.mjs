@@ -80,3 +80,109 @@ test('каркас отправляет один результат на сес�
   expect(await frame.evaluate('activeGameInit.sessionId')).toBe('B');
   await expect(frame.locator('#finishButton')).toBeDisabled();
 });
+
+test.describe('сенсорные кнопки каркаса', () => {
+  test.use({ hasTouch: true });
+
+  // Настоящий браузерный tap должен активировать кнопку один раз и не запускать игровой ввод.
+  test('tap запускает игру и подтверждает единственный результат', async ({ page }) => {
+    const frame = await openSkeleton(page);
+    await sendInit(page, frame, 'touch');
+    // Считаем входы в игровой обработчик: UI не должен их вызывать, tap поля — только один.
+    await frame.evaluate(`(() => {
+      window.gameInputs = 0;
+      const original = onGameInputStart;
+      onGameInputStart = function (...args) {
+        window.gameInputs += 1;
+        original(...args);
+      };
+    })()`);
+    await frame.locator('#startButton').tap();
+    await expect.poll(() => frame.evaluate('gameStarted')).toBe(true);
+    expect(await frame.evaluate('window.gameInputs')).toBe(0);
+    // Прозрачная часть UI-слоя принимает hit-test и передаёт игровой ввод общему контейнеру.
+    await frame.locator('#uiRoot').tap({ position: { x: 100, y: 200 } });
+    expect(await frame.evaluate('window.gameInputs')).toBe(1);
+    expect(await frame.evaluate('activePointerId')).toBe(null);
+    await frame.evaluate('showFinish(1)');
+    await frame.locator('#finishButton').tap();
+    await expect.poll(() => page.evaluate(() => window.results.length)).toBe(1);
+    expect(await frame.evaluate('resultSent && activePointerId === null')).toBe(true);
+  });
+});
+
+// Проверяет нормализацию параметра в настоящем родительском init, включая границы и отсутствие значения.
+test('каркас принимает только целую сложность 1..5', async ({ page }) => {
+  const frame = await openSkeleton(page);
+  const cases = [[1, 1], [5, 5], ['2', 2], [0, 3], [6, 3], [-1, 3],
+    [2.5, 3], ['bad', 3], [true, 3], [null, 3], [undefined, 3], [[], 3], [{}, 3], [Infinity, 3]];
+  for (const [index, [input, expected]] of cases.entries()) {
+    await page.evaluate(({ index, input }) => {
+      document.getElementById('game').contentWindow.postMessage({
+        type: 'gameInit', protocolVersion: 2, gameId: 'example',
+        sessionId: 'difficulty-' + index, difficulty: input
+      }, '*');
+    }, { index, input });
+    await expect.poll(() => frame.evaluate('activeGameInit.sessionId')).toBe('difficulty-' + index);
+    expect(await frame.evaluate('difficulty')).toBe(expected);
+  }
+});
+
+// Настоящее удержание продолжает получать события за пределами макета и освобождается при cancel и финише.
+test('захват указателя и отмена не оставляют удержание активным', async ({ page }) => {
+  const frame = await openSkeleton(page);
+  await sendInit(page, frame, 'drag');
+  await frame.locator('#startButton').click();
+  await frame.locator('#gameRoot').evaluate(element => {
+    window.moveCount = 0;
+    element.addEventListener('pointermove', () => { window.moveCount += 1; });
+  });
+  await page.mouse.move(200, 400);
+  await page.mouse.down();
+  expect(await frame.evaluate('activePointerId !== null && pointerCaptureTarget.hasPointerCapture(activePointerId)')).toBe(true);
+  await page.mouse.move(200, 900);
+  expect(await frame.evaluate('window.moveCount')).toBeGreaterThan(0);
+  // Синтетический pointercancel проверяет ветку отмены после настоящего pointerdown.
+  await frame.evaluate(`pointerCaptureTarget.dispatchEvent(new PointerEvent('pointercancel', {
+    bubbles: true, pointerId: activePointerId, pointerType: 'mouse', cancelable: true
+  }))`);
+  expect(await frame.evaluate('activePointerId === null && pointerCaptureTarget === null')).toBe(true);
+  await page.mouse.up();
+  await page.mouse.move(200, 400);
+  await page.mouse.down();
+  await frame.evaluate('showFinish(1)');
+  expect(await frame.evaluate('activePointerId === null')).toBe(true);
+  await page.mouse.up();
+  await frame.locator('#finishButton').click();
+  await expect.poll(() => page.evaluate(() => window.results.length)).toBe(1);
+});
+
+// Проверяет резервные каналы без Pointer Events и отмену touch без зависимости от устройства.
+test('fallback обрабатывает один touch и сбрасывает touchcancel', async ({ page }) => {
+  await page.addInitScript(() => { delete window.PointerEvent; });
+  const frame = await openSkeleton(page);
+  expect(await frame.evaluate('HAS_POINTER_EVENTS')).toBe(false);
+  await sendInit(page, frame, 'fallback');
+  await frame.locator('#startButton').click();
+  await frame.evaluate(`(() => {
+    const target = document.getElementById('gameCanvas');
+    const emit = (type, id) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'changedTouches', { value: [{ identifier: id, clientX: 50, clientY: 200 }] });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    window.emitTouch = emit;
+    window.touchDefaultPrevented = emit('touchstart', 7);
+    emit('touchstart', 8);
+  })()`);
+  expect(await frame.evaluate('activeTouchId')).toBe(7);
+  expect(await frame.evaluate('window.touchDefaultPrevented')).toBe(true);
+  await frame.evaluate("window.emitTouch('touchcancel', 7)");
+  expect(await frame.evaluate('activeTouchId')).toBe(null);
+  await page.mouse.move(100, 300);
+  await page.mouse.down();
+  expect(await frame.evaluate('mouseActive')).toBe(true);
+  await page.mouse.up();
+  expect(await frame.evaluate('mouseActive')).toBe(false);
+});
